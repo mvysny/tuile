@@ -1660,8 +1660,9 @@ input inside itself. For a layer that floats *without* taking focus — the
 autocomplete-list case from earlier, where the caller positions it against a
 field's caret and drives it from app code — use its base class, `Overlay`,
 directly. An `Overlay` is a Popup minus the modality: same open/close
-lifecycle, same outside-click dismissal, but it sits at the rect you assign
-and never disturbs focus or key dispatch.
+lifecycle, same outside-click dismissal, but it sits where you open it —
+`overlay.open(Overlay::At[rect])` — and never disturbs focus or key
+dispatch.
 
 **A left click outside an overlay closes it**, modal or not — the same light
 dismissal a desktop dialog gives you. It's a per-overlay switch,

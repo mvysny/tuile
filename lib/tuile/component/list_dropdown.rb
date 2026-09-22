@@ -13,8 +13,7 @@ module Tuile
     #   drop.list.on_item_chosen { |e| commit(e.item) }    # caller commits
     #   # …then, from the driver's key handler:
     #   drop.items = matches                         # caller filters
-    #   drop.anchor_to(absolute_rect, rows: matches.size)  # below the driver, or flipped
-    #   drop.open
+    #   drop.anchor_to(self)                         # opens it below the driver, or flipped
     #   return true if drop.move(key)  # Up/Down/PgUp/PgDn/^U/^D → list scroll
     #   drop.choose if key == Keys::ENTER            # commit the highlight
     #
@@ -64,6 +63,100 @@ module Tuile
       # @return [Integer]
       MAX_VISIBLE_ROWS = 10
 
+      # The placement {#anchor_to} and {#anchor_beside} open the dropdown with:
+      # hung off `anchor`, `side` `:below` or `:beside` it, as tall as its rows
+      # up to `max_rows`. The pane re-reads the anchor on every pass and again
+      # once the content has settled, so the panel follows a field that moves.
+      #
+      # @!attribute [r] anchor
+      #   @return [Component, Rect] a component, followed by its
+      #     {Component#absolute_extent_rect}, or a fixed rect in screen
+      #     coordinates.
+      # @!attribute [r] side
+      #   @return [Symbol] `:below` or `:beside`.
+      # @!attribute [r] width
+      #   @return [Integer, #call, nil] columns, or something answering them when
+      #     called; `nil` takes the anchor's width.
+      # @!attribute [r] max_rows
+      #   @return [Integer] rows shown before the list scrolls.
+      Anchored = Data.define(:anchor, :side, :width, :max_rows) do
+        # @return [Rect, nil] the anchor in screen coordinates, or `nil` when a
+        #   component anchor is detached or hidden.
+        def anchor_rect
+          return anchor if anchor.is_a?(Rect)
+
+          node = anchor
+          until node.nil?
+            return nil unless node.visible?
+
+            node = node.parent
+          end
+          anchor.attached? ? anchor.absolute_extent_rect : nil
+        end
+
+        # @param drop [ListDropdown]
+        # @param screen_size [Size]
+        # @return [Rect]
+        def rect_for(drop, screen_size)
+          rect = anchor_rect
+          columns = width.nil? ? rect.width : width
+          columns = [columns.respond_to?(:call) ? columns.call : columns, screen_size.width].min
+          if side == :below
+            below(rect, drop.items.size, columns, screen_size)
+          else
+            beside(rect, drop.items.size, columns, screen_size)
+          end
+        end
+
+        private
+
+        # Beneath the anchor, flipped above when the rows won't fit below,
+        # clamped — with the list scrolling — when neither side has room; the
+        # left edges line up, sliding left only far enough to stay on screen.
+        # @param anchor [Rect]
+        # @param rows [Integer]
+        # @param width [Integer]
+        # @param screen_size [Size]
+        # @return [Rect]
+        def below(anchor, rows, width, screen_size)
+          desired = [rows, max_rows].min
+          beneath = anchor.top + anchor.height
+          room_below = screen_size.height - beneath
+          if desired <= room_below
+            top = beneath
+            height = desired
+          elsif anchor.top >= room_below
+            height = [desired, anchor.top].min
+            top = anchor.top - height
+          else
+            height = room_below
+            top = beneath
+          end
+          Rect.new([anchor.left, screen_size.width - width].min.clamp(0, nil), top, width, height)
+        end
+
+        # Against the anchor's right edge, flipped to its left when the right
+        # has no room; the first row lines up with the anchor, sliding up only
+        # far enough to stay on screen.
+        # @param anchor [Rect]
+        # @param rows [Integer]
+        # @param width [Integer]
+        # @param screen_size [Size]
+        # @return [Rect]
+        def beside(anchor, rows, width, screen_size)
+          height = [rows, max_rows, screen_size.height].min
+          right = anchor.left + anchor.width
+          left = if right + width <= screen_size.width || (anchor.left - width).negative?
+                   right
+                 else
+                   anchor.left - width
+                 end
+          left = left.clamp(0, [screen_size.width - width, 0].max)
+          top = [anchor.top, screen_size.height - height].min.clamp(0, nil)
+          Rect.new(left, top, width, height)
+        end
+      end
+
       def initialize
         @list = Menu.new
         @list.cursor = List::Cursor.new
@@ -73,9 +166,11 @@ module Tuile
       end
 
       # @param items [Array] the items to show, one row each; see {List#items=}.
+      #   An open dropdown resizes to the new count on the next settle.
       # @return [void]
       def items=(items)
         @list.items = items
+        reposition
       end
 
       # @return [Array] the items currently shown.
@@ -110,13 +205,14 @@ module Tuile
       # @return [Boolean] whether the highlight moved there.
       def select(index) = @list.select(index)
 
-      # Sizes and places the dropdown against `anchor`: directly beneath it,
-      # flipped above when `rows` won't fit below, clamped — with the list
-      # scrolling — when neither side has room. Horizontally the left edges line
-      # up, sliding left only far enough to keep the panel on screen.
+      # Opens the dropdown against `anchor` — directly beneath it, flipped above
+      # when its rows won't fit below, clamped (with the list scrolling) when
+      # neither side has room — or moves it there if it is open already.
+      # Horizontally the left edges line up, sliding left only far enough to
+      # keep the panel on screen.
       #
-      #   drop.anchor_to(field.absolute_rect, rows: matches.size)   # field width
-      #   drop.anchor_to(absolute_extent_rect, rows: items.size, width: measured)
+      #   drop.anchor_to(self)                            # follows the field, its width
+      #   drop.anchor_to(self, width: method(:menu_width))
       #
       # Vertical flips but horizontal slides because covering the driver would
       # hide what is being chosen, while sharing its columns is the point.
@@ -124,49 +220,34 @@ module Tuile
       # **`anchor` is the region actually occupied, and may be taller than one
       # row** — "beneath" means the row *after* it, so a multi-row driver (a
       # {Component::TextArea} carrying an autocomplete menu) is cleared entirely
-      # rather than overdrawn from its second row down. A widget that paints one
-      # row but may be *assigned* more height passes its face, not its rect:
-      # {ComboBox} and {Select} both do, since a {Window} content slot hands them
-      # the full inner height.
+      # rather than overdrawn from its second row down. A component anchor is
+      # read through its {Component#absolute_extent_rect}, so a widget that
+      # paints one row but is *assigned* more height ({ComboBox}, {Select})
+      # hangs the panel off its face.
       #
-      # @param anchor [Rect] the region the driver occupies **in screen
-      #   coordinates** — a dropdown hangs off {ScreenPane} and shares no offset
-      #   with its driver, so a driver passes {Component#absolute_rect} or
-      #   {Component#absolute_extent_rect}. Of any height; the dropdown never
-      #   covers it.
-      # @param rows [Integer] how many rows there are to show — the content
-      #   count, not the height: more than fits turns the scrollbar on. `0`
-      #   collapses the dropdown to an empty rect (drivers close instead).
-      # @param width [Integer] the panel's width in columns, clamped to the
-      #   screen. Defaults to the anchor's, which lines both edges up with a
-      #   field; a driver that measured its labels passes its own. A label wider
-      #   than the screen clips — {List} has no horizontal scrolling.
+      # The height is the item count, capped at `max_rows`, and follows
+      # {#items=}. Settles before it returns, so a driver can forward a key to
+      # the list, or read {#cursor_row_rect}, in the same handler.
+      #
+      # @param anchor [Component, Rect] the driver, followed wherever it moves,
+      #   or a fixed region in screen coordinates. Of any height; the dropdown
+      #   never covers it.
+      # @param width [Integer, #call, nil] the panel's width in columns, clamped
+      #   to the screen, or something answering it; `nil` (the default) takes
+      #   the anchor's, which lines both edges up with a field. A driver that
+      #   measures its labels passes its own. A label wider than the screen
+      #   clips — {List} has no horizontal scrolling.
       # @param max_rows [Integer] rows shown before the list scrolls.
       # @return [void]
-      def anchor_to(anchor, rows:, width: anchor.width, max_rows: MAX_VISIBLE_ROWS)
-        desired = [rows, max_rows].min
-        beneath = anchor.top + anchor.height
-        below = screen.size.height - beneath
-        above = anchor.top
-        if desired <= below
-          top = beneath
-          height = desired
-        elsif above >= below
-          height = [desired, above].min
-          top = anchor.top - height
-        else
-          height = below
-          top = beneath
-        end
-        width = [width, screen.size.width].min
-        place(Rect.new([anchor.left, screen.size.width - width].min.clamp(0, nil), top, width, height))
+      def anchor_to(anchor, width: nil, max_rows: MAX_VISIBLE_ROWS)
+        anchor_with(Anchored.new(anchor:, side: :below, width:, max_rows:))
       end
 
-      # Sizes and places the dropdown *beside* `anchor` — the placement a
-      # cascading submenu wants, where {#anchor_to} is the placement a field's
-      # dropdown wants.
+      # Opens the dropdown *beside* `anchor` — the placement a cascading submenu
+      # wants, where {#anchor_to} is the placement a field's dropdown wants —
+      # or moves it there if it is open already.
       #
-      #   sub.anchor_beside(parent.cursor_row_rect, rows: kids.size, width: measured)
+      #   sub.anchor_beside(parent.cursor_row_rect, width: measured)
       #
       # Horizontally it sits against `anchor`'s right edge, **flipping** to its
       # left when the right has no room (and clamping to the screen when neither
@@ -179,31 +260,17 @@ module Tuile
       # submenu must not cover its parent panel, so it flips *horizontally* and
       # shares its rows.
       #
-      # @param anchor [Rect] the row the submenu belongs to, in screen
-      #   coordinates — typically the parent dropdown's {#cursor_row_rect}. Its
-      #   width is the parent panel's, which is what the submenu clears.
-      # @param rows [Integer] how many rows there are to show — the content
-      #   count, not the height; more than fits turns the scrollbar on. `0`
-      #   collapses the dropdown to an empty rect (drivers close instead).
-      # @param width [Integer] the panel's width in columns, clamped to the
-      #   screen. **Required, with no default:** `anchor.width` is the *parent's*
-      #   width and would be meaningless here, so the caller measures (see
+      # @param anchor [Rect, Component] the row the submenu belongs to, in screen
+      #   coordinates — typically the parent dropdown's {#cursor_row_rect}.
+      # @param width [Integer, #call] the panel's width in columns, clamped to
+      #   the screen. **Required, with no default:** the anchor's width is the
+      #   *parent's* and would be meaningless here, so the caller measures (see
       #   `design/decisions.md` `D_select` on why the width policy stays with the
       #   driver).
       # @param max_rows [Integer] rows shown before the list scrolls.
       # @return [void]
-      def anchor_beside(anchor, rows:, width:, max_rows: MAX_VISIBLE_ROWS)
-        height = [rows, max_rows, screen.size.height].min
-        width = [width, screen.size.width].min
-        right = anchor.left + anchor.width
-        left = if right + width <= screen.size.width || (anchor.left - width).negative?
-                 right
-               else
-                 anchor.left - width
-               end
-        left = left.clamp(0, [screen.size.width - width, 0].max)
-        top = [anchor.top, screen.size.height - height].min.clamp(0, nil)
-        place(Rect.new(left, top, width, height))
+      def anchor_beside(anchor, width:, max_rows: MAX_VISIBLE_ROWS)
+        anchor_with(Anchored.new(anchor:, side: :beside, width:, max_rows:))
       end
 
       # The highlighted row's rect **on screen** — what a cascading submenu
@@ -260,14 +327,14 @@ module Tuile
 
       private
 
-      # Places the panel and settles the pass, because both anchor methods
-      # promise a panel that *is* placed: a driver reads {#cursor_row_rect} or
-      # forwards a key to the list in the same handler, and both measure rects
-      # this just assigned.
-      # @param rect [Rect]
+      # Opens or moves the panel and settles the pass, because both anchor
+      # methods promise a panel that *is* placed: a driver reads
+      # {#cursor_row_rect} or forwards a key to the list in the same handler,
+      # and both measure rects this just assigned.
+      # @param placement [Anchored]
       # @return [void]
-      def place(rect)
-        self.rect = rect
+      def anchor_with(placement)
+        open? ? self.placement = placement : self.open(placement)
         flush_layout
       end
     end

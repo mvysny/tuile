@@ -95,8 +95,9 @@ are `Box`'s rdoc and `D_box_layouts`.
   no `modal:` knob, `modal?` is a constant per class. See `D_overlay`.
 - **`focusable?` and `modal?` move together** — a focusable non-modal overlay holds focus outside
   the key scope and every keystroke goes dead until Tab recovers.
-- **A *derived* position needs its own `reposition`, or closes on resize** — the base is a no-op;
-  {Tuile::Component::MenuBar} takes the closing answer deliberately.
+- **An overlay never assigns its own rect** — it opens with a placement (`open(Overlay::At[rect])`,
+  a default, `anchor_to`) and the pane's pass applies it; a size change calls `reposition`, which
+  asks the pane rather than moving anything. See `D_relayout`.
 - **A non-modal overlay is never focused into** — the router skips click-to-focus for one, since
   focus outside the key scope makes every keystroke go dead. See `D_overlay`.
 - **`Overlay#on_close` fires from `handle_detached`, never `#close`**, so a `handle_detached` override must

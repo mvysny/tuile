@@ -313,23 +313,19 @@ module Tuile
         confirm(caption, message, confirm: "Yes", cancel: "No", on_dismiss:, &action)
       end
 
-      # The {Popup} that {#open} wraps the dialog in: its declared size is
-      # derived from the dialog on every {#reposition}, so a message change and
-      # a SIGWINCH both re-measure against the current screen.
+      # The {Popup} that {#open} wraps the dialog in: its size is measured from
+      # the dialog on every layout pass, so a message change and a SIGWINCH both
+      # re-measure against the current screen.
       class MeasuredPopup < Popup
         # @param window [ConfirmWindow]
         def initialize(window)
-          # Before super: Popup#initialize ends in the first #reposition call.
           @window = window
           super(content: window)
         end
 
-        # @return [void]
-        def reposition
-          # The ivar, not #declared_size= — the writer calls reposition itself.
-          @declared_size = @window.measured_size(screen.size)
-          super
-        end
+        # @param screen_size [Size]
+        # @return [Size] {ConfirmWindow#measured_size}.
+        def declared_size_in(screen_size) = @window.measured_size(screen_size)
       end
       private_constant :MeasuredPopup
 

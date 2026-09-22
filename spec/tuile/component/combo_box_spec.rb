@@ -388,9 +388,7 @@ module Tuile
         window = Component::Window.new("Edit")
         window.content = body
         dialog = Component::Popup.new(content: window)
-        dialog.open
-        dialog.rect = Rect.new(10, 10, 40, 5)
-        settle(dialog)
+        settle(dialog.open(Component::Overlay::At[Rect.new(10, 10, 40, 5)]))
         combo.rect = Rect.new(1, body.height - 1, 20, 1) # the dialog's last inner row, (12, 13) on screen
         combo.focus
         face = settle(combo).absolute_extent_rect

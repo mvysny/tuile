@@ -289,7 +289,7 @@ module Tuile
         popup = dialog.open
         narrow = popup.rect.width
         dialog.message = "a considerably longer single message line"
-        assert popup.rect.width > narrow
+        assert settle(popup).rect.width > narrow
       end
     end
 

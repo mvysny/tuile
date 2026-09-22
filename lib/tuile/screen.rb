@@ -479,12 +479,20 @@ module Tuile
     # @return [void]
     def flush_layout
       check_locked
-      until @layout_invalidated.empty?
-        pending = @layout_invalidated
-        @layout_invalidated = Set.new
-        pending.delete_if { !_1.attached? }
-        # `__send__`: `perform_relayout` is private, and clears the mark.
-        @pane.walk_tree { _1.__send__(:perform_relayout) if pending.include?(_1) }
+      loop do
+        until @layout_invalidated.empty?
+          pending = @layout_invalidated
+          @layout_invalidated = Set.new
+          pending.delete_if { !_1.attached? }
+          # `__send__`: `perform_relayout` is private, and clears the mark.
+          @pane.walk_tree { _1.__send__(:perform_relayout) if pending.include?(_1) }
+        end
+        # The pane places anchored popups before the content they hang from
+        # settles, so it re-checks once everything has; placing a popup never
+        # moves the content, so this ends after one more round.
+        break if @pane.nil? || !@pane.__send__(:anchors_moved?)
+
+        @pane.__send__(:invalidate_layout)
       end
     end
 
@@ -571,13 +579,15 @@ module Tuile
     listener :on_focus_changed
 
     # Internal — use {Component::Overlay#open} instead. Adds the overlay to
-    # {#pane}; a {Component::Popup} is additionally centered and focused.
+    # {#pane} at `placement`; a {Component::Popup} is additionally focused.
     # @api private
     # @param window [Component::Overlay] any overlay, modal or not.
+    # @param placement [Object, nil] see {Component::Overlay}; `nil` takes the
+    #   overlay's default.
     # @return [void]
-    def add_popup(window)
+    def add_popup(window, placement = nil)
       check_locked
-      @pane.add_popup(window)
+      @pane.add_popup(window, placement)
       # No need to fully repaint the scene: a popup simply paints over the
       # current screen contents.
     end

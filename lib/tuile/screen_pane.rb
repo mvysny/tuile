@@ -27,6 +27,10 @@ module Tuile
       # user was, instead of falling through to {#content} and getting
       # cascaded to the first focusable child.
       @popup_prior_focus = {}
+      # Where each open popup wants to be, and the anchor rect its last
+      # placement used (`:lost` once the anchor went away) — see #relayout.
+      @placements = {}.compare_by_identity
+      @placed_anchors = {}.compare_by_identity
     end
 
     # @return [Component, nil] the tiled content component.
@@ -54,11 +58,11 @@ module Tuile
       add_child(content, at: 0) # the tiled layer paints beneath everything else
     end
 
-    # Adds an overlay and invalidates it for repaint. A {Component::Popup} is
-    # centered and grabs focus; a bare {Component::Overlay} is left wherever
-    # the caller positioned it and does *not* take focus, so the component that
-    # was focused keeps the cursor and keeps receiving keys — the overlay
-    # floats above the content, driven from app code.
+    # Adds an overlay at `placement` and invalidates it for repaint; the next
+    # settle gives it its rect. A {Component::Popup} grabs focus; a bare
+    # {Component::Overlay} does *not*, so the component that was focused keeps
+    # the cursor and keeps receiving keys — the overlay floats above the
+    # content, driven from app code.
     #
     # The *whole subtree* is invalidated, not just the overlay wrapper (which
     # paints nothing on its own): a reopened popup may land on cells that the
@@ -66,19 +70,38 @@ module Tuile
     # last time its content components won't re-invalidate themselves — so
     # without this the overlay's contents would stay blank on reopen.
     # @param window [Component::Overlay] any overlay, modal or not.
+    # @param placement [Object, nil] where it wants to be (see
+    #   {Component::Overlay}); `nil` takes its {Component::Overlay#default_placement}.
     # @return [void]
-    def add_popup(window)
+    def add_popup(window, placement = nil)
       raise TypeError, "expected Overlay, got #{window.inspect}" unless window.is_a? Component::Overlay
       raise ArgumentError, "#{window} already has a parent #{window.parent}" unless window.parent.nil?
 
+      placement ||= window.default_placement
       @popup_prior_focus[window] = screen.focused
+      @placements[window] = placement
       @popups << window
       add_child(window) # appended: popups paint over the tiled content
-      if window.modal?
-        window.center
-        screen.focused = window
-      end
+      screen.focused = window if window.modal?
       window.walk_tree { |c| screen.invalidate(c) }
+    end
+
+    # @param popup [Component::Overlay] an open popup.
+    # @return [Object, nil] where it wants to be; `nil` if it isn't open here.
+    def placement(popup) = @placements[popup]
+
+    # Moves an open popup; it takes the new rect on the next settle.
+    # {Component::Overlay#placement=} is the usual way in.
+    # @param popup [Component::Overlay] an open popup.
+    # @param placement [Object] see {Component::Overlay}.
+    # @raise [ArgumentError] if `popup` isn't open on this pane.
+    # @return [void]
+    def constrain(popup, placement)
+      raise ArgumentError, "#{popup} is not an open popup on this pane" unless has_popup?(popup)
+      return if @placements[popup] == placement
+
+      @placements[popup] = placement
+      invalidate_layout
     end
 
     # Removes a popup. If the popup held focus, focus shifts to the now-topmost
@@ -90,6 +113,8 @@ module Tuile
       raise Tuile::Error, "#{window} is not an open popup on this pane" unless @popups.delete(window)
 
       prior = @popup_prior_focus.delete(window)
+      @placements.delete(window)
+      @placed_anchors.delete(window)
       @removing_popup_prior = prior
       remove_child(window)
       # Runs after the detach, so a prior pointing *inside* the removed popup is
@@ -117,6 +142,8 @@ module Tuile
       @content = nil
       @popups.clear
       @popup_prior_focus.clear
+      @placements.clear
+      @placed_anchors.clear
     end
 
     # @param window [Component]
@@ -140,31 +167,17 @@ module Tuile
     def key_scope = modal_popup || @content
 
     # Gives {#content} the whole pane rect — the pane reserves nothing for
-    # itself.
+    # itself — and each popup the rect its placement asks for, in stacking
+    # order, so a submenu is placed after the panel it hangs from.
+    #
+    # Re-running it moves nothing that stood still: a placement is a rule, so
+    # a second popup opening re-derives the first one's rect unchanged.
     # @return [void]
     def relayout
       return if rect.empty?
 
       @content&.rect = local_rect
-    end
-
-    # Resizes, then lets each popup re-resolve its
-    # {Component::Popup#declared_size} against the new screen via
-    # {Component::Popup#reposition} — so a {Fraction} size tracks resize, a
-    # modal popup recenters, and a bare {Component::Overlay} keeps the top-left
-    # its owner assigned.
-    #
-    # Deliberately here rather than in {#relayout}: a popup's position is its
-    # own, not derived from the pane, so the pane re-derives it exactly when the
-    # screen it was resolved against changed — and never when a *second* popup
-    # opens, which would snap the first back to centre.
-    # @param new_rect [Rect]
-    # @return [void]
-    def rect=(new_rect)
-      return if rect == new_rect
-
-      super
-      @popups.each(&:reposition)
+      @popups.each { place(_1) }
     end
 
     # Pane paints nothing itself; its children paint over the entire rect.
@@ -298,6 +311,47 @@ module Tuile
     end
 
     private
+
+    # @param popup [Component::Overlay]
+    # @return [void]
+    def place(popup)
+      placement = @placements.fetch(popup)
+      if placement.respond_to?(:anchor_rect)
+        anchor = placement.anchor_rect
+        if anchor.nil?
+          lose_anchor(popup)
+          return
+        end
+        @placed_anchors[popup] = anchor
+      end
+      popup.rect = placement.rect_for(popup, rect.size)
+    end
+
+    # Leaves a popup whose anchor was detached or hidden at its last rect. It
+    # warns, once, because closing the popup is its owner's job and an owner
+    # that forgot leaves it floating over nothing.
+    # @param popup [Component::Overlay]
+    # @return [void]
+    def lose_anchor(popup)
+      return if @placed_anchors[popup] == :lost
+
+      @placed_anchors[popup] = :lost
+      Tuile.logger.warn("#{popup} lost its anchor; left where it was — close it when the anchor goes")
+    end
+
+    # Whether an anchored popup's anchor now resolves elsewhere than where its
+    # last placement read it. {Screen#flush_layout} asks once the queue is
+    # empty, because this pass runs *before* the content it anchors to, so a
+    # settle that moved the content handed the pass a stale anchor.
+    # @return [Boolean]
+    def anchors_moved?
+      return false if rect.empty? # #relayout places nothing then, so nothing would record
+
+      @popups.any? do |popup|
+        placement = @placements[popup]
+        placement.respond_to?(:anchor_rect) && (placement.anchor_rect || :lost) != @placed_anchors[popup]
+      end
+    end
 
     # The overlays a click counts as landing *inside*: the one it hit, plus
     # every overlay that one belongs to, up the {Component::Overlay#owner}

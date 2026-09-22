@@ -2,7 +2,7 @@
 
 module Tuile
   class Component
-    # A modal dialog: an {Component::Overlay} that centers itself on the screen,
+    # A modal dialog: an {Component::Overlay} centered on the screen, which
     # grabs focus, scopes keys to its own subtree, blocks clicks beneath it, and
     # closes on ESC or `q`.
     #
@@ -50,7 +50,6 @@ module Tuile
       def initialize(content: nil, declared_size: Fraction::HALF, close_on_outside_click: true)
         super(content: content, close_on_outside_click: close_on_outside_click)
         @declared_size = declared_size
-        reposition
       end
 
       # The box this popup asks for, *as set* — a {Fraction} comes back
@@ -69,7 +68,7 @@ module Tuile
       #   and focus repair falls back to it when its subtree has no tab stop.
       def focusable? = true
 
-      # Sets the popup's box and repositions it. Accepts a {Fraction} (resolved
+      # Sets the popup's box; an open popup takes it on the next settle. Accepts a {Fraction} (resolved
       # against the screen every layout pass, so it tracks resize) or an
       # absolute {Size} (clamped to the screen). This is **authoritative**, not
       # a preference: the screen applies exactly what you ask for (clamped),
@@ -81,26 +80,16 @@ module Tuile
         reposition
       end
 
-      # Re-resolves {#declared_size} against the current screen and recenters the popup
-      # *itself* (this is not laying out content — the popup's own rect). Called
-      # on {Overlay#open}, on {#declared_size=}, and by the screen's layout pass,
-      # so a {Fraction} tracks SIGWINCH.
-      #
-      # The final rect is computed and assigned in one step rather than sizing at
-      # the origin and then centering: the intermediate origin rect rarely covers
-      # the previous one, which would make {Overlay#rect=}'s shrink/move
-      # detection fire a full repaint on every resize.
-      # @return [void]
-      def reposition
-        size = @declared_size.is_a?(Fraction) ? @declared_size.resolve(screen.size) : @declared_size.clamp(screen.size)
-        self.rect = Rect.new(0, 0, size.width, size.height).centered(screen.size)
+      # {#declared_size} resolved against `screen_size`: a {Fraction} scaled, a
+      # {Size} clamped.
+      # @param screen_size [Size]
+      # @return [Size]
+      def declared_size_in(screen_size)
+        @declared_size.is_a?(Fraction) ? @declared_size.resolve(screen_size) : @declared_size.clamp(screen_size)
       end
 
-      # Recenters the popup on the screen, preserving its current width/height.
-      # @return [void]
-      def center
-        self.rect = rect.centered(screen.size)
-      end
+      # @return [Overlay::Centered] a popup opens centered.
+      def default_placement = Centered[]
 
       # `q` and ESC close the popup. The popup sits on the focus chain of
       # whatever it wraps, so the key reaches here by bubbling up from the

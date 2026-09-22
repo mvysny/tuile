@@ -136,14 +136,14 @@ module Tuile
       p.open
       p.declared_size = Size.new(20, 6)
       # centered: ((160-20)/2, (50-6)/2) = (70, 22).
-      assert_equal Rect.new(70, 22, 20, 6), p.rect
+      assert_equal Rect.new(70, 22, 20, 6), settle(p).rect
     end
 
     it "size= accepts a Fraction" do
       p = Component::Popup.new
       p.open
       p.declared_size = Fraction::FULL
-      assert_equal Rect.new(0, 0, 160, 50), p.rect
+      assert_equal Rect.new(0, 0, 160, 50), settle(p).rect
     end
 
     it "returns self from open, so construct-and-mount is one expression" do
@@ -166,19 +166,27 @@ module Tuile
       Screen.instance.instance_variable_set(:@size, Size.new(100, 30))
       Screen.instance.pane.rect = Rect.new(0, 0, 100, 30)
       # HALF of 100x30 = 50x15; centered at ((100-50)/2, (30-15)/2) = (25, 7).
-      assert_equal Rect.new(25, 7, 50, 15), p.rect
+      assert_equal Rect.new(25, 7, 50, 15), settle(p).rect
     end
   end
 
-  describe Component::Popup, "#center" do
+  describe Component::Popup, "placement" do
     before { Screen.fake }
     after { Screen.close }
 
-    it "centers the popup on screen, preserving its size" do
-      p = Component::Popup.new(declared_size: Size.new(40, 10))
-      p.center
+    it "opens centered by default" do
+      p = Component::Popup.new(declared_size: Size.new(40, 10)).open
+      assert_equal Component::Overlay::Centered[], p.placement
       # ((160-40)/2, (50-10)/2) = (60, 20).
       assert_equal Rect.new(60, 20, 40, 10), p.rect
+    end
+
+    # A hand-placed popup's placement *is* its rect, so re-running the pane's
+    # pass — a second popup opening — leaves it where it was put.
+    it "stays hand-placed when a second popup opens" do
+      first = Component::Popup.new.open(Component::Overlay::At[Rect.new(3, 4, 20, 5)])
+      Component::Popup.new.open
+      assert_equal Rect.new(3, 4, 20, 5), settle(first).rect
     end
   end
 
@@ -203,6 +211,7 @@ module Tuile
       Screen.instance.invalidated_clear
 
       p.declared_size = Size.new(10, 5) # smaller, recentered; new rect can't cover old
+      settle(p)
       assert Screen.instance.invalidated?(tiled)
     end
 
@@ -212,6 +221,7 @@ module Tuile
       Screen.instance.invalidated_clear
 
       p.declared_size = Fraction::FULL # grows to cover the whole screen (covers old)
+      settle(p)
       assert Screen.instance.invalidated?(p)
       refute Screen.instance.invalidated?(tiled)
     end
@@ -251,13 +261,13 @@ module Tuile
       assert_equal p, Screen.instance.focused.root.popups.first
     end
 
-    it "recenters when repositioned, ignoring a caller-assigned top-left" do
+    it "recenters on the next pass, ignoring a caller-assigned top-left" do
       p = Component::Popup.new(declared_size: Fraction::HALF)
       p.open
       p.rect = p.rect.at(Point.new(12, 7))
 
       p.reposition
-      assert_equal 40, p.rect.left # re-centered, ignoring the manual move
+      assert_equal 40, settle(p).rect.left # re-centered, ignoring the manual move
       assert_equal 12, p.rect.top
     end
   end

@@ -243,7 +243,14 @@ graduate without it. Nothing here depends on the diagnostic.
    a container placing nothing became a bare `Layout`, which is exactly what the old `Absolute` was;
    the ones whose children get their `rect` written directly move to `Absolute` rects in step 3,
    when the guard finds them.
-2. Popup placement into `ScreenPane#relayout`; the `rect=` override goes.
+2. Popup placement into `ScreenPane#relayout`; the `rect=` override goes. **Done (2026-09-22):**
+   `Overlay#open(placement)` with `Overlay::At` / `Centered` / `TopRight` and
+   `ListDropdown::Anchored` (a component anchor is followed; rows are read live), the pane stores
+   one per popup and places them in stacking order, `Screen#flush_layout` re-checks anchors once
+   the drain empties, and a lost anchor keeps its rect and warns once. `Overlay#reposition` is now
+   the request ("place me again"), `declared_size_in` is the size a placement reads, and
+   `Popup#center` is gone. Left for graduation: the older `D_` entries that describe
+   `reposition` as it was (`D_overlay`, `D_notification`, `D_confirm_window` history).
 3. `Q_rect_writer`.
 
 These are one breaking change, built from `master`. The parked `strict-layout-diagnostic` branch is

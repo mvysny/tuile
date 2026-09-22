@@ -19,6 +19,9 @@ module Tuile
     # buffer below.
     def held(notification) = notification.instance_variable_get(:@messages)
 
+    # The box the pane gives it, once the settle has placed it.
+    def box(notification) = settle(notification).rect
+
     def rows(notification)
       screen.repaint
       screen.buffer.region_text(notification.absolute_rect)
@@ -42,7 +45,8 @@ module Tuile
     end
 
     def click(component, button: :left)
-      Screen.instance.click(component.absolute_rect.left + 1, component.absolute_rect.top + 1, button: button)
+      rect = settle(component).absolute_rect
+      Screen.instance.click(rect.left + 1, rect.top + 1, button: button)
     end
 
     describe "construction" do
@@ -84,22 +88,22 @@ module Tuile
         assert_empty popups
       end
 
-      it "sizes itself before mounting, so no empty frame is ever painted" do
+      it "is sized by the first settle, message and all" do
         n = Component::Notification.show("Saved")
-        refute n.rect.empty?
+        refute box(n).empty?
       end
     end
 
     describe "geometry" do
       it "is flush to the top-right corner" do
         n = Component::Notification.show("Saved")
-        assert_equal 0, n.rect.top
-        assert_equal screen.size.width, n.rect.left + n.rect.width
+        assert_equal 0, box(n).top
+        assert_equal screen.size.width, box(n).left + box(n).width
       end
 
       it "fits the message plus its two border columns" do
         n = Component::Notification.show("Saved")
-        assert_equal Rect.new(153, 0, 7, 3), n.rect
+        assert_equal Rect.new(153, 0, 7, 3), box(n)
       end
 
       it "paints the message inside a window frame" do
@@ -109,17 +113,17 @@ module Tuile
 
       it "grows to fit a longer message but never shrinks again" do
         n = Component::Notification.show("hi")
-        assert_equal 4, n.rect.width
+        assert_equal 4, box(n).width
         Component::Notification.show("a much longer message")
-        grown = n.rect.width
+        grown = box(n).width
         assert_equal 23, grown
         queue.tick_once # retires "hi"; the box must not narrow to the survivor
-        assert_equal grown, n.rect.width
+        assert_equal grown, box(n).width
       end
 
       it "caps the width at 40% of the screen and wraps past it" do
         n = Component::Notification.show("word " * 60)
-        assert_equal 64, n.rect.width
+        assert_equal 64, box(n).width
         assert_equal 64, (screen.size.width * 0.4).to_i
       end
 
@@ -127,7 +131,7 @@ module Tuile
         narrow_screen(40, 24)
         n = Component::Notification.show("word " * 60)
         # 40% of 40 is 16; MIN_CAP_WIDTH lifts it, then the screen clamps it.
-        assert_equal Component::Notification::MIN_CAP_WIDTH, n.rect.width
+        assert_equal Component::Notification::MIN_CAP_WIDTH, box(n).width
       end
 
       it "ellipsizes a message past three rows, drawing the ellipsis" do
@@ -142,7 +146,7 @@ module Tuile
         3.times { |i| Component::Notification.show("m#{i}") }
         n = live
         assert_equal 3, held(n).size
-        assert_equal 4, n.rect.height
+        assert_equal 4, box(n).height
         painted = rows(n)[1..2].map { _1[0, 3] }
         assert_equal ["│m0", "│m1"], painted
         queue.tick_once
@@ -153,15 +157,15 @@ module Tuile
       it "re-anchors to the new right edge on resize" do
         n = Component::Notification.show("Saved")
         narrow_screen(80, 24)
-        assert_equal 0, n.rect.top
-        assert_equal 80, n.rect.left + n.rect.width
+        assert_equal 0, box(n).top
+        assert_equal 80, box(n).left + box(n).width
       end
 
       it "re-wraps on resize, since the wrap width is the box width" do
         n = Component::Notification.show("word " * 20)
-        assert_equal 64, n.rect.width
+        assert_equal 64, box(n).width
         narrow_screen(80, 24)
-        assert_equal 34, n.rect.width
+        assert_equal 34, box(n).width
         assert(rows(n).all? { _1.length == 34 })
       end
 
@@ -169,14 +173,14 @@ module Tuile
       # #reposition re-derives the rect from the messages on every mutation.
       it "derives its box from the messages, discarding a caller-assigned rect" do
         n = Component::Notification.show("Saved")
-        derived = n.rect
+        derived = box(n)
 
         n.rect = Rect.new(0, 0, 5, 5)
         n.add_message("Again")
 
-        refute_equal 5, n.rect.width
-        assert_equal derived.width, n.rect.width
-        assert_equal screen.size.width, n.rect.left + n.rect.width # still corner-anchored
+        refute_equal 5, box(n).width
+        assert_equal derived.width, box(n).width
+        assert_equal screen.size.width, box(n).left + box(n).width # still corner-anchored
       end
 
       def narrow_screen(width, height)

@@ -330,8 +330,7 @@ module Tuile
         content_with(beneath)
         beneath.rect = Rect.new(0, 0, 80, 40)
         overlay = Component::Overlay.new(content: list_of("a"))
-        overlay.open
-        overlay.rect = Rect.new(5, 5, 5, 3)
+        overlay.open(Component::Overlay::At[Rect.new(5, 5, 5, 3)])
 
         screen.press(6, 6)
         assert_empty beneath.log
@@ -343,9 +342,7 @@ module Tuile
         screen.focused = field
         inner = Component::TextField.new
         overlay = Component::Overlay.new(content: inner)
-        overlay.open
-        overlay.rect = Rect.new(5, 5, 5, 1)
-        inner.rect = overlay.rect
+        overlay.open(Component::Overlay::At[Rect.new(5, 5, 5, 1)])
 
         screen.press(6, 5)
 

@@ -6,6 +6,8 @@ module Tuile
     after { Screen.close }
     let(:pane) { Screen.instance.pane }
 
+    def at(rect) = Component::Overlay::At[rect]
+
     it "is the root of the component tree" do
       assert_nil pane.parent
       assert_equal pane, pane.root
@@ -114,16 +116,15 @@ module Tuile
         Screen.instance.content = Component::Label.new.tap { _1.text = "\n" * 20 }
         list = Component::List.new.tap { _1.lines = %w[alpha] }
         popup = Component::Overlay.new(content: list)
-        popup.rect = Rect.new(0, 5, 10, 1)
         region = -> { Screen.instance.buffer.region_text(popup.absolute_rect).first.strip }
 
-        Screen.instance.add_popup(popup)
+        Screen.instance.add_popup(popup, at(Rect.new(0, 5, 10, 1)))
         Screen.instance.repaint
         assert_equal "alpha", region.call
 
         Screen.instance.remove_popup(popup)
         Screen.instance.repaint # scene repaint overpaints the popup's old cells
-        Screen.instance.add_popup(popup) # same rect, same content
+        Screen.instance.add_popup(popup, at(Rect.new(0, 5, 10, 1))) # same rect, same content
         Screen.instance.repaint
         assert_equal "alpha", region.call
       end
@@ -329,7 +330,7 @@ module Tuile
       end
 
       it "modal_popup ignores non-modal overlays but finds a modal popup" do
-        Screen.instance.add_popup(Component::Overlay.new(content: Component::Label.new))
+        Screen.instance.add_popup(Component::Overlay.new(content: Component::Label.new), at(Rect.new(0, 0, 5, 1)))
         assert_nil pane.modal_popup
 
         modal = Component::Popup.new(content: Component::Label.new)
@@ -343,7 +344,7 @@ module Tuile
         Screen.instance.content = layout
         layout.add(f)
         Screen.instance.focused = f
-        Component::Overlay.new(content: Component::Label.new).open
+        Component::Overlay.new(content: Component::Label.new).open(at(Rect.new(0, 0, 5, 1)))
 
         assert pane.handle_key?("z")
         assert_equal "z", f.text # the editor keeps receiving keys
@@ -359,8 +360,7 @@ module Tuile
         layout.add(beneath)
 
         overlay = Component::Overlay.new(content: list_of("a"))
-        overlay.open
-        overlay.rect = Rect.new(50, 1, 5, 3)
+        overlay.open(at(Rect.new(50, 1, 5, 3)))
 
         Screen.instance.click(2, 2) # outside the overlay rect
         assert_equal [Point.new(2, 2)], clicks
@@ -378,9 +378,7 @@ module Tuile
         inner = list_of("a")
         inner.define_singleton_method(:handle_mouse_down?) { |_| clicks << :overlay }
         overlay = Component::Overlay.new(content: inner)
-        overlay.open
-        overlay.rect = Rect.new(50, 1, 5, 3)
-        inner.rect = overlay.local_rect
+        overlay.open(at(Rect.new(50, 1, 5, 3)))
 
         Screen.instance.click(51, 2) # inside the overlay rect
         assert_equal [:overlay], clicks
@@ -393,8 +391,7 @@ module Tuile
 
       def overlay_at(rect, **kwargs)
         Component::Overlay.new(content: list_of("a"), **kwargs).tap do |o|
-          o.open
-          o.rect = rect
+          o.open(at(rect))
         end
       end
 
@@ -426,8 +423,7 @@ module Tuile
         layout.add(beneath)
 
         modal = Component::Popup.new(content: list_of("a"))
-        modal.open
-        modal.rect = Rect.new(50, 1, 5, 3)
+        modal.open(at(Rect.new(50, 1, 5, 3)))
 
         Screen.instance.click(2, 2)
         assert !modal.open?
@@ -460,7 +456,7 @@ module Tuile
           def focusable? = true
 
           def handle_mouse_down?(_event)
-            popup.open
+            popup.open(Component::Overlay::At[Rect.new(50, 1, 5, 3)])
             true
           end
         end.new
@@ -483,7 +479,7 @@ module Tuile
           def focusable? = true
 
           def handle_mouse_down?(_event)
-            popup.open? ? popup.close : popup.open
+            popup.open? ? popup.close : popup.open(Component::Overlay::At[Rect.new(50, 1, 5, 3)])
             true
           end
         end.new
@@ -492,8 +488,7 @@ module Tuile
         Screen.instance.content = layout
         layout.add(toggler)
         toggler.popup = Component::Overlay.new(content: list_of("a"))
-        toggler.popup.open
-        toggler.popup.rect = Rect.new(50, 1, 5, 3)
+        toggler.popup.open(at(Rect.new(50, 1, 5, 3)))
 
         Screen.instance.click(2, 2) # on the face, missing the popup
         assert !toggler.popup.open?
@@ -509,8 +504,7 @@ module Tuile
         def host_and_owned
           driver = Class.new(Component) { def focusable? = true }.new
           host = Component::Popup.new(content: driver)
-          host.open
-          host.rect = Rect.new(10, 10, 20, 5)
+          host.open(at(Rect.new(10, 10, 20, 5)))
 
           owned = overlay_at(Rect.new(12, 15, 10, 3)) # hangs below the host
           owned.owner = driver

@@ -3123,9 +3123,9 @@ The cost we carry:
   outside the key scope, where `bubble_key` reaches nobody. The `Overlay` rdoc
   states this as the coupling rather than as a ban on overriding, because `Popup`
   overrides both.
-- `Overlay#reposition` is a no-op, so a subclass with a *derived* position owns
-  its own override (`Notification`), and one placed by a driver simply keeps the
-  rect it was given (`ListDropdown`, re-anchored from its driver's `rect=`).
+- An overlay never assigns its own rect: it opens with a placement and the pane's pass applies it.
+  One with a *derived* size answers `declared_size_in` (`Popup`, `Notification`), and a driver's
+  dropdown hangs off the driver itself (`ListDropdown::Anchored`).
 - **Still open:** where `anchor_to` / `anchor_beside` belong. They stay on
   `ListDropdown` for now. The `Popover` extraction (`D_select`, `D_menu_bar`) is
   *cheaper* after this change, since `Overlay` — not the modality-carrying
@@ -3513,9 +3513,9 @@ Why not:
   disagree with itself on every question that matters — does the cursor roam, is there a default,
   what does ESC mean, does a pick close. They share API *shape*, not code.
 
-The cost we carry: sizing is measured and capped at half the screen, re-derived on every
-`reposition`, so a message change and a SIGWINCH both re-measure against the current screen — the
-`Overlay` "derived position needs its own `reposition`" rule applied to a derived *size*. It
+The cost we carry: sizing is measured and capped at half the screen, re-derived on every layout
+pass, so a message change and a SIGWINCH both re-measure against the current screen — a derived
+*size*, read by the pane through `declared_size_in` as `Notification`'s is. It
 re-measures freely rather than grow-only like `Notification`, since a dialog's text changes far less
 often than a toast's. No floor for now; the risk a floor would hedge — a tiny yes/no box lost on a
 busy screen — is really a backdrop problem.
@@ -6729,7 +6729,7 @@ Why not:
   measure/arrange pair is exactly how it comes back, one well-meaning subclass at a time. `re-`
   says *idempotent re-derivation*, which is what this is.
 - **`handle_relayout`.** The `handle_` / `on_` families are for *notifications* (`D_handler_naming`);
-  `repaint`, `extent`, `cursor_position`, `reposition` and `focusable?` are all framework-invoked
+  `repaint`, `extent`, `cursor_position` and `focusable?` are all framework-invoked
   override points outside both, and this is one of those.
 - **Keeping `handle_child_visibility_changed`.** `Box` and `FormLayout` overrode it only to
   re-divide, `Scroller` and `FormItem` only to `invalidate` — and `visible=` now marks *and*
@@ -6737,10 +6737,10 @@ Why not:
   in `AGENTS.md` went together. A child's flag flip always dirties its parent's own cells (it
   vacated them, and a hidden component paints nothing itself), so the condition was never
   per-container in the first place.
-- **A `ScreenPane#relayout` that also repositions the popups.** It did, briefly, and it is wrong:
-  a popup's position is its own, not derived from the pane, so re-deriving it on *every* pane pass
-  snapped a hand-placed popup back to centre whenever a second one opened. `reposition` belongs to
-  the pane's `rect=` — a screen resize is the one event it exists to track.
+- **A `ScreenPane#relayout` that re-derives popups from their rects.** It did, briefly, and
+  snapped a hand-placed popup back to centre whenever a second one opened, because the rect was the
+  only record of where the popup wanted to be. The pass now places each popup from a stored
+  placement — `Overlay::At[rect]` for a hand-placed one — so re-running it moves nothing.
 - **A `ListDropdown` that decides its gutter beside whichever anchor method placed it.** Both
   `anchor_to` and `anchor_beside` wrote `@list.scrollbar_visibility` right after `self.rect =`;
   derived in `relayout` from `items.size > rect.height` instead, it is also right after a plain

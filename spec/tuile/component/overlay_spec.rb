@@ -9,9 +9,11 @@ module Tuile
       Component::List.new.tap { _1.lines = lines }
     end
 
+    def at(rect = Rect.new(0, 0, 10, 1)) = Component::Overlay::At[rect]
+
     it "smokes" do
       o = Component::Overlay.new
-      o.open
+      o.open(at)
       assert o.open?
       o.close
       assert !o.open?
@@ -22,14 +24,14 @@ module Tuile
       o.close # never opened
       assert !o.open?
 
-      o.open
+      o.open(at)
       o.close
       o.close # already closed
       assert !o.open?
     end
 
     it "returns self from open, so construct-and-mount is one expression" do
-      o = Component::Overlay.new.open
+      o = Component::Overlay.new.open(at)
       assert o.open?
     end
 
@@ -47,15 +49,14 @@ module Tuile
     it "lays out content to fill the entire overlay rect" do
       list = list_of(["hello"])
       o = Component::Overlay.new(content: list)
-      o.open
-      o.rect = Rect.new(3, 4, 20, 2)
-      assert_equal o.local_rect, settle(list).rect
+      settle(o.open(at(Rect.new(3, 4, 20, 2))))
+      assert_equal o.local_rect, list.rect
       assert_equal o.rect, list.absolute_rect
     end
 
     it "draws nothing on repaint" do
       o = Component::Overlay.new(content: list_of(["hello"]))
-      o.open
+      o.open(at)
       Screen.instance.prints.clear
       repaint(o)
       assert_equal [], Screen.instance.prints
@@ -64,7 +65,7 @@ module Tuile
     it "content inside a closed overlay does not invalidate or paint" do
       list = Component::List.new
       o = Component::Overlay.new(content: list)
-      o.open
+      o.open(at)
       o.close
       assert !list.attached?
       Screen.instance.invalidated_clear
@@ -102,28 +103,45 @@ module Tuile
         Screen.instance.content = content
         Screen.instance.focused = field
 
-        Component::Overlay.new(content: list_of(%w[a b])).open
+        Component::Overlay.new(content: list_of(%w[a b])).open(at)
         assert_equal field, Screen.instance.focused # focus untouched
       end
     end
 
-    context "#reposition" do
-      it "is a no-op — the rect is whatever the caller assigned" do
-        o = Component::Overlay.new(content: list_of(%w[a b]))
-        o.open
-        o.rect = Rect.new(12, 7, 20, 2) # caller positions it
-
-        o.reposition
-        assert_equal Rect.new(12, 7, 20, 2), o.rect
+    context "placement" do
+      it "takes the rect its placement asks for on the next settle" do
+        o = Component::Overlay.new(content: list_of(%w[a b])).open(at(Rect.new(12, 7, 20, 2)))
+        assert_equal Rect.new(12, 7, 20, 2), settle(o).rect
+        assert_equal at(Rect.new(12, 7, 20, 2)), o.placement
       end
 
-      it "survives the screen's layout pass untouched" do
-        o = Component::Overlay.new(content: list_of(%w[a b]))
-        o.open
-        o.rect = Rect.new(12, 7, 20, 2)
+      it "keeps it through a resize, which re-runs the pane's pass" do
+        o = Component::Overlay.new(content: list_of(%w[a b])).open(at(Rect.new(12, 7, 20, 2)))
+        Screen.instance.pane.rect = Rect.new(0, 0, 100, 30)
+        assert_equal Rect.new(12, 7, 20, 2), settle(o).rect
+      end
 
-        Screen.instance.pane.rect = Rect.new(0, 0, 160, 50) # drives reposition
+      it "moves on the next settle when the placement changes" do
+        o = Component::Overlay.new(content: list_of(%w[a b])).open(at(Rect.new(12, 7, 20, 2)))
+        settle(o)
+        o.placement = at(Rect.new(0, 3, 20, 2))
         assert_equal Rect.new(12, 7, 20, 2), o.rect
+        assert_equal Rect.new(0, 3, 20, 2), settle(o).rect
+      end
+
+      it "refuses a new placement while closed — open takes it" do
+        e = assert_raises(Tuile::Error) { Component::Overlay.new.placement = at }
+        assert_includes e.message, "#open"
+        assert_nil Component::Overlay.new.placement
+      end
+
+      it "has no default, since nothing about a bare overlay says where it goes" do
+        e = assert_raises(ArgumentError) { Component::Overlay.new.open }
+        assert_includes e.message, "Overlay::At"
+      end
+
+      it "declares no size, so a centered placement is refused" do
+        assert_raises(Tuile::Error) { settle(Component::Overlay.new.open(Component::Overlay::Centered[])) }
       end
     end
 
@@ -137,19 +155,17 @@ module Tuile
 
       it "fully repaints when an open overlay moves clear of its previous cells" do
         o = Component::Overlay.new(content: list_of(["hi"]))
-        o.open
-        o.rect = Rect.new(0, 0, 6, 1)
+        settle(o.open(at(Rect.new(0, 0, 6, 1))))
         Screen.instance.invalidated_clear
 
-        old = o.rect
-        o.rect = old.at(Point.new(old.left + old.width + 5, old.top))
+        o.placement = at(Rect.new(11, 0, 6, 1))
+        settle(o)
         assert Screen.instance.invalidated?(tiled)
       end
 
       it "does not request a full repaint when a closed overlay is moved" do
         o = Component::Overlay.new
-        o.open
-        o.rect = Rect.new(0, 0, 6, 1)
+        settle(o.open(at(Rect.new(0, 0, 6, 1))))
         o.close
         Screen.instance.invalidated_clear
 
@@ -208,7 +224,7 @@ module Tuile
         closed = 0
         o = Component::Overlay.new
         o.on_close { closed += 1 }
-        o.open
+        o.open(at)
         o.close
         assert_equal 1, closed
       end
@@ -219,7 +235,7 @@ module Tuile
         closed = 0
         o = Component::Overlay.new
         o.on_close { closed += 1 }
-        o.open
+        o.open(at)
         Screen.instance.remove_popup(o)
         assert_equal 1, closed
       end
@@ -228,7 +244,7 @@ module Tuile
         closed = 0
         o = Component::Overlay.new
         o.on_close { closed += 1 }
-        o.open
+        o.open(at)
         Screen.close
         assert_equal 1, closed
         Screen.fake # the `after` hook closes again
@@ -238,7 +254,7 @@ module Tuile
         closed = 0
         o = Component::Overlay.new
         o.on_close { closed += 1 }
-        o.open
+        o.open(at)
         o.close
         o.close
         assert_equal 1, closed
@@ -248,7 +264,7 @@ module Tuile
         seen = nil
         o = Component::Overlay.new
         o.on_close { seen = o.open? }
-        o.open
+        o.open(at)
         o.close
         assert_equal false, seen
       end

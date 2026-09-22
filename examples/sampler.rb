@@ -1115,10 +1115,9 @@ module SamplerExample
           overlay.close if overlay.open?
         else
           overlay.items = matches
-          overlay.open unless overlay.open?
           # Width is the driver's call, never the dropdown's: measure the
           # commands rather than inherit the full-width TextArea's columns.
-          overlay.anchor_to(area.absolute_rect, rows: matches.size, width: slash_menu_width(matches))
+          overlay.anchor_to(area, width: slash_menu_width(matches))
         end
       end
 
@@ -2131,7 +2130,7 @@ module SamplerExample
     end
 
     # The slash menu's width: the widest command plus List's two row gutters,
-    # clamped to the screen. ListDropdown places itself but never measures — the
+    # clamped to the screen. ListDropdown hangs off its anchor but never measures — the
     # width policy stays with the driver, exactly as it does for Select.
     # @return [Integer]
     def slash_menu_width(matches)
