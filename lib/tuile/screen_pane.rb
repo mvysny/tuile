@@ -345,24 +345,8 @@ module Tuile
     def resolve_anchor(anchor)
       return anchor if anchor.nil? || anchor.is_a?(Rect)
 
-      ScreenPane.__send__(:effectively_visible?, anchor) ? anchor.absolute_extent_rect : nil
+      ComponentUtil.effectively_visible?(anchor) ? anchor.absolute_extent_rect : nil
     end
-
-    # Whether `component` is genuinely on screen: {Component#visible?} is its
-    # own flag alone, so a field under a hidden panel is still `visible?`
-    # itself. {Component#walk_shown_tree} is the same rule for walks.
-    # @param component [Component]
-    # @return [Boolean]
-    def self.effectively_visible?(component)
-      node = component
-      until node.nil?
-        return false unless node.visible?
-
-        node = node.parent
-      end
-      component.attached?
-    end
-    private_class_method :effectively_visible?
 
     # @param popup [Component::Overlay]
     # @return [void]

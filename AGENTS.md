@@ -128,6 +128,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   `on_shown_tree`** — a plain `on_tree` plus a per-component test puts a field under a hidden panel
   back in the Tab cycle. Plain `on_tree` stays right for framework fan-out (lifecycle, theme,
   locale, invalidation), which a hidden component still gets.
+- **A tree query with a second caller lives in `ComponentUtil`, never a second private copy** — its
+  rdoc holds the gate and says why these are not `Component` methods.
 - **A child's `visible=` marks *and* invalidates its parent** — it vacated cells the parent owns and
   may have changed how the parent divides its space. See `D_relayout`.
 - **`Fixed[0]` is a collapse, not a hide** — it paints nothing but keeps its tab stops, its keys and

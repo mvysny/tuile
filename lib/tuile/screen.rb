@@ -552,7 +552,9 @@ module Tuile
         @pane.walk_tree { _1.active = false }
       else
         raise Tuile::Error, "#{focused} is not attached to this screen" if focused.root != @pane
-        raise Tuile::Error, "#{focused} is hidden, or sits under a hidden ancestor" if hidden?(focused)
+        unless ComponentUtil.effectively_visible?(focused)
+          raise Tuile::Error, "#{focused} is hidden, or sits under a hidden ancestor"
+        end
 
         @focused = focused
         active = Set[focused]
@@ -1049,21 +1051,6 @@ module Tuile
         node = up
       end
       false
-    end
-
-    # Whether `component` is out of the user's reach because it or an ancestor
-    # is {Component#visible? hidden}.
-    #
-    # Private, not a `Component#shown?`, for the reason `D_empty_ancestor`
-    # declined a `Component#paintable?`: it reads as a component-level concept
-    # and is really this class's question. A *walk* needs no such predicate —
-    # it prunes at the hidden subtree's root ({Component#walk_shown_tree}).
-    # @param component [Component]
-    # @return [Boolean]
-    def hidden?(component)
-      cursor = component
-      cursor = cursor.parent while cursor&.visible?
-      !cursor.nil?
     end
 
     # The tail of {#focused=}: blur, then focus, then the scroll-into-view

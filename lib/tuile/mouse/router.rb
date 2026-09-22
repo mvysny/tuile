@@ -142,7 +142,7 @@ module Tuile
       def release(event)
         grabbed = @grabbed
         release_grab
-        return unless reachable?(grabbed)
+        return if grabbed.nil? || !ComponentUtil.effectively_visible?(grabbed)
 
         local = grabbed.to_local(event.point)
         grabbed.__send__(:handle_mouse_up, event.with(x: local.x, y: local.y))
@@ -152,7 +152,7 @@ module Tuile
       # @return [void]
       def move(event)
         unless @grabbed.nil?
-          if reachable?(@grabbed)
+          if ComponentUtil.effectively_visible?(@grabbed)
             local = @grabbed.to_local(event.point)
             @grabbed.__send__(:handle_mouse_drag, DragEvent.new(@grab_button, local.x, local.y))
           end
@@ -227,17 +227,6 @@ module Tuile
         @hovered = chain
         (old - chain).reverse_each { _1.__send__(:handle_mouse_exit) }
         (chain - old).each { _1.__send__(:handle_mouse_enter) }
-      end
-
-      # @param component [Component, nil]
-      # @return [Boolean] whether `component` is attached and it and every
-      #   ancestor are shown.
-      def reachable?(component)
-        return false if component.nil? || !component.attached?
-
-        cursor = component
-        cursor = cursor.parent while cursor&.visible?
-        cursor.nil?
       end
     end
   end
