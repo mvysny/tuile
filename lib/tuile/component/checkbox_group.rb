@@ -176,10 +176,12 @@ module Tuile
       end
 
       # @param item [Object]
+      # @param _text_width [Integer] unused: a box plus a label is as wide as it
+      #   is, and {List} ellipsizes what will not fit.
       # @return [StyledString] the item's row: its label behind a checkmark box.
       #   The {List} calls this at paint time, so the boxes track {#value}
       #   without re-rendering anything but the visible rows.
-      def render_row(item)
+      def render_row(item, _text_width)
         StyledString.plain(value.include?(item) ? "[x] " : "[ ] ") + label_for(item)
       end
 

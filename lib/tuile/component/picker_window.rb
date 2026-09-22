@@ -56,7 +56,7 @@ module Tuile
         @options = options.map { Option.new(_1[0], StyledString.parse(_1[1])) }
         @block = block
         list = Component::List.new
-        list.renderer = ->(option) { StyledString.plain("#{option.key} ") + option.caption }
+        list.renderer = ->(option, _text_width) { StyledString.plain("#{option.key} ") + option.caption }
         list.items = @options
         list.cursor = Component::List::Cursor.new
         list.on_item_chosen { |e| select_option(e.item.key) }

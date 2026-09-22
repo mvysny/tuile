@@ -9,7 +9,7 @@ module Tuile
     # highlight, and reads the pick.
     #
     #   drop = Component::ListDropdown.new
-    #   drop.renderer = method(:label_for)                 # caller renders
+    #   drop.renderer = ->(item, _w) { label_for(item) }   # caller renders
     #   drop.list.on_item_chosen { |e| commit(e.item) }    # caller commits
     #   # …then, from the driver's key handler:
     #   drop.items = matches                         # caller filters
@@ -176,7 +176,7 @@ module Tuile
       # @return [Array] the items currently shown.
       def items = @list.items
 
-      # @param proc [Proc, Method] item -> row; see {List#renderer}.
+      # @param proc [Proc, Method] `(item, text_width) -> row`; see {List#renderer}.
       # @return [void]
       def renderer=(proc)
         @list.renderer = proc

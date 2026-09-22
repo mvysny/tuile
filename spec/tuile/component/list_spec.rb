@@ -130,7 +130,7 @@ module Tuile
       it "renders the items through the renderer" do
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 20, 2))
-        l.renderer = ->(person) { person[:name] }
+        l.renderer = ->(person, _w) { person[:name] }
         l.items = [{ name: "Ada" }, { name: "Linus" }]
         repaint(l)
         rows = Screen.instance.buffer.region_text(l.absolute_rect)
@@ -142,7 +142,7 @@ module Tuile
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 20, 3))
         ada = { name: "Ada" }
-        l.renderer = ->(person) { person[:name] }
+        l.renderer = ->(person, _w) { person[:name] }
         l.items = [ada, { name: "Linus" }]
         l.cursor = Component::List::Cursor.new(position: 0)
         chosen = nil
@@ -191,7 +191,7 @@ module Tuile
       it "parses ANSI in a String rendering" do
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 20, 1))
-        l.renderer = ->(item) { "\e[31m#{item}\e[0m" }
+        l.renderer = ->(item, _w) { "\e[31m#{item}\e[0m" }
         l.items = ["hi"]
         repaint(l)
         assert_includes Screen.instance.buffer.region_ansi(l.absolute_rect).first, "hi"
@@ -201,7 +201,7 @@ module Tuile
       it "keeps only the first line of a multi-line rendering" do
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 20, 2))
-        l.renderer = ->(item) { "#{item}\nand more" }
+        l.renderer = ->(item, _w) { "#{item}\nand more" }
         l.items = ["one"]
         repaint(l)
         rows = Screen.instance.buffer.region_text(l.absolute_rect)
@@ -214,15 +214,77 @@ module Tuile
         Testing.place(l, Rect.new(0, 0, 20, 1))
         l.items = [{ name: "Ada" }]
         repaint(l)
-        l.renderer = ->(person) { person[:name] }
+        l.renderer = ->(person, _w) { person[:name] }
         repaint(l)
         assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "Ada"
+      end
+
+      it "hands the renderer the columns the row body gets" do
+        l = Component::List.new
+        Testing.place(l, Rect.new(0, 0, 20, 1))
+        widths = []
+        l.renderer = ->(item, w) { widths << w and item }
+        l.items = ["x"]
+        repaint(l)
+        assert_equal [18], widths, "20 columns less a gutter either side"
+      end
+
+      it "hands the renderer a width the scrollbar column is already out of" do
+        l = Component::List.new
+        Testing.place(l, Rect.new(0, 0, 20, 1))
+        l.scrollbar_visibility = :visible
+        widths = []
+        l.renderer = ->(item, w) { widths << w and item }
+        l.items = ["x"]
+        repaint(l)
+        assert_equal [17], widths
+      end
+
+      it "hands the renderer zero before the list has a rect" do
+        l = Component::List.new
+        widths = []
+        l.renderer = ->(item, w) { widths << w and item }
+        l.items = %w[ada linus]
+        l.cursor = Component::List::Cursor.new
+        refute l.select_next("no such item")
+        assert_equal [0, 0], widths
+      end
+
+      it "re-renders a width-dependent row against the new width" do
+        l = Component::List.new
+        Testing.place(l, Rect.new(0, 0, 20, 1))
+        l.renderer = ->(item, w) { "#{item}:#{w}" }
+        l.items = ["w"]
+        repaint(l)
+        assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "w:18"
+        Testing.place(l, Rect.new(0, 0, 30, 1))
+        repaint(l)
+        assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "w:28"
+      end
+
+      it "re-renders a width-dependent row when the scrollbar takes its column" do
+        l = Component::List.new
+        Testing.place(l, Rect.new(0, 0, 20, 1))
+        l.renderer = ->(item, w) { "#{item}:#{w}" }
+        l.items = ["w"]
+        repaint(l)
+        l.scrollbar_visibility = :visible
+        repaint(l)
+        assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "w:17"
+      end
+
+      it "raises on a renderer that does not take the width" do
+        l = Component::List.new
+        Testing.place(l, Rect.new(0, 0, 20, 1))
+        l.renderer = ->(item) { item }
+        l.items = ["x"]
+        assert_raises(ArgumentError) { repaint(l) }
       end
 
       it "searches the rendered text" do
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 20, 3))
-        l.renderer = ->(person) { person[:name] }
+        l.renderer = ->(person, _w) { person[:name] }
         l.items = [{ name: "Ada" }, { name: "Linus" }]
         l.cursor = Component::List::Cursor.new(position: 0)
         assert l.select_next("linus")
@@ -236,7 +298,7 @@ module Tuile
         rendered = []
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 20, 3))
-        l.renderer = lambda { |item|
+        l.renderer = lambda { |item, _w|
           rendered << item
           item.to_s
         }
@@ -269,7 +331,7 @@ module Tuile
       it "re-renders after a new renderer" do
         l, rendered = counting_list(3)
         repaint(l)
-        l.renderer = ->(item) { "item #{item}" }
+        l.renderer = ->(item, _w) { "item #{item}" }
         rendered.clear
         repaint(l)
         assert_equal [], rendered

@@ -4630,14 +4630,26 @@ module Tuile
     # 
     #   list = Component::List.new
     #   list.items    = people
-    #   list.renderer = ->(p) { StyledString.plain(p.name) + screen.theme.fg(:muted, " #{p.email}") }
+    #   list.renderer = ->(p, _w) { StyledString.plain(p.name) + screen.theme.fg(:muted, " #{p.email}") }
     #   list.cursor   = List::Cursor.new                  # a bare list has none
     #   list.on_item_chosen { |e| open(e.item) }
     # 
-    # The {#renderer} turns an item into one row; the default renders an item
-    # as itself, so a list of `String`s or {StyledString}s needs none — which
-    # is what {#lines=} and {#build_lines} are, items that are their own
-    # rendering (split on `\n`, one row per line).
+    # The {#renderer} turns an item and the columns it gets into one row; the
+    # default renders an item as itself and ignores the width, so a list of
+    # `String`s or {StyledString}s needs none — which is what {#lines=} and
+    # {#build_lines} are, items that are their own rendering (split on `\n`,
+    # one row per line).
+    # 
+    # A renderer that *uses* the width lays out against it — an aligned
+    # right-hand column, a path elided from the left — neither of which a
+    # trailing ellipsis can express:
+    # 
+    #   counts_w = files.map { _1.counts.length }.max   # per snapshot, not per row
+    #   list.renderer = lambda do |file, w|
+    #     name = StyledString.plain(file.path).ellipsize(w - counts_w - 1, at: :start)
+    #     gap  = " " * (w - counts_w - name.display_width)
+    #     name + StyledString.plain(gap + file.counts)
+    #   end
     # 
     # There are no appenders. The items are always assigned whole — an app that
     # grows a list keeps its own array and re-assigns it (`list.items = mine`) —
@@ -4662,8 +4674,10 @@ module Tuile
     # memoized until {#items=}, {#renderer=} or a width change drops the cache.
     # So a renderer runs *at paint time*, on any frame — keep it pure and
     # cheap; work that reaches a service belongs in the item, not in the
-    # renderer. {#select_next} deliberately renders without memoizing: one
-    # failed scan would otherwise cache a row per item.
+    # renderer, and a measurement over the whole snapshot (the example's widest
+    # counts column) is computed where {#items=} is assigned, or it is an
+    # O(items²) pass on every resize. {#select_next} deliberately renders
+    # without memoizing: one failed scan would otherwise cache a row per item.
     class List < Component
       DEFAULT_RENDERER: Proc
 
@@ -4919,6 +4933,14 @@ module Tuile
       # is non-positive.
       def content_width: () -> Integer
 
+      # The budget handed to {#renderer} and the width {#pad_to_row} fits a row
+      # into: {#content_width} less the gutter either side. Clamped at `0` — a
+      # list with no rect still renders when {#search_and_go} scans it, and a
+      # renderer subtracting from a negative width would blow up at paint time.
+      # 
+      # _@return_ — display columns available to the row body.
+      def text_width: () -> Integer
+
       # Discards every rendered row, so the next paint re-renders the viewport
       # against the current items, renderer and width.
       def drop_row_cache: () -> void
@@ -4986,9 +5008,16 @@ module Tuile
       # _@return_ — the items, one row each.
       attr_accessor items: ::Array[untyped]
 
-      # _@return_ — item -> row: a {StyledString}, a `String` (parsed,
-      # so embedded ANSI is honored), or anything with `#to_s`. Only the first
-      # line of a multi-line rendering is kept — one item is one row.
+      # The width is passed whether or not a renderer wants it, so a
+      # one-argument callable raises when a row is rendered.
+      # 
+      # _@return_ — `(item, text_width) -> row`: a {StyledString}, a
+      # `String` (parsed, so embedded ANSI is honored), or anything with
+      # `#to_s`. Only the first line of a multi-line rendering is kept — one
+      # item is one row. `text_width` is the display columns the row body
+      # gets, gutters and scrollbar column already deducted; it is `0` before
+      # the list has a rect, and every change to it drops the row cache, so a
+      # width-dependent row is never left over from the old width.
       attr_accessor renderer: (Proc | Method)
 
       # What {#on_item_chosen} fires.
@@ -7667,7 +7696,9 @@ module Tuile
         # 
         # _@return_ — item -> row: the label padded to the level's widest, plus
         # an arrow column when any sibling has a submenu — so every arrow lands
-        # in the same column without asking the {List} how wide it ended up.
+        # in the same column. The width {List} offers a renderer is no use
+        # here: {#width_for} derives the panel's width from these same labels,
+        # so laying out against it would be circular.
         def renderer_for: (::Array[Item] items) -> Proc
 
         # _@param_ `items`
@@ -10842,10 +10873,12 @@ module Tuile
 
       # _@param_ `item`
       # 
+      # _@param_ `_text_width` — unused: a marker plus a label is as wide as it is, and {List} ellipsizes what will not fit.
+      # 
       # _@return_ — the item's row: its label behind a selection
       # marker. The {List} calls this at paint time, so the marker tracks
       # {#value} without re-rendering anything but the visible rows.
-      def render_row: (Object item) -> StyledString
+      def render_row: (Object item, Integer _text_width) -> StyledString
 
       # Pulls an over-range cursor back onto the last row (row 0 when there are
       # none). {List#items=} leaves a stale cursor alone, which would strand it
@@ -11637,7 +11670,7 @@ module Tuile
     # highlight, and reads the pick.
     # 
     #   drop = Component::ListDropdown.new
-    #   drop.renderer = method(:label_for)                 # caller renders
+    #   drop.renderer = ->(item, _w) { label_for(item) }   # caller renders
     #   drop.list.on_item_chosen { |e| commit(e.item) }    # caller commits
     #   # …then, from the driver's key handler:
     #   drop.items = matches                         # caller filters
@@ -11673,7 +11706,7 @@ module Tuile
       # _@return_ — the items currently shown.
       def items: () -> ::Array[untyped]
 
-      # _@param_ `proc` — item -> row; see {List#renderer}.
+      # _@param_ `proc` — `(item, text_width) -> row`; see {List#renderer}.
       def renderer=: ((Proc | Method) proc) -> void
 
       # _@param_ `cursor` — the highlight; see {List#cursor=}.
@@ -12126,10 +12159,12 @@ module Tuile
 
       # _@param_ `item`
       # 
+      # _@param_ `_text_width` — unused: a box plus a label is as wide as it is, and {List} ellipsizes what will not fit.
+      # 
       # _@return_ — the item's row: its label behind a checkmark box.
       # The {List} calls this at paint time, so the boxes track {#value}
       # without re-rendering anything but the visible rows.
-      def render_row: (Object item) -> StyledString
+      def render_row: (Object item, Integer _text_width) -> StyledString
 
       # _@param_ `new_value`
       # 
@@ -15186,17 +15221,25 @@ module Tuile
     # _@param_ `len_col`
     def slice: (Integer start_col, Integer len_col) -> StyledString
 
-    # Truncates to a target column width, appending an ellipsis when
-    # characters were dropped. The ellipsis counts toward the target — the
-    # returned {StyledString}'s `display_width` never exceeds
-    # `display_width`. When `self` already fits, `self` is returned. When
-    # `display_width` is smaller than the ellipsis's own width, the ellipsis
-    # is sliced down to fit and no original content is included.
+    # Truncates to a target column width, marking the cut end with an ellipsis.
+    # The ellipsis counts toward the target — the returned {StyledString}'s
+    # `display_width` never exceeds `display_width`, and comes out a column
+    # short when the cut lands mid-cluster, since a wide glyph straddling the
+    # boundary is dropped rather than halved. When `self` already fits, `self`
+    # is returned. When `display_width` is smaller than the ellipsis's own
+    # width, the ellipsis is sliced down to fit and no original content is
+    # included.
+    # 
+    # `at: :start` keeps the *tail* instead, for text whose end identifies it
+    # and whose head is context — a path (`…/shared/markdown/`), a log line's
+    # message after its prefix.
     # 
     # _@param_ `display_width` — target column width.
     # 
-    # _@param_ `ellipsis` — appended when truncation occurs. Defaults to the Unicode horizontal-ellipsis `…` (one column). A `String` is parsed via {.parse}, so ANSI in it is preserved.
-    def ellipsize: (Integer display_width, ?(String | StyledString) ellipsis) -> StyledString
+    # _@param_ `ellipsis` — added when truncation occurs. Defaults to the Unicode horizontal-ellipsis `…` (one column). A `String` is parsed via {.parse}, so ANSI in it is preserved.
+    # 
+    # _@param_ `at` — which end is cut: `:end` (the default) keeps the head and appends, `:start` keeps the tail and prepends.
+    def ellipsize: (Integer display_width, ?(String | StyledString) ellipsis, ?at: Symbol) -> StyledString
 
     # Splits on `"\n"`, preserving spans on each side. A trailing newline
     # produces a trailing empty {StyledString} (matches `split("\n", -1)`).

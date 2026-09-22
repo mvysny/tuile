@@ -951,6 +951,47 @@ module Tuile
         assert_equal "hel…", truncated.to_s
         assert_equal Color::BLUE, truncated.spans.last.style.fg
       end
+
+      it "keeps the tail and prepends the ellipsis when cutting at the start" do
+        truncated = StyledString.plain("lib/shared/markdown/").ellipsize(12, at: :start)
+        assert_equal "…d/markdown/", truncated.to_s
+        assert_equal 12, truncated.display_width
+      end
+
+      it "returns self when it already fits, whichever end would be cut" do
+        ss = StyledString.plain("hello")
+        assert_same ss, ss.ellipsize(5, at: :start)
+      end
+
+      it "preserves spans and styles in the kept tail" do
+        ss = StyledString.parse("one \e[31mtwo\e[0m")
+        truncated = ss.ellipsize(4, at: :start)
+        assert_equal "…two", truncated.to_s
+        assert_equal Color::RED, truncated.spans.last.style.fg
+      end
+
+      it "counts a custom ellipsis toward the target width at the start too" do
+        truncated = StyledString.plain("abcdef").ellipsize(4, "..", at: :start)
+        assert_equal "..ef", truncated.to_s
+        assert_equal 4, truncated.display_width
+      end
+
+      it "drops a wide character that straddles the boundary when cutting at the start" do
+        # "中中abc": cols 0-1=中, 2-3=中, 4=a, 5=b, 6=c → width 7. Target 5 →
+        # budget 4, so the tail starts at col 3, mid-中 — the half-covered glyph
+        # goes, and the result comes out a column short of the target.
+        truncated = StyledString.plain("中中abc").ellipsize(5, at: :start)
+        assert_equal "…abc", truncated.to_s
+        assert_equal 4, truncated.display_width
+      end
+
+      it "raises on an end that is neither :start nor :end" do
+        assert_raises(ArgumentError) { StyledString.plain("hello").ellipsize(3, at: :middle) }
+      end
+
+      it "validates the end before any early return" do
+        assert_raises(ArgumentError) { StyledString.plain("hi").ellipsize(99, at: :middle) }
+      end
     end
 
     describe "#lines" do

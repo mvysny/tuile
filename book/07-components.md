@@ -750,7 +750,7 @@ the text it drew for it.
 ```ruby
 list = Component::List.new
 list.items    = User.all
-list.renderer = ->(u) { "#{u.name}  #{u.email}" }
+list.renderer = ->(u, _w) { "#{u.name}  #{u.email}" }
 list.cursor   = Component::List::Cursor.new
 list.on_item_chosen { |e| open(e.item) }
 ```
@@ -768,6 +768,25 @@ That's what makes a long list cheap, and it comes with one rule — keep the
 renderer a pure function of its item. It may be called on any frame, so it
 is the wrong place to reach for a database; do that work when you build
 the items.
+
+That second parameter is the width, in columns, that the row you return
+will get — the list's own width, less a gutter either side and less the
+scrollbar's column when one is showing. Most renderers ignore it and let
+the list ellipsize what doesn't fit, which is why it is usually spelled
+`_w`. Take it when the *shape* of a row depends on how much room there is:
+a right-hand column that has to line up down the pane, or a path you want
+cut from the *left* so its tail survives (`ellipsize(n, at: :start)` —
+`…/shared/markdown/` tells you more than `lib/shared/mar…`). Note the
+direction: the list divides up the space it was given and tells you your
+share, and never asks how much you would like.
+
+There is one place that can bite. The list re-runs the renderer on every
+width change — that is what keeps the columns lined up after a resize, and
+it costs only the rows on screen — but it re-runs it *per row*. So a
+measurement over the whole collection, like "how wide is the widest
+`+12/-3` in this snapshot", is computed once where you assign the items and
+closed over. Compute it inside the renderer and you have written an
+`items²` pass that fires on every drag of the terminal's edge.
 
 What makes the list flexible beyond that is that its *cursor behavior is a
 pluggable object* rather than a boolean. Assign one of three
