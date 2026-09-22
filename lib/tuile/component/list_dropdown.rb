@@ -69,8 +69,8 @@ module Tuile
       # once the content has settled, so the panel follows a field that moves.
       #
       # @!attribute [r] anchor
-      #   @return [Component, Rect] a component, followed by its
-      #     {Component#absolute_extent_rect}, or a fixed rect in screen
+      #   @return [Component, Rect] {Overlay::Placement#anchor}: a component,
+      #     followed for as long as it is on screen, or a fixed rect in screen
       #     coordinates.
       # @!attribute [r] side
       #   @return [Symbol] `:below` or `:beside`.
@@ -80,31 +80,19 @@ module Tuile
       # @!attribute [r] max_rows
       #   @return [Integer] rows shown before the list scrolls.
       Anchored = Data.define(:anchor, :side, :width, :max_rows) do
-        # @return [Rect, nil] the anchor in screen coordinates, or `nil` when a
-        #   component anchor is detached or hidden.
-        def anchor_rect
-          return anchor if anchor.is_a?(Rect)
-
-          node = anchor
-          until node.nil?
-            return nil unless node.visible?
-
-            node = node.parent
-          end
-          anchor.attached? ? anchor.absolute_extent_rect : nil
-        end
+        include Overlay::Placement
 
         # @param drop [ListDropdown]
         # @param screen_size [Size]
+        # @param anchor_rect [Rect] {#anchor} in screen coordinates, resolved by the pane.
         # @return [Rect]
-        def rect_for(drop, screen_size)
-          rect = anchor_rect
-          columns = width.nil? ? rect.width : width
+        def rect_for(drop, screen_size, anchor_rect)
+          columns = width.nil? ? anchor_rect.width : width
           columns = [columns.respond_to?(:call) ? columns.call : columns, screen_size.width].min
           if side == :below
-            below(rect, drop.items.size, columns, screen_size)
+            below(anchor_rect, drop.items.size, columns, screen_size)
           else
-            beside(rect, drop.items.size, columns, screen_size)
+            beside(anchor_rect, drop.items.size, columns, screen_size)
           end
         end
 

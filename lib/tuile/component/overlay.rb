@@ -17,10 +17,9 @@ module Tuile
     # outside-click dismissal and {#owner}. {Component::Popup} is the subclass
     # that adds a declared size, centering, focus and key handling.
     #
-    # A placement is any object answering `rect_for(overlay, screen_size)`:
-    # {At} a fixed rect, {Centered} and {TopRight} an overlay that declares its
-    # size ({#declared_size_in}), {ListDropdown::Anchored} a dropdown hanging off
-    # a field.
+    # Where it goes is a {Placement}: {At} a fixed rect, {Centered} and
+    # {TopRight} an overlay that declares its size ({#declared_size_in}),
+    # {ListDropdown::Anchored} a dropdown hanging off a field.
     #
     # The wrapped content fills the overlay's whole {#rect}; for a frame and a
     # caption, wrap a {Component::Window} and let it draw its own border.
@@ -46,6 +45,72 @@ module Tuile
     class Overlay < Component
       include Component::HasContent
 
+      # Where an overlay wants to be. Include it to *be* a placement — the pane
+      # asks for a rect on every layout pass, and an app supplies its own by
+      # answering {#rect_for}:
+      #
+      #   Bottom = Data.define do
+      #     include Overlay::Placement
+      #
+      #     def rect_for(overlay, screen_size, _anchor_rect)
+      #       size = overlay.declared_size_in(screen_size)
+      #       Rect.new(0, screen_size.height - size.height, size.width, size.height)
+      #     end
+      #   end
+      #
+      #   overlay.open(Bottom[])
+      #
+      # A placement is a **rule, not a rect**: it is re-read on every resize and
+      # every settle, so re-running it moves nothing that stood still. Built in
+      # are {At}, {Centered}, {TopRight} and {ListDropdown::Anchored}.
+      #
+      # == Anchors
+      #
+      # A placement that hangs off something on screen — a field, a menu row —
+      # says so by answering {#anchor}; the pane resolves it and hands the rect
+      # to {#rect_for}:
+      #
+      #   def anchor = field
+      #
+      # Resolving is deliberately the framework's job: a component becomes a
+      # screen rect through an ancestor-inclusive visibility walk, an
+      # {Component#attached?} test and {Component#absolute_extent_rect} (not
+      # {Component#absolute_rect}) — three invariants, one of them the trap
+      # {Component#walk_shown_tree} exists to prevent. {#anchor} therefore
+      # answers one of three things:
+      #
+      # - a {Component} — resolved while it is reachable, and **losable**: once
+      #   detached or hidden there is no rect to compute, so the pane leaves the
+      #   overlay where it was and warns its owner once rather than placing it
+      #   against nothing. Closing it is the owner's job.
+      # - a {Rect} in screen coordinates — always resolves, never lost. Anchors to an absolute position.
+      # - `nil`, the default — not anchored; {#rect_for} is handed `nil`.
+      #
+      # An anchor also earns a **second settle pass**: the pane lays out before
+      # the content its anchor sits in does, so {Screen#flush_layout} re-reads
+      # every {#anchor} once the queue is empty and runs the pane again if any
+      # now resolves elsewhere.
+      module Placement
+        # What this placement hangs off, re-read on every pass — see the
+        # *Anchors* section above.
+        # @return [Component, Rect, nil] `nil`, the default, is not anchored.
+        def anchor = nil
+
+        # The rect this placement wants for `overlay`, in screen coordinates.
+        # The pane assigns it as-is — clamping it on screen is the placement's
+        # own job.
+        # @param overlay [Overlay] the overlay being placed.
+        # @param screen_size [Size] the whole terminal.
+        # @param anchor_rect [Rect, nil] {#anchor} resolved to screen
+        #   coordinates; `nil` only for an unanchored placement, since a lost
+        #   anchor is not placed at all.
+        # @raise [NotImplementedError] unless the includer overrides it.
+        # @return [Rect]
+        def rect_for(overlay, screen_size, anchor_rect)
+          raise(NotImplementedError, "#{self.class}#rect_for")
+        end
+      end
+
       # Places the overlay at exactly `rect`, in screen coordinates.
       #
       #   overlay.open(Overlay::At[Rect.new(10, 4, 20, 1)])
@@ -53,19 +118,25 @@ module Tuile
       # @!attribute [r] rect
       #   @return [Rect]
       At = Data.define(:rect) do
+        include Placement
+
         # @param _overlay [Overlay]
         # @param _screen_size [Size]
+        # @param _anchor_rect [Rect, nil] unused: this placement declares no {#anchor}.
         # @return [Rect]
-        def rect_for(_overlay, _screen_size) = rect
+        def rect_for(_overlay, _screen_size, _anchor_rect) = rect
       end
 
       # Centers the overlay on the screen at the size it declares
       # ({Overlay#declared_size_in}) — {Popup}'s default.
       Centered = Data.define do
+        include Placement
+
         # @param overlay [Overlay]
         # @param screen_size [Size]
+        # @param _anchor_rect [Rect, nil] unused: this placement declares no {#anchor}.
         # @return [Rect]
-        def rect_for(overlay, screen_size)
+        def rect_for(overlay, screen_size, _anchor_rect)
           size = overlay.declared_size_in(screen_size)
           Rect.new(0, 0, size.width, size.height).centered(screen_size)
         end
@@ -74,10 +145,13 @@ module Tuile
       # Puts the overlay in the screen's top-right corner at the size it
       # declares ({Overlay#declared_size_in}) — {Notification}'s default.
       TopRight = Data.define do
+        include Placement
+
         # @param overlay [Overlay]
         # @param screen_size [Size]
+        # @param _anchor_rect [Rect, nil] unused: this placement declares no {#anchor}.
         # @return [Rect]
-        def rect_for(overlay, screen_size)
+        def rect_for(overlay, screen_size, _anchor_rect)
           size = overlay.declared_size_in(screen_size)
           Rect.new([screen_size.width - size.width, 0].max, 0, size.width, size.height)
         end
@@ -200,7 +274,7 @@ module Tuile
       # The placement a bare {#open} uses. A bare overlay has none, because
       # nothing about it says where it goes.
       # @raise [ArgumentError] always, here; {Popup} and {Notification} answer.
-      # @return [Object] a placement.
+      # @return [Placement]
       def default_placement
         raise ArgumentError, "#{self.class} has no default placement — open(Overlay::At[rect])"
       end
@@ -228,9 +302,10 @@ module Tuile
       # There is deliberately no class-level `Overlay.open` factory — see
       # `design/decisions.md` `D_popup_open`; returning `self` is what keeps the
       # one-liner above available without one.
-      # @param placement [Object] where it wants to be; see the class docs.
+      # @param placement [Placement] where it wants to be.
       # @raise [ArgumentError] with no placement, for an overlay that has no
       #   {#default_placement}.
+      # @raise [TypeError] if `placement` does not include {Placement}.
       # @return [self]
       def open(placement = default_placement)
         screen.add_popup(self, placement)
@@ -249,13 +324,14 @@ module Tuile
       end
 
       # Where this overlay wants to be, or `nil` while closed.
-      # @return [Object, nil] the placement it was opened or moved with.
+      # @return [Placement, nil] the placement it was opened or moved with.
       def placement = open? ? screen.pane.placement(self) : nil
 
       # Moves the open overlay; it takes the new rect on the next settle.
-      # @param placement [Object] see the class docs.
+      # @param placement [Placement] see the class docs.
       # @raise [Tuile::Error] unless open — a closed overlay takes its
       #   placement from {#open}.
+      # @raise [TypeError] if `placement` does not include {Placement}.
       # @return [void]
       def placement=(placement)
         raise Tuile::Error, "#{self} is not open — pass the placement to #open" unless open?

@@ -11,6 +11,18 @@ module Tuile
 
     def at(rect = Rect.new(0, 0, 10, 1)) = Component::Overlay::At[rect]
 
+    # A placement that records the anchor rect the pane resolved for it.
+    def spy_placement
+      @spy_placement ||= Data.define(:anchor, :seen) do
+        include Component::Overlay::Placement
+
+        def rect_for(_overlay, _screen_size, anchor_rect)
+          seen << anchor_rect
+          Rect.new(0, 0, 4, 1)
+        end
+      end
+    end
+
     it "smokes" do
       o = Component::Overlay.new
       o.open(at)
@@ -166,6 +178,59 @@ module Tuile
         assert_equal Rect.new(0, 3, 20, 2), o.rect
       end
 
+      it "takes an app's own placement — anything that includes Placement" do
+        bottom_left = Data.define do
+          include Component::Overlay::Placement
+
+          def rect_for(_overlay, screen_size, _anchor_rect) = Rect.new(0, screen_size.height - 2, 20, 2)
+        end
+        o = Component::Overlay.new(content: list_of(%w[a b])).open(bottom_left[])
+        o.flush_layout
+        assert_equal Rect.new(0, 48, 20, 2), o.rect
+      end
+
+      # The layout is deferred, so a bare duck's NoMethodError would otherwise
+      # surface a settle later, with only ScreenPane in the backtrace.
+      it "refuses a bare duck at the call that named it, not mid-pass" do
+        duck = Object.new
+        def duck.rect_for(_overlay, _screen_size, _anchor_rect) = Rect.new(0, 0, 4, 1)
+
+        e = assert_raises(TypeError) { Component::Overlay.new.open(duck) }
+        assert_includes e.message, "Tuile::Component::Overlay::Placement"
+      end
+
+      it "refuses one handed to placement= too" do
+        o = Component::Overlay.new(content: list_of(%w[a])).open(at)
+        assert_raises(TypeError) { o.placement = Object.new }
+      end
+
+      it "is unanchored by default, so a placement need only answer rect_for" do
+        assert_nil Class.new { include Component::Overlay::Placement }.new.anchor
+      end
+
+      it "hands rect_for a nil anchor rect when the placement declares no anchor" do
+        seen = []
+        Component::Overlay.new(content: list_of(%w[a])).open(spy_placement[nil, seen]).flush_layout
+        assert_equal [nil], seen
+      end
+
+      it "passes a Rect anchor straight through" do
+        seen = []
+        anchor = Rect.new(4, 3, 10, 1)
+        Component::Overlay.new(content: list_of(%w[a])).open(spy_placement[anchor, seen]).flush_layout
+        assert_equal [anchor], seen
+      end
+
+      # The pane resolves it, so no placement walks the tree — extent not rect,
+      # plus attached? and ancestor visibility. `list_dropdown_spec`'s
+      # "#anchor_to a component" covers following and losing one.
+      it "resolves a component anchor to its extent on screen" do
+        button = mount_at(Component::Button.new("ok"), Rect.new(4, 3, 30, 5))
+        seen = []
+        Component::Overlay.new(content: list_of(%w[a])).open(spy_placement[button, seen]).flush_layout
+        assert_equal [Rect.new(4, 3, 6, 1)], seen
+      end
+
       it "refuses a new placement while closed — open takes it" do
         e = assert_raises(Tuile::Error) { Component::Overlay.new.placement = at }
         assert_includes e.message, "#open"
@@ -295,6 +360,16 @@ module Tuile
         o.close
         assert_equal false, seen
       end
+    end
+  end
+
+  describe Component::Overlay::Placement do
+    # The module is the protocol and nothing else: an includer that forgets
+    # rect_for fails at the pane's first pass, rather than being placed at
+    # whatever a stray method_missing returned.
+    it "raises until an includer implements rect_for" do
+      placement = Class.new { include Component::Overlay::Placement }.new
+      assert_raises(NotImplementedError) { placement.rect_for(nil, Size.new(80, 24), nil) }
     end
   end
 end

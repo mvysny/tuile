@@ -70,14 +70,17 @@ module Tuile
     # last time its content components won't re-invalidate themselves — so
     # without this the overlay's contents would stay blank on reopen.
     # @param window [Component::Overlay] any overlay, modal or not.
-    # @param placement [Object, nil] where it wants to be (see
-    #   {Component::Overlay}); `nil` takes its {Component::Overlay#default_placement}.
+    # @param placement [Component::Overlay::Placement, nil] where it wants to
+    #   be; `nil` takes its {Component::Overlay#default_placement}.
+    # @raise [TypeError] if `placement` does not include
+    #   {Component::Overlay::Placement}.
     # @return [void]
     def add_popup(window, placement = nil)
       raise TypeError, "expected Overlay, got #{window.inspect}" unless window.is_a? Component::Overlay
       raise ArgumentError, "#{window} already has a parent #{window.parent}" unless window.parent.nil?
 
       placement ||= window.default_placement
+      check_placement(placement)
       @popup_prior_focus[window] = screen.focused
       @placements[window] = placement
       @popups << window
@@ -87,17 +90,22 @@ module Tuile
     end
 
     # @param popup [Component::Overlay] an open popup.
-    # @return [Object, nil] where it wants to be; `nil` if it isn't open here.
+    # @return [Component::Overlay::Placement, nil] where it wants to be; `nil`
+    #   if it isn't open here.
     def placement(popup) = @placements[popup]
 
     # Moves an open popup; it takes the new rect on the next settle.
     # {Component::Overlay#placement=} is the usual way in.
     # @param popup [Component::Overlay] an open popup.
-    # @param placement [Object] see {Component::Overlay}.
+    # @param placement [Component::Overlay::Placement] where it wants to be.
     # @raise [ArgumentError] if `popup` isn't open on this pane.
+    # @raise [TypeError] if `placement` does not include
+    #   {Component::Overlay::Placement}.
     # @return [void]
     def constrain(popup, placement)
       raise ArgumentError, "#{popup} is not an open popup on this pane" unless has_popup?(popup)
+
+      check_placement(placement)
       return if @placements[popup] == placement
 
       @placements[popup] = placement
@@ -316,19 +324,58 @@ module Tuile
     # @return [Screen]
     def placer = screen
 
+    # Rejects a non-placement where the app named it, rather than mid-pass: the
+    # layout is deferred, so the `NoMethodError` from a missing `rect_for` would
+    # otherwise surface a turn later, under this file's backtrace.
+    # @param placement [Object]
+    # @raise [TypeError] unless it includes {Component::Overlay::Placement}.
+    # @return [void]
+    def check_placement(placement)
+      return if placement.is_a?(Component::Overlay::Placement)
+
+      raise TypeError, "#{placement.class} must include Tuile::Component::Overlay::Placement"
+    end
+
+    # A placement's {Component::Overlay::Placement#anchor} in screen
+    # coordinates: a `Rect` passes through, a component resolves while it is on
+    # screen, and `nil` means either unanchored or gone — {#place} tells those
+    # apart by whether an anchor was declared at all.
+    # @param anchor [Component, Rect, nil]
+    # @return [Rect, nil]
+    def resolve_anchor(anchor)
+      return anchor if anchor.nil? || anchor.is_a?(Rect)
+
+      ScreenPane.__send__(:effectively_visible?, anchor) ? anchor.absolute_extent_rect : nil
+    end
+
+    # Whether `component` is genuinely on screen: {Component#visible?} is its
+    # own flag alone, so a field under a hidden panel is still `visible?`
+    # itself. {Component#walk_shown_tree} is the same rule for walks.
+    # @param component [Component]
+    # @return [Boolean]
+    def self.effectively_visible?(component)
+      node = component
+      until node.nil?
+        return false unless node.visible?
+
+        node = node.parent
+      end
+      component.attached?
+    end
+    private_class_method :effectively_visible?
+
     # @param popup [Component::Overlay]
     # @return [void]
     def place(popup)
       placement = @placements.fetch(popup)
-      if placement.respond_to?(:anchor_rect)
-        anchor = placement.anchor_rect
-        if anchor.nil?
-          lose_anchor(popup)
-          return
-        end
-        @placed_anchors[popup] = anchor
+      anchor = placement.anchor
+      anchor_rect = resolve_anchor(anchor)
+      unless anchor.nil?
+        return lose_anchor(popup) if anchor_rect.nil?
+
+        @placed_anchors[popup] = anchor_rect
       end
-      popup.rect = placement.rect_for(popup, rect.size)
+      popup.rect = placement.rect_for(popup, rect.size, anchor_rect)
     end
 
     # Leaves a popup whose anchor was detached or hidden at its last rect. It
@@ -352,8 +399,8 @@ module Tuile
       return false if rect.empty? # #relayout places nothing then, so nothing would record
 
       @popups.any? do |popup|
-        placement = @placements[popup]
-        placement.respond_to?(:anchor_rect) && (placement.anchor_rect || :lost) != @placed_anchors[popup]
+        anchor = @placements[popup].anchor
+        !anchor.nil? && (resolve_anchor(anchor) || :lost) != @placed_anchors[popup]
       end
     end
 

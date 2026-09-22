@@ -599,8 +599,8 @@ module Tuile
     # {#pane} at `placement`; a {Component::Popup} is additionally focused.
     # @api private
     # @param window [Component::Overlay] any overlay, modal or not.
-    # @param placement [Object, nil] see {Component::Overlay}; `nil` takes the
-    #   overlay's default.
+    # @param placement [Component::Overlay::Placement, nil] where it wants to
+    #   be; `nil` takes the overlay's default.
     # @return [void]
     def add_popup(window, placement = nil)
       check_locked

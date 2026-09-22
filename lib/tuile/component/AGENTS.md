@@ -98,6 +98,10 @@ are `Box`'s rdoc and `D_box_layouts`.
 - **An overlay never assigns its own rect** — it opens with a placement (`open(Overlay::At[rect])`,
   a default, `anchor_to`) and the pane's pass applies it; a size change calls `reposition`, which
   asks the pane rather than moving anything. See `D_relayout`.
+- **A placement declares what it hangs off through `anchor`; it never resolves a component
+  itself** — the pane owns that walk, so the lost-anchor bail-out and the second settle pass stay
+  its business; one that resolves its own anchor to a `Rect` gets neither and silently stops
+  following.
 - **A non-modal overlay is never focused into** — the router skips click-to-focus for one, since
   focus outside the key scope makes every keystroke go dead. See `D_overlay`.
 - **`Overlay#on_close` fires from `handle_detached`, never `#close`**, so a `handle_detached` override must
