@@ -68,7 +68,7 @@ module Tuile
       it "wraps long prose instead of truncating it" do
         w = Component::InfoWindow.new("Help", "aaaa bbbb cccc")
         Screen.instance.content = w
-        place(w, Rect.new(0, 0, 9, 6))
+        Testing.place(w, Rect.new(0, 0, 9, 6))
         Screen.instance.repaint
         rows = Screen.instance.buffer.region_text(w.absolute_rect)
         # A truncating List would show "aaaa bb" on one row; the wrap puts

@@ -8,10 +8,10 @@ module Tuile
     describe "inherited bg_color" do
       it "keeps its own well on every row, ignoring an ancestor's bg_color" do
         parent = Component::Layout::Absolute.new
-        place(parent, Rect.new(0, 0, 10, 3))
+        Testing.place(parent, Rect.new(0, 0, 10, 3))
         a = Component::TextArea.new
         parent.add(a)
-        place(a, Rect.new(0, 0, 10, 3))
+        Testing.place(a, Rect.new(0, 0, 10, 3))
         a.text = "hi"
         parent.bg_color = 52
         repaint(a)
@@ -22,7 +22,7 @@ module Tuile
 
     def area(width: 10, height: 3, text: "", active: true)
       a = Component::TextArea.new
-      place(a, Rect.new(0, 0, width, height))
+      Testing.place(a, Rect.new(0, 0, width, height))
       a.text = text
       a.active = active if active
       a
@@ -170,7 +170,7 @@ module Tuile
         repaint(a)
         assert_equal ["hello world", "           "], rows_text(a)
 
-        place(a, Rect.new(0, 0, 5, 2))
+        Testing.place(a, Rect.new(0, 0, 5, 2))
         repaint(a)
         assert_equal %w[hello world], rows_text(a)
       end
@@ -181,7 +181,7 @@ module Tuile
       # what converts, so the field's position is nowhere in this answer.
       it "sits at its own top-left when text empty" do
         a = Component::TextArea.new
-        place(a, Rect.new(5, 2, 10, 3))
+        Testing.place(a, Rect.new(5, 2, 10, 3))
         assert_equal Point.new(0, 0), a.cursor_position
       end
 
@@ -202,7 +202,7 @@ module Tuile
 
       it "is nil when rect is empty" do
         a = Component::TextArea.new
-        place(a, Rect.new(0, 0, 0, 0))
+        Testing.place(a, Rect.new(0, 0, 0, 0))
         assert_nil a.cursor_position
       end
     end
@@ -254,7 +254,7 @@ module Tuile
 
       it "answers 0 / 1 for an empty rect rather than raising" do
         a = Component::TextArea.new
-        place(a, Rect.new(0, 0, 0, 0))
+        Testing.place(a, Rect.new(0, 0, 0, 0))
         a.text = "hello world"
         assert_equal 1, a.row_count
         assert_equal 0, a.caret_row
@@ -270,7 +270,7 @@ module Tuile
       it "re-reads the wrap after the width changes" do
         a = area(width: 20, height: 3, text: "hello world")
         assert_equal 1, a.row_count
-        place(a, Rect.new(0, 0, 5, 3))
+        Testing.place(a, Rect.new(0, 0, 5, 3))
         assert_equal 2, a.row_count
       end
     end
@@ -295,7 +295,7 @@ module Tuile
           end
         end
         a = klass.new
-        place(a, Rect.new(0, 0, 5, 3))
+        Testing.place(a, Rect.new(0, 0, 5, 3))
         a.text = text
         a
       end
@@ -645,7 +645,7 @@ module Tuile
       it "positions caret at clicked row and column" do
         a = area(width: 5, height: 3, text: "hello world")
         Screen.instance.content = a
-        place(a, Rect.new(2, 3, 5, 3)) # rewraps
+        Testing.place(a, Rect.new(2, 3, 5, 3)) # rewraps
         Screen.instance.click(4, 4) # row 1 col 2
         assert_equal 8, a.caret # row 1 = "world" start 6, col 2 → 8
       end
@@ -653,7 +653,7 @@ module Tuile
       it "clamps column past last char to row end" do
         a = area(width: 5, height: 3, text: "hi\nbye")
         Screen.instance.content = a
-        place(a, Rect.new(0, 0, 5, 3))
+        Testing.place(a, Rect.new(0, 0, 5, 3))
         Screen.instance.click(4, 0) # row 0 "hi", click past end
         assert_equal 2, a.caret
       end
@@ -661,7 +661,7 @@ module Tuile
       it "snaps to end of text when clicked past the last row" do
         a = area(width: 5, height: 3, text: "hi")
         Screen.instance.content = a
-        place(a, Rect.new(0, 0, 5, 3))
+        Testing.place(a, Rect.new(0, 0, 5, 3))
         Screen.instance.click(0, 2) # row 2, no content there
         assert_equal 2, a.caret
       end
@@ -669,7 +669,7 @@ module Tuile
       it "ignores clicks outside the rect" do
         a = area(text: "hello")
         Screen.instance.content = a
-        place(a, Rect.new(0, 0, 10, 3))
+        Testing.place(a, Rect.new(0, 0, 10, 3))
         a.caret = 3
         Screen.instance.click(100, 100)
         assert_equal 3, a.caret
@@ -803,7 +803,7 @@ module Tuile
         a = area(width: 11, height: 2, text: "hello world")
         called = false
         a.on_change { called = true }
-        place(a, Rect.new(0, 0, 5, 2))
+        Testing.place(a, Rect.new(0, 0, 5, 2))
         assert !called
         assert_equal "hello world", a.text
       end
@@ -824,7 +824,7 @@ module Tuile
           end
         end
         a = klass.new
-        place(a, Rect.new(0, 0, 10, 3))
+        Testing.place(a, Rect.new(0, 0, 10, 3))
         a
       end
 
@@ -855,7 +855,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         a = Component::TextArea.new
-        place(a, Rect.new(0, 0, 10, 3))
+        Testing.place(a, Rect.new(0, 0, 10, 3))
         layout.add(a)
         screen.focused = a
 
@@ -888,7 +888,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         a = Component::TextArea.new
-        place(a, Rect.new(0, 0, 10, 3))
+        Testing.place(a, Rect.new(0, 0, 10, 3))
         layout.add(a)
         screen.focused = a
         a.escape_clears_focus = false
@@ -940,7 +940,7 @@ module Tuile
       it "resolves a click on a glyph's left half before it, right half after" do
         a = area(width: 10, height: 3, text: "日本語")
         Screen.instance.content = a
-        place(a, Rect.new(0, 0, 10, 3))
+        Testing.place(a, Rect.new(0, 0, 10, 3))
         { 0 => 0, 1 => 1, 2 => 1, 3 => 2, 4 => 2, 5 => 3 }.each do |column, expected|
           a.caret = 0
           Screen.instance.click(column, 0)

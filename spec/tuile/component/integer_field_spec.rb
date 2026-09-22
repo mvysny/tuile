@@ -10,7 +10,7 @@ module Tuile
     def field(top: 0, width: 20)
       f = Component::IntegerField.new
       Screen.instance.content = f
-      place(f, Rect.new(0, top, width, 1))
+      Testing.place(f, Rect.new(0, top, width, 1))
       Screen.instance.focused = f
       f
     end
@@ -333,7 +333,7 @@ module Tuile
       it "forwards to the inner field, which paints it while empty" do
         f = Component::IntegerField.new
         Screen.instance.content = f
-        place(f, Rect.new(0, 0, 12, 1))
+        Testing.place(f, Rect.new(0, 0, 12, 1))
         f.placeholder = "0-65535"
         assert_equal "0-65535", f.placeholder
         assert_equal "0-65535", inner(f).placeholder
@@ -344,7 +344,7 @@ module Tuile
       it "gives way to a value and returns when cleared" do
         f = Component::IntegerField.new
         Screen.instance.content = f
-        place(f, Rect.new(0, 0, 12, 1))
+        Testing.place(f, Rect.new(0, 0, 12, 1))
         f.placeholder = "0-65535"
         f.value = 42
         Screen.instance.repaint

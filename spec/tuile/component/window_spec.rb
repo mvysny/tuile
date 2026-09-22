@@ -8,7 +8,7 @@ module Tuile
     describe "inherited bg_color" do
       it "tints the border cells with bg_color" do
         w = Component::Window.new("Hi")
-        place(w, Rect.new(0, 0, 6, 3))
+        Testing.place(w, Rect.new(0, 0, 6, 3))
         w.bg_color = 52
         repaint(w)
         assert_equal "┌", Screen.instance.buffer.cell(0, 0).grapheme
@@ -56,14 +56,14 @@ module Tuile
     context "border" do
       it "paints an all-dashes top border when the caption was never set" do
         w = Component::Window.new
-        place(w, Rect.new(0, 0, 6, 3))
+        Testing.place(w, Rect.new(0, 0, 6, 3))
         repaint(w)
         assert_equal "┌────┐", Screen.instance.buffer.region_text(Rect.new(0, 0, 6, 1)).join
       end
 
       it "keeps a double-width caption inside the box — clipping is by display width" do
         w = Component::Window.new("日本語テキスト")
-        place(w, Rect.new(0, 0, 10, 3))
+        Testing.place(w, Rect.new(0, 0, 10, 3))
         repaint(w)
         # inner width is 8: "日本語テ" fits exactly, then the closing corner.
         assert_equal "┌日本語テ┐", Screen.instance.buffer.region_text(Rect.new(0, 0, 10, 1)).join
@@ -71,7 +71,7 @@ module Tuile
 
       it "fills the dash remainder by display width when a wide glyph is dropped" do
         w = Component::Window.new("日本語")
-        place(w, Rect.new(0, 0, 7, 3))
+        Testing.place(w, Rect.new(0, 0, 7, 3))
         repaint(w)
         # inner width is 5: "日本" (4 cols) fits, the third glyph is dropped,
         # and one dash fills the leftover column.
@@ -80,14 +80,14 @@ module Tuile
 
       it "keeps the caption's own colors while inactive" do
         w = Component::Window.new(StyledString.styled("Hi", fg: Color::RED))
-        place(w, Rect.new(0, 0, 6, 3))
+        Testing.place(w, Rect.new(0, 0, 6, 3))
         repaint(w)
         assert_equal Color::RED, Screen.instance.buffer.cell(1, 0).style.fg
       end
 
       it "overrides the caption's colors with the border color while active" do
         w = Component::Window.new(StyledString.styled("Hi", fg: Color::RED))
-        place(w, Rect.new(0, 0, 6, 3))
+        Testing.place(w, Rect.new(0, 0, 6, 3))
         w.active = true
         repaint(w)
         assert_equal Screen.instance.theme.active_border_color, Screen.instance.buffer.cell(1, 0).style.fg
@@ -95,7 +95,7 @@ module Tuile
 
       it "does not paint past rect.width on a degenerate 1-column window" do
         w = Component::Window.new("Hi")
-        place(w, Rect.new(0, 0, 1, 2))
+        Testing.place(w, Rect.new(0, 0, 1, 2))
         repaint(w)
         assert_equal "┌", Screen.instance.buffer.cell(0, 0).grapheme
         assert_equal " ", Screen.instance.buffer.cell(1, 0).grapheme
@@ -184,10 +184,11 @@ module Tuile
       it "positions content inside the border (1px inset on all sides, 1px right border by default)" do
         w = Component::Window.new
         w.content = Component::List.new
-        place(w, Rect.new(5, 3, 20, 10))
+        Testing.place(w, Rect.new(5, 3, 20, 10))
         # border_right=1 → content width = 20-1-1=18, height = 10-2=8, one
         # border column and row in from the window's own top-left
-        assert_equal Rect.new(1, 1, 18, 8), settle(w.content).rect
+        w.content.flush_layout
+        assert_equal Rect.new(1, 1, 18, 8), w.content.rect
         assert_equal Rect.new(6, 4, 18, 8), w.content.absolute_rect
       end
     end
@@ -226,18 +227,20 @@ module Tuile
 
       it "positions footer over the bottom border row" do
         w = Component::Window.new
-        place(w, Rect.new(5, 3, 20, 10))
+        Testing.place(w, Rect.new(5, 3, 20, 10))
         w.footer = Component::List.new
         # bottom row is height - 1 = 9 rows down, spanning (1, that_row, width-2, 1)
-        assert_equal Rect.new(1, 9, 18, 1), settle(w.footer).parent.rect
+        w.footer.flush_layout
+        assert_equal Rect.new(1, 9, 18, 1), w.footer.parent.rect
         assert_equal Rect.new(6, 12, 18, 1), w.footer.absolute_rect
       end
 
       it "relayouts footer when window rect changes" do
         w = Component::Window.new
         w.footer = Component::List.new
-        place(w, Rect.new(0, 0, 30, 8))
-        assert_equal Rect.new(1, 7, 28, 1), settle(w.footer).absolute_rect
+        Testing.place(w, Rect.new(0, 0, 30, 8))
+        w.footer.flush_layout
+        assert_equal Rect.new(1, 7, 28, 1), w.footer.absolute_rect
       end
 
       it "rejects non-Component values" do
@@ -264,7 +267,7 @@ module Tuile
       it "invalidates the window so the bottom border repaints" do
         w = Component::Window.new
         Screen.instance.content = w
-        place(w, Rect.new(0, 0, 20, 10))
+        Testing.place(w, Rect.new(0, 0, 20, 10))
         Screen.instance.invalidated_clear
         w.footer = Component::List.new
         assert Screen.instance.invalidated?(w)
@@ -297,18 +300,20 @@ module Tuile
 
       it "spans the full inner width regardless of the component's natural size" do
         w = Component::Window.new
-        place(w, Rect.new(5, 3, 20, 10))
+        Testing.place(w, Rect.new(5, 3, 20, 10))
         w.footer = label("hi")
-        assert_equal Rect.new(6, 12, 18, 1), settle(w.footer).absolute_rect
+        w.footer.flush_layout
+        assert_equal Rect.new(6, 12, 18, 1), w.footer.absolute_rect
       end
 
       it "stays at full inner width when the component's content grows" do
         w = Component::Window.new
-        place(w, Rect.new(5, 3, 20, 10))
+        Testing.place(w, Rect.new(5, 3, 20, 10))
         f = label("ab")
         w.footer = f
         f.text = "abcdef"
-        assert_equal Rect.new(6, 12, 18, 1), settle(f).absolute_rect
+        f.flush_layout
+        assert_equal Rect.new(6, 12, 18, 1), f.absolute_rect
       end
     end
 
@@ -355,7 +360,7 @@ module Tuile
 
       it "embeds into the bottom border with dashes filling the remainder" do
         w = Component::Window.new
-        place(w, Rect.new(0, 0, 20, 10))
+        Testing.place(w, Rect.new(0, 0, 20, 10))
         w.footer_text = "hi"
         repaint(w)
         # inner width 18: "hi" + 16 dashes
@@ -364,7 +369,7 @@ module Tuile
 
       it "clips footer_text to the inner width" do
         w = Component::Window.new
-        place(w, Rect.new(0, 0, 6, 4))
+        Testing.place(w, Rect.new(0, 0, 6, 4))
         w.footer_text = "far-too-long"
         repaint(w)
         # inner width 4
@@ -373,7 +378,7 @@ module Tuile
 
       it "is hidden while a footer component occupies the bottom row" do
         w = Component::Window.new
-        place(w, Rect.new(0, 0, 20, 10))
+        Testing.place(w, Rect.new(0, 0, 20, 10))
         w.footer_text = "hi"
         w.footer = Component::List.new
         repaint(w)
@@ -390,7 +395,7 @@ module Tuile
         w = Component::Window.new
         w.content = Component::List.new
         Screen.instance.content = w
-        place(w, Rect.new(0, 0, 20, 10))
+        Testing.place(w, Rect.new(0, 0, 20, 10))
         w
       end
 
@@ -418,20 +423,22 @@ module Tuile
       let(:w) do
         w = Component::Window.new
         w.content = Component::List.new
-        place(w, Rect.new(0, 0, 20, 10))
+        Testing.place(w, Rect.new(0, 0, 20, 10))
         w
       end
 
       it "enabling scrollbar expands content width by 1 (drops right border margin)" do
         w.scrollbar = true
         # border_right=0 → width = 20-1-0=19
-        assert_equal 19, settle(w.content).rect.width
+        w.content.flush_layout
+        assert_equal 19, w.content.rect.width
       end
 
       it "disabling scrollbar restores content width" do
         w.scrollbar = true
         w.scrollbar = false
-        assert_equal 18, settle(w.content).rect.width
+        w.content.flush_layout
+        assert_equal 18, w.content.rect.width
       end
 
       it "enabling scrollbar sets content scrollbar_visibility to :visible" do
@@ -448,16 +455,17 @@ module Tuile
       it "works with any content that responds to scrollbar_visibility= (e.g. TextView)" do
         w2 = Component::Window.new
         w2.content = Component::TextView.new
-        place(w2, Rect.new(0, 0, 20, 10))
+        Testing.place(w2, Rect.new(0, 0, 20, 10))
         w2.scrollbar = true
         assert_equal :visible, w2.content.scrollbar_visibility
-        assert_equal 19, settle(w2.content).rect.width
+        w2.content.flush_layout
+        assert_equal 19, w2.content.rect.width
       end
 
       it "raises Tuile::Error when content does not support scrollbar_visibility=" do
         w2 = Component::Window.new
         w2.content = Component::Label.new
-        place(w2, Rect.new(0, 0, 20, 10))
+        Testing.place(w2, Rect.new(0, 0, 20, 10))
         err = assert_raises(Tuile::Error) { w2.scrollbar = true }
         assert_includes err.message, "scrollbar_visibility="
       end
@@ -472,7 +480,7 @@ module Tuile
         w = Component::Window.new
         w.content = Component::List.new
         Screen.instance.content = w
-        place(w, Rect.new(0, 0, 20, 10))
+        Testing.place(w, Rect.new(0, 0, 20, 10))
         # content.rect = Rect.new(1, 1, 18, 8)
         w
       end
@@ -497,7 +505,7 @@ module Tuile
     context "repaint" do
       it "smokes" do
         w = Component::Window.new
-        place(w, Rect.new(0, 0, 20, 20))
+        Testing.place(w, Rect.new(0, 0, 20, 20))
         repaint(w)
         assert_equal "┌", Screen.instance.buffer.cell(0, 0).grapheme
         assert_equal "┘", Screen.instance.buffer.cell(19, 19).grapheme
@@ -511,7 +519,7 @@ module Tuile
 
       it "draws the border in the theme's active_border color when active" do
         w = Component::Window.new
-        place(w, Rect.new(0, 0, 20, 10))
+        Testing.place(w, Rect.new(0, 0, 20, 10))
         w.active = true
         repaint(w)
         assert_equal Screen.instance.theme.active_border_color, Screen.instance.buffer.cell(0, 0).style.fg
@@ -519,14 +527,14 @@ module Tuile
 
       it "leaves the border uncolored when inactive" do
         w = Component::Window.new
-        place(w, Rect.new(0, 0, 20, 10))
+        Testing.place(w, Rect.new(0, 0, 20, 10))
         repaint(w)
         assert_nil Screen.instance.buffer.cell(0, 0).style.fg
       end
 
       it "clears the interior itself when there is no content to cover it" do
         w = Component::Window.new
-        place(w, Rect.new(0, 0, 20, 10))
+        Testing.place(w, Rect.new(0, 0, 20, 10))
         Screen.instance.buffer.fill(Rect.new(0, 0, 20, 10), StyledString::Style::DEFAULT)
         (1..8).each { |y| (1..18).each { |x| Screen.instance.buffer.set_char(x, y, "X") } }
         repaint(w)
@@ -543,7 +551,7 @@ module Tuile
           w.content = list
           Screen.instance.content = w
           w.scrollbar = scrollbar
-          place(w, Rect.new(0, 0, 40, 12))
+          Testing.place(w, Rect.new(0, 0, 40, 12))
           Screen.instance.repaint
           Screen.instance.clear
           Screen.instance.invalidate(w)

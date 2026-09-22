@@ -7,7 +7,7 @@ module Tuile
 
     def checkbox(caption: "Syslog", width: 10, active: false, value: false)
       cb = Component::Checkbox.new(caption, value:)
-      place(cb, Rect.new(0, 0, width, 1))
+      Testing.place(cb, Rect.new(0, 0, width, 1))
       cb.active = active
       cb
     end
@@ -144,7 +144,7 @@ module Tuile
 
       it "does not toggle on a row below the painted one" do
         cb = attached_checkbox(caption: "Syslog", width: 40)
-        place(cb, Rect.new(0, 0, 40, 3))
+        Testing.place(cb, Rect.new(0, 0, 40, 3))
         Screen.instance.click(1, 2)
         assert_equal false, cb.value
       end
@@ -206,7 +206,7 @@ module Tuile
 
       it "keeps a double-width caption inside rect — clipping is by display width" do
         cb = checkbox(caption: "日本語テキスト", width: 8)
-        place(cb, Rect.new(2, 0, 8, 1))
+        Testing.place(cb, Rect.new(2, 0, 8, 1))
         repaint(cb)
         buffer = Screen.instance.buffer
         # "[ ] 日本語テキスト" is 18 columns; a char-count clip would have painted
@@ -218,10 +218,10 @@ module Tuile
 
       it "shows an inherited bg_color on the row's blank tail" do
         parent = Component::Layout::Absolute.new
-        place(parent, Rect.new(0, 0, 20, 1))
+        Testing.place(parent, Rect.new(0, 0, 20, 1))
         cb = Component::Checkbox.new("Syslog")
         parent.add(cb)
-        place(cb, Rect.new(0, 0, 20, 1))
+        Testing.place(cb, Rect.new(0, 0, 20, 1))
         parent.bg_color = 52
         repaint(cb)
         buffer = Screen.instance.buffer

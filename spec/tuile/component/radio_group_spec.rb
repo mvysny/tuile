@@ -56,8 +56,9 @@ module Tuile
 
     it "places the list across its own rect" do
       rg = group
-      place(rg, Rect.new(2, 1, 9, 3))
-      assert_equal Rect.new(0, 0, 9, 3), settle(rg.list).rect
+      Testing.place(rg, Rect.new(2, 1, 9, 3))
+      rg.list.flush_layout
+      assert_equal Rect.new(0, 0, 9, 3), rg.list.rect
       assert_equal Rect.new(2, 1, 9, 3), rg.list.absolute_rect
     end
 
@@ -288,7 +289,7 @@ module Tuile
       Screen.instance.content = layout
       rg = Component::RadioGroup.new(items: default_items)
       layout.add(rg)
-      place(rg, Rect.new(0, 0, 20, 3))
+      Testing.place(rg, Rect.new(0, 0, 20, 3))
       layout.bg_color = 52
       assert_equal [" ( ) Ascending      ", " ( ) Descending     ", " ( ) Unsorted       "], rows(rg)
       assert_equal Color.new(52), Screen.instance.buffer.cell(19, 0).style.bg, "the row's blank tail is tinted"

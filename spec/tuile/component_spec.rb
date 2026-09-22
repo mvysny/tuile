@@ -34,7 +34,7 @@ module Tuile
     context "geometry readers" do
       it "size, width and height report the assigned rect" do
         c = Component.new
-        place(c, Rect.new(3, 4, 20, 6))
+        Testing.place(c, Rect.new(3, 4, 20, 6))
         assert_equal Size.new(20, 6), c.size
         assert_equal 20, c.width
         assert_equal 6, c.height
@@ -42,8 +42,8 @@ module Tuile
 
       it "follow a reassigned rect, holding no state of their own" do
         c = Component.new
-        place(c, Rect.new(0, 0, 5, 5))
-        place(c, Rect.new(0, 0, 9, 2))
+        Testing.place(c, Rect.new(0, 0, 5, 5))
+        Testing.place(c, Rect.new(0, 0, 9, 2))
         assert_equal Size.new(9, 2), c.size
         assert_equal 9, c.width
         assert_equal 2, c.height
@@ -114,7 +114,7 @@ module Tuile
       # whole UI for one component.
       it "names the class and the rect, and omits an unset id" do
         c = Component.new
-        place(c, Rect.new(3, 4, 20, 6))
+        Testing.place(c, Rect.new(3, 4, 20, 6))
         assert_equal "#<Tuile::Component rect=(3,4 20x6)>", c.inspect
       end
 
@@ -166,7 +166,7 @@ module Tuile
       # paints, as a Label with short text needs.
       it "is nil by default, and the extent rects fall back to the whole rect" do
         c = Component.new
-        place(c, Rect.new(2, 3, 10, 4))
+        Testing.place(c, Rect.new(2, 3, 10, 4))
         assert_nil c.extent
         assert_equal c.local_rect, c.local_extent_rect
         assert_equal c.absolute_rect, c.absolute_extent_rect
@@ -175,7 +175,7 @@ module Tuile
       it "an undeclared extent still blanks the whole rect" do
         c = Component.new
         Screen.instance.content = c
-        place(c, Rect.new(0, 0, 4, 1))
+        Testing.place(c, Rect.new(0, 0, 4, 1))
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXX"))
         repaint(c)
         assert_equal "    ", Screen.instance.buffer.region_text(c.absolute_rect).first
@@ -187,7 +187,7 @@ module Tuile
       it "a declared extent equal to the rect blanks nothing" do
         c = Class.new(Component) { def extent = Size.new(4, 1) }.new
         Screen.instance.content = c
-        place(c, Rect.new(0, 0, 4, 1))
+        Testing.place(c, Rect.new(0, 0, 4, 1))
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXX"))
         repaint(c)
         assert_equal "XXXX", Screen.instance.buffer.region_text(c.absolute_rect).first
@@ -198,7 +198,7 @@ module Tuile
       # deliberately no parent-space `extent_rect` — nothing asks in that space.
       it "is a Size, placed by local_extent_rect and absolute_extent_rect" do
         c = Class.new(Component) { def extent = Size.new(4, 1) }.new
-        place(c, Rect.new(7, 5, 20, 3))
+        Testing.place(c, Rect.new(7, 5, 20, 3))
         assert_equal Size.new(4, 1), c.extent
         assert_equal Rect.new(0, 0, 4, 1), c.local_extent_rect
         assert_equal Rect.new(7, 5, 4, 1), c.absolute_extent_rect
@@ -208,7 +208,7 @@ module Tuile
       it "clear_outside_extent blanks the L a narrowed extent leaves" do
         c = Class.new(Component) { def extent = Size.new(4, 1) }.new
         Screen.instance.content = c
-        place(c, Rect.new(0, 0, 8, 3))
+        Testing.place(c, Rect.new(0, 0, 8, 3))
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXXXXXX"))
         Screen.instance.buffer.set_text(0, 1, StyledString.plain("XXXXXXXX"))
 
@@ -228,7 +228,7 @@ module Tuile
         row.add([Component.new, Component.new], Component::Layout::Expand[1],
                 cross: Component::Layout::Fixed[1])
         Screen.instance.content = row
-        place(row, Rect.new(0, 0, 8, 2))
+        Testing.place(row, Rect.new(0, 0, 8, 2))
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXXXXXX"))
 
         Screen.instance.repaint
@@ -238,7 +238,7 @@ module Tuile
       it "leaves the extent's own cells alone, so an unchanged repaint re-emits nothing of it" do
         cb = Component::Checkbox.new.tap { _1.caption = "Enable" }
         Screen.instance.content = cb
-        place(cb, Rect.new(0, 0, 40, 1))
+        Testing.place(cb, Rect.new(0, 0, 40, 1))
         Screen.instance.repaint
         Screen.instance.prints.clear
 
@@ -261,8 +261,8 @@ module Tuile
         child = yield
         pane.add(child)
         Screen.instance.content = pane
-        place(pane, outer)
-        place(child, inner)
+        Testing.place(pane, outer)
+        Testing.place(child, inner)
         child
       end
 
@@ -333,7 +333,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         child = Component.new
         layout.add(child, Rect.new(0, 0, 10, 1))
-        settle(layout)
+        layout.flush_layout
         assert_raises(Tuile::Error) { child.__send__(:rect=, Rect.new(0, 0, 10, 1)) }
       end
 
@@ -361,19 +361,19 @@ module Tuile
         child.define_singleton_method(:handle_rect_changed) { |old| seen << [old, rect] }
         layout = Component::Layout::Absolute.new
         layout.add(child, Rect.new(0, 0, 10, 1))
-        settle(layout)
+        layout.flush_layout
         layout.constrain(child, Rect.new(0, 0, 10, 1))
         layout.constrain(child, Rect.new(0, 0, 4, 1))
-        settle(layout)
+        layout.flush_layout
         assert_equal [[Rect.new(0, 0, 0, 0), Rect.new(0, 0, 10, 1)],
                       [Rect.new(0, 0, 10, 1), Rect.new(0, 0, 4, 1)]], seen
       end
 
       it "is no-op when set to the same rect" do
         c = Component.new
-        place(c, Rect.new(0, 0, 10, 5))
+        Testing.place(c, Rect.new(0, 0, 10, 5))
         Screen.instance.invalidated_clear
-        place(c, Rect.new(0, 0, 10, 5))
+        Testing.place(c, Rect.new(0, 0, 10, 5))
         assert !Screen.instance.invalidated?(c)
       end
 
@@ -381,13 +381,13 @@ module Tuile
         c = Component::Layout::Absolute.new
         Screen.instance.content = c
         Screen.instance.invalidated_clear
-        place(c, Rect.new(0, 0, 10, 5))
+        Testing.place(c, Rect.new(0, 0, 10, 5))
         assert Screen.instance.invalidated?(c)
       end
 
       it "does not invalidate when the component is detached" do
         c = Component.new
-        place(c, Rect.new(0, 0, 10, 5))
+        Testing.place(c, Rect.new(0, 0, 10, 5))
         assert !Screen.instance.invalidated?(c)
       end
 
@@ -395,7 +395,7 @@ module Tuile
         width_changed = false
         klass = Class.new(Component) { define_method(:handle_width_changed) { width_changed = true } }
         c = klass.new
-        place(c, Rect.new(0, 0, 20, 5))
+        Testing.place(c, Rect.new(0, 0, 20, 5))
         assert width_changed
       end
 
@@ -403,9 +403,9 @@ module Tuile
         width_changed = false
         klass = Class.new(Component) { define_method(:handle_width_changed) { width_changed = true } }
         c = klass.new
-        place(c, Rect.new(0, 0, 10, 5))
+        Testing.place(c, Rect.new(0, 0, 10, 5))
         width_changed = false
-        place(c, Rect.new(0, 0, 10, 10))
+        Testing.place(c, Rect.new(0, 0, 10, 10))
         assert !width_changed
       end
     end
@@ -440,7 +440,7 @@ module Tuile
         leaf = Component.new
         inner.add(leaf, Component::Layout::Fixed[1])
         layout.add(inner, Component::Layout::Fixed[4])
-        settle(layout)
+        layout.flush_layout
         layout.parent.constrain(layout, Rect.new(0, 0, 40, 10))
         assert leaf.rect_stale?
         assert !inner.layout_dirty?
@@ -671,9 +671,9 @@ module Tuile
         leaf = yield
         outer.add(inner)
         inner.add(leaf)
-        place(outer, Rect.new(5, 5, 40, 10))
-        place(inner, Rect.new(2, 3, 20, 5))
-        place(leaf, Rect.new(1, 1, 4, 2))
+        Testing.place(outer, Rect.new(5, 5, 40, 10))
+        Testing.place(inner, Rect.new(2, 3, 20, 5))
+        Testing.place(leaf, Rect.new(1, 1, 4, 2))
         [outer, inner, leaf]
       end
 
@@ -786,7 +786,7 @@ module Tuile
       it "reaches the cells the component paints" do
         c = Component::Label.new("hi")
         Screen.instance.content = c
-        place(c, Rect.new(0, 0, 2, 1))
+        Testing.place(c, Rect.new(0, 0, 2, 1))
         c.bg_color = 52
         repaint(c)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
@@ -798,7 +798,7 @@ module Tuile
         Screen.instance.content = root
         root.add(leaf)
         root.bg_color = 52
-        place(leaf, Rect.new(0, 0, 2, 1))
+        Testing.place(leaf, Rect.new(0, 0, 2, 1))
         repaint(leaf)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
       end
@@ -898,8 +898,8 @@ module Tuile
         panel.add(field)
         Screen.instance.content = panel
         panel.bg_color = 22
-        place(panel, Rect.new(0, 0, 8, 2))
-        place(field, Rect.new(0, 0, 8, 2))
+        Testing.place(panel, Rect.new(0, 0, 8, 2))
+        Testing.place(field, Rect.new(0, 0, 8, 2))
 
         field.send(:clear_outside_extent, Screen.instance.canvas)
         assert_equal Color.new(22), Screen.instance.buffer.cell(5, 0).style.bg
@@ -913,7 +913,7 @@ module Tuile
         end.new
         Screen.instance.content = field
         field.bg_color = 22
-        place(field, Rect.new(0, 0, 8, 1))
+        Testing.place(field, Rect.new(0, 0, 8, 1))
 
         field.send(:clear_outside_extent, Screen.instance.canvas)
         assert_equal Color.new(22), Screen.instance.buffer.cell(5, 0).style.bg
@@ -990,8 +990,8 @@ module Tuile
         panel.add(field)
         Screen.instance.content = panel
         panel.bg_color = 22
-        place(panel, Rect.new(0, 0, 8, 1))
-        place(field, Rect.new(0, 0, 8, 1))
+        Testing.place(panel, Rect.new(0, 0, 8, 1))
+        Testing.place(field, Rect.new(0, 0, 8, 1))
         field.bg_color = Component::BG_INHERIT
 
         field.send(:clear_outside_extent, Screen.instance.canvas)
@@ -1072,7 +1072,7 @@ module Tuile
         Component.new.tap do |container|
           children_rects.each do |r|
             kid = Component.new
-            place(kid, r)
+            Testing.place(kid, r)
             container.send(:add_child, kid)
           end
         end
@@ -1087,7 +1087,7 @@ module Tuile
 
       it "clears background on a leaf with non-empty rect" do
         c = Component.new
-        place(c, Rect.new(0, 0, 3, 1))
+        Testing.place(c, Rect.new(0, 0, 3, 1))
         repaint(c)
         assert_equal ["   "], Screen.instance.buffer.region_text(c.absolute_rect)
       end
@@ -1105,7 +1105,7 @@ module Tuile
 
       it "does not clear when children fully tile the rect" do
         container = container_with([Rect.new(0, 0, 5, 2)])
-        place(container, Rect.new(0, 0, 5, 2))
+        Testing.place(container, Rect.new(0, 0, 5, 2))
         marked = mark(container)
         repaint(container)
         assert_equal marked, Screen.instance.buffer.region_text(container.absolute_rect)
@@ -1116,7 +1116,7 @@ module Tuile
         # its own redraws its area only through its children, and the
         # ancestor's clear has already wiped their cells.
         container = container_with([Rect.new(0, 0, 5, 2)])
-        place(container, Rect.new(0, 0, 5, 2))
+        Testing.place(container, Rect.new(0, 0, 5, 2))
         Screen.instance.invalidated_clear
         repaint(container)
         assert Screen.instance.invalidated?(container.children.first)
@@ -1126,7 +1126,7 @@ module Tuile
         # Two overlapping children together exceed the parent area; the
         # area-equality check should not false-positive a "gap" here.
         container = container_with([Rect.new(0, 0, 5, 2), Rect.new(0, 0, 5, 2)])
-        place(container, Rect.new(0, 0, 5, 2))
+        Testing.place(container, Rect.new(0, 0, 5, 2))
         marked = mark(container)
         repaint(container)
         assert_equal marked, Screen.instance.buffer.region_text(container.absolute_rect)
@@ -1134,7 +1134,7 @@ module Tuile
 
       it "clears and invalidates children when children leave gaps" do
         container = container_with([Rect.new(0, 0, 2, 1)])
-        place(container, Rect.new(0, 0, 5, 2))
+        Testing.place(container, Rect.new(0, 0, 5, 2))
         gappy = container.children.first
         Screen.instance.invalidated_clear
         repaint(container)
@@ -1146,7 +1146,7 @@ module Tuile
         # The single tiling child fully covers the parent; the empty
         # sibling contributes zero. No gap, no clear.
         container = container_with([Rect.new(0, 0, 5, 2), Rect.new(0, 0, 0, 0)])
-        place(container, Rect.new(0, 0, 5, 2))
+        Testing.place(container, Rect.new(0, 0, 5, 2))
         marked = mark(container)
         repaint(container)
         assert_equal marked, Screen.instance.buffer.region_text(container.absolute_rect)
@@ -1575,7 +1575,7 @@ module Tuile
         second = tab_stop
         box.add([first, second], Component::Layout::Fixed[1])
         screen.content = box
-        place(box, Rect.new(0, 0, 20, 4))
+        Testing.place(box, Rect.new(0, 0, 20, 4))
         [box, first, second]
       end
 
@@ -1616,7 +1616,7 @@ module Tuile
         anchor = tab_stop
         outer.add([anchor, panel], Component::Layout::Fixed[1])
         screen.content = outer
-        place(outer, Rect.new(0, 0, 20, 4))
+        Testing.place(outer, Rect.new(0, 0, 20, 4))
         screen.focused = anchor
 
         panel.visible = false
@@ -1629,7 +1629,7 @@ module Tuile
         box, _first, second = form
         # `form` only marks, so without this the rect compared below is the 0x0
         # one nothing ever assigned — true of itself either way.
-        settle(box)
+        box.flush_layout
         rect = second.rect
         fired = []
         second.define_singleton_method(:handle_detached) { fired << :detached }
@@ -1676,7 +1676,7 @@ module Tuile
           panel.add(leaf, Component::Layout::Fixed[1])
           outer.add([anchor, panel], Component::Layout::Fixed[1])
           screen.content = outer
-          place(outer, Rect.new(0, 0, 20, 4))
+          Testing.place(outer, Rect.new(0, 0, 20, 4))
           screen.focused = leaf
 
           panel.visible = false
@@ -1714,7 +1714,7 @@ module Tuile
           leaf = tab_stop
           panel.add(leaf, Component::Layout::Fixed[1])
           screen.content = panel
-          place(panel, Rect.new(0, 0, 20, 4))
+          Testing.place(panel, Rect.new(0, 0, 20, 4))
 
           panel.visible = false
           assert_raises(Tuile::Error) { screen.focused = leaf }
@@ -1728,7 +1728,7 @@ module Tuile
           label = Component::Label.new("VISIBLE")
           box.add(label, Component::Layout::Percent[100])
           screen.content = box
-          place(box, Rect.new(0, 0, 20, 1))
+          Testing.place(box, Rect.new(0, 0, 20, 1))
           screen.repaint
           assert_includes screen.buffer.row_text(0), "VISIBLE"
 
@@ -1743,7 +1743,7 @@ module Tuile
           label = Component::Label.new("VISIBLE")
           box.add(label, Component::Layout::Percent[100])
           screen.content = box
-          place(box, Rect.new(0, 0, 20, 1))
+          Testing.place(box, Rect.new(0, 0, 20, 1))
           screen.repaint
           before = screen.buffer.row_text(0)
 
@@ -1762,8 +1762,8 @@ module Tuile
           child = tab_stop
           layout.add(child)
           screen.content = layout
-          place(layout, Rect.new(0, 0, 20, 4))
-          place(child, Rect.new(0, 0, 20, 1))
+          Testing.place(layout, Rect.new(0, 0, 20, 4))
+          Testing.place(child, Rect.new(0, 0, 20, 1))
 
           child.visible = false
           screen.click(1, 0)

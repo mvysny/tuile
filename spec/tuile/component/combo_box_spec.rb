@@ -388,10 +388,11 @@ module Tuile
         window = Component::Window.new("Edit")
         window.content = body
         dialog = Component::Popup.new(content: window)
-        settle(dialog.open(Component::Overlay::At[Rect.new(10, 10, 40, 5)]))
-        place(combo, Rect.new(1, body.height - 1, 20, 1)) # the dialog's last inner row, (12, 13) on screen
+        dialog.open(Component::Overlay::At[Rect.new(10, 10, 40, 5)]).flush_layout
+        Testing.place(combo, Rect.new(1, body.height - 1, 20, 1)) # the dialog's last inner row, (12, 13) on screen
         combo.focus
-        face = settle(combo).absolute_extent_rect
+        combo.flush_layout
+        face = combo.absolute_extent_rect
         Screen.instance.click(face.left + face.width - 1, face.top) # the ▾ cell opens it
         [dialog, combo, combo.instance_variable_get(:@overlay)]
       end
@@ -421,7 +422,7 @@ module Tuile
       it "shows while nothing is selected, and gives way to a commit" do
         c = Component::ComboBox.new(items: %w[apple banana])
         Screen.instance.content = c
-        place(c, Rect.new(0, 0, 12, 1))
+        Testing.place(c, Rect.new(0, 0, 12, 1))
         c.placeholder = "type to filter"
         assert_equal "type to filter", field(c).placeholder
         Screen.instance.repaint

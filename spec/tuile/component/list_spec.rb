@@ -129,7 +129,7 @@ module Tuile
 
       it "renders the items through the renderer" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 2))
+        Testing.place(l, Rect.new(0, 0, 20, 2))
         l.renderer = ->(person) { person[:name] }
         l.items = [{ name: "Ada" }, { name: "Linus" }]
         repaint(l)
@@ -140,7 +140,7 @@ module Tuile
 
       it "hands the item itself to on_item_chosen" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         ada = { name: "Ada" }
         l.renderer = ->(person) { person[:name] }
         l.items = [ada, { name: "Linus" }]
@@ -153,7 +153,7 @@ module Tuile
 
       it "hands the item itself to on_cursor_changed" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         linus = { name: "Linus" }
         l.items = [{ name: "Ada" }, linus]
         l.cursor = Component::List::Cursor.new(position: 0)
@@ -182,7 +182,7 @@ module Tuile
     context "renderer" do
       it "renders an item as itself by default" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 1))
+        Testing.place(l, Rect.new(0, 0, 20, 1))
         l.items = [42]
         repaint(l)
         assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "42"
@@ -190,7 +190,7 @@ module Tuile
 
       it "parses ANSI in a String rendering" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 1))
+        Testing.place(l, Rect.new(0, 0, 20, 1))
         l.renderer = ->(item) { "\e[31m#{item}\e[0m" }
         l.items = ["hi"]
         repaint(l)
@@ -200,7 +200,7 @@ module Tuile
 
       it "keeps only the first line of a multi-line rendering" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 2))
+        Testing.place(l, Rect.new(0, 0, 20, 2))
         l.renderer = ->(item) { "#{item}\nand more" }
         l.items = ["one"]
         repaint(l)
@@ -211,7 +211,7 @@ module Tuile
 
       it "repaints through a renderer assigned after the first paint" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 1))
+        Testing.place(l, Rect.new(0, 0, 20, 1))
         l.items = [{ name: "Ada" }]
         repaint(l)
         l.renderer = ->(person) { person[:name] }
@@ -221,7 +221,7 @@ module Tuile
 
       it "searches the rendered text" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.renderer = ->(person) { person[:name] }
         l.items = [{ name: "Ada" }, { name: "Linus" }]
         l.cursor = Component::List::Cursor.new(position: 0)
@@ -235,7 +235,7 @@ module Tuile
       def counting_list(count)
         rendered = []
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.renderer = lambda { |item|
           rendered << item
           item.to_s
@@ -260,7 +260,7 @@ module Tuile
       it "re-renders after a width change" do
         l, rendered = counting_list(3)
         repaint(l)
-        place(l, Rect.new(0, 0, 30, 3))
+        Testing.place(l, Rect.new(0, 0, 30, 3))
         rendered.clear
         repaint(l)
         assert_equal [1, 2, 3], rendered
@@ -310,7 +310,7 @@ module Tuile
 
       it "scrolls when set to true with existing content" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = %w[a b c d e]
         l.auto_scroll = true
         assert_equal 2, l.scroll_top_row
@@ -318,7 +318,7 @@ module Tuile
 
       it "scrolls when content is set after enabling auto_scroll" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.auto_scroll = true
         l.lines = %w[a b c d e]
         assert_equal 2, l.scroll_top_row
@@ -326,7 +326,7 @@ module Tuile
 
       it "scrolls as the list grows one row at a time" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.auto_scroll = true
         append(l, "a")
         assert_equal 0, l.scroll_top_row
@@ -347,7 +347,7 @@ module Tuile
         l.auto_scroll = true
         l.lines = (0..4).map { |i| "line #{i}" }
         assert_equal 0, l.scroll_top_row
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         assert_equal 2, l.scroll_top_row
       end
 
@@ -357,7 +357,7 @@ module Tuile
         # auto-scroll. LogWindow ships with a real cursor + auto_scroll, so
         # this is the common case.
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.cursor = Component::List::Cursor.new
         l.auto_scroll = true
         l.lines = %w[a b c d e]
@@ -368,7 +368,7 @@ module Tuile
         # None overrides #go to be a no-op so go_to_last on a frozen None
         # instance doesn't try to mutate.
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.auto_scroll = true
         l.lines = %w[a b c d e]
         assert_equal(-1, l.cursor.position)
@@ -376,7 +376,7 @@ module Tuile
 
       it "respects Cursor::Limited's allowed positions" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.cursor = Component::List::Cursor::Limited.new([0, 2, 4])
         l.auto_scroll = true
         l.lines = %w[a b c d e f g h]
@@ -387,7 +387,7 @@ module Tuile
       it "fires on_cursor_changed when the cursor snaps from off-content" do
         events = []
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.cursor = Component::List::Cursor.new
         l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         l.auto_scroll = true
@@ -398,14 +398,14 @@ module Tuile
 
       it "follows by default and after enabling" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.auto_scroll = true
         assert l.following?
       end
 
       it "stops tailing once the user scrolls up off the bottom" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.auto_scroll = true
         l.lines = %w[a b c d e]
         assert_equal 2, l.scroll_top_row # 5 lines, viewport 3 → bottom is scroll_top_row 2
@@ -421,7 +421,7 @@ module Tuile
 
       it "resumes tailing once the user scrolls back to the bottom" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.auto_scroll = true
         l.lines = %w[a b c d e]
         l.scroll_top_row = 0
@@ -440,7 +440,7 @@ module Tuile
         # a stacktrace must not have the cursor (and viewport) yanked back to
         # the tail by the next incoming log line.
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.cursor = Component::List::Cursor.new
         l.auto_scroll = true
         l.lines = %w[a b c d e]
@@ -459,7 +459,7 @@ module Tuile
       # the wheel.
       it "stops tailing when the user scrolls up with the wheel" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.auto_scroll = true
         l.lines = (1..20).map(&:to_s)
         assert l.following?
@@ -473,7 +473,7 @@ module Tuile
 
       it "stops tailing when the user pages up" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.auto_scroll = true
         l.lines = (1..20).map(&:to_s)
 
@@ -484,7 +484,7 @@ module Tuile
 
       it "resumes tailing when the wheel reaches the bottom again" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.auto_scroll = true
         l.lines = (1..20).map(&:to_s)
         l.handle_mouse_scroll?(Mouse::ScrollEvent.new(:up, 0, 0))
@@ -497,7 +497,7 @@ module Tuile
 
       it "re-arms tailing when auto_scroll is re-enabled after scrolling up" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.auto_scroll = true
         l.lines = %w[a b c d e]
         l.scroll_top_row = 0
@@ -516,7 +516,7 @@ module Tuile
 
       it "can be set" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = %w[a b c d e]
         l.scroll_top_row = 2
         assert_equal 2, l.scroll_top_row
@@ -532,7 +532,7 @@ module Tuile
 
       it "is a no-op when set to the same value" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c d e f]
         l.scroll_top_row = 1
         Screen.instance.invalidated_clear
@@ -575,7 +575,7 @@ module Tuile
 
       it "does not invalidate when cursor position is unchanged" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         old_cursor = Component::List::Cursor.new
         l.cursor = old_cursor
         Screen.instance.invalidated_clear
@@ -603,7 +603,7 @@ module Tuile
 
       it "moves cursor down on down arrow when active" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 10))
+        Testing.place(l, Rect.new(0, 0, 20, 10))
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new
         l.active = true
@@ -613,7 +613,7 @@ module Tuile
 
       it "moves cursor up on up arrow when active" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 10))
+        Testing.place(l, Rect.new(0, 0, 20, 10))
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 2)
         l.active = true
@@ -623,7 +623,7 @@ module Tuile
 
       it "scrolls up on Page Up" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = (1..10).map(&:to_s)
         l.scroll_top_row = 5
         l.active = true
@@ -633,7 +633,7 @@ module Tuile
 
       it "scrolls down on Page Down" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = (1..10).map(&:to_s)
         l.active = true
         l.handle_key?(Keys::PAGE_DOWN)
@@ -642,7 +642,7 @@ module Tuile
 
       it "does not scroll past the top" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = (1..10).map(&:to_s)
         l.active = true
         l.handle_key?(Keys::PAGE_UP)
@@ -651,7 +651,7 @@ module Tuile
 
       it "does not scroll past the bottom" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = %w[a b c]
         l.active = true
         l.handle_key?(Keys::PAGE_DOWN)
@@ -667,7 +667,7 @@ module Tuile
 
       it "scrolls viewport when cursor moves below visible area" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = (0..9).map(&:to_s)
         l.cursor = Component::List::Cursor.new(position: 2)
         l.active = true
@@ -678,7 +678,7 @@ module Tuile
 
       it "scrolls viewport when cursor moves above visible area" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = (0..9).map(&:to_s)
         l.cursor = Component::List::Cursor.new(position: 5)
         l.scroll_top_row = 5
@@ -693,7 +693,7 @@ module Tuile
       def scrollable_list
         l = Component::List.new
         Screen.instance.content = l
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = (0..9).map(&:to_s)
         l
       end
@@ -733,7 +733,7 @@ module Tuile
 
       it "moves cursor on left click within rect" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = (0..9).map(&:to_s)
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
@@ -744,7 +744,7 @@ module Tuile
 
       it "ignores click outside the rect" do
         l = Component::List.new
-        place(l, Rect.new(5, 5, 10, 5))
+        Testing.place(l, Rect.new(5, 5, 10, 5))
         l.lines = (0..9).map(&:to_s)
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
@@ -767,7 +767,7 @@ module Tuile
       it "fires on Enter with cursor index and line" do
         chosen = nil
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         l.active = true
@@ -779,7 +779,7 @@ module Tuile
       it "Enter is a no-op when cursor is None" do
         chosen = false
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c]
         l.active = true
         l.on_item_chosen { chosen = true }
@@ -790,7 +790,7 @@ module Tuile
       it "Enter is a no-op when content is empty" do
         chosen = false
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.cursor = Component::List::Cursor.new
         l.active = true
         l.on_item_chosen { chosen = true }
@@ -800,7 +800,7 @@ module Tuile
 
       it "Enter does not require on_item_chosen to be set" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new
         l.active = true
@@ -810,7 +810,7 @@ module Tuile
       it "fires on left click within rect" do
         chosen = nil
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
@@ -822,7 +822,7 @@ module Tuile
       it "fires on left click of the already-selected line" do
         calls = 0
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         attach_as_content(l)
@@ -834,7 +834,7 @@ module Tuile
       it "does not fire when click lands below the last item" do
         chosen = false
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
@@ -846,7 +846,7 @@ module Tuile
       it "does not fire on non-left mouse buttons" do
         chosen = false
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
@@ -858,7 +858,7 @@ module Tuile
       it "does not fire on click when cursor is None" do
         chosen = false
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c]
         attach_as_content(l)
         l.on_item_chosen { chosen = true }
@@ -869,7 +869,7 @@ module Tuile
       it "fires with the cursor's snapped position when cursor is Limited" do
         chosen = nil
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor::Limited.new([0, 2, 4])
         attach_as_content(l)
@@ -894,7 +894,7 @@ module Tuile
       it "fires on arrow-down move" do
         events = []
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new
         l.active = true
@@ -906,7 +906,7 @@ module Tuile
       it "fires on arrow-up move" do
         events = []
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 2)
         l.active = true
@@ -987,7 +987,7 @@ module Tuile
       it "fires on left-click on a different row" do
         events = []
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
@@ -999,7 +999,7 @@ module Tuile
       it "does not fire on left-click on the already-selected row" do
         events = []
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         attach_as_content(l)
@@ -1019,7 +1019,7 @@ module Tuile
       it "fires on select_next match" do
         events = []
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[alpha beta gamma]
         l.cursor = Component::List::Cursor.new
         l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
@@ -1039,7 +1039,7 @@ module Tuile
 
       it "paints when rect is set" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[hello world]
         repaint(l)
         rows = Screen.instance.buffer.region_text(l.absolute_rect)
@@ -1049,7 +1049,7 @@ module Tuile
 
       it "paints exactly rect.height lines" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = %w[a b c d e]
         repaint(l)
         # Painting fills exactly rect.height rows of the buffer.
@@ -1058,7 +1058,7 @@ module Tuile
 
       it "pads short lines to full width" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 10, 1))
+        Testing.place(l, Rect.new(0, 0, 10, 1))
         l.lines = ["hi"]
         repaint(l)
         painted_line = Screen.instance.buffer.region_text(l.absolute_rect).first
@@ -1067,7 +1067,7 @@ module Tuile
 
       it "highlights the cursor line" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         l.active = true
@@ -1080,7 +1080,7 @@ module Tuile
 
       it "paints using scroll_top_row offset" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 2))
+        Testing.place(l, Rect.new(0, 0, 20, 2))
         l.lines = %w[a b c d]
         l.scroll_top_row = 2
         repaint(l)
@@ -1091,7 +1091,7 @@ module Tuile
 
       it "does not highlight the cursor line when inactive by default" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         # active stays false
@@ -1103,7 +1103,7 @@ module Tuile
 
       it "highlights the cursor line when inactive if show_cursor_when_inactive is true" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         l.show_cursor_when_inactive = true
@@ -1118,7 +1118,7 @@ module Tuile
     context "bg_color" do
       it "fills content and filler rows across the full width when set" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 10, 3))
+        Testing.place(l, Rect.new(0, 0, 10, 3))
         l.lines = ["hi"] # one content row, then two blank filler rows
         l.bg_color = 52
         repaint(l)
@@ -1130,10 +1130,10 @@ module Tuile
 
       it "inherits an ancestor's bg_color" do
         parent = Component::Layout::Absolute.new
-        place(parent, Rect.new(0, 0, 10, 2))
+        Testing.place(parent, Rect.new(0, 0, 10, 2))
         l = Component::List.new
         parent.add(l)
-        place(l, Rect.new(0, 0, 10, 2))
+        Testing.place(l, Rect.new(0, 0, 10, 2))
         l.lines = ["hi"]
         parent.bg_color = 52
         repaint(l)
@@ -1142,7 +1142,7 @@ module Tuile
 
       it "composes the cursor highlight over the bg_color fill" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 10, 3))
+        Testing.place(l, Rect.new(0, 0, 10, 3))
         l.lines = %w[a b c]
         l.bg_color = 52
         l.cursor = Component::List::Cursor.new(position: 1)
@@ -1155,7 +1155,7 @@ module Tuile
 
       it "leaves row backgrounds unset by default" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 10, 2))
+        Testing.place(l, Rect.new(0, 0, 10, 2))
         l.lines = ["hi"]
         repaint(l)
         assert_nil Screen.instance.buffer.cell(0, 0).style.bg, "content row"
@@ -1177,7 +1177,7 @@ module Tuile
       it "invalidates when changed" do
         l = Component::List.new
         Screen.instance.content = l
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         Screen.instance.invalidated_clear
         l.show_cursor_when_inactive = true
         assert Screen.instance.invalidated?(l)
@@ -1185,7 +1185,7 @@ module Tuile
 
       it "is a no-op when value unchanged" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 5))
+        Testing.place(l, Rect.new(0, 0, 20, 5))
         l.show_cursor_when_inactive = true
         Screen.instance.invalidated_clear
         l.show_cursor_when_inactive = true
@@ -1220,7 +1220,8 @@ module Tuile
       l = mount_at(Component::List.new, rect)
       l.lines = lines
       l.scrollbar_visibility = visibility
-      settle(l)
+      l.flush_layout
+      l
     end
 
     it "scrollbar_visibility is :gone by default" do
@@ -1260,15 +1261,16 @@ module Tuile
 
     it "re-places the bar when the list is resized" do
       l = list(lines: %w[a b c])
-      place(l, Rect.new(0, 0, 20, 5))
-      settle(l)
+      Testing.place(l, Rect.new(0, 0, 20, 5))
+      l.flush_layout
       assert_equal Rect.new(19, 0, 1, 5), l.children.first.rect
     end
 
     it "keeps the bar told how many rows there are and where the viewport sits" do
       l = list(rect: Rect.new(0, 0, 10, 3), lines: (1..20).map(&:to_s))
       l.scroll_top_row = 4
-      bar = settle(l).children.first
+      l.flush_layout
+      bar = l.children.first
       assert_equal 20, bar.row_count
       assert_equal 4, bar.scroll_top_row
     end
@@ -1520,7 +1522,7 @@ module Tuile
     context "select" do
       def list(rows: 10, cursor: Component::List::Cursor.new)
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, rows))
+        Testing.place(l, Rect.new(0, 0, 20, rows))
         l.lines = %w[apple banana cherry date elderberry]
         l.cursor = cursor
         l
@@ -1565,7 +1567,7 @@ module Tuile
     context "select_next" do
       def list(content: %w[apple banana cherry date elderberry], cursor: Component::List::Cursor.new)
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 10))
+        Testing.place(l, Rect.new(0, 0, 20, 10))
         l.lines = content
         l.cursor = cursor
         l
@@ -1644,7 +1646,7 @@ module Tuile
 
       it "scrolls viewport so the match is visible" do
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 3))
+        Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = (0..19).map { |i| "line #{i}" }
         l.cursor = Component::List::Cursor.new
         assert l.select_next("line 15")
@@ -1687,7 +1689,7 @@ module Tuile
     context "select_prev" do
       def list(content: %w[apple banana cherry date elderberry], cursor: Component::List::Cursor.new(position: 4))
         l = Component::List.new
-        place(l, Rect.new(0, 0, 20, 10))
+        Testing.place(l, Rect.new(0, 0, 20, 10))
         l.lines = content
         l.cursor = cursor
         l

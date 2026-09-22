@@ -7,7 +7,7 @@ module Tuile
 
     def button(caption: "OK", width: 10, active: true, &on_click)
       b = Component::Button.new(caption, &on_click)
-      place(b, Rect.new(0, 0, width, 1))
+      Testing.place(b, Rect.new(0, 0, width, 1))
       b.active = active if active
       b
     end
@@ -124,7 +124,7 @@ module Tuile
         screen.content = layout
         log = []
         field = Component::TextField.new
-        place(field, Rect.new(0, 1, 10, 1))
+        Testing.place(field, Rect.new(0, 1, 10, 1))
         field.define_singleton_method(:handle_blur) { log << :blur }
         layout.add(field)
         b = button(active: false) { log << :click }
@@ -213,7 +213,7 @@ module Tuile
 
       it "keeps a double-width caption inside rect — clipping is by display width" do
         b = button(caption: "日本語テキスト", width: 8, active: false)
-        place(b, Rect.new(2, 0, 8, 1))
+        Testing.place(b, Rect.new(2, 0, 8, 1))
         repaint(b)
         buffer = Screen.instance.buffer
         # "[ 日本語テキスト ]" is 18 columns wide; a char-count clip would have
@@ -233,10 +233,10 @@ module Tuile
 
       it "inherits an ancestor's bg_color when inactive" do
         parent = Component::Layout::Absolute.new
-        place(parent, Rect.new(0, 0, 6, 1))
+        Testing.place(parent, Rect.new(0, 0, 6, 1))
         b = Component::Button.new("Ok")
         parent.add(b)
-        place(b, Rect.new(0, 0, 6, 1))
+        Testing.place(b, Rect.new(0, 0, 6, 1))
         parent.bg_color = 52
         repaint(b)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg

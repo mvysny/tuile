@@ -34,13 +34,14 @@ module Tuile
       Screen.instance.pane.content = h
       # The pane assigns its content the whole screen at the settle; drain that
       # pass here so each example counts only its own.
-      settle(h).layout_calls.clear
+      h.flush_layout
+      h.layout_calls.clear
       h
     end
 
     let(:child) do
       c = Component.new
-      place(c, Rect.new(0, 0, 5, 3))
+      Testing.place(c, Rect.new(0, 0, 5, 3))
       c
     end
 
@@ -85,7 +86,8 @@ module Tuile
       it "attaches the new content and runs the pass" do
         host.content = child
         assert_same host, child.parent
-        assert_equal [child], settle(host).layout_calls
+        host.flush_layout
+        assert_equal [child], host.layout_calls
       end
 
       it "invalidates the new content" do
@@ -128,16 +130,19 @@ module Tuile
     describe "#rect=" do
       it "re-runs the pass when content is non-nil" do
         host.content = child
-        settle(host).layout_calls.clear
-        place(host, Rect.new(0, 0, 30, 20))
-        assert_equal [child], settle(host).layout_calls
+        host.flush_layout
+        host.layout_calls.clear
+        Testing.place(host, Rect.new(0, 0, 30, 20))
+        host.flush_layout
+        assert_equal [child], host.layout_calls
       end
 
       # Unconditional: a container assigns every child on every pass, and one
       # with nothing to place simply places nothing.
       it "runs the pass even when content is nil" do
-        place(host, Rect.new(0, 0, 30, 20))
-        assert_equal [nil], settle(host).layout_calls
+        Testing.place(host, Rect.new(0, 0, 30, 20))
+        host.flush_layout
+        assert_equal [nil], host.layout_calls
       end
     end
 
@@ -170,7 +175,7 @@ module Tuile
     describe "#handle_focus" do
       it "cascades focus to focusable content" do
         focusable = Class.new(Component) { def focusable? = true }.new
-        place(focusable, Rect.new(0, 0, 1, 1))
+        Testing.place(focusable, Rect.new(0, 0, 1, 1))
         host.content = focusable
         host.focus
         assert_same focusable, Screen.instance.focused

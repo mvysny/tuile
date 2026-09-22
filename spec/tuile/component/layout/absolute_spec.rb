@@ -5,7 +5,10 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
-    def rects(layout) = settle(layout).children.map(&:rect)
+    def rects(layout)
+      layout.flush_layout
+      layout.children.map(&:rect)
+    end
 
     it "places each child at the rect it was added with" do
       layout = Component::Layout::Absolute.new
@@ -20,7 +23,7 @@ module Tuile
       layout.add(Component.new, Rect.new(1, 1, 8, 2))
       assert layout.rect.empty?
       assert_equal [Rect.new(1, 1, 8, 2)], rects(layout)
-      place(layout, Rect.new(0, 0, 40, 20))
+      Testing.place(layout, Rect.new(0, 0, 40, 20))
       assert_equal [Rect.new(1, 1, 8, 2)], rects(layout)
     end
 
@@ -28,7 +31,8 @@ module Tuile
       layout = Component::Layout::Absolute.new
       child = Component.new
       layout.add(child)
-      assert settle(layout).children.first.rect.empty?
+      layout.flush_layout
+      assert layout.children.first.rect.empty?
       layout.constrain(child, Rect.new(0, 0, 10, 1))
       assert_equal [Rect.new(0, 0, 10, 1)], rects(layout)
     end
@@ -38,7 +42,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         child = Component.new
         layout.add(child, Rect.new(0, 0, 10, 1))
-        settle(layout)
+        layout.flush_layout
         layout.constrain(child, Rect.new(0, 5, 10, 1))
         assert_equal(Rect.new(0, 0, 10, 1), Tuile.without_strict_layout { child.rect })
         assert_equal [Rect.new(0, 5, 10, 1)], rects(layout)
@@ -48,7 +52,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         child = Component.new
         layout.add(child, Rect.new(0, 0, 10, 1))
-        settle(layout)
+        layout.flush_layout
         layout.constrain(child, Rect.new(0, 0, 10, 1))
         assert !layout.__send__(:layout_dirty?)
       end

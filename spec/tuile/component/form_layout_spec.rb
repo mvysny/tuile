@@ -107,8 +107,9 @@ module Tuile
       it "re-runs the pass when the form is resized" do
         item = form.add(username, caption: "Username")
         mount
-        place(form, Rect.new(2, 1, 30, 12))
-        assert_equal Rect.new(0, 0, 30, 3), settle(item).rect
+        Testing.place(form, Rect.new(2, 1, 30, 12))
+        item.flush_layout
+        assert_equal Rect.new(0, 0, 30, 3), item.rect
       end
     end
 
@@ -125,9 +126,11 @@ module Tuile
         item = form.add(username, caption: "Username")
         mount
         overflowing = form.add(notes, caption: "Notes", rows: 20)
-        assert_equal Rect.new(0, 3, 20, 9), settle(overflowing).rect
+        overflowing.flush_layout
+        assert_equal Rect.new(0, 3, 20, 9), overflowing.rect
         past = form.add(Component::Button.new("Save"))
-        assert settle(past).rect.empty?
+        past.flush_layout
+        assert past.rect.empty?
         refute item.rect.empty?
       end
 
@@ -135,8 +138,9 @@ module Tuile
         form.add(username, caption: "Username")
         form.add(Component::Button.new("Save"))
         mount
-        place(form, Rect.new(0, 0, 0, 0))
-        assert(settle(form).children.all? { _1.rect.empty? })
+        Testing.place(form, Rect.new(0, 0, 0, 0))
+        form.flush_layout
+        assert(form.children.all? { _1.rect.empty? })
       end
     end
 
@@ -146,7 +150,8 @@ module Tuile
         below = form.add(Component::Button.new("Save"))
         mount
         hidden.visible = false
-        assert settle(hidden).rect.empty?
+        hidden.flush_layout
+        assert hidden.rect.empty?
         assert_equal Rect.new(0, 0, 20, 2), below.rect
       end
 
@@ -156,7 +161,8 @@ module Tuile
         mount
         hidden.visible = false
         hidden.visible = true
-        assert_equal Rect.new(0, 0, 20, 3), settle(hidden).rect
+        hidden.flush_layout
+        assert_equal Rect.new(0, 0, 20, 3), hidden.rect
         assert_equal Rect.new(0, 3, 20, 2), below.rect
       end
     end
@@ -174,7 +180,8 @@ module Tuile
         below = form.add(Component::Button.new("Save"))
         mount
         form.remove(username)
-        assert_equal Rect.new(0, 0, 20, 2), settle(below).rect
+        below.flush_layout
+        assert_equal Rect.new(0, 0, 20, 2), below.rect
       end
 
       it "leaves the field in its item, so the item is what goes back" do
@@ -196,7 +203,8 @@ module Tuile
         item = form.add(notes, caption: "Notes")
         mount
         form.constrain(notes, 4)
-        assert_equal Rect.new(0, 0, 20, 6), settle(item).rect
+        item.flush_layout
+        assert_equal Rect.new(0, 0, 20, 6), item.rect
         assert_equal Rect.new(0, 1, 20, 4), notes.rect
         assert_equal item, form.children.first, "the item, and its subscriptions, survive"
       end

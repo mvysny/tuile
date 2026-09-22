@@ -71,16 +71,18 @@ module Tuile
       it "gives content the whole pane rect when its rect is set" do
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
-        place(pane, Rect.new(0, 0, 80, 24))
-        assert_equal Rect.new(0, 0, 80, 24), settle(layout).rect
+        Screen.instance.resize_terminal(80, 24)
+        layout.flush_layout
+        assert_equal Rect.new(0, 0, 80, 24), layout.rect
       end
 
       it "relayouts on a height-only change" do
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
-        place(pane, Rect.new(0, 0, 80, 24))
-        place(pane, Rect.new(0, 0, 80, 30))
-        assert_equal Rect.new(0, 0, 80, 30), settle(layout).rect
+        Screen.instance.resize_terminal(80, 24)
+        Screen.instance.resize_terminal(80, 30)
+        layout.flush_layout
+        assert_equal Rect.new(0, 0, 80, 30), layout.rect
       end
     end
 
@@ -170,7 +172,7 @@ module Tuile
 
       def field(width = 10)
         f = Component::TextField.new
-        place(f, Rect.new(0, 0, width, 1))
+        Testing.place(f, Rect.new(0, 0, width, 1))
         f
       end
 
@@ -240,7 +242,7 @@ module Tuile
 
         popup_got = []
         inner = Class.new(Component) { def focusable? = true }.new
-        place(inner, Rect.new(0, 0, 5, 1))
+        Testing.place(inner, Rect.new(0, 0, 5, 1))
         inner.define_singleton_method(:handle_key?) { |k| popup_got << k }
         Component::Popup.new(content: inner).open   # cascades focus onto `inner`
 
@@ -260,7 +262,7 @@ module Tuile
 
       def field(width = 10)
         f = Component::TextField.new
-        place(f, Rect.new(0, 0, width, 1))
+        Testing.place(f, Rect.new(0, 0, width, 1))
         f
       end
 
@@ -321,7 +323,7 @@ module Tuile
     context "non-modal overlays" do
       def field(width = 10)
         f = Component::TextField.new
-        place(f, Rect.new(0, 0, width, 1))
+        Testing.place(f, Rect.new(0, 0, width, 1))
         f
       end
 
@@ -353,7 +355,7 @@ module Tuile
       it "routes a click outside the overlay through to the content beneath" do
         clicks = []
         beneath = Class.new(Component) { def focusable? = true }.new
-        place(beneath, Rect.new(0, 0, 80, 40))
+        Testing.place(beneath, Rect.new(0, 0, 80, 40))
         beneath.define_singleton_method(:handle_mouse_down?) { |e| clicks << e.point }
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
@@ -369,7 +371,7 @@ module Tuile
       it "routes a click inside the overlay to the overlay, not the content" do
         clicks = []
         beneath = Class.new(Component) { def focusable? = true }.new
-        place(beneath, Rect.new(0, 0, 80, 40))
+        Testing.place(beneath, Rect.new(0, 0, 80, 40))
         beneath.define_singleton_method(:handle_mouse_down?) { |_| clicks << :beneath }
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
@@ -416,7 +418,7 @@ module Tuile
       it "dismisses a modal popup too, and still swallows the click" do
         clicks = []
         beneath = Class.new(Component) { def focusable? = true }.new
-        place(beneath, Rect.new(0, 0, 80, 40))
+        Testing.place(beneath, Rect.new(0, 0, 80, 40))
         beneath.define_singleton_method(:handle_mouse_down?) { |_| clicks << :beneath }
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
@@ -460,7 +462,7 @@ module Tuile
             true
           end
         end.new
-        place(opener, Rect.new(0, 0, 80, 40))
+        Testing.place(opener, Rect.new(0, 0, 80, 40))
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         layout.add(opener)
@@ -483,7 +485,7 @@ module Tuile
             true
           end
         end.new
-        place(toggler, Rect.new(0, 0, 80, 40))
+        Testing.place(toggler, Rect.new(0, 0, 80, 40))
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         layout.add(toggler)

@@ -14,7 +14,8 @@ module Tuile
       Screen.instance.content = Component::Label.new # something for focus to rest on
       d.items = (1..count).map { |n| "item#{n}" }
       d.open(Component::Overlay::At[Rect.new(0, 0, 20, 10)])
-      settle(d)
+      d.flush_layout
+      d
     end
 
     def list(drop) = drop.instance_variable_get(:@list)
@@ -219,13 +220,15 @@ module Tuile
       it "follows the field when the content around it moves" do
         column, spacer, _field, drop = field_and_drop(top: 2)
         column.constrain(spacer, Component::Layout::Fixed[6])
-        assert_equal Rect.new(0, 7, 20, 3), settle(drop).rect
+        drop.flush_layout
+        assert_equal Rect.new(0, 7, 20, 3), drop.rect
       end
 
       it "grows and shrinks with its items" do
         _column, _spacer, _field, drop = field_and_drop
         drop.items = %w[a b c d e]
-        assert_equal 5, settle(drop).rect.height
+        drop.flush_layout
+        assert_equal 5, drop.rect.height
       end
 
       it "stays put, and warns once, when its field goes away" do
@@ -234,9 +237,9 @@ module Tuile
         previous = Tuile.logger
         Tuile.logger = Logger.new(log)
         column.remove(field)
-        settle(drop)
+        drop.flush_layout
         column.add(Component::Label.new, Component::Layout::Fixed[1])
-        settle(drop)
+        drop.flush_layout
         assert_equal Rect.new(0, 3, 20, 3), drop.rect
         assert_equal 1, log.string.scan("lost its anchor").size
       ensure
@@ -321,7 +324,8 @@ module Tuile
       it "is nil before the panel has a rect" do
         d = dropdown(count: 5)
         d.placement = Component::Overlay::At[Rect.new(0, 0, 0, 0)]
-        assert_nil settle(d).cursor_row_rect
+        d.flush_layout
+        assert_nil d.cursor_row_rect
       end
     end
 

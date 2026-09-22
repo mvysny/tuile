@@ -123,7 +123,7 @@ module Tuile
       def row_ansi(component) = screen.buffer.row_ansi(component.absolute_rect.top)
 
       it "paints the field's background in Theme#error_bg_color" do
-        place(field, Rect.new(0, 0, 10, 1))
+        Testing.place(field, Rect.new(0, 0, 10, 1))
         field.text = "bob"
         field.error_message = "Required"
         repaint(field)
@@ -133,7 +133,7 @@ module Tuile
 
       it "uses Theme#error_active_bg_color while the field has focus" do
         screen.content = field
-        place(field, Rect.new(0, 0, 10, 1))
+        Testing.place(field, Rect.new(0, 0, 10, 1))
         screen.focused = field
         field.error_message = "Required"
         repaint(field)
@@ -144,7 +144,7 @@ module Tuile
       # The gap the foreground ink could not cover, and the one that matters:
       # "required" is exactly the rule that fires on a field with no glyphs.
       it "shows on an empty field" do
-        place(field, Rect.new(0, 0, 10, 1))
+        Testing.place(field, Rect.new(0, 0, 10, 1))
         field.error_message = "Required"
         repaint(field)
 
@@ -152,7 +152,7 @@ module Tuile
       end
 
       it "is gone once the verdict is cleared, back to the ordinary well" do
-        place(field, Rect.new(0, 0, 10, 1))
+        Testing.place(field, Rect.new(0, 0, 10, 1))
         field.text = "bob"
         field.error_message = "Required"
         repaint(field)
@@ -165,7 +165,7 @@ module Tuile
 
       it "tracks a theme swap with no handle_theme_changed hook — it resolves at paint" do
         screen.theme = Theme::LIGHT
-        place(field, Rect.new(0, 0, 10, 1))
+        Testing.place(field, Rect.new(0, 0, 10, 1))
         field.error_message = "Required"
         repaint(field)
 
@@ -174,7 +174,7 @@ module Tuile
 
       it "reaches a composed field's inner TextField, which holds no message of its own" do
         composed = Component::IntegerField.new
-        place(composed, Rect.new(0, 0, 10, 1))
+        Testing.place(composed, Rect.new(0, 0, 10, 1))
         Testing.get(Component::TextField, in: composed).text = "12"
         composed.error_message = "Too small"
         repaint(Testing.get(Component::TextField, in: composed))
@@ -186,7 +186,7 @@ module Tuile
       it "reaches a group's List rows the same way" do
         group = Component::RadioGroup.new
         group.items = %w[alpha beta]
-        place(group, Rect.new(0, 0, 20, 2))
+        Testing.place(group, Rect.new(0, 0, 20, 2))
         group.error_message = "Pick one"
         repaint(group.list)
 
@@ -197,7 +197,7 @@ module Tuile
       # it ever paints — and the chain delivers it with no Checkbox code.
       it "reaches a Checkbox, which has no well when valid" do
         box = Component::Checkbox.new("I accept")
-        place(box, Rect.new(0, 0, 20, 1))
+        Testing.place(box, Rect.new(0, 0, 20, 1))
         repaint(box)
         refute_includes screen.buffer.row_ansi(0), "48;5;88"
 
@@ -210,7 +210,7 @@ module Tuile
       # skips this level exactly as it skips default_bg_color.
       it "stops at the extent, leaving the dead tail alone" do
         box = Component::Checkbox.new("ok")
-        place(box, Rect.new(0, 0, 40, 1))
+        Testing.place(box, Rect.new(0, 0, 40, 1))
         box.error_message = "nope"
         repaint(box)
 
@@ -221,7 +221,7 @@ module Tuile
 
       # An app tinting a panel must not be able to switch the signal off.
       it "wins over an app's own bg_color" do
-        place(field, Rect.new(0, 0, 10, 1))
+        Testing.place(field, Rect.new(0, 0, 10, 1))
         field.bg_color = Color::BLUE
         field.error_message = "Required"
         repaint(field)
@@ -234,7 +234,7 @@ module Tuile
         window.caption = "Login"
         window.content = field
         screen.content = window
-        place(window, Rect.new(0, 0, 20, 5))
+        Testing.place(window, Rect.new(0, 0, 20, 5))
         field.error_message = "Required"
         repaint(window)
 
@@ -247,7 +247,7 @@ module Tuile
 
       it "marks an IntegerField holding input its value cannot represent" do
         int = Component::IntegerField.new
-        place(int, Rect.new(0, 0, 10, 1))
+        Testing.place(int, Rect.new(0, 0, 10, 1))
         Testing.get(Component::TextField, in: int).text = "-"
         repaint(Testing.get(Component::TextField, in: int))
 
@@ -258,7 +258,7 @@ module Tuile
 
       it "clears as soon as the input parses" do
         int = Component::IntegerField.new
-        place(int, Rect.new(0, 0, 10, 1))
+        Testing.place(int, Rect.new(0, 0, 10, 1))
         Testing.get(Component::TextField, in: int).text = "-4"
         repaint(Testing.get(Component::TextField, in: int))
 
@@ -266,7 +266,7 @@ module Tuile
       end
 
       it "leaves a field with no bad-input report to the verdict alone" do
-        place(field, Rect.new(0, 0, 10, 1))
+        Testing.place(field, Rect.new(0, 0, 10, 1))
         field.text = "anything"
         repaint(field)
 

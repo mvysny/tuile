@@ -56,8 +56,9 @@ module Tuile
 
     it "places the list across its own rect" do
       cg = group
-      place(cg, Rect.new(2, 1, 9, 3))
-      assert_equal Rect.new(0, 0, 9, 3), settle(cg.list).rect
+      Testing.place(cg, Rect.new(2, 1, 9, 3))
+      cg.list.flush_layout
+      assert_equal Rect.new(0, 0, 9, 3), cg.list.rect
       assert_equal Rect.new(2, 1, 9, 3), cg.list.absolute_rect
     end
 
@@ -264,7 +265,7 @@ module Tuile
       Screen.instance.content = layout
       cg = Component::CheckboxGroup.new(items: default_items)
       layout.add(cg)
-      place(cg, Rect.new(0, 0, 20, 3))
+      Testing.place(cg, Rect.new(0, 0, 20, 3))
       layout.bg_color = 52
       assert_equal [" [ ] Errors         ", " [ ] Warnings       ", " [ ] Info           "], rows(cg)
       assert_equal Color.new(52), Screen.instance.buffer.cell(19, 0).style.bg, "the row's blank tail is tinted"

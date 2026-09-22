@@ -28,19 +28,22 @@ module Tuile
 
       it "rises out of the scroller as it scrolls — the one negative rect" do
         scroller.scroll_top_row = 7
-        assert_equal Rect.new(0, -7, 8, 40), settle(content).rect
+        content.flush_layout
+        assert_equal Rect.new(0, -7, 8, 40), content.rect
       end
 
       it "is re-placed when the scroller moves" do
-        place(scroller, Rect.new(0, 0, 20, 8))
-        assert_equal Rect.new(0, 0, 18, 40), settle(content).rect
+        Testing.place(scroller, Rect.new(0, 0, 20, 8))
+        content.flush_layout
+        assert_equal Rect.new(0, 0, 18, 40), content.rect
       end
 
       it "is placed on arrival, scroll included" do
         s = scroller(nil)
         s.scroll_top_row = 3
         s.content = content
-        assert_equal Rect.new(0, -3, 8, 40), settle(content).rect
+        content.flush_layout
+        assert_equal Rect.new(0, -3, 8, 40), content.rect
       end
     end
 
@@ -81,7 +84,7 @@ module Tuile
         s = scroller
         screen.invalidated_clear
         s.scroll_top_row = 4
-        settle(s)
+        s.flush_layout
         assert screen.invalidated?(s)
       end
     end
@@ -203,10 +206,10 @@ module Tuile
           end
         end.new
         screen.content = outer
-        place(outer, Rect.new(0, 0, 10, 5))
+        Testing.place(outer, Rect.new(0, 0, 10, 5))
         s = Component::Scroller.new(Component::Layout::Absolute.new, content_rows: 40)
         outer.add(s)
-        place(s, Rect.new(0, 0, 10, 5))
+        Testing.place(s, Rect.new(0, 0, 10, 5))
 
         s.scroll_to_visible(Rect.new(0, 6, 8, 2))
 
@@ -351,14 +354,16 @@ module Tuile
 
       it "follows the scroller's resize" do
         s = scroller
-        place(s, Rect.new(0, 0, 20, 8))
-        assert_equal Rect.new(19, 0, 1, 8), settle(Testing.get(Component::VerticalScrollBar, in: s)).rect
+        Testing.place(s, Rect.new(0, 0, 20, 8))
+        Testing.get(Component::VerticalScrollBar, in: s).flush_layout
+        assert_equal Rect.new(19, 0, 1, 8), Testing.get(Component::VerticalScrollBar, in: s).rect
       end
 
       it "is told the scroll state, not left to read it" do
         s = scroller
         s.scroll_top_row = 12
-        bar = settle(Testing.get(Component::VerticalScrollBar, in: s))
+        Testing.get(Component::VerticalScrollBar, in: s).flush_layout
+        bar = Testing.get(Component::VerticalScrollBar, in: s)
         assert_equal 12, bar.scroll_top_row
         assert_equal 40, bar.row_count
       end
@@ -366,7 +371,8 @@ module Tuile
       it "collapses to nothing when the bar is gone" do
         s = scroller
         s.scrollbar_visibility = :gone
-        assert_equal Rect.new(0, 0, 0, 0), settle(Testing.get(Component::VerticalScrollBar, in: s)).rect
+        Testing.get(Component::VerticalScrollBar, in: s).flush_layout
+        assert_equal Rect.new(0, 0, 0, 0), Testing.get(Component::VerticalScrollBar, in: s).rect
       end
 
       it "scrolls the content when the handle is dragged" do

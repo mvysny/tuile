@@ -64,7 +64,8 @@ module Tuile
       it "adds the caption row when a caption arrives, with no resize" do
         bare = mount(Component::FormItem.new(field))
         bare.caption = "Username"
-        assert_equal Rect.new(0, 0, 20, 1), settle(bare).children[1].rect
+        bare.flush_layout
+        assert_equal Rect.new(0, 0, 20, 1), bare.children[1].rect
         assert_equal Rect.new(0, 1, 20, 1), field.rect
       end
 
@@ -76,8 +77,9 @@ module Tuile
 
       it "assigns every child a rect even when its own is empty" do
         mount
-        place(item, Rect.new(0, 0, 0, 0))
-        assert(settle(item).children.all? { _1.rect.empty? })
+        Testing.place(item, Rect.new(0, 0, 0, 0))
+        item.flush_layout
+        assert(item.children.all? { _1.rect.empty? })
       end
     end
 
@@ -286,7 +288,7 @@ module Tuile
       it "brings the caption into view along with the field" do
         scroller, fields = scrolled_form
         scroller.scroll_top_row = 5
-        settle(scroller)
+        scroller.flush_layout
 
         fields[1].scroll_to_visible
 

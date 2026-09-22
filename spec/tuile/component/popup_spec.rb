@@ -136,14 +136,16 @@ module Tuile
       p.open
       p.declared_size = Size.new(20, 6)
       # centered: ((160-20)/2, (50-6)/2) = (70, 22).
-      assert_equal Rect.new(70, 22, 20, 6), settle(p).rect
+      p.flush_layout
+      assert_equal Rect.new(70, 22, 20, 6), p.rect
     end
 
     it "size= accepts a Fraction" do
       p = Component::Popup.new
       p.open
       p.declared_size = Fraction::FULL
-      assert_equal Rect.new(0, 0, 160, 50), settle(p).rect
+      p.flush_layout
+      assert_equal Rect.new(0, 0, 160, 50), p.rect
     end
 
     it "returns self from open, so construct-and-mount is one expression" do
@@ -164,9 +166,10 @@ module Tuile
 
       # Simulate a SIGWINCH-driven reposition: shrink the screen, re-lay out.
       Screen.instance.instance_variable_set(:@size, Size.new(100, 30))
-      place(Screen.instance.pane, Rect.new(0, 0, 100, 30))
+      Screen.instance.resize_terminal(100, 30)
       # HALF of 100x30 = 50x15; centered at ((100-50)/2, (30-15)/2) = (25, 7).
-      assert_equal Rect.new(25, 7, 50, 15), settle(p).rect
+      p.flush_layout
+      assert_equal Rect.new(25, 7, 50, 15), p.rect
     end
   end
 
@@ -186,7 +189,8 @@ module Tuile
     it "stays hand-placed when a second popup opens" do
       first = Component::Popup.new.open(Component::Overlay::At[Rect.new(3, 4, 20, 5)])
       Component::Popup.new.open
-      assert_equal Rect.new(3, 4, 20, 5), settle(first).rect
+      first.flush_layout
+      assert_equal Rect.new(3, 4, 20, 5), first.rect
     end
   end
 
@@ -211,7 +215,7 @@ module Tuile
       Screen.instance.invalidated_clear
 
       p.declared_size = Size.new(10, 5) # smaller, recentered; new rect can't cover old
-      settle(p)
+      p.flush_layout
       assert Screen.instance.invalidated?(tiled)
     end
 
@@ -221,7 +225,7 @@ module Tuile
       Screen.instance.invalidated_clear
 
       p.declared_size = Fraction::FULL # grows to cover the whole screen (covers old)
-      settle(p)
+      p.flush_layout
       assert Screen.instance.invalidated?(p)
       refute Screen.instance.invalidated?(tiled)
     end

@@ -60,7 +60,7 @@ module Tuile
     describe "AbstractStringField as a HasValue" do
       def field(text: "")
         f = Component::TextField.new
-        place(f, Rect.new(0, 0, 20, 1))
+        Testing.place(f, Rect.new(0, 0, 20, 1))
         f.text = text
         f
       end

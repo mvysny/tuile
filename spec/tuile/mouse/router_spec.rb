@@ -49,7 +49,7 @@ module Tuile
       layout = Component::Layout::Absolute.new
       screen.content = layout
       layout.add(child)
-      place(child, Rect.new(0, 0, 10, 5))
+      Testing.place(child, Rect.new(0, 0, 10, 5))
       layout
     end
 
@@ -58,8 +58,8 @@ module Tuile
         inner = recorder
         outer = recorder
         content_with(outer)
-        place(outer, Rect.new(0, 0, 20, 10))
-        place(inner, Rect.new(2, 2, 5, 5)) # while it has no parent: `outer` places nothing
+        Testing.place(outer, Rect.new(0, 0, 20, 10))
+        Testing.place(inner, Rect.new(2, 2, 5, 5)) # while it has no parent: `outer` places nothing
         outer.send(:add_child, inner)
 
         screen.press(3, 3)
@@ -70,8 +70,8 @@ module Tuile
         inner = recorder(claims: true)
         outer = recorder
         content_with(outer)
-        place(outer, Rect.new(0, 0, 20, 10))
-        place(inner, Rect.new(2, 2, 5, 5)) # while it has no parent: `outer` places nothing
+        Testing.place(outer, Rect.new(0, 0, 20, 10))
+        Testing.place(inner, Rect.new(2, 2, 5, 5)) # while it has no parent: `outer` places nothing
         outer.send(:add_child, inner)
 
         screen.press(3, 3)
@@ -95,9 +95,9 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         layout.add(field)
-        place(field, Rect.new(0, 0, 10, 1))
+        Testing.place(field, Rect.new(0, 0, 10, 1))
         layout.add(button)
-        place(button, Rect.new(0, 2, 10, 1))
+        Testing.place(button, Rect.new(0, 2, 10, 1))
         screen.focused = field
 
         screen.press(0, 2)
@@ -111,7 +111,7 @@ module Tuile
       it "focuses from a press on the dead tail the widget does not paint" do
         button = Component::Button.new("OK")
         content_with(button)
-        place(button, Rect.new(0, 0, 30, 1))
+        Testing.place(button, Rect.new(0, 0, 30, 1))
         fired = 0
         button.on_click { fired += 1 }
 
@@ -232,8 +232,8 @@ module Tuile
         inner = recorder
         outer = recorder(claims: true)
         content_with(outer)
-        place(outer, Rect.new(0, 0, 20, 10))
-        place(inner, Rect.new(2, 2, 5, 5)) # while it has no parent: `outer` places nothing
+        Testing.place(outer, Rect.new(0, 0, 20, 10))
+        Testing.place(inner, Rect.new(2, 2, 5, 5)) # while it has no parent: `outer` places nothing
         outer.send(:add_child, inner)
 
         screen.scroll(:down, 3, 3)
@@ -258,9 +258,9 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         layout.add(left)
-        place(left, Rect.new(0, 0, 5, 5))
+        Testing.place(left, Rect.new(0, 0, 5, 5))
         layout.add(right)
-        place(right, Rect.new(5, 0, 5, 5))
+        Testing.place(right, Rect.new(5, 0, 5, 5))
 
         screen.move(1, 1)
         assert_equal left, screen.hovered
@@ -328,7 +328,7 @@ module Tuile
       it "routes a press to the topmost popup containing it" do
         beneath = recorder(claims: true)
         content_with(beneath)
-        place(beneath, Rect.new(0, 0, 80, 40))
+        Testing.place(beneath, Rect.new(0, 0, 80, 40))
         overlay = Component::Overlay.new(content: list_of("a"))
         overlay.open(Component::Overlay::At[Rect.new(5, 5, 5, 3)])
 

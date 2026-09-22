@@ -104,16 +104,16 @@ module Tuile
     context "#repaint" do
       it "clears background when there are no children" do
         layout = Component::Layout.new
-        place(layout, Rect.new(0, 0, 5, 2))
+        Testing.place(layout, Rect.new(0, 0, 5, 2))
         repaint(layout)
         assert_equal ["     ", "     "], Screen.instance.buffer.region_text(layout.absolute_rect)
       end
 
       it "does not clear background when children fully tile the rect" do
         layout = Component::Layout.new
-        place(layout, Rect.new(0, 0, 5, 2))
+        Testing.place(layout, Rect.new(0, 0, 5, 2))
         tiling_child = Component.new
-        place(tiling_child, Rect.new(0, 0, 5, 2))
+        Testing.place(tiling_child, Rect.new(0, 0, 5, 2))
         layout.add(tiling_child)
         Screen.instance.prints.clear
         repaint(layout)
@@ -122,10 +122,10 @@ module Tuile
 
       it "clears background and invalidates children when children leave gaps" do
         layout = Component::Layout.new
-        place(layout, Rect.new(0, 0, 5, 2))
+        Testing.place(layout, Rect.new(0, 0, 5, 2))
         # Child covers only top-left 2x1 — leaves the other 8 cells uncovered.
         gappy = Component.new
-        place(gappy, Rect.new(0, 0, 2, 1))
+        Testing.place(gappy, Rect.new(0, 0, 2, 1))
         layout.add(gappy)
         Screen.instance.invalidated_clear
         repaint(layout)
@@ -160,7 +160,7 @@ module Tuile
         layout = Component::Layout.new
         Screen.instance.content = layout
         child = child_class.new
-        place(child, Rect.new(5, 5, 10, 10))
+        Testing.place(child, Rect.new(5, 5, 10, 10))
         layout.add(child)
         # (5, 5) is the top-left of child's rect — which reaches the child as
         # (0, 0), its own coordinates, the same ones it paints in.
@@ -172,7 +172,7 @@ module Tuile
         layout = Component::Layout.new
         Screen.instance.content = layout
         child = child_class.new
-        place(child, Rect.new(5, 5, 10, 10))
+        Testing.place(child, Rect.new(5, 5, 10, 10))
         layout.add(child)
         Screen.instance.click(0, 0)
         assert_equal [], child.received_events
@@ -182,10 +182,10 @@ module Tuile
         layout = Component::Layout.new
         Screen.instance.content = layout
         outer = child_class.new
-        place(outer, Rect.new(0, 0, 20, 20))
+        Testing.place(outer, Rect.new(0, 0, 20, 20))
         layout.add(outer)
         inner = child_class.new
-        place(inner, Rect.new(5, 5, 10, 10))
+        Testing.place(inner, Rect.new(5, 5, 10, 10))
         outer.send(:add_child, inner) # add_child is final, and protected
 
         Screen.instance.click(5, 5)

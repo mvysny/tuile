@@ -39,6 +39,23 @@ module Tuile
   # There is deliberately no `visible:` filter handing one back to drive
   # (`D_visibility`).
   #
+  # == Setup
+  #
+  # A spec dispatches no event, so nothing lays out what a mutation left
+  # pending: call {Component#flush_layout} before reading a rect — it settles
+  # the whole tree, from any component in it. {.place} sizes a component the
+  # way its parent would (`rect=` raises outside the parent's `relayout`) and
+  # settles on its own:
+  #
+  #   Testing.place(field, Rect.new(0, 0, 20, 1))   # already settled
+  #   field.visible = false
+  #   field.flush_layout                            # before reading any rect
+  #
+  # The terminal is 160×50; pick another size with `Screen.fake(width:, height:)`,
+  # or resize mid-example as the terminal would report it:
+  #
+  #   Screen.instance.resize_terminal(80, 24)      # FakeScreen#resize_terminal
+  #
   # == Gestures
   #
   # Drive what you found as a *user* would: {.click} routes a real press and
@@ -208,6 +225,48 @@ module Tuile
         end
 
         component.value = value
+      end
+
+      # Puts `component` at `rect` through whatever places it, since
+      # {Component#rect=} raises outside the parent's `relayout`:
+      #
+      #   Testing.place(label, Rect.new(0, 0, 10, 1))      # a parentless root
+      #   Testing.place(field, Rect.new(2, 1, 20, 1))      # moves it in its Layout::Absolute
+      #   Testing.place(popup, Rect.new(5, 5, 30, 10))     # an open overlay: At[rect]
+      #
+      # A parentless root is sized in a throwaway {Component::Layout::Absolute}
+      # and released again, so it stays unattached. A child of the pane that is
+      # not an overlay is moved into a fresh holder that replaces the content —
+      # straight on the pane it would be handed the whole screen on the next pass.
+      # The pane itself is sized by {FakeScreen#resize_terminal}.
+      # @param component [Component]
+      # @param rect [Rect] in the parent's coordinates (the screen's, for an
+      #   overlay).
+      # @raise [ArgumentError] if any other container places `component` —
+      #   move it by its constraint there.
+      # @return [Component] `component`, settled.
+      def place(component, rect)
+        parent = component.parent
+        case parent
+        when nil
+          holder = Component::Layout::Absolute.new
+          holder.add(component, rect)
+          holder.flush_layout
+          holder.remove(component)
+        when Component::Layout::Absolute
+          parent.constrain(component, rect)
+        when ScreenPane
+          if component.is_a?(Component::Overlay)
+            component.placement = Component::Overlay::At[rect]
+          else
+            holder = Component::Layout::Absolute.new
+            Screen.instance.content = holder
+            holder.add(component, rect)
+          end
+        else
+          raise ArgumentError, "place: #{parent} places #{component} itself; constrain it there"
+        end
+        component.tap(&:flush_layout)
       end
 
       # The shown components under `point`, outermost first — the descent

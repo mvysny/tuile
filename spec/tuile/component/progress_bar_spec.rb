@@ -7,7 +7,7 @@ module Tuile
 
     def bar(width: 20, **kwargs)
       b = Component::ProgressBar.new(**kwargs)
-      place(b, Rect.new(0, 0, width, 1))
+      Testing.place(b, Rect.new(0, 0, width, 1))
       b
     end
 
@@ -189,7 +189,7 @@ module Tuile
 
       it "paints the first row only and clears the rest of a taller rect" do
         b = attached_bar
-        place(b, Rect.new(0, 0, 4, 3))
+        Testing.place(b, Rect.new(0, 0, 4, 3))
         b.value = 1.0
         repaint(b)
         assert_equal ["████", "    ", "    "], Screen.instance.buffer.region_text(b.absolute_rect)
@@ -198,7 +198,7 @@ module Tuile
       it "paints 0- and 1-column rects without raising" do
         b = bar(width: 0)
         repaint(b)
-        place(b, Rect.new(0, 0, 1, 1))
+        Testing.place(b, Rect.new(0, 0, 1, 1))
         b.value = 0.5
         assert_equal "░", row(b)
         b.value = 1.0
@@ -318,7 +318,7 @@ module Tuile
       it "never blanks the bar, at any width, across a whole cycle" do
         b = attached_bar(indeterminate: true)
         (1..9).each do |width|
-          place(b, Rect.new(0, 0, width, 1))
+          Testing.place(b, Rect.new(0, 0, width, 1))
           period = width + [width / 5, 1].max - 1
           period.times do
             painted = row(b)

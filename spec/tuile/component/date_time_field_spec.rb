@@ -13,7 +13,7 @@ module Tuile
     def field(width: 20)
       f = Component::DateTimeField.new
       Screen.instance.content = f
-      place(f, Rect.new(0, 0, width, 1))
+      Testing.place(f, Rect.new(0, 0, width, 1))
       Screen.instance.focused = f
       f
     end
@@ -344,7 +344,7 @@ module Tuile
 
       it "paints one row whatever height it is given" do
         f = field
-        place(f, Rect.new(0, 0, 20, 4))
+        Testing.place(f, Rect.new(0, 0, 20, 4))
         f.value = moment
         Screen.instance.repaint
         assert_equal "2026-09-14    13:45 ", row(0)

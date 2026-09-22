@@ -8,10 +8,10 @@ module Tuile
     describe "inherited bg_color" do
       it "fills content and blank rows from an ancestor's bg_color" do
         parent = Component::Layout::Absolute.new
-        place(parent, Rect.new(0, 0, 10, 3))
+        Testing.place(parent, Rect.new(0, 0, 10, 3))
         tv = Component::TextView.new
         parent.add(tv)
-        place(tv, Rect.new(0, 0, 10, 3))
+        Testing.place(tv, Rect.new(0, 0, 10, 3))
         tv.text = "hello"
         parent.bg_color = 52
         repaint(tv)
@@ -35,7 +35,8 @@ module Tuile
       tv = mount_at(Component::TextView.new, rect)
       tv.scrollbar_visibility = :visible
       tv.text = text
-      settle(tv)
+      tv.flush_layout
+      tv
     end
 
     context "defaults" do
@@ -122,7 +123,7 @@ module Tuile
 
       it "does not invalidate when set to the same value" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 10, 3))
+        Testing.place(tv, Rect.new(0, 0, 10, 3))
         tv.text = "hi"
         Screen.instance.invalidated_clear
         tv.text = "hi"
@@ -131,7 +132,7 @@ module Tuile
 
       it "does not invalidate when set to an equivalent StyledString" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 10, 3))
+        Testing.place(tv, Rect.new(0, 0, 10, 3))
         tv.text = "hi"
         Screen.instance.invalidated_clear
         tv.text = StyledString.plain("hi")
@@ -237,7 +238,7 @@ module Tuile
       it "rewraps the extended last hard line when it crosses wrap width" do
         tv = Component::TextView.new
         Screen.instance.content = tv
-        place(tv, Rect.new(0, 0, 5, 4))
+        Testing.place(tv, Rect.new(0, 0, 5, 4))
         tv.text = "hello"
         tv.append(" world")
         assert_equal "hello world", tv.text.to_s
@@ -372,7 +373,7 @@ module Tuile
       it "drops physical rows so paint reflects the shrunken buffer" do
         tv = Component::TextView.new
         Screen.instance.content = tv
-        place(tv, Rect.new(0, 0, 20, 5))
+        Testing.place(tv, Rect.new(0, 0, 20, 5))
         tv.text = "a\nb\nc\nd"
         tv.remove_last_n_lines(2)
         Screen.instance.prints.clear
@@ -386,7 +387,7 @@ module Tuile
 
       it "clamps scroll_top_row if removal would leave it past the end" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 10, 2))
+        Testing.place(tv, Rect.new(0, 0, 10, 2))
         tv.text = "a\nb\nc\nd\ne"
         tv.scroll_top_row = 3
         tv.remove_last_n_lines(3)
@@ -396,7 +397,7 @@ module Tuile
 
       it "auto_scroll keeps the new last line in view" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 10, 2))
+        Testing.place(tv, Rect.new(0, 0, 10, 2))
         tv.auto_scroll = true
         tv.text = "a\nb\nc\nd\ne"
         tv.remove_last_n_lines(2)
@@ -604,7 +605,7 @@ module Tuile
 
       it "clamps scroll_top_row if the replacement shrinks the buffer below it" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 10, 2))
+        Testing.place(tv, Rect.new(0, 0, 10, 2))
         tv.text = "a\nb\nc\nd\ne"
         tv.scroll_top_row = 3
         tv.replace(2..4, "C")
@@ -614,7 +615,7 @@ module Tuile
 
       it "auto_scroll pins the bottom after a replace that changes the length" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 10, 2))
+        Testing.place(tv, Rect.new(0, 0, 10, 2))
         tv.auto_scroll = true
         tv.text = "a\nb\nc\nd\ne"
         tv.replace(1..3, "X")
@@ -625,7 +626,7 @@ module Tuile
       it "paints the new content after a mid-buffer replace" do
         tv = Component::TextView.new
         Screen.instance.content = tv
-        place(tv, Rect.new(0, 0, 20, 5))
+        Testing.place(tv, Rect.new(0, 0, 20, 5))
         tv.text = "a\nbbb\nc\nd"
         tv.replace(1, "REPLACED")
         Screen.instance.prints.clear
@@ -1171,7 +1172,7 @@ module Tuile
         def make_view
           tv = Component::TextView.new
           Screen.instance.content = tv
-          place(tv, Rect.new(0, 0, 6, 20))
+          Testing.place(tv, Rect.new(0, 0, 6, 20))
           tv
         end
 
@@ -1359,7 +1360,7 @@ module Tuile
         it "paint stays consistent after remove" do
           tv = Component::TextView.new
           Screen.instance.content = tv
-          place(tv, Rect.new(0, 0, 20, 10))
+          Testing.place(tv, Rect.new(0, 0, 20, 10))
           a = tv.create_region
           b = tv.create_region
           a << "first\nsecond"
@@ -1768,7 +1769,7 @@ module Tuile
     context "scroll_top_row" do
       it "can be set" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 20, 3))
+        Testing.place(tv, Rect.new(0, 0, 20, 3))
         tv.text = "a\nb\nc\nd\ne"
         tv.scroll_top_row = 2
         assert_equal 2, tv.scroll_top_row
@@ -1784,7 +1785,7 @@ module Tuile
 
       it "is a no-op when set to the same value" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 20, 5))
+        Testing.place(tv, Rect.new(0, 0, 20, 5))
         tv.text = "a\nb\nc\nd\ne\nf"
         tv.scroll_top_row = 1
         Screen.instance.invalidated_clear
@@ -1807,7 +1808,7 @@ module Tuile
       it "invalidates on change" do
         tv = Component::TextView.new
         Screen.instance.content = tv
-        place(tv, Rect.new(0, 0, 10, 3))
+        Testing.place(tv, Rect.new(0, 0, 10, 3))
         Screen.instance.invalidated_clear
         tv.scrollbar_visibility = :visible
         assert Screen.instance.invalidated?(tv)
@@ -1815,7 +1816,7 @@ module Tuile
 
       it "is a no-op when unchanged" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 10, 3))
+        Testing.place(tv, Rect.new(0, 0, 10, 3))
         tv.scrollbar_visibility = :visible
         Screen.instance.invalidated_clear
         tv.scrollbar_visibility = :visible
@@ -1839,8 +1840,9 @@ module Tuile
 
       it "is re-placed when the view is resized" do
         tv = barred_view("a\nb")
-        place(tv, Rect.new(0, 0, 20, 5))
-        assert_equal Rect.new(19, 0, 1, 5), settle(tv).children.first.rect
+        Testing.place(tv, Rect.new(0, 0, 20, 5))
+        tv.flush_layout
+        assert_equal Rect.new(19, 0, 1, 5), tv.children.first.rect
       end
 
       it "is told the wrapped row count, not the hard-line count" do
@@ -1853,7 +1855,8 @@ module Tuile
       it "is kept told where the viewport sits" do
         tv = barred_view((1..20).map(&:to_s).join("\n"))
         tv.scroll_top_row = 4
-        assert_equal 4, settle(tv).children.first.scroll_top_row
+        tv.flush_layout
+        assert_equal 4, tv.children.first.scroll_top_row
       end
 
       it "scrolls the view when its track is pressed" do
@@ -1876,7 +1879,7 @@ module Tuile
     context "auto_scroll" do
       it "scrolls to bottom when set true with existing content" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 20, 3))
+        Testing.place(tv, Rect.new(0, 0, 20, 3))
         tv.text = (1..5).map(&:to_s).join("\n")
         tv.auto_scroll = true
         assert_equal 2, tv.scroll_top_row
@@ -1884,7 +1887,7 @@ module Tuile
 
       it "scrolls when text is set after enabling auto_scroll" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 20, 3))
+        Testing.place(tv, Rect.new(0, 0, 20, 3))
         tv.auto_scroll = true
         tv.text = (1..5).map(&:to_s).join("\n")
         assert_equal 2, tv.scroll_top_row
@@ -1892,7 +1895,7 @@ module Tuile
 
       it "scrolls on add_line" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 20, 3))
+        Testing.place(tv, Rect.new(0, 0, 20, 3))
         tv.auto_scroll = true
         tv.text = "a\nb\nc"
         assert_equal 0, tv.scroll_top_row
@@ -1904,7 +1907,7 @@ module Tuile
 
       it "scrolls on verbatim append when extension wraps to a new row" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 5, 3))
+        Testing.place(tv, Rect.new(0, 0, 5, 3))
         tv.auto_scroll = true
         tv.text = "a\nb\nc"
         assert_equal 0, tv.scroll_top_row
@@ -1924,7 +1927,7 @@ module Tuile
 
       it "stops tailing once the user scrolls up off the bottom" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 20, 3))
+        Testing.place(tv, Rect.new(0, 0, 20, 3))
         tv.auto_scroll = true
         tv.text = (1..5).map(&:to_s).join("\n")
         assert_equal 2, tv.scroll_top_row # 5 lines, viewport 3 → bottom is scroll_top_row 2
@@ -1940,7 +1943,7 @@ module Tuile
 
       it "resumes tailing once the user scrolls back to the bottom" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 20, 3))
+        Testing.place(tv, Rect.new(0, 0, 20, 3))
         tv.auto_scroll = true
         tv.text = (1..5).map(&:to_s).join("\n")
         tv.scroll_top_row = 0
@@ -1956,7 +1959,7 @@ module Tuile
 
       it "re-arms tailing when auto_scroll is re-enabled after scrolling up" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 20, 3))
+        Testing.place(tv, Rect.new(0, 0, 20, 3))
         tv.auto_scroll = true
         tv.text = (1..5).map(&:to_s).join("\n")
         tv.scroll_top_row = 0
@@ -1971,7 +1974,7 @@ module Tuile
     context "scroll_half_page_up / scroll_half_page_down" do
       def textview(height: 4, lines: 10)
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 20, height))
+        Testing.place(tv, Rect.new(0, 0, 20, height))
         tv.text = (1..lines).map(&:to_s).join("\n")
         tv
       end
@@ -2023,7 +2026,7 @@ module Tuile
     context "handle_key?" do
       def textview(height: 3, lines: 10)
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 20, height))
+        Testing.place(tv, Rect.new(0, 0, 20, height))
         tv.text = (1..lines).map(&:to_s).join("\n")
         tv
       end
@@ -2158,7 +2161,7 @@ module Tuile
       def scrollable_view(text: (1..10).map(&:to_s).join("\n"))
         tv = Component::TextView.new
         Screen.instance.content = tv
-        place(tv, Rect.new(0, 0, 20, 3))
+        Testing.place(tv, Rect.new(0, 0, 20, 3))
         tv.text = text
         tv
       end
@@ -2211,14 +2214,14 @@ module Tuile
 
       it "paints exactly rect.height rows" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 20, 3))
+        Testing.place(tv, Rect.new(0, 0, 20, 3))
         tv.text = "a\nb\nc\nd\ne"
         assert_equal 3, painted_lines(tv).length
       end
 
       it "pads short lines to full width" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 10, 1))
+        Testing.place(tv, Rect.new(0, 0, 10, 1))
         tv.text = "hi"
         lines = painted_lines(tv)
         assert_equal 10, lines[0].length
@@ -2226,14 +2229,14 @@ module Tuile
 
       it "paints an indent, so nested text keeps its structure" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 10, 3))
+        Testing.place(tv, Rect.new(0, 0, 10, 3))
         tv.text = "root\n  child\n    leaf"
         assert_equal ["root      ", "  child   ", "    leaf  "], painted_lines(tv)
       end
 
       it "pads blank rows past the last line" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 10, 3))
+        Testing.place(tv, Rect.new(0, 0, 10, 3))
         tv.text = "hi"
         lines = painted_lines(tv)
         assert_equal "hi        ", lines[0]
@@ -2243,7 +2246,7 @@ module Tuile
 
       it "paints using scroll_top_row offset" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 20, 2))
+        Testing.place(tv, Rect.new(0, 0, 20, 2))
         tv.text = "a\nb\nc\nd"
         tv.scroll_top_row = 2
         lines = painted_lines(tv)
@@ -2253,7 +2256,7 @@ module Tuile
 
       it "word-wraps lines longer than rect width" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 5, 2))
+        Testing.place(tv, Rect.new(0, 0, 5, 2))
         tv.text = "hello world"
         lines = painted_lines(tv)
         assert_equal "hello", lines[0]
@@ -2262,7 +2265,7 @@ module Tuile
 
       it "hard-breaks words longer than rect width" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 4, 2))
+        Testing.place(tv, Rect.new(0, 0, 4, 2))
         tv.text = "abcdefgh"
         lines = painted_lines(tv)
         assert_equal "abcd", lines[0]
@@ -2271,7 +2274,7 @@ module Tuile
 
       it "emits ANSI styling on painted lines" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 10, 1))
+        Testing.place(tv, Rect.new(0, 0, 10, 1))
         tv.text = StyledString.styled("hi", fg: :red)
         repaint(tv)
         raw = Screen.instance.buffer.region_ansi(tv.absolute_rect)[0]
@@ -2281,7 +2284,7 @@ module Tuile
 
       it "preserves styling on wrapped continuation lines" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 5, 2))
+        Testing.place(tv, Rect.new(0, 0, 5, 2))
         tv.text = StyledString.styled("hello world", fg: :red)
         repaint(tv)
         rows = Screen.instance.buffer.region_ansi(tv.absolute_rect)
@@ -2296,7 +2299,7 @@ module Tuile
         # content, so a back-to-back repaint of unchanged rows touches nothing:
         # after flushing the first paint, the second flush is empty.
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 10, 2))
+        Testing.place(tv, Rect.new(0, 0, 10, 2))
         tv.text = "hi\nthere"
         repaint(tv)
         Screen.instance.buffer.flush
@@ -2306,11 +2309,11 @@ module Tuile
 
       it "rewraps when rect width changes" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 5, 3))
+        Testing.place(tv, Rect.new(0, 0, 5, 3))
         tv.text = "hello world foo"
         # at width 5: ["hello", "world", "foo"]
         assert_equal 3, painted_lines(tv).length
-        place(tv, Rect.new(0, 0, 11, 3))
+        Testing.place(tv, Rect.new(0, 0, 11, 3))
         # at width 11: ["hello world", "foo"]
         lines = painted_lines(tv)
         assert_equal "hello world", lines[0]
@@ -2319,7 +2322,7 @@ module Tuile
 
       it "narrowing the viewport by enabling the scrollbar rewraps" do
         tv = Component::TextView.new
-        place(tv, Rect.new(0, 0, 6, 3))
+        Testing.place(tv, Rect.new(0, 0, 6, 3))
         tv.text = "hello world"
         # at width 6: ["hello", "world"]
         assert_equal "hello ", painted_lines(tv)[0]

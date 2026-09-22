@@ -189,7 +189,7 @@ module Tuile
         bar = menu_bar(width: 9)
         2.times { key(Keys::RIGHT_ARROW) }
         assert_equal 9, offset(bar)
-        place(bar, Rect.new(0, 0, 40, 1))
+        Testing.place(bar, Rect.new(0, 0, 40, 1))
         assert_equal 0, offset(bar)
       end
     end
@@ -503,14 +503,14 @@ module Tuile
       it "a changed rect closes the cascade — every panel position is derived" do
         bar = menu_bar
         key(Keys::ENTER)
-        place(bar, Rect.new(0, 0, 30, 1))
+        Testing.place(bar, Rect.new(0, 0, 30, 1))
         assert_empty popups
       end
 
       it "an unchanged rect does not, so a relayout can't dismiss a menu" do
         bar = menu_bar
         key(Keys::ENTER)
-        place(bar, Rect.new(0, 0, 40, 1)) # equal, but a different object
+        Testing.place(bar, Rect.new(0, 0, 40, 1)) # equal, but a different object
         assert_equal 1, popups.size
       end
 

@@ -20,7 +20,10 @@ module Tuile
     def held(notification) = notification.instance_variable_get(:@messages)
 
     # The box the pane gives it, once the settle has placed it.
-    def box(notification) = settle(notification).rect
+    def box(notification)
+      notification.flush_layout
+      notification.rect
+    end
 
     def rows(notification)
       screen.repaint
@@ -39,7 +42,7 @@ module Tuile
       screen.content = layout
       Component::TextField.new.tap do |f|
         layout.add(f)
-        place(f, Rect.new(0, 5, 20, 1))
+        Testing.place(f, Rect.new(0, 5, 20, 1))
         screen.focused = f
       end
     end
@@ -48,7 +51,8 @@ module Tuile
     # in the corner, so the pre-settle rect is wherever the last one sat — and
     # the gesture would be aimed there (`D_strict_layout`).
     def click(component, button: :left)
-      rect = settle(component).absolute_rect
+      component.flush_layout
+      rect = component.absolute_rect
       Screen.instance.click(rect.left + 1, rect.top + 1, button: button)
     end
 
@@ -173,8 +177,7 @@ module Tuile
       end
 
       def narrow_screen(width, height)
-        screen.instance_variable_set(:@size, Size.new(width, height))
-        place(screen.pane, Rect.new(0, 0, width, height))
+        screen.resize_terminal(width, height)
       end
     end
 

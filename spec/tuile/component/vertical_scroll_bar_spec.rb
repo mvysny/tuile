@@ -12,7 +12,7 @@ module Tuile
     def bar(rows: 40, top: 0, height: 5)
       Component::VerticalScrollBar.new(row_count: rows, scroll_top_row: top).tap do |b|
         screen.content = b
-        place(b, Rect.new(0, 0, 1, height))
+        Testing.place(b, Rect.new(0, 0, 1, height))
       end
     end
 
@@ -101,7 +101,7 @@ module Tuile
 
       it "paints one column however wide a rect it is handed" do
         b = bar
-        place(b, Rect.new(0, 0, 4, 5))
+        Testing.place(b, Rect.new(0, 0, 4, 5))
 
         screen.repaint
 

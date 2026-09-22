@@ -125,7 +125,7 @@ module Tuile
     it "says nothing once the pass has run" do
       pane = resized_pane
       Tuile.strict_layout = :raise
-      settle(pane)
+      pane.flush_layout
       assert_equal 50, pane.left.rect.width
     end
 
@@ -147,7 +147,7 @@ module Tuile
       inner = two_pane
       outer.add(inner)
       Tuile.strict_layout = :raise
-      settle(outer)
+      outer.flush_layout
       assert_equal 50, outer.left.rect.width
     end
 
@@ -175,7 +175,7 @@ module Tuile
         popup = Component::Overlay.new(content: Component::Label.new("floating"))
         popup.open(Component::Overlay::At[Rect.new(0, 0, 8, 1)])
         assert_raises(Error) { label.rect }
-        settle(label)
+        label.flush_layout
         assert_equal 20, label.rect.width
       end
     end

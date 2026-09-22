@@ -9,26 +9,30 @@ module Tuile
     def expand(weight) = Component::Layout::Expand[weight]
 
     # Every rect read below goes through this, so each settles first.
-    def rects(layout) = settle(layout).children.map(&:rect)
+    def rects(layout)
+      layout.flush_layout
+      layout.children.map(&:rect)
+    end
+
     def tops(layout) = rects(layout).map(&:top)
     def lefts(layout) = rects(layout).map(&:left)
 
     it "maps the main axis to width and the cross axis to height" do
       layout = Component::Layout::Horizontal.new
       layout.add(Component.new, fixed(3), cross: fixed(8))
-      place(layout, Rect.new(0, 0, 20, 10))
+      Testing.place(layout, Rect.new(0, 0, 20, 10))
       assert_equal Rect.new(0, 0, 3, 8), rects(layout).first
     end
 
     it "lays children out rightward" do
       layout = Component::Layout::Horizontal.new
       layout.add([Component.new, Component.new, Component.new], fixed(2))
-      place(layout, Rect.new(5, 7, 20, 10))
+      Testing.place(layout, Rect.new(5, 7, 20, 10))
       # The box's own coordinates: the children stack from its left edge, and
       # its position on screen is nowhere in their rects.
       assert_equal [0, 2, 4], lefts(layout)
       assert_equal [0, 0, 0], tops(layout)
-      settle(layout)
+      layout.flush_layout
       assert_equal([5, 7, 9], layout.children.map { |c| c.absolute_rect.left })
     end
 
@@ -36,7 +40,7 @@ module Tuile
       layout = Component::Layout::Horizontal.new
       layout.add(Component.new, fixed(1), cross: fixed(4), align: :start)
       layout.add(Component.new, fixed(1), cross: fixed(4), align: :end)
-      place(layout, Rect.new(0, 0, 20, 10))
+      Testing.place(layout, Rect.new(0, 0, 20, 10))
       assert_equal [0, 6], tops(layout)
     end
 
@@ -47,7 +51,7 @@ module Tuile
       main = Component.new
       layout.add(sidebar, fixed(30))
       layout.add(main, expand(1))
-      place(layout, Rect.new(0, 0, 100, 24))
+      Testing.place(layout, Rect.new(0, 0, 100, 24))
       assert_equal [Rect.new(0, 0, 30, 24), Rect.new(30, 0, 70, 24)], rects(layout)
     end
   end

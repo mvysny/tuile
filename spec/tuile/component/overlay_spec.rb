@@ -83,7 +83,7 @@ module Tuile
     it "lays out content to fill the entire overlay rect" do
       list = list_of(["hello"])
       o = Component::Overlay.new(content: list)
-      settle(o.open(at(Rect.new(3, 4, 20, 2))))
+      o.open(at(Rect.new(3, 4, 20, 2))).flush_layout
       assert_equal o.local_rect, list.rect
       assert_equal o.rect, list.absolute_rect
     end
@@ -132,7 +132,7 @@ module Tuile
       it "does not grab focus or center when opened" do
         content = Component::Layout::Absolute.new
         field = Component::TextField.new
-        place(field, Rect.new(0, 0, 10, 1))
+        Testing.place(field, Rect.new(0, 0, 10, 1))
         content.add(field)
         Screen.instance.content = content
         Screen.instance.focused = field
@@ -145,22 +145,25 @@ module Tuile
     context "placement" do
       it "takes the rect its placement asks for on the next settle" do
         o = Component::Overlay.new(content: list_of(%w[a b])).open(at(Rect.new(12, 7, 20, 2)))
-        assert_equal Rect.new(12, 7, 20, 2), settle(o).rect
+        o.flush_layout
+        assert_equal Rect.new(12, 7, 20, 2), o.rect
         assert_equal at(Rect.new(12, 7, 20, 2)), o.placement
       end
 
       it "keeps it through a resize, which re-runs the pane's pass" do
         o = Component::Overlay.new(content: list_of(%w[a b])).open(at(Rect.new(12, 7, 20, 2)))
-        place(Screen.instance.pane, Rect.new(0, 0, 100, 30))
-        assert_equal Rect.new(12, 7, 20, 2), settle(o).rect
+        Screen.instance.resize_terminal(100, 30)
+        o.flush_layout
+        assert_equal Rect.new(12, 7, 20, 2), o.rect
       end
 
       it "moves on the next settle when the placement changes" do
         o = Component::Overlay.new(content: list_of(%w[a b])).open(at(Rect.new(12, 7, 20, 2)))
-        settle(o)
+        o.flush_layout
         o.placement = at(Rect.new(0, 3, 20, 2))
         assert_equal(Rect.new(12, 7, 20, 2), Tuile.without_strict_layout { o.rect })
-        assert_equal Rect.new(0, 3, 20, 2), settle(o).rect
+        o.flush_layout
+        assert_equal Rect.new(0, 3, 20, 2), o.rect
       end
 
       it "refuses a new placement while closed — open takes it" do
@@ -175,7 +178,7 @@ module Tuile
       end
 
       it "declares no size, so a centered placement is refused" do
-        assert_raises(Tuile::Error) { settle(Component::Overlay.new.open(Component::Overlay::Centered[])) }
+        assert_raises(Tuile::Error) { Component::Overlay.new.open(Component::Overlay::Centered[]).flush_layout }
       end
     end
 
@@ -189,11 +192,11 @@ module Tuile
 
       it "fully repaints when an open overlay moves clear of its previous cells" do
         o = Component::Overlay.new(content: list_of(["hi"]))
-        settle(o.open(at(Rect.new(0, 0, 6, 1))))
+        o.open(at(Rect.new(0, 0, 6, 1))).flush_layout
         Screen.instance.invalidated_clear
 
         o.placement = at(Rect.new(11, 0, 6, 1))
-        settle(o)
+        o.flush_layout
         assert Screen.instance.invalidated?(tiled)
       end
     end

@@ -12,7 +12,7 @@ module Tuile
     def field(width: 20)
       f = Component::TimeField.new
       Screen.instance.content = f
-      place(f, Rect.new(0, 0, width, 1))
+      Testing.place(f, Rect.new(0, 0, width, 1))
       Screen.instance.focused = f
       f
     end
@@ -539,7 +539,7 @@ module Tuile
           root.add(f)
           root.define_singleton_method(:handle_key?) { |k| seen << k }
         end
-        place(f, Rect.new(0, 0, 20, 1))
+        Testing.place(f, Rect.new(0, 0, 20, 1))
         Screen.instance.focused = f
         f.value = at(13, 45)
         key(Keys::PAGE_UP)

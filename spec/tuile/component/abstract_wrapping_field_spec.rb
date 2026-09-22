@@ -32,7 +32,7 @@ module Tuile
 
     def field(width: 10, attach: true)
       f = upcase_field_class.new
-      return place(f, Rect.new(0, 0, width, 1)) unless attach
+      return Testing.place(f, Rect.new(0, 0, width, 1)) unless attach
 
       mount_at(f, Rect.new(0, 0, width, 1))
     end
@@ -223,8 +223,8 @@ module Tuile
         Screen.instance.content = layout
         layout.add(f)
         layout.add(other)
-        place(f, Rect.new(0, 0, 10, 1))
-        place(other, Rect.new(0, 1, 10, 1))
+        Testing.place(f, Rect.new(0, 0, 10, 1))
+        Testing.place(other, Rect.new(0, 1, 10, 1))
 
         Screen.instance.focused = f
         assert_equal 0, f.commits
@@ -272,8 +272,9 @@ module Tuile
       # rect is parent-relative, and moving the field moves it for free.
       it "re-places it on every rect assignment" do
         f = field
-        place(f, Rect.new(2, 3, 5, 1))
-        assert_equal Rect.new(0, 0, 5, 1), settle(f.inner).rect
+        Testing.place(f, Rect.new(2, 3, 5, 1))
+        f.inner.flush_layout
+        assert_equal Rect.new(0, 0, 5, 1), f.inner.rect
         assert_equal Rect.new(2, 3, 5, 1), f.inner.absolute_rect
       end
 
@@ -284,8 +285,9 @@ module Tuile
           def relayout = (editor.rect = Rect.new(0, 0, width - 1, 1))
         end
         f = narrow.new
-        place(f, Rect.new(0, 0, 10, 1))
-        assert_equal 9, settle(f.inner).rect.width
+        Testing.place(f, Rect.new(0, 0, 10, 1))
+        f.inner.flush_layout
+        assert_equal 9, f.inner.rect.width
       end
     end
 
