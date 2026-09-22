@@ -401,7 +401,7 @@ module Tuile
       # {Component#invalidate_children} is the half that cannot be skipped
       # with it, or the bar goes stale under an ancestor's clear
       # (`D_repaint_cascade`). Rows go through {Canvas#set_text}, so content
-      # and blank rows inherit {Component#effective_bg_color} (a {#bg_color}
+      # and blank rows inherit {ComponentBackground#effective} (a {#bg_color}
       # set here or on an ancestor).
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]

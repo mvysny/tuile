@@ -197,8 +197,8 @@ module Tuile
         assert_includes Testing.paint(box).row_ansi(0), "48;5;88"
       end
 
-      # Outside its extent the widget is not there — ambient_bg_color, which
-      # skips this level exactly as it skips default_bg_color.
+      # Outside its extent the widget is not there — ComponentBackground#ambient, which
+      # skips this level exactly as it skips the default_color.
       it "stops at the extent, leaving the dead tail alone" do
         box = Component::Checkbox.new("ok")
         Testing.place(box, Rect.new(0, 0, 40, 1))

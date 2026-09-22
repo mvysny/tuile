@@ -35,7 +35,7 @@ opaque: every cell holds exactly one `bg`, and a glyph painted with
 
 Add `Component#bg_color` (a `Color`, default `nil`), with
 **fill-the-gaps inheritance resolved at render**:
-`effective_bg_color = @bg_color || parent&.effective_bg_color` (computed at
+`bg.effective = bg.color || parent&.bg.effective` (computed at
 paint, never cached), and `StyledString#under_bg`, which applies a bg only
 to spans whose bg is `nil`. Set the tint once on a container and
 descendants pick it up; a widget with its own explicit bg
@@ -111,7 +111,7 @@ the fix; this is it.
 `Component#bg_color` accepts a `Theme::Ref` (built by
 `Theme.ref(:token)`) alongside a `Color`. A `Ref` names a theme token and
 is resolved against `screen.theme` at paint time inside
-`effective_bg_color`, so a `Theme::Ref` background tracks the theme with
+`bg.effective`, so a `Theme::Ref` background tracks the theme with
 **zero `handle_theme_changed` boilerplate** — exactly as framework chrome
 already does. It resolves both a **built-in chrome token**
 (`Theme::CHROME_TOKENS` — the `Data` members bar `:custom`:
@@ -122,7 +122,7 @@ eagerly (a bad token raises `KeyError` at assignment, not deep in
 `repaint`).
 
 **Why `bg_color` and not colors generally.** It is the only app-settable
-color already resolved late: `effective_bg_color` reads a lone ivar at
+color already resolved late: `bg.effective` reads a lone ivar at
 paint, so a `Ref` there changes *what the existing resolution reads*, not
 adds a resolution pass (one `is_a?` branch). Content colors (`Label#text`,
 `List#lines`, `TextView#text`) bake `Color`s into a frozen `StyledString`
@@ -186,7 +186,7 @@ The cost we carry:
   `Theme::Ref` backgrounds invalidated on theme change, or they strand on
   the old color (guarded in `screen_spec`).
 - `bg_color`'s reader returns the value as set — a `Ref` comes back
-  unresolved; `effective_bg_color` is the resolved `Color`.
+  unresolved; `bg.effective` is the resolved `Color`.
 
 ---
 
@@ -3345,7 +3345,7 @@ mechanism with this one rationale — a `FINAL_METHODS` constant plus a
 `verify_final!` whose raise recited three sentences about `attached?` and the
 parent chain. That message is nonsense printed for any *other* final method, and
 the fusion was noticed while weighing a second group (`bg_color` /
-`effective_bg_color`, so an app can't override the reader the framework reads).
+`bg.effective`, so an app can't override the reader the framework reads).
 So the mechanism is now Ruby's missing `final` keyword and nothing more: a class
 `extend`s `Tuile::Final`, marks its methods, and the raise points at the
 offending method's own rdoc, which is where each *why* lives. Enforcement is
@@ -3870,17 +3870,18 @@ that file's rdoc under the gate at the top of AGENTS.md.
 
 ---
 
-## D_bg_surface — Why does a widget's own background come from `default_bg_color`, keyed by state?
+## D_bg_surface — Why does a widget's own background come from `bg.default_color`, keyed by state?
 
 `AbstractStringField#background` reached past the chain to `screen.theme`, so a `TextField` ignored
 both an inherited tint and its own `bg_color` — never read on the paint path. Six widgets did some
 version of that, which is why AGENTS.md described "three camps, don't mix them".
 
-**The chain was missing a level.** *What is behind me?* was `effective_bg_color` and *does the app
+**The chain was missing a level.** *What is behind me?* was `bg.effective` and *does the app
 override it?* was `bg_color`; **do I paint an opaque surface of my own, and in what colour?** had no
 name, so every widget needing one reached *around* the chain instead of contributing to it. The level
-is a protected hook whose answer may be keyed by component state; architecture.md carries the resolved
-chain.
+is `bg.default_color`, which a widget sets once at construction through its protected `bg` (a
+`ComponentBackground`), and whose value may be keyed by component state; architecture.md carries the
+resolved chain.
 
 **A state map rather than one focus behaviour.** Put a field's focus highlight *inside* the hook and
 an app tint replaces the shade: `select.bg_color = X` silently removes the only focus indicator a
@@ -3897,18 +3898,18 @@ else; a key is added only when Tuile grows the *state*, hence no `:disabled` —
 state, no `enabled?`, no focus-skipping and no theme token, so the key would be a lie; and a `Hash`
 resolves against **its owner's** state, never a descendant's.
 
-**Ownership is told, not inferred** — `BG_INHERIT` means "skip my own `default_bg_color`, take what
+**Ownership is told, not inferred** — `ComponentBackground::INHERIT` means "skip my own `bg.default_color`, take what
 surrounds me". The first cut had the inner widget infer it from `parent.is_a?(HasValue)`: positional
 where the question is structural, and wrong both ways. A `Layout` or `Slot` inserted between composer
 and field makes the parent something else, the field reclaims its well and the composer's tint goes
 inert — the original bug resurrected by a refactor with nothing to do with backgrounds; and an app
 composite including `HasValue` while holding a `TextField` beside other widgets silently loses a well
 it wanted. The sentinel also serves a second caller: a field flush in a tinted panel is
-`field.bg_color = BG_INHERIT`, not a repeated `Theme::Ref` or a subclass. `nil` stays distinct — fall
-through to `default_bg_color` first.
+`field.bg_color = ComponentBackground::INHERIT`, not a repeated `Theme::Ref` or a subclass. `nil` stays distinct — fall
+through to `bg.default_color` first.
 
 **Naming.** `normal:` over `inactive:`, which would read as a superset of a later `disabled:`;
-`default:` was unavailable, "terminal default" being load-bearing vocabulary here. `BG_INHERIT` over
+`default:` was unavailable, "terminal default" being load-bearing vocabulary here. `ComponentBackground::INHERIT` over
 `TRANSPARENT`, which imports the compositing model `D_bg_inherit` refused and collides with "terminal
 cells are opaque". A bare Symbol is safe where `D_theme_ref` rejected one for `Theme::Ref`: that
 objection was ambiguity with `Color.coerce`'s ANSI colour *names*, and `:inherit` is not one.
@@ -3918,16 +3919,21 @@ Why not:
 - **Override the `bg_color` *reader*** (`super || well`) — two lines, no new API, but the reader stops
   meaning "what the app set", which is how the framework tells an app tint from a widget well. The
   dead-tail rule needs that distinction, so recovering it means reading the ivar around your own
-  accessor, and a private well silently becomes a subtree tint. `bg_color` / `effective_bg_color` are
-  final partly to foreclose it.
+  accessor, and a private well silently becomes a subtree tint. `bg` is final partly to foreclose
+  it.
 - **A public `opaque=` flag.** It found something real — a per-instance opt-out unreachable without
   subclassing — but the name imports that same refused compositing model, it is a no-op on a component
-  with no `default_bg_color`, and dead beside a set `bg_color`. The capability landed as `BG_INHERIT`:
+  with no `bg.default_color`, and dead beside a set `bg_color`. The capability landed as `ComponentBackground::INHERIT`:
   one property, no dead combinations.
 - **Forwarding `bg_color=` from a composed field to its inner one** — illegal, the setter being final,
-  and unnecessary: the composer owns the well and marks its face `BG_INHERIT`, which also deleted the
+  and unnecessary: the composer owns the well and marks its face `ComponentBackground::INHERIT`, which also deleted the
   duplicated active-state branch the `ComboBox` `▾` carried.
-- **Migrating `Button` / `Checkbox` / `Tabs` / `MenuBar` / `List` onto the hook.** Expressible —
+- **An override hook, `def default_bg_color = active? ? … : …`.** It shipped that way, and all five
+  overrides were that one line — which a state map of two `Theme::Ref`s says as data
+  (`ComponentBackground::INPUT_WELL`), set once instead of re-answered per paint. The *error* level
+  stays a hook: it follows the verdict, and a pushed copy is a writer per edge of that state, stale
+  silently when one forgets.
+- **Migrating `Button` / `Checkbox` / `Tabs` / `MenuBar` / `List` onto the level.** Expressible —
   `{ active: active_bg_color }` with no `:normal` key is exactly their behaviour — but their accent is
   override-all where the chain is fill-unset, so an app-styled caption span would start surviving the
   highlight; and for `Tabs` / `MenuBar` / `List` the accent covers a *segment or row*, which a
@@ -3937,11 +3943,11 @@ The cost we carry:
 
 - "Three camps" becomes two: the prohibition on a well widget setting `bg_color` was the bug, not the
   rule.
-- **A composed field owes `default_bg_color` and the `BG_INHERIT` mark as a pair.** Measured: the mark
+- **A composed field owes `bg.default_color` and the `ComponentBackground::INHERIT` mark as a pair.** Measured: the mark
   without the composer's hook leaves the face with no well at all; dropping both puts the inner
   field's well back and makes the composer's `bg_color` inert over it. Neither is caught by the
   numeric fields' specs. A new widget with a well owes one plus an `extent`, or its dead tail lies.
-- **The hook must not allocate**: `TextArea` resolves the chain once per painted row.
+- **Resolving must not allocate**: `TextArea` resolves the chain once per painted row.
 - **`Label#bg` is deleted** — the wart `D_bg_inherit` parked. It filled behind text, pad and blank
   rows, which is `bg_color` now, and *stomped* a span's own background; only the second was unique,
   and being a restyle of the text it belongs there (`label.text = text.with_bg(c)`). Keeping it left
@@ -4017,7 +4023,7 @@ The cost we carry:
   background must be darker than it, so it sits a step below that theme's highlights where the dark
   theme reuses its selection-well weight.
 - **Focus-awareness is parked** — the bar in the *focused* pane arguably wants brighter ink, but
-  that means importing `BG_STATES`-style state-keyed maps (`D_bg_surface`) into a foreground token
+  that means importing `ComponentBackground::STATES`-style state-keyed maps (`D_bg_surface`) into a foreground token
   for one widget. Not built, not foreclosed.
 
 ## D_draggable_scrollbar — Why is a scrollbar you can drag a component in the tree, when the one you cannot is a value object?
@@ -4482,13 +4488,13 @@ shows boundary **and** verdict, and the 2×2 precedence question a red *foregrou
 never arises, because the pair is *declared*, not derived: `Theme#error_bg_color` /
 `#error_active_bg_color` are `input_bg_color` / `active_bg_color`'s red counterparts. Two tokens
 rather than one flat error colour, or a focused invalid `Select` shows no focus at all —
-`D_bg_surface` found that bug. `BG_STATES` stays closed: error is a *level in the chain*, not a state
+`D_bg_surface` found that bug. `ComponentBackground::STATES` stays closed: error is a *level in the chain*, not a state
 key. This re-weighs `D_color_slots` toward a chrome token, validity spanning every `HasValue` field
 being the case that argument was waiting for.
 
-**The hook sits above `bg_color`:** `error_bg_color || @bg_color || default_bg_color || parent`.
-Under it — where the `default_bg_color` precedent points — an app tinting a panel would silently
-switch the signal off on the fields inside; above it, every widget overriding `default_bg_color` is
+**The hook sits above `bg_color`:** `error_bg_color || bg.color || bg.default_color || parent`.
+Under it — where the `bg.default_color` precedent points — an app tinting a panel would silently
+switch the signal off on the fields inside; above it, every widget setting `bg.default_color` is
 spared a `return super if invalid` line that one of them would forget. **No widget needed a line of
 paint code.**
 
@@ -4548,7 +4554,7 @@ Why not:
   to composite against but the previous frame — so it would be flattened during resolution, making
   the value type partial (a translucent colour has nothing to hand `sgr_codes`).
 - **Forwarding the message down to a composed field's inner widget** — what a push-it-down design
-  needed on four composed fields and two groups; resolving the well through `effective_bg_color`
+  needed on four composed fields and two groups; resolving the well through `bg.effective`
   deletes the category, that chain already inheriting.
 
 The cost we carry: the token pair is chosen rather than queried, against a cursor colour a process
@@ -4763,7 +4769,7 @@ The rulings on its shape:
 the eye, making an empty field *louder* than a filled one — the affordance backwards
 (`D_no_hint_color` later deleted the token, agreeing). So `placeholder_color`, whose shade is forced
 rather than chosen: one ink must survive `input_bg_color`, `active_bg_color`, both error wells and
-terminal-default under `BG_INHERIT`, and quantization settles it — **there is no middle grey on a
+terminal-default under `ComponentBackground::INHERIT`, and quantization settles it — **there is no middle grey on a
 16-colour terminal** (`R_color_depth`), so each token is the boundary value on its side, the dimmest
 still reading `:white` on dark and the palest still reading `:bright_black` on light. **A hint the
 user is allowed to miss must fail loud, never absent** is the tie-break; `theme_spec` pins it at all
@@ -4819,7 +4825,7 @@ buffer content, which a field showing its hint has none of.
 
 `D_float_field` and `D_select` ruled *duplicate rather than DRY a shallow shell*, at a bar of a
 **fourth** copy. `DateField` is that copy, and by then the shell was not shallow: six obligations sat
-in all four composed fields, down to a character-identical `default_bg_color`, one already carrying a
+in all four composed fields, down to a character-identical `bg.default_color`, one already carrying a
 warning in AGENTS.md — and a rule that needs a warning there wants to be code. The same release took
 `content` off those fields' public face — `D_has_content`.
 
@@ -5823,13 +5829,13 @@ latching on ENTER would reopen exactly the unobservable window this closes.
 
 **The halves keep their own wells, and the composite's ink is *synced* onto them.** The finding, and
 the correction to the note that filed this: `error_bg_color` sits at the **top** of the background
-chain (`D_bg_surface`), so a child that answers `default_bg_color` — every field does — never
+chain (`D_bg_surface`), so a child that answers `bg.default_color` — every field does — never
 inherits an ancestor's error level; the earlier reading was verified with a bare `Label`, which
 answers no level of its own. Marking the composite self-invalid therefore leaves the *fields*
 untouched and reddens only what the composite paints itself — for a two-field row, the gap between
 them, which `D_extent`'s blank puts in the ambient background anyway, so the mark reaches no cell at
 all. So the composite declares no well, and one idempotent
-sync over one condition marks both halves `BG_INHERIT` exactly while it inks — the shape AGENTS.md
+sync over one condition marks both halves `ComponentBackground::INHERIT` exactly while it inks — the shape AGENTS.md
 prescribes for a hook-owned resource, with the composite the sole writer of its halves' `bg_color`.
 A guilty half's own `error_bg_color` still beats the mark, which is what keeps the ink rule free of
 arithmetic. Two real costs: **an app must not tint a half** (silently reverted at the next sync — a

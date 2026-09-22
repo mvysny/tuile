@@ -265,6 +265,7 @@ module SamplerExample
       @moves = 0
       @drag_ink = nil
       @drag_outside = false
+      bg.default_color = Tuile::ComponentBackground::INPUT_WELL
     end
 
     def focusable? = true
@@ -279,9 +280,6 @@ module SamplerExample
 
       @caret
     end
-
-    # @return [Tuile::Color]
-    def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
 
     # Clamps the caret into the new rect, so a shrink cannot strand it — and
     # with it the hardware cursor — outside what this widget paints.

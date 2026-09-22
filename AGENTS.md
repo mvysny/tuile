@@ -327,9 +327,9 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 
 ### Background
 
-- **A widget with a well owes an `extent`, and a composer owes `default_bg_color` and its face's
-  `BG_INHERIT` as a pair** — either half alone fails silently, and no spec catches it. The resolved
-  chain is `design/architecture.md`'s. See `D_bg_surface`.
+- **A widget with a well owes an `extent`, and a composer owes `bg.default_color` and its face's
+  `ComponentBackground::INHERIT` as a pair** — either half alone fails silently, and no spec
+  catches it. The resolved chain is `design/architecture.md`'s. See `D_bg_surface`.
 - **There is one background knob and no foreground one** — `Label#bg` and `content_fg_color` were
   each built and deleted; app-authored content carries its colors in its own `StyledString`. See
   `D_bg_surface`.

@@ -1,7 +1,7 @@
-# The focus accent — should `Button` / `Checkbox` / `Tabs` / `MenuBar` / `List` move onto `default_bg_color`?
+# The focus accent — should `Button` / `Checkbox` / `Tabs` / `MenuBar` / `List` move onto `bg.default_color`?
 
 **Status:** measured and parked, 2026-09-01. Spun off from `D_bg_surface`,
-which introduced `Component#default_bg_color` and migrated the *well* widgets
+which introduced `ComponentBackground#default_color` and migrated the *well* widgets
 (`AbstractStringField`, `Select`, `ComboBox`) onto it while explicitly leaving
 this family alone. That note records the decision; this one records the
 *measurement*, so whoever revisits it doesn't re-run the experiment.
@@ -17,7 +17,7 @@ segment.with_bg(screen.theme.active_bg_color)                    # Tabs, MenuBar
 is_cursor ? base.with_bg(screen.theme.active_bg_color) : base    # List
 ```
 
-`default_bg_color` can express the per-component half of that —
+`bg.default_color` can express the per-component half of that —
 `{ active: screen.theme.active_bg_color }`, or the allocation-free
 `active? ? … : nil`, with no `:normal` key so an unfocused widget falls through
 to the ambient. So: should it?
@@ -32,8 +32,8 @@ The migration was written and run. It is:
        draw_text(rect.left, rect.top, label)
      end
 +
-+    # @return [Color, nil]
-+    def default_bg_color = active? ? screen.theme.active_bg_color : nil
++    # in initialize
++    bg.default_color = { active: Theme.ref(:active_bg_color) }
 ```
 
 **Net +2 lines.** Nothing is deleted, because these widgets have no *well* —
@@ -56,7 +56,7 @@ Probed directly, migrated vs. original, on a focused `Checkbox` at 20×1:
 **A surface and an accent are different things, and the hook is only right for
 one.** A *surface* is what your cells sit on; it is legitimately the app's to
 override, which is the whole point of `bg_color` winning over
-`default_bg_color`. An *accent* is a signal painted **over** whatever is there,
+`bg.default_color`. An *accent* is a signal painted **over** whatever is there,
 and it must be unconditional — the moment it can be selectively suppressed
 (by a caption span, by an app tint) it stops being a reliable indicator.
 

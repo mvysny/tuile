@@ -136,7 +136,7 @@ binder.addStatusChangeListener(event -> {
 Three reasons not to copy it, ascending:
 
 - **`Button` has no disabled state** — no `enabled` axis on `Component`, no
-  `:disabled` in `BG_STATES` (AGENTS.md is explicit that the key is absent
+  `:disabled` in `ComponentBackground::STATES` (AGENTS.md is explicit that the key is absent
   because the *state* is absent). The enabled design needs framework work
   first; the click design needs none.
 - **A disabled control says nothing about why**, and a TUI has no channel to

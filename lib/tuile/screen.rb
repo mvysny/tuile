@@ -186,14 +186,14 @@ module Tuile
     # @return [Canvas]
     def canvas_for(component, backend: @buffer, root: nil)
       # Built rather than derived from #canvas, since {Canvas#with} is
-      # block-only. __send__ because effective_bg_color is protected: the
+      # block-only. __send__ because Component#bg is protected: the
       # framework paints with it, an app never asks (`D_bg_surface`).
       origin = component.to_screen(Point::ZERO)
       unless root.nil?
         base = root.to_screen(Point::ZERO)
         origin = Point.new(origin.x - base.x, origin.y - base.y)
       end
-      Canvas.new(backend, bg_color: component.__send__(:effective_bg_color),
+      Canvas.new(backend, bg_color: component.__send__(:bg).effective,
                           origin:,
                           clip: clip_for(component, root:).moved_by(origin))
     end

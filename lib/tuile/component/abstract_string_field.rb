@@ -87,6 +87,11 @@ module Tuile
         @text = +""
         @caret = 0
         @escape_clears_focus = true
+        # Unconditional on purpose: a field used as the face of a composed one
+        # ({ComboBox}, {IntegerField} …) is *told* to drop its well with
+        # {ComponentBackground::INHERIT} — a second well would make the
+        # composer's own bg_color inert over the very cells this field paints.
+        bg.default_color = ComponentBackground::INPUT_WELL
       end
 
       # @return [String] current text contents.
@@ -249,20 +254,6 @@ module Tuile
         self.text = new_text
         true
       end
-
-      # The field's background well, looked up from the current {Screen#theme}
-      # at paint time: {Theme#active_bg_color} while this input is on the active
-      # (focus) chain, {Theme#input_bg_color} otherwise — visibly a field either
-      # way, distinctly highlighted when focused. An app overrides the pair by
-      # setting {Component#bg_color}, which wins over this.
-      #
-      # Unconditional on purpose. A field used as the face of a composed one
-      # ({Component::ComboBox}, {Component::IntegerField} …) is *told* to drop
-      # its well — that widget assigns {Component::BG_INHERIT} at construction,
-      # since it owns the surface and a second well would make its own
-      # {Component#bg_color} inert over the very cells this field paints.
-      # @return [Color]
-      def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
 
       # Input filter for a whole assignment to {#text=}. Nothing overrides it
       # today; a subclass that does is filtering the *programmatic* setter, not

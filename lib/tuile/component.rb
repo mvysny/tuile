@@ -42,14 +42,14 @@ module Tuile
     # Each method's own rdoc says what an override would break; `D_final_tree`
     # carries the full argument.
     final :children, :parent, :parent=, :add_child, :remove_child, :detach_child,
-          :effective_bg_color
+          :bg
 
     def initialize
       Component.verify_final!(self.class)
       @rect = Rect.new(0, 0, 0, 0)
       @visible = true
       @active = false
-      @bg_color = nil
+      @bg = ComponentBackground.new(self)
       @children = []
       @id = nil
       @layout_dirty = false
@@ -435,35 +435,15 @@ module Tuile
       parent&.scroll_to_visible(rect.moved_by(self.rect.top_left))
     end
 
-    # The states a background may be keyed by. Closed and framework-defined:
-    # a key is added when Tuile grows the state, never to let an app invent one.
-    # @return [Array<Symbol>]
-    BG_STATES = %i[normal active].freeze
-
-    # Assign to {#bg_color} to say "I contribute no background of my own" —
-    # resolution skips this component's {#default_bg_color} and takes whatever
-    # surrounds it. CSS's `background: inherit`, and the reason a widget with a
-    # well can be made to sit flush in a tinted panel:
-    #
-    #   field.bg_color = Component::BG_INHERIT   # no well; take the pane's tint
-    #
-    # Distinct from `nil`, which falls through to {#default_bg_color} *first*.
-    # There is deliberately no counterpart forcing the terminal default despite
-    # a tinted ancestor (`D_bg_inherit`).
-    # @return [Symbol]
-    BG_INHERIT = :inherit
-
-    # @return [Color, Theme::Ref, Hash{Symbol => Color, Theme::Ref}, nil] this
-    #   component's own background — the value as set, so a {Theme::Ref} comes
-    #   back unresolved and a state map comes back a Hash; `nil` when unset, in
-    #   which case the component falls back to {#default_bg_color} and then to
-    #   its parent. {#effective_bg_color} is the resolved {Color} to paint.
-    attr_reader :bg_color
+    # @return [Color, Theme::Ref, Hash{Symbol => Color, Theme::Ref}, Symbol, nil]
+    #   this component's own background — the value as set, so a {Theme::Ref}
+    #   comes back unresolved and a state map comes back a Hash; `nil` when
+    #   unset, in which case the widget's own well and then the parent answer.
+    def bg_color = @bg.color
 
     # Tints this component and every descendant that doesn't set its own
-    # background (they re-resolve via {#effective_bg_color}) — set it once on a
-    # container / {Component::Popup} to tint a whole subtree. Invalidates the
-    # subtree so it repaints.
+    # background — set it once on a container / {Component::Popup} to tint a
+    # whole subtree. Invalidates the subtree so it repaints.
     #
     # A {Theme::Ref} is re-resolved against the theme each paint, so it tracks
     # light/dark flips with no {#handle_theme_changed} hook; a {Color} is fixed:
@@ -471,9 +451,9 @@ module Tuile
     #   panel.bg_color = Theme.ref(:panel_bg)   # theme-tracked
     #   panel.bg_color = Color::GREY27          # fixed
     #
-    # A Hash keyed by {BG_STATES} gives a color per state — the shape a widget
-    # that highlights itself on focus needs, and the reason setting a flat color
-    # on one is a *choice* rather than a trap:
+    # A Hash keyed by {ComponentBackground::STATES} gives a color per state —
+    # the shape a widget that highlights itself on focus needs, and the reason
+    # setting a flat color on one is a *choice* rather than a trap:
     #
     #   field.bg_color = grey                            # flat: focused or not
     #   field.bg_color = { normal: grey, active: blue }  # the pair
@@ -481,27 +461,23 @@ module Tuile
     #                                                    # well, override focus
     #
     # A state whose key is absent is not answered here at all: resolution falls
-    # through to {#default_bg_color} and then to the parent, exactly as `nil`
+    # through to the widget's own well and then to the parent, exactly as `nil`
     # does. That is what makes the third line above mean what it reads as.
     #
     # This does *not* win over a validation error: {#error_bg_color} resolves
     # first, so tinting a panel cannot switch off the error well on the fields
-    # inside it.
+    # inside it. {ComponentBackground} carries the whole chain.
     #
     # @param color [Color, Theme::Ref, Hash, Symbol, Integer, Array<Integer>, nil]
-    #   a {Theme::Ref}, {BG_INHERIT}, a Hash keyed by {BG_STATES}, else a color
-    #   coerced via {Color.coerce}; `nil` unsets (fall through to
-    #   {#default_bg_color}, then the parent).
-    # @raise [ArgumentError] when a Hash carries a key outside {BG_STATES}.
+    #   a {Theme::Ref}, {ComponentBackground::INHERIT}, a state Hash, else a
+    #   color coerced via {Color.coerce}; `nil` unsets.
+    # @raise [ArgumentError] when a Hash carries a key outside
+    #   {ComponentBackground::STATES}.
     # @raise [KeyError] when a {Theme::Ref} names an absent custom token —
     #   validated eagerly at assignment, not deferred to paint.
     # @return [void]
     def bg_color=(color)
-      color = coerce_bg_color(color)
-      return if @bg_color == color
-
-      @bg_color = color
-      walk_tree { |c| screen.invalidate(c) } if attached?
+      @bg.color = color
     end
 
     # Repaints the component. The default does the bookkeeping most components
@@ -537,7 +513,7 @@ module Tuile
     # dropped.
     #
     # **Paint onto `canvas`, never onto {Screen#canvas} by name.** It arrives
-    # already loaded with this component's {#effective_bg_color}, so every write
+    # already loaded with this component's {ComponentBackground#effective}, so every write
     # through it inherits; reach for the screen's own and inheritance silently
     # stops (`D_canvas`).
     #
@@ -1241,7 +1217,7 @@ module Tuile
       below = Rect.new(0, e.height, rect.width, rect.height - e.height)
       # Not this widget's own surface: a one-row Select handed a 25-row rect
       # would otherwise flood the other 24 with its field well.
-      canvas.with(bg_color: ambient_bg_color) do |ambient|
+      canvas.with(bg_color: bg.ambient) do |ambient|
         ambient.fill(right) unless right.empty?
         ambient.fill(below) unless below.empty?
       end
@@ -1263,62 +1239,32 @@ module Tuile
     # @param canvas [Canvas] the paint context, at this component's own background.
     # @return [void]
     def clear_inside_extent(canvas)
-      canvas.with(bg_color: ambient_bg_color) { _1.fill(local_extent_rect) }
+      canvas.with(bg_color: bg.ambient) { _1.fill(local_extent_rect) }
     end
 
-    # The background this component paints when the app has set no {#bg_color} —
-    # `nil` by default, meaning "I have no surface of my own; whatever is behind
-    # me shows through". A widget that paints an opaque surface overrides it, and
-    # inheritance stops there: that is what keeps a form's fields looking like
-    # fields inside a tinted panel. Declare it unconditionally — a widget owned
-    # by a bigger one is told so with {BG_INHERIT}, and must not try to work it
-    # out from where it sits in the tree.
+    # This component's background — protected, because stating a widget's own
+    # well is the widget's business; an app tints through {#bg_color=}.
     #
-    #   # a field: its own well, brighter while focused
-    #   def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
+    #   bg.default_color = ComponentBackground::INPUT_WELL   # in a field's initialize
     #
-    # Return whatever {#bg_color} accepts — a {Color}, a {Theme::Ref} or a state
-    # Hash. Branching on {#active?} and handing back one {Color}, as above, is
-    # the cheap form and allocates nothing on the paint path.
-    #
-    # Read the theme here rather than in an ivar: this runs at paint time, so a
-    # {Screen#theme=} restyles the widget with no {#handle_theme_changed} hook.
-    # @return [Color, Theme::Ref, Hash, nil]
-    def default_bg_color = nil
-
-    # Final, and protected: it answers what the *framework* paints with, and an
-    # app never needs it — {Screen#canvas_for} has already loaded it onto the
-    # canvas. A component states its own opinion by overriding
-    # {#default_bg_color}, an app by setting {#bg_color}; neither takes this
-    # over. Protected rather than private because the chain below is an
-    # explicit-receiver call, which Ruby forbids for a private method.
-    # @return [Color, nil] the background actually painted, for the state this
-    #   component is in right now: its {#error_bg_color}, else its {#bg_color},
-    #   else its {#default_bg_color}, else the nearest ancestor answering one of
-    #   those, else `nil` (terminal default). Resolved at paint time — never
-    #   cached, so the subtree tracks an ancestor's {#bg_color=}, a
-    #   {Screen#theme=}, a focus change and a validation verdict on its next
-    #   repaint.
-    def effective_bg_color
-      own = resolve_bg_color(error_bg_color) || resolve_bg_color(@bg_color) || resolve_bg_color(default_bg_color)
-      return parent&.effective_bg_color if own.nil? || own == BG_INHERIT
-
-      own
-    end
+    # Final: {Screen#canvas_for} and every descendant's chain read it.
+    # @return [ComponentBackground]
+    attr_reader :bg
 
     # The background a component paints while it is in an *error* state —
     # `nil` by default, meaning "I am not signalling one". {HasValidation}
     # overrides it, so every field has it and nothing else does.
     #
-    # It sits **above** {#bg_color} in {#effective_bg_color} rather than under
-    # it, unlike {#default_bg_color}. That is deliberate: an app tinting a panel
+    # It sits **above** {#bg_color} in the chain rather than under it, unlike
+    # {ComponentBackground#default_color}. That is deliberate: an app tinting a panel
     # would otherwise switch the validation signal off on the fields inside it,
     # silently. An app that wants different error colors changes the
     # {Theme#error_bg_color} tokens.
     #
-    # Read the theme here rather than in an ivar, and hand back one {Color}
-    # rather than a state {Hash} — {#default_bg_color}'s reasons, and this runs
-    # one level earlier than that on the same paint path.
+    # A hook rather than a {ComponentBackground} setter because it follows the
+    # validation state, and a pulled answer cannot go stale. Read the theme
+    # here rather than in an ivar, and hand back one {Color}: this runs first
+    # on every paint.
     # @return [Color, Theme::Ref, Hash, nil]
     def error_bg_color = nil
 
@@ -1377,54 +1323,6 @@ module Tuile
       cursor = screen.focused
       cursor = cursor.parent until cursor.nil? || cursor.equal?(self)
       parent.handle_child_removed(self) unless cursor.nil?
-    end
-
-    # What surrounds this component — an app-set {#bg_color}, else whatever the
-    # parent paints where this component is not. Skips {#default_bg_color}, the
-    # one thing that colors this widget's *own* surface, which is what makes it
-    # the right answer for the dead tail outside {#extent}.
-    # @return [Color, nil]
-    def ambient_bg_color
-      own = resolve_bg_color(@bg_color)
-      return parent&.effective_bg_color if own.nil? || own == BG_INHERIT
-
-      own
-    end
-
-    # Collapses one level of the background chain to the {Color} it means right
-    # now: picks the entry for this component's current state out of a state
-    # Hash, and resolves a {Theme::Ref} against the live theme. An absent state
-    # key yields `nil`, so resolution falls through to the next level — which is
-    # what lets `bg_color = { active: … }` keep the widget's own normal well.
-    # @param value [Color, Theme::Ref, Hash, nil]
-    # @return [Color, nil]
-    def resolve_bg_color(value)
-      case value
-      when nil then nil
-      when Hash then resolve_bg_color(value[active? ? :active : :normal])
-      when Theme::Ref then value.resolve(screen.theme)
-      else value
-      end
-    end
-
-    # Validates and normalizes what {#bg_color=} was handed, so a bad token or a
-    # misspelled state raises at the assignment rather than deep in a repaint.
-    # @param value [Object]
-    # @return [Color, Theme::Ref, Hash, nil]
-    # @raise [ArgumentError] on a Hash key outside {BG_STATES}.
-    # @raise [KeyError] on a {Theme::Ref} naming an absent custom token.
-    def coerce_bg_color(value)
-      case value
-      when nil, Color, BG_INHERIT then value
-      when Theme::Ref then value.tap { _1.resolve(screen.theme) }
-      when Hash
-        unknown = value.keys - BG_STATES
-        raise ArgumentError, "unknown background state(s) #{unknown.join(", ")}; known: #{BG_STATES.join(", ")}" \
-          unless unknown.empty?
-
-        value.to_h { |state, color| [state, coerce_bg_color(color)] }.freeze
-      else Color.coerce(value)
-      end
     end
   end
 end

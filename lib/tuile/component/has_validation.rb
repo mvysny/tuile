@@ -33,7 +33,7 @@ module Tuile
     # still has to look focused (`design/decisions.md` `D_has_validation`).
     #
     # The well reaches the whole widget with nothing forwarding it: a composed
-    # field's inner face is marked {Component::BG_INHERIT} and a group's {List}
+    # field's inner face is marked {ComponentBackground::INHERIT} and a group's {List}
     # declares no background, so both walk up the ordinary background chain and
     # land on the composer's answer.
     #

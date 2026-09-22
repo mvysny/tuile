@@ -55,17 +55,17 @@ never-load-bearing rule absorbs it.
 
 - **(A) No framework accent; the app paints.** With the plumbing in, this is not abandonment — it
   is the non-focusable click target working, with the app's own `repaint` reading hover state. Zero
-  new ink, no `BG_STATES` change, no focused-vs-hovered precedence rule, and it stays reversible.
+  new ink, no `ComponentBackground::STATES` change, no focused-vs-hovered precedence rule, and it stays reversible.
   **The recommended landing point.**
 - **(B) `MenuBar` only** — the one with real behavior behind it rather than ink. See below.
-- **(C) Flatly, for every component.** Needs `BG_STATES` to grow `:hover` (admissible in principle —
+- **(C) Flatly, for every component.** Needs `ComponentBackground::STATES` to grow `:hover` (admissible in principle —
   AGENTS.md says a key is added "when Tuile grows the *state*"), *plus* a focused-and-hovered
   precedence ruling a two-state map never had to answer, *plus* an answer to `focus-accent.md`'s
   finding that three of the five accenting widgets highlight a **segment or row**, not the
   component. That last one is fatal on its own: the interesting hover targets *are* the segment/row
   cases.
 
-`focus-accent.md` measured migrating those five widgets onto `default_bg_color`: **+2 lines each,
+`focus-accent.md` measured migrating those five widgets onto `bg.default_color`: **+2 lines each,
 and inexpressible for `Tabs`, `MenuBar` and `List`.** Hover lands on the same rock, so a framework
 accent would have to go via that note's **option (C)** — a paint-time `over_bg` layer applied to a
 `StyledString` rather than declared per component. Hover is the second consumer that makes it worth
@@ -132,7 +132,7 @@ option (C) which a framework hover accent would share),
 `design/ideas/new-components.md` (Tier 2 Split Layout; Tier 3 Tooltip),
 `D_menu_bar` (open-on-hover, deferred on motion; and the bar-mnemonic gap),
 `D_mouse` (the mouse is additive), `D_extent` (hit-test the extent, not the rect),
-`D_bg_surface` (`BG_STATES` is closed and framework-defined),
+`D_bg_surface` (`ComponentBackground::STATES` is closed and framework-defined),
 `D_theme_ref` (not a third colour channel), `D_inverse` (model the SGR rather than faking it, if a
 non-background hover ink is ever wanted),
 `D_progress_bar` (`sync_ticker` — how a hover-delay timer must be owned),

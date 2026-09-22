@@ -85,7 +85,7 @@ content-space.
 | **grab** | the hold one component has on the mouse from the press it claimed until the release, during which its drags and its up reach it wherever the pointer goes ({Tuile::Screen#grabbed}). Never "capture", which already names the `capture_mouse:` level. |
 | **hovered chain** | the components the pointer is inside, root first, as {Tuile::Mouse::Router} last resolved it; {Tuile::Screen#hovered} is its innermost. Enter and exit are the difference between two of them. |
 | **cursor** | *(two senses, both live)* the hardware terminal cursor (`Screen#cursor_position`), and a `List::Cursor` — the selection position within a list. |
-| **well** | the background an input paints over its whole extent (`Theme#input_bg_color` / `#active_bg_color`), declared as its `default_bg_color`. It terminates inheritance — an ancestor's tint doesn't reach it — but loses to a `bg_color` set on the input itself. Exactly one per widget: a composed field owns the well and marks the field it wraps `Component::BG_INHERIT`. |
+| **well** | the background an input paints over its whole extent (`Theme#input_bg_color` / `#active_bg_color`), declared as its `bg.default_color`. It terminates inheritance — an ancestor's tint doesn't reach it — but loses to a `bg_color` set on the input itself. Exactly one per widget: a composed field owns the well and marks the field it wraps `ComponentBackground::INHERIT`. |
 | **token** | a semantic colour name on {Tuile::Theme} — an accent, never a global fg/bg. |
 | **scheme** | `:dark` or `:light`; a {Tuile::ThemeDef} pairs one {Tuile::Theme} per scheme. |
 

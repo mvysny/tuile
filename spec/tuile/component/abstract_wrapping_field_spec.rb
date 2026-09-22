@@ -54,8 +54,8 @@ module Tuile
         refute_kind_of Component::HasContent, field
       end
 
-      it "marks the editor BG_INHERIT so exactly one well covers the pair" do
-        assert_equal Component::BG_INHERIT, field.inner.bg_color
+      it "marks the editor INHERIT so exactly one well covers the pair" do
+        assert_equal ComponentBackground::INHERIT, field.inner.bg_color
       end
 
       it "refuses an editor that is not an AbstractStringField" do
@@ -294,15 +294,15 @@ module Tuile
     describe "the background well" do
       it "is the input well, and the focus shade while active" do
         f = field
-        assert_equal Screen.instance.theme.input_bg_color, f.__send__(:default_bg_color)
+        assert_equal Screen.instance.theme.input_bg_color, f.__send__(:bg).effective
         Screen.instance.focused = f
-        assert_equal Screen.instance.theme.active_bg_color, f.__send__(:default_bg_color)
+        assert_equal Screen.instance.theme.active_bg_color, f.__send__(:bg).effective
       end
 
       it "reaches the cells the editor paints, since the editor inherits it" do
         f = field
         f.inner.text = "ab"
-        assert_equal f.__send__(:effective_bg_color), f.inner.__send__(:effective_bg_color)
+        assert_equal f.__send__(:bg).effective, f.inner.__send__(:bg).effective
       end
     end
   end

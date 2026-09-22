@@ -105,8 +105,9 @@ module Tuile
           on_enter.fire(EnterEvent.new(source: self))
         end
         # One widget, one surface: the editor paints no well of its own, so this
-        # field's bg_color reaches the cells the editor paints.
-        editor.bg_color = BG_INHERIT
+        # field's well covers it and its bg_color reaches the cells the editor paints.
+        editor.bg_color = ComponentBackground::INHERIT
+        bg.default_color = ComponentBackground::INPUT_WELL
         editor.on_change do
           handle_editor_change
           fire_if_changed if notify_on_edit?
@@ -244,12 +245,6 @@ module Tuile
       # face of your own.
       # @return [void]
       def relayout = (editor.rect = local_rect)
-
-      # The field well the face sits on — the editor is marked
-      # {Component::BG_INHERIT}, so this one covers it (exactly one well per
-      # widget) and {Component#bg_color} set here reaches the cells it paints.
-      # @return [Color]
-      def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
 
       private
 

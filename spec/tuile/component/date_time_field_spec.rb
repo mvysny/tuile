@@ -323,7 +323,7 @@ module Tuile
         f = field
         f.value = moment
         f.error_message = "nope"
-        assert_equal [Component::BG_INHERIT] * 2, [f.date_field.bg_color, f.time_field.bg_color]
+        assert_equal [ComponentBackground::INHERIT] * 2, [f.date_field.bg_color, f.time_field.bg_color]
         f.error_message = nil
         assert_equal [nil, nil], [f.date_field.bg_color, f.time_field.bg_color]
         refute date_red?(f)

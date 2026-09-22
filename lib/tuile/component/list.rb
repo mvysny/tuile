@@ -410,7 +410,7 @@ module Tuile
       # without an upfront wipe — but not {Component#invalidate_children}, or
       # the scrollbar goes stale under an ancestor's clear. Rows go through
       # {Canvas#set_text}, so
-      # content *and* blank filler inherit {Component#effective_bg_color}
+      # content *and* blank filler inherit {ComponentBackground#effective}
       # (a {#bg_color} set here or on an ancestor); the cursor row's
       # {Theme#active_bg_color} highlight composes on top of it.
       # @param canvas [Canvas] see {Component#repaint}.

@@ -8,12 +8,12 @@ module Tuile
   #
   # A component never builds one. It paints onto the canvas its
   # {Component#repaint} was handed, already loaded with that component's
-  # {Component#effective_bg_color} and positioned at its {Component#rect}, and
+  # {ComponentBackground#effective} and positioned at its {Component#rect}, and
   # derives a second for the cells that are not its own ink:
   #
   #   def repaint(canvas)
   #     canvas.set_text(0, 0, label)                              # my well
-  #     canvas.with(bg_color: ambient_bg_color) { _1.fill(tail) } # not my ink
+  #     canvas.with(bg_color: bg.ambient) { _1.fill(tail) }       # not my ink
   #   end
   #
   # Three methods, in **paint coordinates**: `(0, 0)` is the component's own
@@ -94,7 +94,7 @@ module Tuile
     # Yields a canvas onto the same backend with a different background, for the
     # span of the block — the *only* way to change it.
     #
-    #   canvas.with(bg_color: ambient_bg_color) do |c|
+    #   canvas.with(bg_color: bg.ambient) do |c|
     #     c.fill(right)
     #     c.fill(below)
     #   end

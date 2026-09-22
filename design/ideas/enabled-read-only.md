@@ -14,7 +14,7 @@ has are
 - **`focusable?`** — may become the focus target, independent of `active?`;
 - **`tab_stop?`** — appears in the Tab cycle (`Screen#cycle_focus` collects these from
   `walk_shown_tree`);
-- **`active?`** — on the focus chain; a paint-time state, and one of the two `BG_STATES` keys.
+- **`active?`** — on the focus chain; a paint-time state, and one of the two `ComponentBackground::STATES` keys.
 
 Two places already say the axis was deferred on purpose, and neither is overridden here:
 
@@ -78,8 +78,8 @@ generalize together. Copying it is a second authority for "hand focus out of her
 the kind of pair this project merges rather than duplicates.
 
 **`Q_disabled_ink`** — a dim/greyed cell is a color built-in chrome paints in more than one place,
-so by `D_color_slots` it is a chrome token. It also wants `BG_STATES` to gain `:disabled`, and
-`decisions.md` records that set as **closed** — *"`BG_STATES` stays closed: error is a level in the
+so by `D_color_slots` it is a chrome token. It also wants `ComponentBackground::STATES` to gain `:disabled`, and
+`decisions.md` records that set as **closed** — *"`ComponentBackground::STATES` stays closed: error is a level in the
 chain, not a state key."* Disabled has a better claim than error did (it is a per-component state,
 like `active`, not a level in the resolution chain) but the claim has to be *made*, not assumed. A
 foreground question also arrives here, and `D_bg_surface` says there is **one background knob and no
@@ -99,7 +99,7 @@ ready, not so it gets built.
 
 A root `AGENTS.md` invariant line (a third reachability rule beside `visible`), a
 `component_contract_spec` catalog entry (it holds for every component and fails silently — the file's
-own gate), a theme token and possibly a `BG_STATES` key, CHANGELOG, book, and a visit to the two test
+own gate), a theme token and possibly a `ComponentBackground::STATES` key, CHANGELOG, book, and a visit to the two test
 gestures: `_click` inherits the disabled check **for free** if the gate rides the dispatchers as
 above — if it doesn't, that is the signal this design went per-widget — while `_value=` must grow a
 `read_only?` term of its own, because there is nothing for it to borrow.

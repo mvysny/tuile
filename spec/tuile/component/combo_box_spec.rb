@@ -66,8 +66,8 @@ module Tuile
 
       # The field is *told*, not left to work it out from where it sits: it
       # declares its well unconditionally and the ComboBox marks the instance.
-      it "marks the inner field BG_INHERIT rather than depending on the tree" do
-        assert_equal Component::BG_INHERIT, field(combo).bg_color
+      it "marks the inner field INHERIT rather than depending on the tree" do
+        assert_equal ComponentBackground::INHERIT, field(combo).bg_color
       end
     end
 
@@ -292,9 +292,9 @@ module Tuile
         assert_equal Theme.ref(:input_bg_color), overlay(c).bg_color
       end
 
-      it "the menu inherits that tint via effective_bg_color" do
+      it "the menu inherits that tint via the background chain" do
         c = combo
-        assert_equal Theme::DARK.input_bg_color, menu(c).send(:effective_bg_color)
+        assert_equal Theme::DARK.input_bg_color, menu(c).send(:bg).effective
       end
     end
 

@@ -130,7 +130,7 @@ module Tuile
       end
 
       # Paints the window border via {Canvas#set_text} / {Canvas#set_char},
-      # so the border cells inherit {Component#effective_bg_color} — a
+      # so the border cells inherit {ComponentBackground#effective} — a
       # {Component#bg_color} on the window tints border and content alike. Both
       # border rows are clipped by *display* width, so no caption overflows the
       # box; when the window is active the whole border — the caption's own

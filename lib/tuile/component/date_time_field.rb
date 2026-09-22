@@ -73,10 +73,10 @@ module Tuile
     # == Implementation details
     # - **The halves keep their own wells, and this field's ink is *synced* onto
     #   them.** `error_bg_color` sits at the top of the background chain, so a
-    #   child answering {Component#default_bg_color} — every field does — never
+    #   child answering {ComponentBackground#default_color} — every field does — never
     #   inherits an ancestor's error level, so marking only this field would
     #   leave the halves untouched and reach no cell at all. So the halves are
-    #   marked {Component::BG_INHERIT} exactly while this field inks, and `nil`
+    #   marked {ComponentBackground::INHERIT} exactly while this field inks, and `nil`
     #   otherwise. A guilty half's *own* error well still beats the mark, which
     #   is what keeps the ink rule free of arithmetic.
     # - **The spacing column is nobody's surface** — {Component#clear_inside_extent}
@@ -267,7 +267,7 @@ module Tuile
       # @return [void]
       def sync_half_wells
         ink = error_ink?
-        [date_field, time_field].each { _1.bg_color = ink ? BG_INHERIT : nil }
+        [date_field, time_field].each { _1.bg_color = ink ? ComponentBackground::INHERIT : nil }
       end
 
       # @return [void]

@@ -50,13 +50,13 @@ note's own reading of the background chain was wrong.** It read: `error_bg_color
 sits at the top of the same chain a child walks, so a child inherits its parent's
 *error* level; verified with a bare `Label` under an invalid `IntegerField`,
 which does come back `Color 88`. But a `Label` answers no level of its own, and
-**every field answers `default_bg_color`** — which resolves *before* the parent
+**every field answers `bg.default_color`** — which resolves *before* the parent
 is consulted. So marking a composite self-invalid reddens the chrome around the
 fields and leaves the fields flat, i.e. the opposite of what this note assumed.
 
 The shipped answer: **the composite paints only the fault no half can wear**,
-with its ink synced onto the halves as `BG_INHERIT` marks — which also settles
-the BG_INHERIT question this note filed as a second one (the marks are *synced to
+with its ink synced onto the halves as `ComponentBackground::INHERIT` marks — which also settles
+the ComponentBackground::INHERIT question this note filed as a second one (the marks are *synced to
 the condition*, not permanent, so the halves keep their own wells while the
 composite is clean). And the genuinely hard case, a **combination** error
 (`start > end`) where no single field is wrong, is exactly the one the composite

@@ -90,17 +90,17 @@ prompt. You *can* name the panel's colour again on the field — but there is a
 shorter way to say "I have no background of my own, use whatever is behind me":
 
 ```ruby
-field.bg_color = Component::BG_INHERIT
+field.bg_color = ComponentBackground::INHERIT
 ```
 
 That is CSS's `background: inherit`, and it is different from leaving
 `bg_color` unset: unset means "ask *my* default first", which for a field is
-its well. `BG_INHERIT` skips the well and goes straight to what surrounds it.
+its well. `ComponentBackground::INHERIT` skips the well and goes straight to what surrounds it.
 
 It is the same mechanism Tuile uses internally. A
 {Tuile::Component::ComboBox} is one widget with one surface, built out of a
 {Tuile::Component::TextField} plus a `▾` — so the ComboBox paints the well and
-marks its inner field `BG_INHERIT`. Exactly one well per widget, which is what
+marks its inner field `ComponentBackground::INHERIT`. Exactly one well per widget, which is what
 lets you tint the ComboBox and have the tint reach the cells the field draws.
 
 Backgrounds can differ by state. An input is brighter while it holds focus,

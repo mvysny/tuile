@@ -33,14 +33,14 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
   {Tuile::Mouse::Router} on the way in. Anything else asks by name — `absolute_rect`,
   `absolute_extent_rect`, `to_screen`, `to_local` — and an overlay anchoring to its driver is the
   only widget-level caller (`D_relative_rect`, `D_canvas`).
-- **One background chain, four levels, resolved at paint.** `effective_bg_color` is
-  `error_bg_color || @bg_color || default_bg_color || parent.effective_bg_color` — a validation
-  error first, so tinting a panel cannot switch the signal off; then the app's override; then the
-  widget's own opaque surface (protected, `nil` for "no surface of my own"); then what surrounds it,
-  with the terminal default as the root. A non-nil `default_bg_color` terminates inheritance, which
-  is what keeps a form's fields looking like fields inside a tinted panel;
-  `Component::BG_INHERIT` on `bg_color` skips the widget's own level, which is how a composed field
-  lets its composer own the well. {Tuile::Screen#canvas_for} resolves it once per repaint and loads
+- **One background chain, four levels, resolved at paint.** {Tuile::ComponentBackground#effective}
+  is `error_bg_color || color || default_color || parent.bg.effective` — a validation error first,
+  pulled from the component's hook, so tinting a panel cannot switch the signal off; then the app's
+  override (`Component#bg_color=`); then the widget's own opaque surface (set through the protected
+  `bg`, `nil` for "no surface of my own"); then what surrounds it, with the terminal default as the
+  root. A non-nil `default_color` terminates inheritance, which is what keeps a form's fields
+  looking like fields inside a tinted panel; `ComponentBackground::INHERIT` on `bg_color` skips the
+  widget's own level, which is how a composed field lets its composer own the well. {Tuile::Screen#canvas_for} resolves it once per repaint and loads
   it onto the canvas; nothing caches the answer, and no widget reaches around the chain to
   `screen.theme` (`D_bg_inherit`, `D_bg_surface`, `D_canvas`).
 - **Two threads, one owner.** {Tuile::EventQueue} runs a key-reading thread and owns the sole

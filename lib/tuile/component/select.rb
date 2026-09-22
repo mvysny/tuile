@@ -76,6 +76,10 @@ module Tuile
         @overlay.owner = self
         @overlay.renderer = ->(item, _text_width) { label_for(item) }
         @overlay.list.on_item_chosen { |e| commit(e.item) }
+        # A Select has no caret, so the focus shade is its only indicator: an app
+        # flattening it with a plain bg_color is choosing that, and can keep the
+        # pair with `bg_color = { normal: …, active: … }`.
+        bg.default_color = ComponentBackground::INPUT_WELL
       end
 
       # @return [Array] the options.
@@ -174,18 +178,10 @@ module Tuile
         canvas.set_text(0, 0, face_row)
       end
 
-      # The field well this Select's face sits on — {Theme#active_bg_color}
-      # while on the focus chain, {Theme#input_bg_color} otherwise. A Select has
-      # no caret, so the focus shade is its only indicator: an app that flattens
-      # it with a plain {Component#bg_color} is choosing that, and can keep the
-      # pair with `bg_color = { normal: …, active: … }`.
-      # @return [Color]
-      def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
-
       private
 
       # The painted row: the value's label padded across all but the last column,
-      # then the `▾`. The well underneath is {#default_bg_color}, applied by
+      # then the `▾`. The well underneath is {ComponentBackground::INPUT_WELL}, applied by
       # {Canvas#set_text} — so a label span carrying its own background keeps
       # it, where the old override-all fill flattened it.
       # @return [StyledString]

@@ -44,9 +44,9 @@ module Tuile
         assert_equal Theme.ref(:input_bg_color), Component::ListDropdown.new.bg_color
       end
 
-      it "the list inherits that tint via effective_bg_color" do
+      it "the list inherits that tint via the background chain" do
         d = Component::ListDropdown.new
-        assert_equal Theme::DARK.input_bg_color, list(d).send(:effective_bg_color)
+        assert_equal Theme::DARK.input_bg_color, list(d).send(:bg).effective
       end
     end
 
