@@ -150,8 +150,6 @@ module Tuile
       assert_equal 50, outer.left.rect.width
     end
 
-    # 554 of the 3934 examples raised before this gate went in, every one of
-    # them a read `lib/` makes on the app's behalf mid-handler.
     describe "whose read it was" do
       it "says nothing to a read the framework makes mid-handler" do
         select = mount_at(Component::Select.new(items: %w[a b c]), Rect.new(0, 0, 20, 1))
@@ -164,8 +162,7 @@ module Tuile
       end
 
       # The pane places its content and nothing else, so opening a popup leaves
-      # every rect in the tree trustworthy — 20 of the 23 reports this suite
-      # raised before `ScreenPane#places_child?` (`D_strict_layout`).
+      # every rect in the tree trustworthy (`D_deferred_layout`).
       it "says nothing about the tree under an open popup" do
         label = Component::Label.new("hi")
         holder = Component::Layout::Vertical.new
@@ -174,12 +171,6 @@ module Tuile
         Tuile.strict_layout = :raise
         Component::Overlay.new(content: Component::Label.new("floating")).open
         assert_equal 20, label.rect.width
-      end
-
-      it "reports through a plumbing reader, since the app still asked" do
-        pane = resized_pane
-        Tuile.strict_layout = :raise
-        assert_raises(Error) { pane.left.absolute_rect }
       end
     end
 

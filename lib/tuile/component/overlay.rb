@@ -217,11 +217,9 @@ module Tuile
       # {#open?} true and that no outside click dismisses — because every one of
       # those answers comes from the pane's popup list.
       #
-      # So the test is membership of that list, not the pane's identity: the
-      # pane's own `content` slot would otherwise slip through, and content is
-      # the one child the pane *does* place ({ScreenPane#places_child?}).
-      # {ScreenPane#add_popup} enlists before it adopts, which is what lets this
-      # answer during the adoption.
+      # So the test is membership of that list, not the pane's identity, which
+      # would let the `content` slot through. {ScreenPane#add_popup} enlists
+      # before it adopts, which is what lets this answer during the adoption.
       # @param new_parent [Component] see {Component#check_parent}.
       # @raise [Tuile::Error] unless this is being adopted as one of
       #   {ScreenPane#popups}.

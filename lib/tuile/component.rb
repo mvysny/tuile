@@ -1360,7 +1360,7 @@ module Tuile
     # every child, unless a container says otherwise:
     #
     #   # ScreenPane: popups assign their own rect in Overlay#reposition
-    #   private def places_child?(child) = child.equal?(@content)
+    #   def places_child?(child) = child.equal?(@content)
     #
     # The three tree mutators skip {#invalidate_layout} for a child the answer
     # is `false` for, so adopting one schedules no pass, and {#rect_stale?}

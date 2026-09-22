@@ -151,19 +151,6 @@ module Tuile
       @content&.rect = local_rect
     end
 
-    # Content, and never a popup: an overlay's rect is its own — the caller
-    # assigns it and {Component::Overlay#reposition} re-derives it, asked by
-    # {#rect=} exactly when the screen it was resolved against changed. So
-    # opening or closing one owes this pane no pass, and marks none
-    # (`D_strict_layout`).
-    #
-    # Moving popup placement into {#relayout} would make the mark honest again
-    # and is the thing not to do — see {#rect=} for why a second popup opening
-    # must not re-place the first.
-    # @param child [Component]
-    # @return [Boolean]
-    def places_child?(child) = child.equal?(@content)
-
     # Resizes, then lets each popup re-resolve its
     # {Component::Popup#declared_size} against the new screen via
     # {Component::Popup#reposition} — so a {Fraction} size tracks resize, a
@@ -314,6 +301,17 @@ module Tuile
     end
 
     private
+
+    # Content, and never a popup: an overlay's rect is its own — the caller
+    # assigns it and {Component::Overlay#reposition} re-derives it, asked by
+    # {#rect=} exactly when the screen it was resolved against changed. So
+    # opening or closing one owes this pane no pass, and marks none
+    # (`D_deferred_layout`). Don't move popup placement into {#relayout} to make
+    # a mark honest again — see {#rect=} for why a second popup opening must not
+    # re-place the first.
+    # @param child [Component]
+    # @return [Boolean]
+    def places_child?(child) = child.equal?(@content)
 
     # The overlays a click counts as landing *inside*: the one it hit, plus
     # every overlay that one belongs to, up the {Component::Overlay#owner}

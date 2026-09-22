@@ -83,8 +83,7 @@ module Tuile
     end
 
     # Content is the only rect the pane's pass assigns, so a popup owes it no
-    # pass — and a mark it does not owe made every rect in the tree read as
-    # stale while any dropdown was open (`D_strict_layout`).
+    # pass (`D_deferred_layout`).
     context "#places_child?" do
       # A *bare* overlay: a modal {Component::Popup} takes focus, and
       # `Screen#focused=` flushes, so a mark it left would be settled before

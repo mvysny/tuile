@@ -5,8 +5,7 @@
 
 ## [Unreleased]
 
-- Add `Tuile.strict_layout` — the opt-in stale-rect diagnostic: set it to `:raise` (a spec suite) or `:warn` (a running app) and a `Component#rect` read *the app makes* while an ancestor owes a `relayout` names the culprit and the read site instead of handing back the previous pass's rectangle. See `design/decisions.md` `D_strict_layout`.
-- Add `Tuile::StrictLayout` — the module the flag and `FakeScreen` prepend into `Component`, so `rect` stays a bare `attr_reader` in every process that neither tests nor asks.
+- Add `Tuile.strict_layout` — the stale-rect diagnostic: under `:raise` or `:warn` a `Component#rect` read *the app makes* while an ancestor owes a `relayout` names the culprit and the read site instead of handing back the previous pass's rectangle; off by default outside a `FakeScreen`. See `design/decisions.md` `D_strict_layout`.
 - Add `Tuile.without_strict_layout` — runs a block with the diagnostic off, for a read that is pre-settle on purpose, and restores whatever was in force, default included.
 - **Breaking:** a `FakeScreen` now defaults `Tuile.strict_layout` to `:raise`, so a spec that reads a rect it has not settled raises instead of asserting against the previous pass's rectangle. Settle it (`settle(component)`), or wrap a deliberately unsettled read in `Tuile.without_strict_layout { … }`; `Tuile.strict_layout = false` opts a whole suite out.
 - Add `Component#places_child?(child)` — the container's declaration that a pass of its own assigns that child's rect (`true` unless overridden); `add_child` / `detach_child` skip the layout mark when it is false, so opening or closing a popup no longer marks `ScreenPane`, whose pass only ever places `content`. See `design/decisions.md` `D_deferred_layout`.

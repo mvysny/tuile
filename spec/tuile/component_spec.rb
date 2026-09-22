@@ -357,8 +357,8 @@ module Tuile
     end
 
     context "#layout_dirty? / #rect_stale?" do
-      # A *placing* container: the one below it inherits the base no-op
-      # `relayout` and so stales nothing, which the last example pins.
+      # A *placing* container: a bare `Absolute` inherits the base no-op
+      # `relayout` and so stales nothing, which an example below pins.
       def holder
         layout = Component::Layout::Vertical.new
         layout.add(Component.new, Component::Layout::Fixed[4])
@@ -414,8 +414,7 @@ module Tuile
       end
 
       # `Layout::Absolute` is dirtied by `add` like any container, and is the
-      # holder every spec in this suite mounts through — counting its mark
-      # reported a stale read under 599 of them (`D_strict_layout`).
+      # holder every spec mounts through (`D_strict_layout`).
       it "stales nothing under a container that assigns no rect" do
         layout = Component::Layout::Absolute.new
         child = Component.new

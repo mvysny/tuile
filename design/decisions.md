@@ -6875,8 +6875,7 @@ nothing for the code that runs it most. Prepending rather than branching is what
 disappear instead of being made: in a process that never builds a fake screen and never sets the
 flag, `rect` is still the bare `attr_reader` it was. Under the fake it is the other way round —
 nobody should have to *ask* for a diagnostic whose whole audience is the spec suite in front of
-them — and the suite here is the proof that the default is livable: 3953 examples green with it on,
-and 0.2 s slower.
+them — and this suite ran green with it on, 0.2 s slower.
 
 **Three carve-outs the suite measured**, which is what the default cost. Raw, the predicate raised
 599 times across these examples, and the causes were not spec noise:
@@ -6891,13 +6890,11 @@ and 0.2 s slower.
 - *A popup owes the pane no pass*, which took 23 down to 6 and is a fix to the marking rather than
   to the diagnostic — `D_deferred_layout` carries it.
 
-Four of the six survivors were real, and are fixed: an *overlay survives the screen's layout pass*
-example whose resize re-assigned the rect the pane already had, so `rect=` returned early and the
-pass it named drove nothing; a `visible=` round trip comparing a rect against itself because its
-fixture had never laid out; and two gesture examples aiming at a `Button` whose rect was still the
-158-wide one from before its window shrank to 40. The last two read an unsettled rect *on purpose*
-— whether a rect survived a round trip is a question only the stale value answers — and those are
-what `without_strict_layout` is for. Nothing else in the suite needed it.
+Four of the six survivors were real spec bugs — a resize that re-assigned the rect the pane already
+had and so drove nothing, a round trip comparing a never-laid-out rect against itself, two gestures
+aimed at a rect from before its window shrank. The other two read an unsettled rect *on purpose*,
+since whether a rect survived a round trip is a question only the stale value answers; that is what
+`without_strict_layout` is for.
 
 **`:raise` is what `true` means, because `:warn` is invisible to the audience.** `Tuile.logger`
 defaults to `Logger.new(IO::NULL)`, so a warning in a spec suite that never set a logger prints
@@ -6919,9 +6916,7 @@ Why not:
 - **Reporting a framework-entered read too, behind a fourth mode.** Those 554 reports were the
   framework asking its own audited questions mid-handler; a mode to see them measures the marking,
   and where the marking was wrong the answer was to fix it (`places_child?`), not to watch it.
-- **Opt-in even in specs**, with a documented `spec_helper` line. It was the first shape shipped,
-  and the reason to go further is that the reader who needs this is by definition not looking for
-  it: a line you have to know to write reaches the same person a doc does. What made the default
-  affordable was the three carve-outs plus one opt-out, in that order — a default resting on a
-  predicate that cries wolf would have been the wrong trade, and `599` was the measurement that
-  said so.
+- **Opt-in even in specs**, with a documented `spec_helper` line. The reader who needs this is by
+  definition not looking for it, and a line you have to know to write reaches the same person a doc
+  does. The default is affordable only because of the three carve-outs — on a predicate that cries
+  wolf 599 times it would have been the wrong trade.

@@ -30,11 +30,8 @@ module Tuile
   class FakeScreen < Screen
     def initialize
       super
-      # A spec suite is the stale-rect diagnostic's whole audience, so it is on
-      # here with no setup — `Tuile.strict_layout` answers `:raise` while this
-      # screen is the installed one, unless the suite chose otherwise, and this
-      # is what puts the check in `Component#rect` to answer through
-      # (`D_strict_layout`).
+      # `Tuile.strict_layout` defaults to `:raise` under this screen; this puts
+      # the check it answers through into `Component#rect`.
       StrictLayout.install
       @event_queue = FakeEventQueue.new
       @size = Size.new(160, 50)

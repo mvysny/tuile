@@ -21,25 +21,16 @@ module Tuile
   # Reading `size`, `width`, `height`, `local_rect`, `absolute_rect` or
   # `to_screen` reports too — they all go through the one reader.
   #
-  # **Only reads the app makes are reported.** A read `lib/` makes on the app's
-  # behalf mid-handler — `Select#anchor` measuring the face its dropdown hangs
-  # under, while opening that dropdown has just marked the pane — is not the
-  # app's to fix, and `D_deferred_layout`'s force-now points are where the
-  # framework answers for those. Forcing them on anyway turns 554 of this gem's
-  # own examples red.
+  # **Only reads the app makes are reported** ({PLUMBING}): a read `lib/` makes
+  # on the app's behalf mid-handler — `Select#anchor` measuring the face its
+  # just-opened dropdown hangs under — is not the app's to fix.
   #
   # == Implementation details
   #
-  # {Tuile.strict_layout=} prepends this module into {Component} the first time
-  # it is given a mode, so `rect` stays the bare `attr_reader` — the hottest
-  # read in the toolkit — for every process that never asks. Turning strict mode
-  # back off leaves the module in place and the check inert; nothing unprepends.
-  #
-  # Three things keep it quiet where it has nothing to say: {Screen#repaint} and
-  # {Screen#dispatch} flush before they read at all, a `relayout` reading its
-  # own geometry asks about a flag {Component#perform_relayout} has already
-  # cleared, and {PLUMBING} draws the line between a read the app made and one
-  # it merely triggered.
+  # {Tuile.strict_layout=} and {FakeScreen} prepend this module into
+  # {Component}, so `rect` stays the bare `attr_reader` — the hottest read in
+  # the toolkit — in every process that never asks. Nothing unprepends; turning
+  # the mode off leaves the check inert. See `D_strict_layout`.
   module StrictLayout
     # Where the gem's own frames live, so the site the message names is the
     # app's — `to_screen` and the `size` / `width` / `height` trio all read
@@ -62,9 +53,7 @@ module Tuile
 
     class << self
       # Makes {Component#rect} consult {Tuile.strict_layout} — idempotent, and
-      # permanent for the process. Called by {Tuile.strict_layout=} and by
-      # {FakeScreen}, which is where the default is on: a mode nobody installed
-      # would have nothing to report through.
+      # permanent for the process.
       # @return [void]
       def install = Component.prepend(self)
 
@@ -98,12 +87,8 @@ module Tuile
         Thread.current[REPORTING] = false
       end
 
-      # Whether the app asked the question, rather than the framework asking it
-      # on the app's behalf mid-handler — `Select#anchor` placing its dropdown,
-      # say, which no app can fix and which `D_deferred_layout`'s force-now
-      # points already account for.
-      #
-      # True when the frames between the read and the first one outside the gem
+      # Whether the app asked the question rather than the framework on its
+      # behalf: the frames between the read and the first one outside the gem
       # are {PLUMBING} and nothing else.
       # @return [Boolean]
       def app_read?

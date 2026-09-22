@@ -21,10 +21,7 @@ module Tuile
         Screen.instance.content = w
         w.rect = Rect.new(0, 0, 40, 10)
         # Settled here, not `mount_at`: the examples below want the rest of the
-        # screen to hold no component at all. Without the settle every rect they
-        # aim at is the 160-wide one the pane assigned a moment ago
-        # (`D_strict_layout`), and only a real resize or a content swap can
-        # undo the 40x10 now that a popup marks the pane no longer.
+        # screen to hold no component at all.
         settle(w)
       end
     end
