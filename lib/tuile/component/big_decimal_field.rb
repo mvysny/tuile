@@ -120,7 +120,7 @@ module Tuile
       # @raise [TypeError] on a value `BigDecimal()` won't take at all.
       # @return [void]
       def value=(new_value)
-        editor.text = new_value.nil? ? "" : coerce(new_value).to_s("F")
+        editor.value = new_value.nil? ? "" : coerce(new_value).to_s("F")
         editor.caret = editor.text.length
       end
 

@@ -146,7 +146,7 @@ module Tuile
       # @param new_value [Date, nil] `nil` empties the field.
       # @return [void]
       def value=(new_value)
-        editor.text = new_value.nil? ? "" : new_value.strftime(formats.first)
+        editor.value = new_value.nil? ? "" : new_value.strftime(formats.first)
         editor.caret = editor.text.length
         # The edit above announced nothing ({#notify_on_edit?}); a date written
         # rather than typed has no prefix to be mistaken for a value.

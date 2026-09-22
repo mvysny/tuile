@@ -238,6 +238,9 @@ Why not:
 
 The cost we carry:
 - `AbstractStringField#empty_value` is `""`; the mixin default is `nil`.
+- A string field has **one writer and one slot**, `value=` and `on_value_change`; `text` is only a
+  reader. `text=` and `on_change` were exact twins firing from adjacent lines, and a second name for
+  the same write is a second place every future event member (an origin flag, an old value) must ride.
 - Deferred for the Forms layer (not decided here): where a `Converter` lives
   (on the field vs. purely in the binder), `read_only`, a required flag *on the
   field* (the marker beside the caption ships on the wrapper, and the field never
@@ -342,7 +345,8 @@ reused.**
 
 `TextInput` was renamed `AbstractStringField` in the same move and re-scoped as the *String-valued*
 base of `TextField` / `TextArea`: a field whose value is not a `String` composes one of these, and
-its `text=` seam-fire is correct precisely because it is only used where `value == text`.
+its `value=` firing `on_value_change` straight off the buffer is correct precisely because it is only
+used where `value == text`.
 **`HasValue` was reframed to the input-field mixin**, absorbing `focusable? = true` but **not**
 `tab_stop?`, which diverges — the leaf editable field is a tab stop, but a composing wrapper is not,
 since its inner field carries the stop and a tab-stop wrapper around a tab-stop field would
@@ -777,7 +781,7 @@ redefinition.
 by the minimum needed, mirroring `TextArea#scroll_top_row`. This deletes the width-derived capacity
 rule rather than repairing its arithmetic: the old `rect.width - 1` cap reserved a column for the
 caret parked past the last glyph, and that reservation now lives in the scroll clamp
-(`text_columns - rect.width + 1`). So `text=` no longer silently trims, and a printable key is now
+(`text_columns - rect.width + 1`). So `value=` no longer silently trims, and a printable key is now
 *always* consumed — previously a full field let typing fall through to a scope-wide binding,
 contradicting the book's own claim that a focused field consumes every printable key.
 
@@ -790,7 +794,7 @@ left for the caret). A glyph straddling the right edge is dropped and its cell p
 half-painted.
 
 **Decision — `max_text_length` is an app-set logical bound.** Optional, counted **in characters** —
-a wide glyph counts once — gating *typing only*. It deliberately does not police `text=`, which
+a wide glyph counts once — gating *typing only*. It deliberately does not police `value=`, which
 stays authoritative as for `ComboBox#value` and `CheckboxGroup#value` (`D_combobox`,
 `D_checkbox_group`), so lowering the cap under an existing value leaves it intact. *A cap in
 columns* was rejected: the maximum text would then depend on which characters were typed — exactly
@@ -1412,15 +1416,15 @@ conversion already walked clusters.
 adjacent cluster boundary, BACKSPACE and DELETE remove a whole cluster, over three private
 single-walk primitives — no cache, no new state, no invalidation rule.
 
-**Snap at both write sites, making a mid-cluster caret unrepresentable.** `caret=` and `text=`'s
+**Snap at both write sites, making a mid-cluster caret unrepresentable.** `caret=` and `value=`'s
 clamp both snap to the smallest boundary at or after the index, so *the caret is always on a cluster
 boundary* is a real invariant with exactly two enforcement points. Snapping **forward** is
 display-preserving, because `column_at` already measured a mid-cluster index as the whole cluster, so
 the snap moves nothing on screen — and the movement and deletion helpers may then assume a boundary
 caret and carry no snap step, which makes the DELETE-orphan bug unreachable rather than patched. Both
-sites are load-bearing: `text=` is not redundant, because typing a regional indicator *ahead of* an
+sites are load-bearing: `value=`'s is not redundant, because typing a regional indicator *ahead of* an
 existing flag re-segments the neighbourhood, so the insert's own increment lands inside a cluster of
-the **new** text and only the `text=` snap can catch it.
+the **new** text and only the `value=` snap can catch it.
 
 **Deletion is uniformly whole-cluster, with no per-script rules.** Unicode defines cluster boundaries
 but not what Backspace means, and editors diverge — a ZWJ family may shed one member per press, and
@@ -1460,7 +1464,7 @@ The cost we carry: ASCII behaviour is bit-identical, so this is not a breaking c
 for non-ASCII the visible differences are the three bug fixes plus `caret=` reading back snapped.
 `TextArea` needed no changes at all, its row records keeping character offsets and its conversions
 already returning boundary-aligned counts. Still out of scope and unfixed: a lone combining mark
-remains constructible via `text=` or by typing a mark into an empty field, which is input validation,
+remains constructible via `value=` or by typing a mark into an empty field, which is input validation,
 not an axis question.
 
 ## D_float_field — Why is `FloatField` named for its Ruby type and copied from `IntegerField` rather than sharing a base?
@@ -2371,7 +2375,7 @@ the gem but `AbstractStringField` overrides `handle_paste`, which is always the 
 on the chain when it matters. The scoping is kept, so a modal stays modal; only the walk is gone.
 That is a **narrowing**, so the re-grow bar is low if a real ancestor-level paste consumer appears.
 
-**The field inserts it as one mutation**, so `on_change` fires once for the paste rather than once
+**The field inserts it as one mutation**, so `on_value_change` fires once for the paste rather than once
 per character — which is what lets a submit-on-Enter subclass need *no* paste code at all: it keeps
 `handle_key?` for the typed ENTER and inherits paste-inserts-text.
 
@@ -4209,7 +4213,7 @@ is the worst of both — it looks like a guarantee, and isn't.
 
 **Roads not taken, for keeping a value out of a field.**
 
-- *Watch `on_change` and revert.* The callback has already fired for the state
+- *Watch `on_value_change` and revert.* The callback has already fired for the state
   you are about to undo, so every other observer sees the bad value and acts on
   it; the revert fires a second round; and the caret has nowhere sensible to
   land. It also cannot distinguish a bad *user edit* from a bad programmatic
@@ -4222,7 +4226,7 @@ is the worst of both — it looks like a guarantee, and isn't.
 - *Keep the per-key filter and add a parallel paste filter.* The two-seam design
   that caused this. A future field would have to remember both, and the one that
   forgot would fail silently and only under Ctrl-V.
-- *Filter in `text=`.* Too wide: it would police the programmatic `value=`, which
+- *Filter in `value=`.* Too wide: it would police programmatic writes, which
   legitimately writes shapes no key types (`FloatField`'s `"1.0e-05"`). Only
   *user input* is filtered, which is exactly what `insert_text` means.
 
@@ -4296,7 +4300,7 @@ generalization was the one already there: `handle_key?`.
   driving real dispatch, which is what makes the equivalence a measurement
   rather than an argument.
 - **The sampler's slash menu became `SlashCommandTextArea`.** Note what does
-  *not* work here: routing it "through the value". `on_change` already does the
+  *not* work here: routing it "through the value". `on_value_change` already does the
   refill that way, but Up/Down/PgUp/PgDn over a dropdown have no value
   semantics at all — navigation is irreducibly about keys. It just doesn't need
   a *callback*; it needs an override.
@@ -4911,7 +4915,7 @@ an uncommitted buffer. Two consequences a subclass must not undo:
   the key and a scope's default button still sees it. Consuming it would silently break every form
   whose Save is bound to ENTER — `DateField`'s first cut did exactly that by claiming the editor's
   slot unconditionally. Exactly one commit runs on either path, the two being mutually exclusive.
-- **A third claimed slot needs a hook, not a claim.** The base owns the editor's `on_change` and now
+- **A third claimed slot needs a hook, not a claim.** The base owns the editor's `on_value_change` and now
   its `on_enter`; a subclass reacting to *edits* gets the protected `handle_editor_change` no-op, which is
   what `DateField`'s settling latch hangs on. One callback slot cannot be shared
   (`D_no_key_interceptor`), so every one the base claims owes the subclasses a hook.
@@ -5142,7 +5146,7 @@ The cost we carry:
 - **The calendar grid stays deferred**, blocked on the Popover extraction, and **PageUp/PageDown
   stepping a month** with it — recorded so both are decisions rather than omissions.
 - **There is no live-reading notice left to subscribe to.** An app wanting the buffer's current
-  parse between keystrokes polls `value` (from `TextField#on_change` on the editor it is not
+  parse between keystrokes polls `value` (from `TextField#on_value_change` on the editor it is not
   supposed to address, or from its own repaint); re-growing a push for it is the mode knob above.
 - **`@last_value` now tracks what was last *announced*, not what the buffer last held**, so a
   `formats=` or `calendar_start=` that invalidates a never-committed buffer fires nothing — right,
@@ -5217,7 +5221,7 @@ Why not:
 
 The cost we carry:
 - **`delete_before_caret` is now `delete_back_to(cluster_boundary_before(caret))`**
-  — one deletion path, so the "write `@caret` before `text=`" rule (a caret left
+  — one deletion path, so the "write `@caret` before `value=`" rule (a caret left
   past the shortened text lands at its end) is stated once.
 - **Every `TextField` subclass and composed field inherits both keys** —
   `PasswordField`, the three numeric fields, `DateField`, `ComboBox`. Deletion
@@ -6071,7 +6075,7 @@ shared. That is the API admitting the shape was wrong.
 
 **Decision — every slot becomes a {Tuile::Listeners}, and the setter is
 deleted.** The reader is the registrar (`button.on_click { save }`,
-`field.on_change << method(:preview)`), and the semantics are *append, and remove
+`field.on_value_change << method(:preview)`), and the semantics are *append, and remove
 your own*. **Deleting `on_foo=` is the whole point rather than a tidying**: the
 three contentions above are fixed by construction only if no replace operation
 exists. Removal holds nothing, because `Method#==` compares receiver and name.

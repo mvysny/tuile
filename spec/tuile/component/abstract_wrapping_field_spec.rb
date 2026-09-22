@@ -14,7 +14,7 @@ module Tuile
         def value = editor.text.empty? ? nil : editor.text.upcase
 
         def value=(new_value)
-          editor.text = new_value.nil? ? "" : new_value.to_s
+          editor.value = new_value.nil? ? "" : new_value.to_s
         end
 
         def empty_value = nil
@@ -87,8 +87,8 @@ module Tuile
         f = field
         seen = []
         f.on_value_change { |e| seen << e.value }
-        f.inner.text = "ab"
-        f.inner.text = "abc"
+        f.inner.value = "ab"
+        f.inner.value = "abc"
         assert_equal %w[AB ABC], seen
       end
 
@@ -96,8 +96,8 @@ module Tuile
         f = field
         seen = []
         f.on_value_change { |e| seen << e.value }
-        f.inner.text = "ab"
-        f.inner.text = "AB" # different buffer, same value
+        f.inner.value = "ab"
+        f.inner.value = "AB" # different buffer, same value
         assert_equal ["AB"], seen
       end
 
@@ -113,7 +113,7 @@ module Tuile
     describe "#clear" do
       it "empties the input, not merely the value" do
         f = field
-        f.inner.text = "abc"
+        f.inner.value = "abc"
         f.clear
         assert_equal "", f.inner.text
         assert_nil f.value
@@ -127,7 +127,7 @@ module Tuile
         # every buffer parses to nothing
         def f.value = nil
 
-        f.inner.text = "junk"
+        f.inner.value = "junk"
         f.clear
         assert_equal "", f.inner.text
       end
@@ -195,7 +195,7 @@ module Tuile
 
       it "delegates the cursor to the editor" do
         f = field
-        f.inner.text = "ab"
+        f.inner.value = "ab"
         assert_equal f.inner.cursor_position, f.cursor_position
       end
     end
@@ -252,9 +252,9 @@ module Tuile
       # buffer must not corrupt the walk or the resulting focus.
       it "may rewrite the buffer from inside the focus change" do
         f = field
-        def f.commit = (editor.text = editor.text.strip)
+        def f.commit = (editor.value = editor.text.strip)
 
-        f.inner.text = "  padded  "
+        f.inner.value = "  padded  "
         Screen.instance.focused = f
         Screen.instance.focused = nil
         assert_equal "padded", f.inner.text
@@ -301,7 +301,7 @@ module Tuile
 
       it "reaches the cells the editor paints, since the editor inherits it" do
         f = field
-        f.inner.text = "ab"
+        f.inner.value = "ab"
         assert_equal f.__send__(:bg).effective, f.inner.__send__(:bg).effective
       end
     end

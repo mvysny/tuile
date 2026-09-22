@@ -137,7 +137,7 @@ module Tuile
       it "shows the field's own report, with no verdict written" do
         number = Component::IntegerField.new
         mount(Component::FormItem.new(number, caption: "Count"))
-        Testing.get(Component::TextField, in: number).text = "-"
+        Testing.get(Component::TextField, in: number).value = "-"
         assert_nil number.error_message
         assert_equal "not a whole number  ", painted[2]
       end
@@ -146,9 +146,9 @@ module Tuile
         number = Component::IntegerField.new
         mount(Component::FormItem.new(number, caption: "Count"))
         number.error_message = "must be over 18"
-        Testing.get(Component::TextField, in: number).text = "-"
+        Testing.get(Component::TextField, in: number).value = "-"
         assert_equal "not a whole number  ", painted[2]
-        Testing.get(Component::TextField, in: number).text = "-5"
+        Testing.get(Component::TextField, in: number).value = "-5"
         assert_equal "must be over 18     ", painted[2]
       end
 

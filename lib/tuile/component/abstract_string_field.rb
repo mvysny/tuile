@@ -9,9 +9,9 @@ module Tuile
     # drag this String-typed `text`/`value` seam onto its face alongside the
     # real typed one.
     #
-    # Holds the shared state — a mutable {#text} buffer, a {#caret} index,
-    # {#on_change} and {#on_escape} callbacks — and the keyboard machinery
-    # that single-line and multi-line inputs both need: ESC handling,
+    # Holds the shared state — a mutable {#text} buffer, a {#caret} index, the
+    # {#on_escape} slot — and the keyboard machinery that single-line and
+    # multi-line inputs both need: ESC handling,
     # LEFT/RIGHT caret movement, CTRL+LEFT/CTRL+RIGHT word jumps, CTRL+W
     # word-delete, and the `tab_stop?` flag (`focusable?` comes from
     # {HasValue}).
@@ -21,14 +21,14 @@ module Tuile
     # forward onto the enclosing cluster's end, and every edit steps by a whole
     # cluster:
     #
-    #   f.text  = "e\u{0301}x"   # a decomposed e-acute then "x": 3 chars, 2 glyphs
+    #   f.value = "e\u{0301}x"   # a decomposed e-acute then "x": 3 chars, 2 glyphs
     #   f.caret = 1              # into the middle of the e-acute …
     #   f.caret                  # => 2, its end — where the caret already drew
     #   f.handle_key?(Keys::BACKSPACE)
     #   f.text                   # => "x": the whole glyph went, not its accent
     #
     # Insertion stays character-native, so `String#insert` merges a typed
-    # combining mark into its base; {#text=}'s snap covers the case where that
+    # combining mark into its base; {#value=}'s snap covers the case where that
     # re-segments the text around the caret.
     #
     # Subclasses implement the layout-specific pieces ({#cursor_position},
@@ -66,13 +66,13 @@ module Tuile
     # share one slot, and a filter written on a *key* callback let the same
     # characters in through a paste (`D_input_filters`, book ch7).
     #
-    # The mutation pipeline is a template method: {#text=} and {#caret=}
-    # detect no-ops, mutate state, fire {#on_change}, and invalidate.
+    # The mutation pipeline is a template method: {#value=} and {#caret=}
+    # detect no-ops, mutate state, fire {HasValue#on_value_change}, and invalidate.
     # Subclasses inject their own behavior via four protected hooks:
     #
     # - {#insert_text} — **the one filter seam**: every insertion runs through
     #   it, typed or pasted, so what the buffer may hold is decided here.
-    # - {#preprocess_text} — filter for a whole assignment to {#text=},
+    # - {#preprocess_text} — filter for a whole assignment to {#value=},
     #   which insertion does *not* pass through.
     # - {#preprocess_paste} — sanitizer for {#handle_paste}, run before the
     #   clipboard reaches {#insert_text} ({TextField} keeps its first line).
@@ -97,16 +97,29 @@ module Tuile
       # @return [String] current text contents.
       attr_reader :text
 
-      # A text component's value *is* its text: {#value}/{#value=} are the
-      # {HasValue} seam over the same buffer as {#text}/{#text=}, so a form can
-      # drive it alongside typed fields. `text` stays the text-native name.
+      # A text component's value *is* its text: {#value} reads the same buffer
+      # as {#text}, and {#value=} is its one writer.
       # @return [String]
       def value = text
 
+      # Replaces the text. Runs {#preprocess_text} first, then clamps the caret
+      # to the new text and snaps it onto a cluster boundary of it. Fires
+      # {HasValue#on_value_change} only on a real change — never on {#caret=}.
+      #
+      #   field.value = "admin"
+      #   field.caret = field.text.length   # the caret is clamped, never moved to the end
+      #
       # @param new_value [String, #to_s]
       # @return [void]
       def value=(new_value)
-        self.text = new_value.to_s
+        new_value = preprocess_text(new_value)
+        return if @text == new_value
+
+        @text = +new_value
+        @caret = snap_to_cluster(@caret.clamp(0, @text.length))
+        handle_text_mutated
+        invalidate
+        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: @text))
       end
 
       # `""` (not `nil`): a text field is empty when its buffer is blank.
@@ -117,25 +130,11 @@ module Tuile
       #   and always on a grapheme-cluster boundary (see the class doc).
       attr_reader :caret
 
-      # What {#on_change} fires.
-      #
-      # @!attribute [r] source
-      #   @return [AbstractStringField] the field whose text changed.
-      # @!attribute [r] text
-      #   @return [String] the new text.
-      ChangeEvent = Data.define(:source, :text) { include Tuile::Event }
-
       # What {#on_escape} fires.
       #
       # @!attribute [r] source
       #   @return [AbstractStringField] the field ESC reached.
       EscapeEvent = Data.define(:source) { include Tuile::Event }
-
-      # @!method on_change
-      #   Fired with a {ChangeEvent} whenever {#text} changes. Not fired by
-      #   {#caret=} (text unchanged), nor when a setter is a no-op.
-      #   @return [Listeners]
-      listener :on_change
 
       # @!method on_escape
       #   Fired with an {EscapeEvent} when ESC is pressed, after
@@ -162,23 +161,6 @@ module Tuile
 
       def tab_stop? = true
 
-      # Sets the text. Runs {#preprocess_text} first (subclasses may filter or
-      # truncate). Caret is clamped to the new text length, then snapped back
-      # onto a cluster boundary of the *new* text. Fires {#on_change} only on a
-      # real change.
-      # @param new_text [String]
-      def text=(new_text)
-        new_text = preprocess_text(new_text)
-        return if @text == new_text
-
-        @text = +new_text
-        @caret = snap_to_cluster(@caret.clamp(0, @text.length))
-        handle_text_mutated
-        invalidate
-        on_change.fire(ChangeEvent.new(source: self, text: @text))
-        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: @text))
-      end
-
       # Clamps to `0..text.length`, then snaps forward onto a grapheme-cluster
       # boundary, so an index that fell inside a cluster reads back as that
       # cluster's end. Fires the {#handle_caret_mutated} hook for subclasses (e.g.
@@ -201,8 +183,9 @@ module Tuile
       # @return [Boolean]
       def handle_key?(key) = handle_text_input_key?(key)
 
-      # Inserts pasted text at the caret as **one** mutation, so {#on_change}
-      # fires once for the whole paste rather than once per character.
+      # Inserts pasted text at the caret as **one** mutation, so
+      # {HasValue#on_value_change} fires once for the whole paste rather than
+      # once per character.
       # {#preprocess_paste} filters it first.
       # @param text [String]
       # @return [void]
@@ -242,8 +225,8 @@ module Tuile
       # (a date — `"2020-13-45"` is well-formed at every character) reports bad
       # input rather than filtering it (`D_input_filters`, book ch7).
       #
-      # {#text=} does *not* pass through here: only user input is filtered, so a
-      # programmatic {HasValue#value=} may still write what no key types.
+      # {#value=} does *not* pass through here: only user input is filtered, so a
+      # programmatic write may still hold what no key types.
       # @param str [String]
       # @return [Boolean] true if the text changed.
       def insert_text(str)
@@ -251,11 +234,11 @@ module Tuile
 
         new_text = @text.dup.insert(@caret, str)
         @caret += str.length
-        self.text = new_text
+        self.value = new_text
         true
       end
 
-      # Input filter for a whole assignment to {#text=}. Nothing overrides it
+      # Input filter for a whole assignment to {#value=}. Nothing overrides it
       # today; a subclass that does is filtering the *programmatic* setter, not
       # user input — that is {#insert_text}.
       # @param new_text [String]
@@ -272,8 +255,8 @@ module Tuile
       def columns_of(str) = str.each_grapheme_cluster.sum { |g| Buffer.display_width(g) }
 
       # Hook called after {#text} has been mutated, before invalidation /
-      # {#on_change}. Default no-op. Subclasses use this to invalidate caches
-      # ({TextArea}'s wrap cache) and update derived state.
+      # {HasValue#on_value_change}. Default no-op. Subclasses use this to
+      # invalidate caches ({TextArea}'s wrap cache) and update derived state.
       # @return [void]
       def handle_text_mutated; end
 
@@ -318,7 +301,7 @@ module Tuile
       def delete_before_caret = delete_back_to(cluster_boundary_before(@caret))
 
       # Removes the text between `index` and the caret, leaving the caret at
-      # `index` — one mutation, so {#on_change} fires once.
+      # `index` — one mutation, so {HasValue#on_value_change} fires once.
       #
       # `index` is snapped forward onto a grapheme-cluster boundary, so a
       # caller may compute it by counting characters.
@@ -331,7 +314,7 @@ module Tuile
         new_text = @text.dup
         new_text.slice!(start...@caret)
         @caret = start
-        self.text = new_text
+        self.value = new_text
       end
 
       # Removes the whole grapheme cluster at the caret.
@@ -341,7 +324,7 @@ module Tuile
 
         new_text = @text.dup
         new_text.slice!(@caret...cluster_boundary_after(@caret))
-        self.text = new_text
+        self.value = new_text
       end
 
       private

@@ -117,8 +117,8 @@ protect the plaintext in memory: it's an ordinary Ruby string, and
 anything stronger is a job for a type the whole application cooperates
 with.
 
-Both inherit the same event hooks from the base. `on_change` fires whenever
-the text changes; `on_escape` reacts to ESC; `on_enter`, `on_key_up` and
+Both inherit the same event hooks from the base. `on_value_change` fires
+whenever the text changes; `on_escape` reacts to ESC; `on_enter`, `on_key_up` and
 `on_key_down` each claim one key. Notice what
 they have in common: every one of them either *reports* something or takes a
 **single named key** whose meaning the field itself has no use for. There is
@@ -127,7 +127,7 @@ keys *do*, you subclass (see *Keeping input out of a field*, below).
 
 ```ruby
 field = Component::TextField.new
-field.on_change { |e| filter_results(e.text) }
+field.on_value_change { |e| filter_results(e.value) }
 field.on_enter { submit }              # empty (default) → Enter bubbles to the parent
 ```
 

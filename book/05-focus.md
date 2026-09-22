@@ -233,7 +233,7 @@ single `PasteEvent` — which never enters the ladder at all:
 
 The default `handle_paste` returns `false` and the text is dropped.
 {Tuile::Component::AbstractStringField} overrides it to insert at the caret
-as **one** mutation — so `on_change` fires once for the paste rather than
+as **one** mutation — so `on_value_change` fires once for the paste rather than
 once per character, and a subclass that claims Enter needs no paste code of
 its own:
 
@@ -245,7 +245,7 @@ class PromptTextArea < Tuile::Component::TextArea
     return super unless key == Tuile::Keys::ENTER
 
     submit(text)   # a typed Enter, and only ever a typed Enter
-    self.text = ""
+    self.value = ""
     true
   end
 end
@@ -260,7 +260,7 @@ def handle_paste(text)
   return super if text.lines.size < 20
 
   attach_as_file(text)
-  self.text = "#{text.lines.size} lines attached"
+  self.value = "#{text.lines.size} lines attached"
   true
 end
 ```
@@ -381,7 +381,7 @@ to tidy up what was typed, this is where:
 
 ```ruby
 class TrimmedField < Tuile::Component::TextField
-  protected def handle_blur = (self.text = text.strip)
+  protected def handle_blur = (self.value = text.strip)
 end
 ```
 

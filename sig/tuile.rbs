@@ -2730,8 +2730,8 @@ module Tuile
 
     # Fired with an {EventQueue::ErrorEvent} when a {StandardError} escapes an
     # event handler inside the event loop (e.g. a {Component::TextField}'s
-    # `on_change` raises). The one slot whose event carries no `source`: its
-    # listener wants `error`.
+    # `on_value_change` listener raises). The one slot whose event carries no
+    # `source`: its listener wants `error`.
     # 
     # **Empty means re-raise**, so the exception propagates out of
     # {#run_event_loop} and crashes the script with a stacktrace — unhandled
@@ -3700,7 +3700,7 @@ module Tuile
   #   class Trimmed < Component::TextField
   #     def handle_blur                  # handle_ — the override point
   #       super
-  #       self.text = text.strip
+  #       self.value = text.strip
   #     end
   #   end
   # 
@@ -4384,7 +4384,7 @@ module Tuile
     #   class TrimmedField < Component::TextField
     #     protected def handle_blur
     #       super
-    #       self.text = text.strip
+    #       self.value = text.strip
     #       false
     #     end
     #   end
@@ -8204,7 +8204,7 @@ module Tuile
     # ({#placeholder}, {#cursor_position}); a **spec** reaches the field itself:
     # 
     #   field = Testing.get(Component::TextField, in: combo)
-    #   field.text = "ap"          # type a query without a real loop
+    #   field.value = "ap"         # type a query without a real loop
     # 
     # UI-thread-confined, like every component (see {Screen}).
     class ComboBox < Component
@@ -8315,9 +8315,9 @@ module Tuile
       # Sets the field's text without triggering a refilter — for programmatic
       # value changes and query reverts, which must not spring the dropdown.
       # Every programmatic write to the field goes through here; a direct
-      # `field.text =` reaches the field's `on_change` and pops the dropdown
+      # `field.value =` reaches the field's `on_value_change` and pops the dropdown
       # open on a {#value=} the user never asked to browse.
-      # Parks the caret at the end: `text=` only *clamps* the caret, so a
+      # Parks the caret at the end: `value=` only *clamps* the caret, so a
       # shorter query replaced by a longer label would otherwise strand it
       # mid-word (commit "Go", then pick "Kotlin" → caret after "Ko").
       # 
@@ -8902,7 +8902,7 @@ module Tuile
     # start of the next row in nearly all cases).
     # 
     # Enter inserts a newline, as in a plain `<textarea>` or text editor; only
-    # {#on_change} is wired. {Keys::CTRL_J} does the same, since that is the
+    # {#on_value_change} is wired. {Keys::CTRL_J} does the same, since that is the
     # byte a terminal sends for a typed Ctrl+J. A *pasted* line break arrives
     # through {AbstractStringField#handle_paste} instead and never as a key at
     # all — so a subclass rebinding Enter to submit keeps working under a
@@ -9023,7 +9023,7 @@ module Tuile
       # consumes at least one cluster — `"\v"` and `"\f"` match `/\s/` but are
       # neither blank nor a newline here, and a loop that measured them as zero
       # and did not advance would hang the UI thread on
-      # `area.text = File.read(...)`.
+      # `area.value = File.read(...)`.
       class WrappedText
         # _@param_ `text` — the full buffer, unwrapped.
         # 
@@ -10244,7 +10244,7 @@ module Tuile
       # Optional cap on {#text}'s length **in characters** — a wide glyph counts
       # once. Typing into a field already at the cap does nothing.
       # 
-      # Deliberately does not police {#text=}: lowering the cap under an existing
+      # Deliberately does not police {#value=}: lowering the cap under an existing
       # value leaves that value intact rather than silently trimming it.
       # 
       # _@return_ — maximum characters, or nil for unbounded (default).
@@ -10897,7 +10897,7 @@ module Tuile
       # The field under a caption — sugar, since the association is a {FormItem}
       # in the tree and an ordinary walk answers the same question.
       # 
-      #   form.field_for(caption: "Username").text = "admin"
+      #   form.field_for(caption: "Username").value = "admin"
       # 
       # _@param_ `caption` — matched against {FormItem#caption} as plain text; with duplicates, the first item wins.
       # 
@@ -13678,9 +13678,9 @@ module Tuile
     # drag this String-typed `text`/`value` seam onto its face alongside the
     # real typed one.
     # 
-    # Holds the shared state — a mutable {#text} buffer, a {#caret} index,
-    # {#on_change} and {#on_escape} callbacks — and the keyboard machinery
-    # that single-line and multi-line inputs both need: ESC handling,
+    # Holds the shared state — a mutable {#text} buffer, a {#caret} index, the
+    # {#on_escape} slot — and the keyboard machinery that single-line and
+    # multi-line inputs both need: ESC handling,
     # LEFT/RIGHT caret movement, CTRL+LEFT/CTRL+RIGHT word jumps, CTRL+W
     # word-delete, and the `tab_stop?` flag (`focusable?` comes from
     # {HasValue}).
@@ -13690,14 +13690,14 @@ module Tuile
     # forward onto the enclosing cluster's end, and every edit steps by a whole
     # cluster:
     # 
-    #   f.text  = "e\u{0301}x"   # a decomposed e-acute then "x": 3 chars, 2 glyphs
+    #   f.value = "e\u{0301}x"   # a decomposed e-acute then "x": 3 chars, 2 glyphs
     #   f.caret = 1              # into the middle of the e-acute …
     #   f.caret                  # => 2, its end — where the caret already drew
     #   f.handle_key?(Keys::BACKSPACE)
     #   f.text                   # => "x": the whole glyph went, not its accent
     # 
     # Insertion stays character-native, so `String#insert` merges a typed
-    # combining mark into its base; {#text=}'s snap covers the case where that
+    # combining mark into its base; {#value=}'s snap covers the case where that
     # re-segments the text around the caret.
     # 
     # Subclasses implement the layout-specific pieces ({#cursor_position},
@@ -13735,13 +13735,13 @@ module Tuile
     # share one slot, and a filter written on a *key* callback let the same
     # characters in through a paste (`D_input_filters`, book ch7).
     # 
-    # The mutation pipeline is a template method: {#text=} and {#caret=}
-    # detect no-ops, mutate state, fire {#on_change}, and invalidate.
+    # The mutation pipeline is a template method: {#value=} and {#caret=}
+    # detect no-ops, mutate state, fire {HasValue#on_value_change}, and invalidate.
     # Subclasses inject their own behavior via four protected hooks:
     # 
     # - {#insert_text} — **the one filter seam**: every insertion runs through
     #   it, typed or pasted, so what the buffer may hold is decided here.
-    # - {#preprocess_text} — filter for a whole assignment to {#text=},
+    # - {#preprocess_text} — filter for a whole assignment to {#value=},
     #   which insertion does *not* pass through.
     # - {#preprocess_paste} — sanitizer for {#handle_paste}, run before the
     #   clipboard reaches {#insert_text} ({TextField} keeps its first line).
@@ -13753,21 +13753,23 @@ module Tuile
 
       def initialize: () -> void
 
-      # A text component's value *is* its text: {#value}/{#value=} are the
-      # {HasValue} seam over the same buffer as {#text}/{#text=}, so a form can
-      # drive it alongside typed fields. `text` stays the text-native name.
+      # A text component's value *is* its text: {#value} reads the same buffer
+      # as {#text}, and {#value=} is its one writer.
       def value: () -> String
 
       # sord duck - #to_s looks like a duck type with an equivalent RBS interface, replacing with _ToS
+      # Replaces the text. Runs {#preprocess_text} first, then clamps the caret
+      # to the new text and snaps it onto a cluster boundary of it. Fires
+      # {HasValue#on_value_change} only on a real change — never on {#caret=}.
+      # 
+      #   field.value = "admin"
+      #   field.caret = field.text.length   # the caret is clamped, never moved to the end
+      # 
       # _@param_ `new_value`
       def value=: ((String | _ToS) new_value) -> void
 
       # `""` (not `nil`): a text field is empty when its buffer is blank.
       def empty_value: () -> String
-
-      # Fired with a {ChangeEvent} whenever {#text} changes. Not fired by
-      # {#caret=} (text unchanged), nor when a setter is a no-op.
-      def on_change: () -> Listeners
 
       # Fired with an {EscapeEvent} when ESC is pressed, after
       # {#escape_clears_focus} has had its say. Append to react as well as
@@ -13792,8 +13794,9 @@ module Tuile
       # _@param_ `key`
       def handle_key?: (String key) -> bool
 
-      # Inserts pasted text at the caret as **one** mutation, so {#on_change}
-      # fires once for the whole paste rather than once per character.
+      # Inserts pasted text at the caret as **one** mutation, so
+      # {HasValue#on_value_change} fires once for the whole paste rather than
+      # once per character.
       # {#preprocess_paste} filters it first.
       # 
       # _@param_ `text`
@@ -13829,15 +13832,15 @@ module Tuile
       # (a date — `"2020-13-45"` is well-formed at every character) reports bad
       # input rather than filtering it (`D_input_filters`, book ch7).
       # 
-      # {#text=} does *not* pass through here: only user input is filtered, so a
-      # programmatic {HasValue#value=} may still write what no key types.
+      # {#value=} does *not* pass through here: only user input is filtered, so a
+      # programmatic write may still hold what no key types.
       # 
       # _@param_ `str`
       # 
       # _@return_ — true if the text changed.
       def insert_text: (String str) -> bool
 
-      # Input filter for a whole assignment to {#text=}. Nothing overrides it
+      # Input filter for a whole assignment to {#value=}. Nothing overrides it
       # today; a subclass that does is filtering the *programmatic* setter, not
       # user input — that is {#insert_text}.
       # 
@@ -13858,8 +13861,8 @@ module Tuile
       def columns_of: (String str) -> Integer
 
       # Hook called after {#text} has been mutated, before invalidation /
-      # {#on_change}. Default no-op. Subclasses use this to invalidate caches
-      # ({TextArea}'s wrap cache) and update derived state.
+      # {HasValue#on_value_change}. Default no-op. Subclasses use this to
+      # invalidate caches ({TextArea}'s wrap cache) and update derived state.
       def handle_text_mutated: () -> void
 
       # Hook called after {#caret} has been mutated, before invalidation.
@@ -13887,7 +13890,7 @@ module Tuile
       def delete_before_caret: () -> void
 
       # Removes the text between `index` and the caret, leaving the caret at
-      # `index` — one mutation, so {#on_change} fires once.
+      # `index` — one mutation, so {HasValue#on_value_change} fires once.
       # 
       # `index` is snapped forward onto a grapheme-cluster boundary, so a
       # caller may compute it by counting characters.
@@ -14000,7 +14003,7 @@ module Tuile
       def error_ink?: () -> bool
 
       # _@return_ — current text contents.
-      attr_accessor text: String
+      attr_reader text: String
 
       # _@return_ — caret index in `0..text.length`, counting characters
       # and always on a grapheme-cluster boundary (see the class doc).
@@ -14012,22 +14015,6 @@ module Tuile
       # representation of the default, so turning it off is the one way to give
       # ESC another meaning. See `D_escape_opt_out`.
       attr_accessor escape_clears_focus: bool
-
-      # What {#on_change} fires.
-      # 
-      # @!attribute [r] source
-      #   @return [AbstractStringField] the field whose text changed.
-      # @!attribute [r] text
-      #   @return [String] the new text.
-      class ChangeEvent < Data
-        include Tuile::Event
-
-        # _@return_ — the field whose text changed.
-        attr_reader source: AbstractStringField
-
-        # _@return_ — the new text.
-        attr_reader text: String
-      end
 
       # What {#on_escape} fires.
       # 
@@ -14052,7 +14039,7 @@ module Tuile
     #     def value = Integer(editor.text, 10) rescue nil
     # 
     #     def value=(new_value)
-    #       editor.text = new_value.nil? ? "" : new_value.to_s
+    #       editor.value = new_value.nil? ? "" : new_value.to_s
     #       editor.caret = editor.text.length
     #     end
     # 
@@ -14076,7 +14063,7 @@ module Tuile
     # editor is how a test reaches a state no public setter produces:
     # 
     #   editor = Testing.get(Component::TextField, in: field)
-    #   editor.text = "-"          # bad input; field.value still reads nil
+    #   editor.value = "-"         # bad input; field.value still reads nil
     # 
     # A knob that is *editor-shaped* rather than a concept of this field's own
     # domain is **not** forwarded, and the subclass sets it on its editor
@@ -14113,7 +14100,7 @@ module Tuile
     # - **{HasValue#empty_value} is called during construction**, to seed the
     #   change guard, so it must not depend on subclass state that `super` has
     #   not set yet. In practice it is a constant per class.
-    # - **The editor's `on_change` and `on_enter` slots carry this field's own
+    # - **The editor's `on_value_change` and `on_enter` slots carry this field's own
     #   listeners** — for that guard, and to commit before an app's ENTER handler
     #   runs. They are lists, so nothing an app adds displaces them; a subclass
     #   reacting to buffer edits still overrides {#handle_editor_change} (every
@@ -14316,10 +14303,10 @@ module Tuile
   # A listener slot: the callables registered on one `on_foo`, fired with one
   # {Event}. The reader *is* the registrar:
   # 
-  #   button.on_click { save }                     # a block
-  #   field.on_change << method(:preview)          # anything callable
-  #   field.on_change.remove(method(:preview))     # …removed, holding nothing
-  #   field.on_change.empty?                       # => true
+  #   button.on_click { save }                         # a block
+  #   field.on_value_change << method(:preview)        # anything callable
+  #   field.on_value_change.remove(method(:preview))   # …removed, holding nothing
+  #   field.on_value_change.empty?                     # => true
   # 
   # `Method#==` compares receiver and name, so a widget unsubscribes with the
   # expression it subscribed with and holds nothing. A `Proc` equals only itself,
@@ -14355,8 +14342,8 @@ module Tuile
     # sord duck - #call looks like a duck type, replacing with untyped
     # Appends `callable` and returns it, so a lambda can be held for removal.
     # 
-    #   cb = field.on_change.add(->(e) { preview(e.text) })
-    #   field.on_change.remove(cb)
+    #   cb = field.on_value_change.add(->(e) { preview(e.value) })
+    #   field.on_value_change.remove(cb)
     # 
     # Arity is settled here rather than per fire, so a listener that cannot take
     # the event raises at registration instead of later inside a repaint on the
@@ -14375,7 +14362,7 @@ module Tuile
     # sord duck - #call looks like a duck type, replacing with untyped
     # Appends `callable` and returns self, so registrations chain.
     # 
-    #   field.on_change << method(:preview) << method(:log)
+    #   field.on_value_change << method(:preview) << method(:log)
     # 
     # _@param_ `callable` — the listener.
     def <<: (untyped callable) -> self

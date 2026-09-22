@@ -8,7 +8,7 @@ module Tuile
     def field(width: 10, text: "", active: false)
       f = Component::PasswordField.new
       Testing.place(f, Rect.new(0, 0, width, 1))
-      f.text = text
+      f.value = text
       f.active = active if active
       f
     end
@@ -241,7 +241,7 @@ module Tuile
         assert_equal ["password    "], painted.text
         assert_equal Screen.instance.theme.placeholder_color, painted.cell(0, 0).style.fg
 
-        f.text = "hunter2"
+        f.value = "hunter2"
         assert_equal ["*******     "], Testing.paint(f).text
       end
     end

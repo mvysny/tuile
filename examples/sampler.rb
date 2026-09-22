@@ -138,7 +138,7 @@ module SamplerExample
       return super unless key == Tuile::Keys::ENTER
 
       on_submit.fire(SubmitEvent.new(source: self, text: text))
-      self.text = ""
+      self.value = ""
       true
     end
   end
@@ -704,7 +704,7 @@ module SamplerExample
                     "Home/End jump to row start/end; Up/Down at the first/last row jumps to text start/end.\n" \
                     "Overflowing rows scroll vertically to keep the caret visible."
       area = Tuile::Component::TextArea.new
-      area.text = "The quick brown fox jumps over the lazy dog. " \
+      area.value = "The quick brown fox jumps over the lazy dog. " \
                   "Edit me — the text wraps to the area's width and scrolls vertically " \
                   "once the cursor leaves the visible rows."
       form do |f|
@@ -1074,7 +1074,7 @@ module SamplerExample
       status = Tuile::Component::Label.new
       refresh = -> { status.text = "user: #{user.text.inspect}  password: #{password.value.length} chars" }
       refresh.call
-      [user, password].each { _1.on_change { refresh.call } }
+      [user, password].each { _1.on_value_change { refresh.call } }
       form do |f|
         f.add(prompt, Fixed[4])
         f.add([user, password], Fixed[1], cross: Fixed[30]) # one constraint, both fields
@@ -1089,7 +1089,7 @@ module SamplerExample
     # A ListDropdown driven from a TextArea — the same shape {ComboBox} and
     # {Select} use, but wired by app code onto a field that knows nothing about
     # it. Focus (and the caret) stays in the TextArea the whole time: an
-    # `on_change` listener refills the menu, and {SlashCommandTextArea} hands
+    # `on_value_change` listener refills the menu, and {SlashCommandTextArea} hands
     # movement keys to `#move` and Enter to `#choose` while it is open.
     def build_slash_demo
       prompt = Tuile::Component::Label.new
@@ -1113,7 +1113,7 @@ module SamplerExample
         end
       end
 
-      area.on_change { refill.call }
+      area.on_value_change { refill.call }
       overlay.list.on_item_chosen { |e| accept_slash_command(area, e.item.to_s) }
 
       form do |f|
@@ -1140,7 +1140,7 @@ module SamplerExample
       refresh = lambda do
         stats.text = "submits: #{submits}   pastes: #{pastes}   rows in draft: #{area.row_count}"
       end
-      area.on_change { refresh.call }
+      area.on_value_change { refresh.call }
       area.on_paste_received do |e|
         pastes += 1
         log.add_line(Rainbow("pasted #{e.text.lines.size} line(s), #{e.text.length} chars").cyan)
@@ -1547,7 +1547,7 @@ module SamplerExample
       list.cursor = Tuile::Component::List::Cursor.new
       list.lines = (1..12).map { |i| "List row #{i}" }
       field = Tuile::Component::TextField.new
-      field.text = "TextField keeps its own background"
+      field.value = "TextField keeps its own background"
 
       # A borderless sub-box holding the list + field; it inherits the tint too.
       box = Tuile::Component::Layout::Vertical.new(spacing: 1)
@@ -1679,7 +1679,7 @@ module SamplerExample
                     "so they bubble past the strip."
 
       field = Tuile::Component::TextField.new
-      field.text = "type here"
+      field.value = "type here"
       checkbox = Tuile::Component::Checkbox.new("Remember me", value: true)
       list = Tuile::Component::List.new
       list.cursor = Tuile::Component::List::Cursor.new
@@ -2073,14 +2073,14 @@ module SamplerExample
     end
 
     # Replaces the slash token at the caret with `command` plus a trailing
-    # space, then drops the caret after it (which re-fires on_change → refill,
+    # space, then drops the caret after it (which re-fires on_value_change → refill,
     # so the now-tokenless text closes the menu).
     def accept_slash_command(area, command)
       text = area.text
       caret = area.caret
       start = caret
       start -= 1 while start.positive? && !text[start - 1].match?(/\s/)
-      area.text = "#{text[0...start]}#{command} #{text[caret..]}"
+      area.value = "#{text[0...start]}#{command} #{text[caret..]}"
       area.caret = start + command.length + 1
     end
 

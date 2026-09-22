@@ -29,7 +29,7 @@ module Tuile
       # consumes at least one cluster — `"\v"` and `"\f"` match `/\s/` but are
       # neither blank nor a newline here, and a loop that measured them as zero
       # and did not advance would hang the UI thread on
-      # `area.text = File.read(...)`.
+      # `area.value = File.read(...)`.
       class WrappedText
         # One row's span, measured on both axes.
         #

@@ -122,7 +122,7 @@ module Tuile
       # The field under a caption — sugar, since the association is a {FormItem}
       # in the tree and an ordinary walk answers the same question.
       #
-      #   form.field_for(caption: "Username").text = "admin"
+      #   form.field_for(caption: "Username").value = "admin"
       #
       # @param caption [String, StyledString] matched against {FormItem#caption}
       #   as plain text; with duplicates, the first item wins.

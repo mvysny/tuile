@@ -276,7 +276,7 @@ module Tuile
       assert_equal 4, revealed.size
 
       # Typed text survives the round trip: nothing was ever detached.
-      revealed.last.text = "FI12345678"
+      revealed.last.value = "FI12345678"
       business.handle_key?(" ")
       Screen.instance.repaint
       assert_equal 2, Testing.find(Component::TextField, in: scope).size
@@ -349,8 +349,8 @@ module Tuile
       # the whole reason the verdict is a background and not ink.
       assert_includes Screen.instance.buffer.row_ansi(username.absolute_rect.top), "48;5;88"
 
-      username.text = "ab" # present, but still too short
-      password.text = "secret"
+      username.value = "ab" # present, but still too short
+      password.value = "secret"
       login.handle_key?(Keys::ENTER)
       Screen.instance.repaint
       row = Screen.instance.buffer.row_ansi(username.absolute_rect.top)
@@ -358,7 +358,7 @@ module Tuile
       assert_includes painted, "at least 3 characters"
       assert_includes row, "48;5;88" # the field's own well, DARK error_bg_color
 
-      username.text = "abc"
+      username.value = "abc"
       login.handle_key?(Keys::ENTER)
       Screen.instance.repaint
       assert_nil username.error_message

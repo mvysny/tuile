@@ -126,7 +126,7 @@ module Tuile
         sheet.add_tab("First", field)
         sheet.add_tab("Second", Component::Label.new("Second"))
         mount_at(sheet, Rect.new(0, 0, 40, 5))
-        field.text = "typed"
+        field.value = "typed"
         sheet.select_next
         sheet.select_previous
         assert_equal "typed", field.text

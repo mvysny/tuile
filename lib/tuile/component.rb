@@ -16,7 +16,7 @@ module Tuile
   #   class Trimmed < Component::TextField
   #     def handle_blur                  # handle_ — the override point
   #       super
-  #       self.text = text.strip
+  #       self.value = text.strip
   #     end
   #   end
   #
@@ -1032,7 +1032,7 @@ module Tuile
     #   class TrimmedField < Component::TextField
     #     protected def handle_blur
     #       super
-    #       self.text = text.strip
+    #       self.value = text.strip
     #       false
     #     end
     #   end

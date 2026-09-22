@@ -147,7 +147,7 @@ module Tuile
       # A debug method must not build a megabyte to show 40 characters of it.
       it "truncates a long String value" do
         area = Component::TextArea.new
-        area.text = "x" * 5_000
+        area.value = "x" * 5_000
         assert_equal "#<Tuile::Component::TextArea rect=(0,0 0x0) value=\"#{"x" * 40}…\">", area.inspect
       end
 

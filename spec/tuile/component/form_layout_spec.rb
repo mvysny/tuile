@@ -99,7 +99,7 @@ module Tuile
       it "paints the caption above the field, over the form's full width" do
         form.add(username, caption: "Username")
         mount
-        username.text = "admin"
+        username.value = "admin"
         assert_equal "Username            ", painted[0]
         assert_equal "admin               ", painted[1]
       end

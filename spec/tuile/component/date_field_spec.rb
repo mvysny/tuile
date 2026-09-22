@@ -383,7 +383,7 @@ module Tuile
         f.value = Date.new(2026, 9, 4) # announced here, in the canonical spelling
         seen = []
         f.on_value_change { |e| seen << e.value }
-        inner(f).text = "4.9.2026" # the same date, loosely spelled
+        inner(f).value = "4.9.2026" # the same date, loosely spelled
         blur
         assert_equal "2026-09-04", buffer(f)
         assert_empty seen # the rewrite changed the spelling, not the value

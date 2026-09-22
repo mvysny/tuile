@@ -245,8 +245,8 @@ module Tuile
     # @!method on_error
     #   Fired with an {EventQueue::ErrorEvent} when a {StandardError} escapes an
     #   event handler inside the event loop (e.g. a {Component::TextField}'s
-    #   `on_change` raises). The one slot whose event carries no `source`: its
-    #   listener wants `error`.
+    #   `on_value_change` listener raises). The one slot whose event carries no
+    #   `source`: its listener wants `error`.
     #
     #   **Empty means re-raise**, so the exception propagates out of
     #   {#run_event_loop} and crashes the script with a stacktrace — unhandled

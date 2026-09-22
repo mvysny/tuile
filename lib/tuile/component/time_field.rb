@@ -193,7 +193,7 @@ module Tuile
       # @raise [TypeError] on a `Date` (it has no hour, and midnight would be
       #   invented) or a `String` (that is what the buffer is for).
       def value=(new_value)
-        editor.text = new_value.nil? ? "" : coerce(new_value).strftime(formats.first)
+        editor.value = new_value.nil? ? "" : coerce(new_value).strftime(formats.first)
         editor.caret = editor.text.length
         # The edit above announced nothing ({#notify_on_edit?}); a time written
         # rather than typed has no prefix to be mistaken for a value.

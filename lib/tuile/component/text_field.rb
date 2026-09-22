@@ -53,7 +53,7 @@ module Tuile
       # Optional cap on {#text}'s length **in characters** — a wide glyph counts
       # once. Typing into a field already at the cap does nothing.
       #
-      # Deliberately does not police {#text=}: lowering the cap under an existing
+      # Deliberately does not police {#value=}: lowering the cap under an existing
       # value leaves that value intact rather than silently trimming it.
       # @return [Integer, nil] maximum characters, or nil for unbounded (default).
       attr_reader :max_text_length

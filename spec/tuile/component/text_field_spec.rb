@@ -12,7 +12,7 @@ module Tuile
         f = Component::TextField.new
         parent.add(f)
         Testing.place(f, Rect.new(0, 0, 10, 1))
-        f.text = "hi"
+        f.value = "hi"
         parent.bg_color = 52
         painted = Testing.paint(f)
         refute_equal Color.new(52), painted.cell(0, 0).style.bg
@@ -24,7 +24,7 @@ module Tuile
       it "honors its own bg_color over the well" do
         f = Component::TextField.new
         mount_at(f, Rect.new(0, 0, 10, 1))
-        f.text = "hi"
+        f.value = "hi"
         f.bg_color = 52
         painted = Testing.paint(f)
         assert_equal Color.new(52), painted.cell(0, 0).style.bg
@@ -54,7 +54,7 @@ module Tuile
     def field(width: 10, text: "", active: true)
       f = Component::TextField.new
       Testing.place(f, Rect.new(0, 0, width, 1))
-      f.text = text
+      f.value = text
       f.active = active if active
       f
     end
@@ -73,30 +73,30 @@ module Tuile
       assert Component::TextField.new.tab_stop?
     end
 
-    context "text=" do
+    context "value=" do
       it "sets text within capacity" do
         f = field(width: 10)
-        f.text = "hello"
+        f.value = "hello"
         assert_equal "hello", f.text
       end
 
       it "keeps text exceeding the width verbatim and scrolls instead" do
         f = field(width: 5)
-        f.text = "hello world"
+        f.value = "hello world"
         assert_equal "hello world", f.text
       end
 
       it "clamps caret to new shorter text length" do
         f = field(width: 10, text: "hello")
         f.caret = 5
-        f.text = "hi"
+        f.value = "hi"
         assert_equal 2, f.caret
       end
 
       it "is a no-op when text unchanged" do
         f = field(width: 10, text: "hi")
         Screen.instance.invalidated_clear
-        f.text = "hi"
+        f.value = "hi"
         assert !Screen.instance.invalidated?(f)
       end
 
@@ -104,13 +104,13 @@ module Tuile
         f = field(width: 10)
         Screen.instance.content = f
         Screen.instance.invalidated_clear
-        f.text = "x"
+        f.value = "x"
         assert Screen.instance.invalidated?(f)
       end
 
       it "coerces nil to empty string" do
         f = field(width: 10, text: "hi")
-        f.text = nil
+        f.value = nil
         assert_equal "", f.text
       end
     end
@@ -126,7 +126,7 @@ module Tuile
 
       it "becomes true again after clearing" do
         f = field(width: 10, text: "x")
-        f.text = ""
+        f.value = ""
         assert f.empty?
       end
     end
@@ -393,11 +393,11 @@ module Tuile
           assert_equal 0, f.caret
         end
 
-        it "fires on_change once for the whole kill" do
+        it "fires on_value_change once for the whole kill" do
           f = field(width: 20, text: "hello world")
           f.caret = 11
           changes = []
-          f.on_change { |e| changes << e.text }
+          f.on_value_change { |e| changes << e.value }
           assert f.handle_key?(Keys::CTRL_U)
           assert_equal [""], changes
         end
@@ -405,7 +405,7 @@ module Tuile
         it "at caret 0 is a consumed no-op" do
           f = field(width: 20, text: "hello")
           fired = false
-          f.on_change { fired = true }
+          f.on_value_change { fired = true }
           assert f.handle_key?(Keys::CTRL_U)
           assert_equal "hello", f.text
           refute fired
@@ -626,14 +626,14 @@ module Tuile
 
       it "gives way to content as soon as there is any" do
         f = hinted
-        f.text = "0"
+        f.value = "0"
         assert_equal ["0           "], Testing.paint(f).text
       end
 
       it "comes back when the field is emptied again" do
         f = hinted(text: "01.02.2026")
         assert_equal ["01.02.2026  "], Testing.paint(f).text
-        f.text = ""
+        f.value = ""
         assert_equal ["dd.mm.yyyy  "], Testing.paint(f).text
       end
 
@@ -779,11 +779,11 @@ module Tuile
         end
       end
 
-      context "text=" do
+      context "value=" do
         it "re-snaps the caret against the new text" do
           f = field(width: 10, text: "ax")
           f.caret = 1
-          f.text = acute # index 1 is inside the cluster of the new text
+          f.value = acute # index 1 is inside the cluster of the new text
           assert_equal 2, f.caret
         end
       end
@@ -931,11 +931,11 @@ module Tuile
         assert_equal 3, f.caret
       end
 
-      it "does not fire on_change when a key is ignored" do
+      it "does not fire on_value_change when a key is ignored" do
         f = field(text: "abc")
         f.max_text_length = 3
         called = false
-        f.on_change { called = true }
+        f.on_value_change { called = true }
         f.handle_key?("d")
         assert !called
       end
@@ -958,11 +958,11 @@ module Tuile
         assert_equal "日本語", f.text
       end
 
-      it "leaves an over-long text= intact rather than trimming it" do
+      it "leaves an over-long value= intact rather than trimming it" do
         f = field(text: "hello")
         f.max_text_length = 2
         assert_equal "hello", f.text
-        f.text = "world"
+        f.value = "world"
         assert_equal "world", f.text
       end
 
@@ -1250,31 +1250,31 @@ module Tuile
       end
     end
 
-    context "on_change" do
+    context "on_value_change" do
       it "is empty by default" do
-        assert Component::TextField.new.on_change.empty?
+        assert Component::TextField.new.on_value_change.empty?
       end
 
-      it "fires on text= when text changes" do
+      it "fires on value= when text changes" do
         f = field(width: 10)
         received = nil
-        f.on_change { |e| received = e.text }
-        f.text = "hello"
+        f.on_value_change { |e| received = e.value }
+        f.value = "hello"
         assert_equal "hello", received
       end
 
-      it "does not fire on text= no-op" do
+      it "does not fire on value= no-op" do
         f = field(width: 10, text: "hi")
         called = false
-        f.on_change { called = true }
-        f.text = "hi"
+        f.on_value_change { called = true }
+        f.value = "hi"
         assert !called
       end
 
       it "fires on insert via keystroke" do
         f = field(width: 10)
         received = nil
-        f.on_change { |e| received = e.text }
+        f.on_value_change { |e| received = e.value }
         f.handle_key?("a")
         assert_equal "a", received
       end
@@ -1283,7 +1283,7 @@ module Tuile
         f = field(width: 10, text: "hi")
         f.caret = 2
         received = nil
-        f.on_change { |e| received = e.text }
+        f.on_value_change { |e| received = e.value }
         f.handle_key?(Keys::BACKSPACE)
         assert_equal "h", received
       end
@@ -1292,7 +1292,7 @@ module Tuile
         f = field(width: 10, text: "hi")
         f.caret = 0
         received = nil
-        f.on_change { |e| received = e.text }
+        f.on_value_change { |e| received = e.value }
         f.handle_key?(Keys::DELETE)
         assert_equal "i", received
       end
@@ -1300,7 +1300,7 @@ module Tuile
       it "does not fire on caret= (text unchanged)" do
         f = field(width: 10, text: "hello")
         called = false
-        f.on_change { called = true }
+        f.on_value_change { called = true }
         f.caret = 3
         assert !called
       end
@@ -1308,7 +1308,7 @@ module Tuile
       it "does not fire on a width change (text is never truncated to fit)" do
         f = field(width: 10, text: "hello")
         called = false
-        f.on_change { called = true }
+        f.on_value_change { called = true }
         Testing.place(f, Rect.new(0, 0, 4, 1))
         assert !called
       end
@@ -1350,7 +1350,7 @@ module Tuile
         f = field(text: "ac")
         f.caret = 1
         changes = []
-        f.on_change { |e| changes << e.text }
+        f.on_value_change { |e| changes << e.value }
         assert f.handle_paste("XYZ")
         assert_equal "aXYZc", f.text
         assert_equal 4, f.caret

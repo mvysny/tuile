@@ -4,10 +4,10 @@ module Tuile
   # A listener slot: the callables registered on one `on_foo`, fired with one
   # {Event}. The reader *is* the registrar:
   #
-  #   button.on_click { save }                     # a block
-  #   field.on_change << method(:preview)          # anything callable
-  #   field.on_change.remove(method(:preview))     # …removed, holding nothing
-  #   field.on_change.empty?                       # => true
+  #   button.on_click { save }                         # a block
+  #   field.on_value_change << method(:preview)        # anything callable
+  #   field.on_value_change.remove(method(:preview))   # …removed, holding nothing
+  #   field.on_value_change.empty?                     # => true
   #
   # `Method#==` compares receiver and name, so a widget unsubscribes with the
   # expression it subscribed with and holds nothing. A `Proc` equals only itself,
@@ -52,8 +52,8 @@ module Tuile
 
     # Appends `callable` and returns it, so a lambda can be held for removal.
     #
-    #   cb = field.on_change.add(->(e) { preview(e.text) })
-    #   field.on_change.remove(cb)
+    #   cb = field.on_value_change.add(->(e) { preview(e.value) })
+    #   field.on_value_change.remove(cb)
     #
     # Arity is settled here rather than per fire, so a listener that cannot take
     # the event raises at registration instead of later inside a repaint on the
@@ -78,7 +78,7 @@ module Tuile
 
     # Appends `callable` and returns self, so registrations chain.
     #
-    #   field.on_change << method(:preview) << method(:log)
+    #   field.on_value_change << method(:preview) << method(:log)
     #
     # @param callable [#call] the listener.
     # @return [self]

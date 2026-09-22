@@ -117,8 +117,8 @@ module Tuile
         f = field_with_editor
         seen = []
         f.on_bad_input_change { |e| seen << e.message }
-        editor(f).text = "-" # the one buffer an integer field's filter must admit
-        editor(f).text = "-5"
+        editor(f).value = "-" # the one buffer an integer field's filter must admit
+        editor(f).value = "-5"
         assert_equal ["not a whole number", nil], seen
       end
     end

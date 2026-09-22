@@ -442,7 +442,7 @@ module Tuile
         f = field
         Screen.instance.locale = Locale::ISO.with(time_formats: ["%I:%M:%S %p"])
         ["1:45pm", "1:45 PM", "1:45PM", "1:45 pm"].each do |typed|
-          inner(f).text = typed
+          inner(f).value = typed
           assert_equal at(13, 45), f.value, typed
         end
       end
@@ -568,10 +568,10 @@ module Tuile
         f = field
         # "13:4" is deliberately absent: unpadded minutes parse, so it is 13:04.
         ["1", "13", "13:"].each do |prefix|
-          inner(f).text = prefix
+          inner(f).value = prefix
           assert f.bad_input?, prefix
         end
-        inner(f).text = "13:45"
+        inner(f).value = "13:45"
         refute f.bad_input?
       end
 

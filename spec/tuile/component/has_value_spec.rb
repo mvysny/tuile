@@ -61,7 +61,7 @@ module Tuile
       def field(text: "")
         f = Component::TextField.new
         Testing.place(f, Rect.new(0, 0, 20, 1))
-        f.text = text
+        f.value = text
         f
       end
 
@@ -75,30 +75,24 @@ module Tuile
       it "empty? tracks the blank buffer via empty_value \"\"" do
         f = field
         assert f.empty?
-        f.text = "x"
+        f.value = "x"
         refute f.empty?
       end
 
-      it "text= fires on_value_change alongside on_change" do
+      it "value= fires on_value_change" do
         f = field
-        changed = []
         valued = []
-        f.on_change { |e| changed << e.text }
         f.on_value_change { |e| valued << e.value }
-        f.text = "abc"
-        assert_equal ["abc"], changed
+        f.value = "abc"
         assert_equal ["abc"], valued
       end
 
-      it "clear empties the field and fires both listeners" do
+      it "clear empties the field and fires on_value_change" do
         f = field(text: "abc")
-        changed = []
         valued = []
-        f.on_change { |e| changed << e.text }
         f.on_value_change { |e| valued << e.value }
         f.clear
         assert_equal "", f.text
-        assert_equal [""], changed
         assert_equal [""], valued
       end
     end

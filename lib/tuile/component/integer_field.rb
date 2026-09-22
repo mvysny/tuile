@@ -84,7 +84,7 @@ module Tuile
       # @param new_value [Integer, nil] `nil` empties the field.
       # @return [void]
       def value=(new_value)
-        editor.text = new_value.nil? ? "" : new_value.to_s
+        editor.value = new_value.nil? ? "" : new_value.to_s
         editor.caret = editor.text.length
       end
 

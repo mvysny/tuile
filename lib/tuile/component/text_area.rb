@@ -17,7 +17,7 @@ module Tuile
     # start of the next row in nearly all cases).
     #
     # Enter inserts a newline, as in a plain `<textarea>` or text editor; only
-    # {#on_change} is wired. {Keys::CTRL_J} does the same, since that is the
+    # {#on_value_change} is wired. {Keys::CTRL_J} does the same, since that is the
     # byte a terminal sends for a typed Ctrl+J. A *pasted* line break arrives
     # through {AbstractStringField#handle_paste} instead and never as a key at
     # all — so a subclass rebinding Enter to submit keeps working under a

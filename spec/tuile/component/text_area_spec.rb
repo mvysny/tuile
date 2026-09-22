@@ -12,7 +12,7 @@ module Tuile
         a = Component::TextArea.new
         parent.add(a)
         Testing.place(a, Rect.new(0, 0, 10, 3))
-        a.text = "hi"
+        a.value = "hi"
         parent.bg_color = 52
         painted = Testing.paint(a)
         assert_equal Screen.instance.theme.input_bg_color, painted.cell(0, 0).style.bg, "content row"
@@ -23,7 +23,7 @@ module Tuile
     def area(width: 10, height: 3, text: "", active: true)
       a = Component::TextArea.new
       Testing.place(a, Rect.new(0, 0, width, height))
-      a.text = text
+      a.value = text
       a.active = active if active
       a
     end
@@ -45,24 +45,24 @@ module Tuile
       assert Component::TextArea.new.tab_stop?
     end
 
-    context "text=" do
+    context "value=" do
       it "accepts arbitrary text including newlines" do
         a = area
-        a.text = "line one\nline two"
+        a.value = "line one\nline two"
         assert_equal "line one\nline two", a.text
       end
 
       it "clamps caret to new shorter text length" do
         a = area(text: "hello world")
         a.caret = 11
-        a.text = "hi"
+        a.value = "hi"
         assert_equal 2, a.caret
       end
 
       it "is a no-op when text unchanged" do
         a = area(text: "hi")
         Screen.instance.invalidated_clear
-        a.text = "hi"
+        a.value = "hi"
         assert !Screen.instance.invalidated?(a)
       end
 
@@ -70,13 +70,13 @@ module Tuile
         a = area
         Screen.instance.content = a
         Screen.instance.invalidated_clear
-        a.text = "x"
+        a.value = "x"
         assert Screen.instance.invalidated?(a)
       end
 
       it "coerces nil to empty string" do
         a = area(text: "hi")
-        a.text = nil
+        a.value = nil
         assert_equal "", a.text
       end
     end
@@ -92,7 +92,7 @@ module Tuile
 
       it "becomes true again after clearing" do
         a = area(text: "x")
-        a.text = ""
+        a.value = ""
         assert a.empty?
       end
     end
@@ -244,7 +244,7 @@ module Tuile
       it "answers 0 / 1 for an empty rect rather than raising" do
         a = Component::TextArea.new
         Testing.place(a, Rect.new(0, 0, 0, 0))
-        a.text = "hello world"
+        a.value = "hello world"
         assert_equal 1, a.row_count
         assert_equal 0, a.caret_row
       end
@@ -252,7 +252,7 @@ module Tuile
       it "re-reads the wrap after the text changes" do
         a = area(width: 5, height: 3, text: "hello")
         assert_equal 1, a.row_count
-        a.text = "hello world"
+        a.value = "hello world"
         assert_equal 2, a.row_count
       end
 
@@ -285,7 +285,7 @@ module Tuile
         end
         a = klass.new
         Testing.place(a, Rect.new(0, 0, 5, 3))
-        a.text = text
+        a.value = text
         a
       end
 
@@ -686,7 +686,7 @@ module Tuile
         a = area(width: 5, height: 2, text: "a\nb\nc\nd")
         a.caret = a.text.length
         assert_equal 2, a.scroll_top_row
-        a.text = "x"
+        a.value = "x"
         assert_equal 0, a.scroll_top_row
       end
     end
@@ -719,31 +719,31 @@ module Tuile
       end
     end
 
-    context "on_change" do
+    context "on_value_change" do
       it "is empty by default" do
-        assert Component::TextArea.new.on_change.empty?
+        assert Component::TextArea.new.on_value_change.empty?
       end
 
-      it "fires on text= when text changes" do
+      it "fires on value= when text changes" do
         a = area
         received = nil
-        a.on_change { |e| received = e.text }
-        a.text = "hello"
+        a.on_value_change { |e| received = e.value }
+        a.value = "hello"
         assert_equal "hello", received
       end
 
-      it "does not fire on text= no-op" do
+      it "does not fire on value= no-op" do
         a = area(text: "hi")
         called = false
-        a.on_change { called = true }
-        a.text = "hi"
+        a.on_value_change { called = true }
+        a.value = "hi"
         assert !called
       end
 
       it "fires on insert via keystroke" do
         a = area
         received = nil
-        a.on_change { |e| received = e.text }
+        a.on_value_change { |e| received = e.value }
         a.handle_key?("a")
         assert_equal "a", received
       end
@@ -752,7 +752,7 @@ module Tuile
         a = area(text: "hi")
         a.caret = 2
         received = nil
-        a.on_change { |e| received = e.text }
+        a.on_value_change { |e| received = e.value }
         a.handle_key?(Keys::BACKSPACE)
         assert_equal "h", received
       end
@@ -760,7 +760,7 @@ module Tuile
       it "fires on delete-at-caret" do
         a = area(text: "hi")
         received = nil
-        a.on_change { |e| received = e.text }
+        a.on_value_change { |e| received = e.value }
         a.handle_key?(Keys::DELETE)
         assert_equal "i", received
       end
@@ -768,7 +768,7 @@ module Tuile
       it "fires when Enter inserts a newline" do
         a = area
         received = nil
-        a.on_change { |e| received = e.text }
+        a.on_value_change { |e| received = e.value }
         a.handle_key?(Keys::ENTER)
         assert_equal "\n", received
       end
@@ -776,7 +776,7 @@ module Tuile
       it "does not fire on caret= alone" do
         a = area(text: "hello")
         called = false
-        a.on_change { called = true }
+        a.on_value_change { called = true }
         a.caret = 3
         assert !called
       end
@@ -784,7 +784,7 @@ module Tuile
       it "does not fire on a width change (text unchanged)" do
         a = area(width: 11, height: 2, text: "hello world")
         called = false
-        a.on_change { called = true }
+        a.on_value_change { called = true }
         Testing.place(a, Rect.new(0, 0, 5, 2))
         assert !called
         assert_equal "hello world", a.text
@@ -812,7 +812,7 @@ module Tuile
 
       it "takes the key before normal editing acts on it" do
         a = claiming_area
-        a.text = "ab\ncd"
+        a.value = "ab\ncd"
         a.caret = 4                 # on the second row
         assert a.handle_key?(Keys::UP_ARROW)
         assert_equal 4, a.caret     # caret unchanged — the subclass consumed UP
@@ -992,10 +992,10 @@ module Tuile
         assert_equal 8, a.caret
       end
 
-      it "fires on_change once for the whole paste" do
+      it "fires on_value_change once for the whole paste" do
         a = area(width: 20, height: 5)
         changes = []
-        a.on_change { |e| changes << e.text }
+        a.on_value_change { |e| changes << e.value }
         a.handle_paste("one\ntwo\nthree")
         assert_equal ["one\ntwo\nthree"], changes
       end
@@ -1024,10 +1024,10 @@ module Tuile
         assert_equal "a bc\nd", a.text
       end
 
-      it "absorbs an empty paste without firing on_change" do
+      it "absorbs an empty paste without firing on_value_change" do
         a = area(width: 20, height: 5, text: "x")
         changes = 0
-        a.on_change { changes += 1 }
+        a.on_value_change { changes += 1 }
         a.handle_paste("")
         assert_equal "x", a.text
         assert_equal 0, changes

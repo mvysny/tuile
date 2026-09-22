@@ -13,7 +13,7 @@ module Tuile
     #     def value = Integer(editor.text, 10) rescue nil
     #
     #     def value=(new_value)
-    #       editor.text = new_value.nil? ? "" : new_value.to_s
+    #       editor.value = new_value.nil? ? "" : new_value.to_s
     #       editor.caret = editor.text.length
     #     end
     #
@@ -37,7 +37,7 @@ module Tuile
     # editor is how a test reaches a state no public setter produces:
     #
     #   editor = Testing.get(Component::TextField, in: field)
-    #   editor.text = "-"          # bad input; field.value still reads nil
+    #   editor.value = "-"         # bad input; field.value still reads nil
     #
     # A knob that is *editor-shaped* rather than a concept of this field's own
     # domain is **not** forwarded, and the subclass sets it on its editor
@@ -74,7 +74,7 @@ module Tuile
     # - **{HasValue#empty_value} is called during construction**, to seed the
     #   change guard, so it must not depend on subclass state that `super` has
     #   not set yet. In practice it is a constant per class.
-    # - **The editor's `on_change` and `on_enter` slots carry this field's own
+    # - **The editor's `on_value_change` and `on_enter` slots carry this field's own
     #   listeners** — for that guard, and to commit before an app's ENTER handler
     #   runs. They are lists, so nothing an app adds displaces them; a subclass
     #   reacting to buffer edits still overrides {#handle_editor_change} (every
@@ -108,7 +108,7 @@ module Tuile
         # field's well covers it and its bg_color reaches the cells the editor paints.
         editor.bg_color = ComponentBackground::INHERIT
         bg.default_color = ComponentBackground::INPUT_WELL
-        editor.on_change do
+        editor.on_value_change do
           handle_editor_change
           fire_if_changed if notify_on_edit?
         end

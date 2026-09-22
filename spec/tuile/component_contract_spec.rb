@@ -69,9 +69,9 @@ module Tuile
       Component::Layout::Absolute => -> { populated_absolute },
       Component::Layout::Vertical => -> { populated_box(Component::Layout::Vertical.new(spacing: 1)) },
       Component::Layout::Horizontal => -> { populated_box(Component::Layout::Horizontal.new(spacing: 1)) },
-      Component::TextField => -> { Component::TextField.new.tap { _1.text = "typed" } },
-      Component::PasswordField => -> { Component::PasswordField.new.tap { _1.text = "secret" } },
-      Component::TextArea => -> { Component::TextArea.new.tap { _1.text = "two\nlines" } },
+      Component::TextField => -> { Component::TextField.new.tap { _1.value = "typed" } },
+      Component::PasswordField => -> { Component::PasswordField.new.tap { _1.value = "secret" } },
+      Component::TextArea => -> { Component::TextArea.new.tap { _1.value = "two\nlines" } },
       Component::TextView => lambda {
         Component::TextView.new.tap do |tv|
           tv.text = "some prose to wrap"

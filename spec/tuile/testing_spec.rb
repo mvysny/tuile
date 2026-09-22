@@ -10,7 +10,7 @@ module Tuile
     let(:column) { Component::Layout::Vertical.new }
     let(:save) { Component::Button.new("Save").tap { _1.id = :save } }
     let(:cancel) { Component::Button.new("Cancel") }
-    let(:field) { Component::TextField.new.tap { _1.text = "Zaphod" } }
+    let(:field) { Component::TextField.new.tap { _1.value = "Zaphod" } }
 
     let(:window) do
       Component::Window.new("Settings").tap do |w|

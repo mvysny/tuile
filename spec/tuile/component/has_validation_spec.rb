@@ -124,7 +124,7 @@ module Tuile
 
       it "paints the field's background in Theme#error_bg_color" do
         Testing.place(field, Rect.new(0, 0, 10, 1))
-        field.text = "bob"
+        field.value = "bob"
         field.error_message = "Required"
 
         assert_includes row_ansi(field), "48;5;88"
@@ -149,7 +149,7 @@ module Tuile
 
       it "is gone once the verdict is cleared, back to the ordinary well" do
         Testing.place(field, Rect.new(0, 0, 10, 1))
-        field.text = "bob"
+        field.value = "bob"
         field.error_message = "Required"
         assert_includes row_ansi(field), "48;5;88"
         field.error_message = nil
@@ -169,7 +169,7 @@ module Tuile
       it "reaches a composed field's inner TextField, which holds no message of its own" do
         composed = Component::IntegerField.new
         Testing.place(composed, Rect.new(0, 0, 10, 1))
-        Testing.get(Component::TextField, in: composed).text = "12"
+        Testing.get(Component::TextField, in: composed).value = "12"
         composed.error_message = "Too small"
 
         assert_nil Testing.get(Component::TextField, in: composed).error_message
@@ -237,7 +237,7 @@ module Tuile
       it "marks an IntegerField holding input its value cannot represent" do
         int = Component::IntegerField.new
         Testing.place(int, Rect.new(0, 0, 10, 1))
-        Testing.get(Component::TextField, in: int).text = "-"
+        Testing.get(Component::TextField, in: int).value = "-"
 
         assert int.bad_input?
         assert_nil int.error_message
@@ -247,14 +247,14 @@ module Tuile
       it "clears as soon as the input parses" do
         int = Component::IntegerField.new
         Testing.place(int, Rect.new(0, 0, 10, 1))
-        Testing.get(Component::TextField, in: int).text = "-4"
+        Testing.get(Component::TextField, in: int).value = "-4"
 
         refute_includes row_ansi(int), "48;5;88"
       end
 
       it "leaves a field with no bad-input report to the verdict alone" do
         Testing.place(field, Rect.new(0, 0, 10, 1))
-        field.text = "anything"
+        field.value = "anything"
 
         refute_includes row_ansi(field), "48;5;88"
       end

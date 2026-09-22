@@ -292,7 +292,7 @@ module Tuile
     describe "public surface" do
       it "exposes neither the String-typed seam nor arrow-key callbacks" do
         f = field
-        %i[text text= caret caret= on_change on_key_up on_key_down].each do |m|
+        %i[text caret caret= on_key_up on_key_down].each do |m|
           refute f.respond_to?(m), "BigDecimalField should not expose ##{m}"
         end
       end

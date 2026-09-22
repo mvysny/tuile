@@ -98,7 +98,7 @@ module Tuile
       # @raise [TypeError] on a value `Float()` won't take at all (an `Array`).
       # @return [void]
       def value=(new_value)
-        editor.text = new_value.nil? ? "" : coerce(new_value).to_s
+        editor.value = new_value.nil? ? "" : coerce(new_value).to_s
         editor.caret = editor.text.length
       end
 

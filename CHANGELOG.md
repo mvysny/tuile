@@ -89,6 +89,8 @@
 - **Breaking:** A `Mouse::Event` reaches a component in that component's own coordinates, and `Component#cursor_position` answers in them. Drop the `event.x - rect.left` and `rect.top +` from every mouse handler and cursor position; `Screen#cursor_position` still reports screen coordinates, and `FakeScreen#click` / `#drag` still take them.
 - **Breaking:** `Component#extent_rect` is gone — it was the parent-space form, and nothing asks in that space now. Use `local_extent_rect` (hit-testing, clearing) or `absolute_extent_rect` (anchoring an overlay).
 - **Breaking:** `Tuile::VerticalScrollBar`, the geometry-only painter, is gone — the name now belongs to `Component::VerticalScrollBar`, the draggable bar in the tree, which also owns the two app-global glyphs. Move the knob: `Tuile::Component::VerticalScrollBar.handle_char = "▐"`.
+- **Breaking:** `Component::AbstractStringField#text=` is removed — `value=` was the same write, and `text` stays as the reader. Replace `field.text = s` with `field.value = s` on a `TextField`, `PasswordField` or `TextArea`; `Label#text=` and `TextView#text=` are unaffected. See `design/decisions.md` `D_has_value`.
+- **Breaking:** `Component::AbstractStringField#on_change` and its `ChangeEvent` are removed — `on_value_change` fired alongside it for every change. Subscribe with `field.on_value_change { |e| … e.value … }` in place of `field.on_change { |e| … e.text … }`. See `design/decisions.md` `D_has_value`.
 
 ## [0.16.0] - 2026-09-18
 

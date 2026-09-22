@@ -36,7 +36,7 @@ module Tuile
     # ({#placeholder}, {#cursor_position}); a **spec** reaches the field itself:
     #
     #   field = Testing.get(Component::TextField, in: combo)
-    #   field.text = "ap"          # type a query without a real loop
+    #   field.value = "ap"         # type a query without a real loop
     #
     # UI-thread-confined, like every component (see {Screen}).
     class ComboBox < Component
@@ -59,7 +59,7 @@ module Tuile
         # bg_color reaches the cells the field paints.
         @field.bg_color = ComponentBackground::INHERIT
         bg.default_color = ComponentBackground::INPUT_WELL
-        @field.on_change { refill unless @suppressing_filter }
+        @field.on_value_change { refill unless @suppressing_filter }
         # ESC is the one key this combo wants that the field consumes itself, so
         # it cannot arrive by bubbling the way {#handle_key?}'s do. With no menu
         # open it keeps the field's own meaning: cancel text entry.
@@ -281,16 +281,16 @@ module Tuile
       # Sets the field's text without triggering a refilter — for programmatic
       # value changes and query reverts, which must not spring the dropdown.
       # Every programmatic write to the field goes through here; a direct
-      # `field.text =` reaches the field's `on_change` and pops the dropdown
+      # `field.value =` reaches the field's `on_value_change` and pops the dropdown
       # open on a {#value=} the user never asked to browse.
-      # Parks the caret at the end: `text=` only *clamps* the caret, so a
+      # Parks the caret at the end: `value=` only *clamps* the caret, so a
       # shorter query replaced by a longer label would otherwise strand it
       # mid-word (commit "Go", then pick "Kotlin" → caret after "Ko").
       # @param text [String]
       # @return [void]
       def sync_field(text)
         @suppressing_filter = true
-        field.text = text
+        field.value = text
         field.caret = field.text.length
       ensure
         @suppressing_filter = false
