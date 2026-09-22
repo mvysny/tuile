@@ -236,7 +236,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | component | what it is |
 |---|---|
 | `Checkbox` | A one-row boolean: `[x]` / `[ ]` plus a caption, toggled by Space, Enter or a click on the glyph or label. |
-| `List` | The workhorse: a scrollable column of *typed items*, one row each, rendered lazily by a `renderer` you supply and handing your callbacks the item itself. Add a `Cursor` (or `Cursor::Limited`) to make it navigable. |
+| `List` | The workhorse: a scrollable column of *typed items*, one row each, rendered lazily by a `renderer` you supply and handing your callbacks the item itself. Add a `Cursor` (or `Cursor::Limited`) to make it navigable, or set `interactive = false` for a display-only pane Tab skips. |
 | `RadioGroup` | Single-select over a set of items, one row each, with the marker painted in front of the label. Its `value` is the selected item. |
 | `CheckboxGroup` | Multi-select over the same shape; its `value` is a frozen `Set` of the checked items. |
 | `Select` | The enum field: a one-row face plus a `▾`, dropping open a list of options. Claims no printable key but Space, so your app's own keys keep working while it has focus. |

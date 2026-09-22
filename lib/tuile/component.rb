@@ -1312,7 +1312,8 @@ module Tuile
 
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the
-    # removal repair instead of growing a second one.
+    # removal repair instead of growing a second one. {List#interactive=}
+    # reuses it too, for a component that stays shown but stops taking focus.
     #
     # The parent is necessarily showing (focus was inside it a moment ago, and
     # {Screen#focused=} refuses a hidden target), so its assignment can't bounce.

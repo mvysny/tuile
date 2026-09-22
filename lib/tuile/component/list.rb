@@ -74,6 +74,7 @@ module Tuile
         @cursor = Cursor::None.new
         @scrollbar_visibility = :gone
         @show_cursor_when_inactive = false
+        @interactive = true
         @last_cursor_state = cursor_state
         @scrollbar = VerticalScrollBar.new
         @scrollbar.on_scroll_request { self.scroll_top_row = _1.scroll_top_row }
@@ -153,6 +154,29 @@ module Tuile
         return if @show_cursor_when_inactive == value
 
         @show_cursor_when_inactive = value
+        invalidate
+      end
+
+      # Whether the list is a control: focusable, a tab stop, and a press on a
+      # row moves the cursor and fires {#on_item_chosen}. `false` makes it a
+      # display-only pane — a sidebar summary beside the field the user types
+      # in — which Tab skips, a click doesn't focus, and a press on a row
+      # bubbles past, so no capability is left reachable only by the mouse.
+      # The wheel and the scrollbar still scroll it, and the app still drives
+      # {#cursor} and {#scroll_top_row}. `true` by default.
+      # @return [Boolean]
+      def interactive? = @interactive
+
+      # Turning it off while focus is inside the list hands focus to the
+      # parent, as hiding a focused component does.
+      # @param value [Boolean]
+      # @return [void]
+      def interactive=(value)
+        value = value ? true : false
+        return if @interactive == value
+
+        @interactive = value
+        repair_focus_after_hiding unless value
         invalidate
       end
 
@@ -296,9 +320,11 @@ module Tuile
         self.lines = buffer
       end
 
-      def focusable? = true
+      # @return [Boolean] {#interactive?}.
+      def focusable? = @interactive
 
-      def tab_stop? = true
+      # @return [Boolean] {#interactive?}.
+      def tab_stop? = @interactive
 
       # @param key [String] a key.
       # @return [Boolean] true if the key was handled.
@@ -370,11 +396,12 @@ module Tuile
       end
 
       # Moves the cursor to the pressed row and fires {#on_item_chosen}; what
-      # each {Cursor} does with a press is its own.
+      # each {Cursor} does with a press is its own. Declines every press while
+      # not {#interactive?}.
       # @param event [Mouse::DownEvent]
       # @return [Boolean]
       def handle_mouse_down?(event)
-        return false unless event.button == :left
+        return false unless @interactive && event.button == :left
 
         item_index = event.y + scroll_top_row
         if @cursor.handle_mouse_down?(item_index, event, @items.size)

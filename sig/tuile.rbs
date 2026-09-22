@@ -4603,7 +4603,8 @@ module Tuile
 
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the
-    # removal repair instead of growing a second one.
+    # removal repair instead of growing a second one. {List#interactive=}
+    # reuses it too, for a component that stays shown but stops taking focus.
     # 
     # The parent is necessarily showing (focus was inside it a moment ago, and
     # {Screen#focused=} refuses a hidden target), so its assignment can't bounce.
@@ -4846,6 +4847,21 @@ module Tuile
       # again. Only consulted when {#auto_scroll} is enabled.
       def following?: () -> bool
 
+      # Whether the list is a control: focusable, a tab stop, and a press on a
+      # row moves the cursor and fires {#on_item_chosen}. `false` makes it a
+      # display-only pane — a sidebar summary beside the field the user types
+      # in — which Tab skips, a click doesn't focus, and a press on a row
+      # bubbles past, so no capability is left reachable only by the mouse.
+      # The wheel and the scrollbar still scroll it, and the app still drives
+      # {#cursor} and {#scroll_top_row}. `true` by default.
+      def interactive?: () -> bool
+
+      # Turning it off while focus is inside the list hands focus to the
+      # parent, as hiding a focused component does.
+      # 
+      # _@param_ `value`
+      def interactive=: (bool value) -> void
+
       # Re-renders every row — for a {#renderer} whose *inputs* changed while
       # it and {#items} stayed the same, e.g. one prefixing a marker read from
       # a selection it closes over:
@@ -4882,8 +4898,10 @@ module Tuile
       # ```
       def build_lines: () ?{ (::Array[untyped] buffer) -> void } -> void
 
+      # _@return_ — {#interactive?}.
       def focusable?: () -> bool
 
+      # _@return_ — {#interactive?}.
       def tab_stop?: () -> bool
 
       # _@param_ `key` — a key.
@@ -4930,7 +4948,8 @@ module Tuile
       def select: (Integer index) -> bool
 
       # Moves the cursor to the pressed row and fires {#on_item_chosen}; what
-      # each {Cursor} does with a press is its own.
+      # each {Cursor} does with a press is its own. Declines every press while
+      # not {#interactive?}.
       # 
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool

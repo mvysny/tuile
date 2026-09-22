@@ -612,6 +612,80 @@ module Tuile
       end
     end
 
+    context "interactive" do
+      # A field at row 0, a three-row list below it with a cursor — the
+      # summary-pane-beside-an-input shape the knob exists for.
+      def pane
+        screen = Screen.instance
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        field = Component::TextField.new
+        Testing.place(field, Rect.new(0, 0, 10, 1))
+        layout.add(field)
+        l = Component::List.new
+        Testing.place(l, Rect.new(0, 1, 10, 3))
+        l.lines = %w[a b c]
+        l.cursor = Component::List::Cursor.new
+        layout.add(l)
+        [field, l]
+      end
+
+      it "is interactive by default" do
+        assert Component::List.new.interactive?
+      end
+
+      it "is neither focusable nor a tab stop when not interactive" do
+        l = Component::List.new
+        l.interactive = false
+        assert !l.interactive?
+        assert !l.focusable?
+        assert !l.tab_stop?
+      end
+
+      it "is skipped by Tab" do
+        field, l = pane
+        l.interactive = false
+        field.focus
+        Screen.instance.send(:handle_key?, Keys::TAB)
+        assert_same field, Screen.instance.focused
+      end
+
+      it "a press on a row neither focuses the list nor chooses an item" do
+        field, l = pane
+        l.interactive = false
+        chosen = []
+        l.on_item_chosen { chosen << _1.item }
+        field.focus
+        Screen.instance.click(0, 3)
+        assert_empty chosen
+        assert_equal 0, l.cursor.position
+        refute_same l, Screen.instance.focused
+      end
+
+      it "still scrolls on the wheel" do
+        _field, l = pane
+        l.lines = (1..20).map(&:to_s)
+        l.interactive = false
+        Screen.instance.scroll(:down, 0, 2)
+        assert_equal 4, l.scroll_top_row
+      end
+
+      it "hands focus out through the parent when turned off while focused" do
+        field, l = pane
+        l.focus
+        l.interactive = false
+        # The layout takes it and forwards it to its first focusable child.
+        assert_same field, Screen.instance.focused
+      end
+
+      it "leaves focus elsewhere alone when turned off" do
+        field, l = pane
+        field.focus
+        l.interactive = false
+        assert_same field, Screen.instance.focused
+      end
+    end
+
     context "cursor" do
       it "has no cursor by default" do
         assert_instance_of Component::List::Cursor::None, Component::List.new.cursor
