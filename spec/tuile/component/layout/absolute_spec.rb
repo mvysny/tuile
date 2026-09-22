@@ -40,7 +40,7 @@ module Tuile
         layout.add(child, Rect.new(0, 0, 10, 1))
         settle(layout)
         layout.constrain(child, Rect.new(0, 5, 10, 1))
-        assert_equal Rect.new(0, 0, 10, 1), child.rect
+        assert_equal(Rect.new(0, 0, 10, 1), Tuile.without_strict_layout { child.rect })
         assert_equal [Rect.new(0, 5, 10, 1)], rects(layout)
       end
 

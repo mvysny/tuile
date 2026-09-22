@@ -108,6 +108,9 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   which every later component misses the hook. See `D_hook_visibility`, `D_on_blur`.
 - **`Screen#close` unmounts the tree, so teardown fires `handle_detached`; a process exiting without it
   fires nothing** — these are lifecycle hooks, not destructors, and there is no `at_exit`. See `D_attach_hooks`.
+- **An {Tuile::Component::Overlay} lives on the popup stack and nowhere else** — `add_child` checks
+  before adopting, and anything but a `ScreenPane#popups` adoption raises: a layout could not
+  place it, hide it, or have it dismissed, and the pane's `content` slot is refused too.
 - **Named slots are readers over the array, never a second copy** — `ScreenPane#popups` is the one
   exception. See `D_tree_api`.
 - **A per-child *attribute* map, not a second copy of ordering** — `Box`'s constraints and
@@ -269,6 +272,10 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **A mutation marks; nothing lays out inline** — `Screen#dispatch` settles after every event, so no
   pass sees a container mid-configuration. A rect read in the *same* turn that dirtied it is stale;
   `Component#flush_layout` is the force-now. See `D_deferred_layout`.
+- **A pre-settle rect read raises under a {Tuile::FakeScreen}, and the predicate is a dirty
+  *ancestor*** — only for a read the app made; a component's own `layout_dirty?` is about its
+  *children*, so a check reading that fires on the fresh rect and misses the stale one.
+  `Tuile.strict_layout` chooses per process, `Tuile.without_strict_layout` per read. See `D_strict_layout`.
 - **A detached tree defers too, and remembers** — the mark survives on the component,
   `handle_attached` hands it to the {Tuile::Screen}, and a tree with no screen gets its rects from an
   explicit `flush_layout`. No second, synchronous mode, and a sixth force-now `flush_layout` in

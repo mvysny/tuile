@@ -44,6 +44,9 @@ module Tuile
       end
     end
 
+    # Settles first: `show` only *marks* the pass that places the notification
+    # in the corner, so the pre-settle rect is wherever the last one sat — and
+    # the gesture would be aimed there (`D_strict_layout`).
     def click(component, button: :left)
       rect = settle(component).absolute_rect
       Screen.instance.click(rect.left + 1, rect.top + 1, button: button)

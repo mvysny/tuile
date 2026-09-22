@@ -162,15 +162,22 @@ module Tuile
     # moves it there if it is mounted already. Straight onto `screen.content`
     # it would not keep the rect: the pane hands its content the whole screen
     # at the next settle, swallowing the margin the stray sweep needs.
+    #
+    # An {Component::Overlay} opens at `rect` instead: the popup stack is the
+    # only parent one accepts ({Component#add_child}).
     # @param component [Component]
     # @param rect [Rect]
     # @return [void]
     def place(component, rect)
       case component.parent
       when nil
-        holder = Component::Layout::Absolute.new
-        holder.add(component, rect)
-        Screen.instance.content = holder
+        if component.is_a?(Component::Overlay)
+          component.open(Component::Overlay::At[rect])
+        else
+          holder = Component::Layout::Absolute.new
+          holder.add(component, rect)
+          Screen.instance.content = holder
+        end
       when ScreenPane then component.placement = Component::Overlay::At[rect]
       else component.parent.constrain(component, rect)
       end

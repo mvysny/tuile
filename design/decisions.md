@@ -6755,7 +6755,7 @@ Why not:
   snapped a hand-placed popup back to centre whenever a second one opened, because the rect was the
   only record of where the popup wanted to be. The pass now places each popup from a stored
   placement — `Overlay::At[rect]` for a hand-placed one — so re-running it moves nothing.
-- **Declaring which children a pass places** (`places_child?`, on an unmerged diagnostic branch).
+- **Declaring which children a pass places** (`places_child?`, never released).
   It skipped the pane's mark for a popup, and was right only while the declaration matched the
   `relayout` beside it — a promise kept by hand. Placing popups in the pass made the mark honest
   instead.
@@ -6863,3 +6863,85 @@ The honest residue is an *intra-handler* read: `form.add(field); field.rect.widt
 is still stale, and `flush_layout` is the documented answer — which is what Swing's `validate()`,
 Tk's `update idletasks` and UIKit's `layoutIfNeeded()` are. Tk's `winfo_width()` reporting the
 placeholder `1` before its idle pass is the same surprise, three decades old (`R_layout_pass`).
+
+---
+
+## D_strict_layout — Why does the stale-rect diagnostic default on under a fake screen and off in an app, and raise rather than warn?
+
+`D_deferred_layout`'s honest residue — a rect read in the turn that dirtied it answers the previous
+pass's rectangle — is the worst shape a defect can take: *a plausible rectangle, not zeros and not
+an error*. The doc half shipped first (`Component#rect` says so, and so does this file), and a doc
+only reaches the reader who already suspects layout. Porting pikuri-tui onto the `relayout`
+conversion, this was 25 of 42 spec failures in one round, every one an assertion diff pointing at
+arithmetic that was correct; virtui reported the same shape independently
+([issue #45](https://github.com/mvysny/tuile/issues/45)). Meanwhile the framework can answer the
+question at the moment of the read.
+
+So {Tuile::StrictLayout}, prepended into `Component`, makes `rect` report before it answers — on
+wherever a {Tuile::FakeScreen} is the installed screen, which is the audience, and off everywhere
+else. `Tuile.strict_layout` overrides that either way, and `Tuile.without_strict_layout` silences
+one read.
+
+**The obvious predicate is the wrong one, and inverted.** `layout_dirty?` on a component means *its
+children* are stale; the rect it was handed is the one thing its own pending pass will not rewrite.
+A check reading `self.layout_dirty?` inside `rect` therefore fires on `pane.rect` — fresh and
+correct — and stays silent on `pane.left.rect`, the read that lied. The predicate is the nearest
+**ancestor** that is dirty (`Component#rect_stale?`), and two existing properties keep it from
+crying wolf: `perform_relayout` clears the flag *before* the body runs, and both flush paths walk
+pre-order, so a `relayout` reading its own `width` — and a nested one reading it mid-drain — is
+asking about a settled flag.
+
+**Off in an app, because the reader cannot afford it.** `rect` is the hottest read in the toolkit
+(every repaint, every hit test, once per ancestor level in `clip_for`), and a check there would buy
+nothing for the code that runs it most. Prepending rather than branching is what makes the trade
+disappear instead of being made: in a process that never builds a fake screen and never sets the
+flag, `rect` is still the bare `attr_reader` it was. Under the fake it is the other way round —
+nobody should have to *ask* for a diagnostic whose whole audience is the spec suite in front of
+them — and this suite ran green with it on, 0.2 s slower.
+
+**One carve-out, which is what the default cost.** Raw, the walk reports 268 reads across this
+suite, and all but three are reads `lib/` makes on the app's behalf mid-handler — the framework
+asking its own audited questions, which the app cannot fix and the force-now points above answer
+for. So only a read the app makes is reported (`StrictLayout::PLUMBING`). Of the three left, two
+read an unsettled rect *on purpose* — whether a rect survived a round trip is a question only the
+stale value answers — and that is what `without_strict_layout` is for. On the way it also caught
+four real spec bugs, each an assertion against a rect no pass had assigned.
+
+**The third is a false alarm, and it is accepted.** Every popup open marks the pane, because the
+pane's pass is what places popups, and the mark is honest; what the walk cannot know is that the
+pass will hand content the rect it already has. The cost is one `settle` in a spec that opens a
+popup and then reads a rect under it in the same turn — reading mid-configuration, which is the
+smell this diagnostic exists to point at whether or not the value happened to hold.
+
+**`:raise` is what `true` means, because `:warn` is invisible to the audience.** `Tuile.logger`
+defaults to `Logger.new(IO::NULL)`, so a warning in a spec suite that never set a logger prints
+nothing at all — and the reader of an assertion diff is the exact person this exists for. A raise
+also carries the one thing a log line cannot: a backtrace through the read. `:warn` stays for
+watching a running app, where the read must still answer.
+
+Why not:
+
+- **Always on, as a branch in the reader.** A tax on the hottest read forever, paid by every app,
+  for a diagnostic no framework read can fire. `Screen#warn_if_unseen` is the precedent for saying
+  it at the moment the framework can tell, not for saying it on a hot path.
+- **Flushing on a stale read instead of reporting it.** `D_deferred_layout` rules this out for the
+  framework, and for a spec it is worse than the bug: the example passes while the same read in a
+  handler stays stale, so the suite now certifies the mistake.
+- **Public `layout_dirty?` and nothing else** (the issue's own weaker alternative): it confirms a
+  suspicion, which is the part that was never the expensive one. Shipped anyway, alongside
+  `rect_stale?`, because a diagnostic invites an assertion.
+- **Reporting a framework-entered read too, behind a fourth mode.** A mode to see those 265 reads
+  measures the marking, and where the marking is wrong the answer is to fix it, not to watch it.
+- **Recording a suspect read and reporting it after the settle, only if the rect changed.** Precise
+  where the walk guesses, and it would have silenced the popup case. It was worked through and
+  declined: the report lands at the settle, so the read site has to travel in the message and the
+  example's own assertion diff usually fails first; an absolute read (`absolute_rect`, `to_screen`)
+  needs its own comparison, since a parent can move while the child's local rect holds; a read no
+  settle follows is never checked; and a read that was right but moved later in the same turn is
+  reported anyway. All of that to remove one measured false alarm whose fix is a `settle`.
+- **Declaring which children a pass places, so a mark skips the rest** (`places_child?`). A promise
+  kept by hand beside the `relayout` it describes — `D_relayout` has why it went.
+- **Opt-in even in specs**, with a documented `spec_helper` line. The reader who needs this is by
+  definition not looking for it, and a line you have to know to write reaches the same person a doc
+  does. The default is affordable only because of `PLUMBING` — on a predicate that cries wolf 268
+  times it would have been the wrong trade.

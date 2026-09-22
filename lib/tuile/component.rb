@@ -85,7 +85,9 @@ module Tuile
     #
     # **Layout is deferred, so a rect read in the same turn that dirtied it is
     # the *previous* pass's** — a plausible rectangle, not zeros.
-    # {#flush_layout} brings it up to date (`D_deferred_layout`).
+    # {#flush_layout} brings it up to date (`D_deferred_layout`),
+    # {#rect_stale?} answers whether it is one, and {Tuile.strict_layout} makes
+    # every such read say so.
     # @return [Rect]
     attr_reader :rect
 
@@ -309,6 +311,28 @@ module Tuile
         pending.each { _1.__send__(:perform_relayout) }
       end
     end
+
+    # Whether this container owes a {#relayout} — that its *children*'s rects
+    # are out of date.
+    #
+    # **It says nothing about this component's own {#rect}**, which no pass of
+    # its own touches: the flag that makes *this* rect stale sits on the parent
+    # that assigns it, and {#rect_stale?} is that question asked from here.
+    # Survives detaching, so {#handle_attached} can hand the mark to the {Screen}.
+    # @return [Boolean]
+    def layout_dirty? = @layout_dirty
+
+    # Whether {#rect} is the *previous* pass's rectangle, because some ancestor
+    # owes a {#relayout} and that pass reassigns every rect below it.
+    #
+    #   holder.constrain(pane, Rect.new(0, 0, 100, 26))
+    #   pane.left.rect_stale?   # => true — `pane.left.rect` is still the old half
+    #
+    # {#flush_layout} makes it false; {Tuile.strict_layout} reports every read
+    # taken while it is true. One walk to {#root} per call, which is why no
+    # framework read consults it outside strict mode.
+    # @return [Boolean]
+    def rect_stale? = !stale_layout_ancestor.nil?
 
     # This component's own flag — **not** whether the user can see it, which
     # also depends on its ancestors: a shown field inside a hidden panel
@@ -868,6 +892,8 @@ module Tuile
     # @param at [Integer, nil] index to insert at; appends when nil.
     # @raise [TypeError] if `child` is not a {Component}.
     # @raise [ArgumentError] if `child` already has a parent.
+    # @raise [Tuile::Error] if `child` is a {Component::Overlay} not being
+    #   adopted as one of {ScreenPane#popups}.
     # @return [void]
     #
     # Final: one of the three mutators that write {#children} and the parent
@@ -876,6 +902,15 @@ module Tuile
       raise TypeError, "expected Component, got #{child.inspect}" unless child.is_a? Component
       raise ArgumentError, "#{child} already has a parent #{child.parent}" unless child.parent.nil?
 
+      # An overlay's placement, `open?`, `visible=` and outside-click dismissal
+      # all come from the pane's popup list, so anywhere else it would be
+      # unplaceable and undismissable. Membership, not the pane's identity,
+      # which would let the `content` slot through; checked before the push, so
+      # a refusal leaves the tree untouched.
+      if child.is_a?(Component::Overlay) && !(is_a?(ScreenPane) && has_popup?(child))
+        raise Tuile::Error, "#{child.class} belongs on the popup stack — open it (#{child.class}#open) " \
+                            "rather than adding it to #{self.class}"
+      end
       at.nil? ? @children.push(child) : @children.insert(at, child)
       child.parent = self
       invalidate_layout
@@ -1157,10 +1192,6 @@ module Tuile
     # @return [void]
     def relayout; end
 
-    # @return [Boolean] whether this container owes a {#relayout}. Survives
-    #   detaching, so {#handle_attached} can hand the mark to the {Screen}.
-    def layout_dirty? = @layout_dirty
-
     # Whether direct children fully tile {#rect}. Used by the default
     # {#repaint} to decide whether the framework needs to wipe gaps.
     #
@@ -1300,6 +1331,21 @@ module Tuile
     def perform_relayout
       @layout_dirty = false
       Component.__send__(:placing, self) { relayout }
+    end
+
+    # The nearest ancestor whose pending {#relayout} would rewrite this
+    # component's {#rect}, or `nil` when the rect is current — {#rect_stale?}'s
+    # answer, with the culprit kept for {StrictLayout}'s message.
+    #
+    # Strictly ancestors, never `self`: a container's own flag means its
+    # children are stale, and {#perform_relayout} clears the flag before the
+    # body runs, so a `relayout` reading its own `width` is asking a settled
+    # question.
+    # @return [Component, nil]
+    def stale_layout_ancestor
+      node = parent
+      node = node.parent until node.nil? || node.layout_dirty?
+      node
     end
 
     # What may assign this component's rect: its parent, whose {#relayout}

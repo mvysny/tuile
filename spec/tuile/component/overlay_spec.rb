@@ -35,6 +35,40 @@ module Tuile
       assert o.open?
     end
 
+    context "parenting" do
+      it "refuses a layout, which could neither place, hide nor dismiss it" do
+        o = Component::Overlay.new(content: list_of(%w[a]))
+        layout = Component::Layout::Absolute.new
+        e = assert_raises(Tuile::Error) { layout.add(o) }
+        assert_includes e.message, "belongs on the popup stack"
+      end
+
+      it "leaves the tree untouched when it refuses" do
+        o = Component::Overlay.new
+        layout = Component::Layout::Absolute.new
+        assert_raises(Tuile::Error) { layout.add(o) }
+        assert_empty layout.children
+        assert_nil o.parent
+      end
+
+      it "refuses the pane's content slot too — `open` is the door" do
+        assert_raises(Tuile::Error) { Screen.instance.content = Component::Overlay.new }
+      end
+
+      it "holds for every subclass" do
+        layout = Component::Layout::Absolute.new
+        assert_raises(Tuile::Error) { layout.add(Component::Popup.new) }
+        assert_raises(Tuile::Error) { layout.add(Component::ListDropdown.new) }
+      end
+
+      it "accepts the popup stack, and lets go again" do
+        o = Component::Overlay.new.open(at)
+        assert_equal Screen.instance.pane, o.parent
+        o.close
+        assert_nil o.parent
+      end
+    end
+
     it "has no class-level open factory — it could only ever build a bare Overlay" do
       assert !Component::Overlay.respond_to?(:open)
       assert !Component::Popup.respond_to?(:open)
@@ -125,7 +159,7 @@ module Tuile
         o = Component::Overlay.new(content: list_of(%w[a b])).open(at(Rect.new(12, 7, 20, 2)))
         settle(o)
         o.placement = at(Rect.new(0, 3, 20, 2))
-        assert_equal Rect.new(12, 7, 20, 2), o.rect
+        assert_equal(Rect.new(12, 7, 20, 2), Tuile.without_strict_layout { o.rect })
         assert_equal Rect.new(0, 3, 20, 2), settle(o).rect
       end
 
@@ -161,16 +195,6 @@ module Tuile
         o.placement = at(Rect.new(11, 0, 6, 1))
         settle(o)
         assert Screen.instance.invalidated?(tiled)
-      end
-
-      it "does not request a full repaint when a closed overlay is moved" do
-        o = Component::Overlay.new
-        settle(o.open(at(Rect.new(0, 0, 6, 1))))
-        o.close
-        Screen.instance.invalidated_clear
-
-        place(o, Rect.new(40, 20, 3, 1))
-        refute Screen.instance.invalidated?(tiled)
       end
     end
 

@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+- Add `Tuile.strict_layout` — the stale-rect diagnostic: under `:raise` or `:warn`, a `Component#rect` read the app makes while an ancestor owes a `relayout` names that ancestor and the read site instead of answering the previous pass's rectangle; off by default outside a `FakeScreen`. See `design/decisions.md` `D_strict_layout`.
+- Add `Tuile.without_strict_layout` — runs a block with the diagnostic off, for a read that is pre-settle on purpose, and restores whatever was in force, default included.
+- **Breaking:** a `FakeScreen` now defaults `Tuile.strict_layout` to `:raise`, so a spec that reads a rect it has not settled raises instead of asserting against the previous pass's rectangle. Settle it (`settle(component)`), or wrap a deliberately unsettled read in `Tuile.without_strict_layout { … }`; `Tuile.strict_layout = false` opts a whole suite out.
+- **Breaking:** `Component::Overlay` and its subclasses now raise unless they are adopted as one of `ScreenPane#popups` — `Overlay#open` is the only door, and the pane's `content` slot is refused too. Replace `layout.add(overlay)` / `screen.content = overlay` with `overlay.open(placement)`.
+- Add `Component#rect_stale?` — whether `rect` is the previous pass's, because an ancestor owes a `relayout`; `Component#layout_dirty?`, which answers the same question about a container's *children*, is public now.
 - Add `Component#handle_rect_changed(old_rect)` — the hook a component reacts to a new rect in, since `rect=` can no longer be overridden.
 - Add `FakeScreen#resize_terminal(width, height)` — the terminal reporting a new size, routed as its own report would be.
 - Add `Component::VerticalScrollBar` — a one-column bar in the tree that the user drags, and presses the track of to page a viewport; it moves nothing itself, firing `on_scroll_request` for its owner to assign. `Scroller` now holds one. See `design/decisions.md` `D_draggable_scrollbar`.

@@ -32,6 +32,10 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   `settle(component)`, the suite-wide helper. `repaint(component)` and every {Tuile::Testing} helper
   already do it, as does a {Tuile::FakeScreen} gesture, which settles on the way *in* as well as out.
   See `D_deferred_layout`.
+- **Forgetting that now raises**: the fake turns the stale-rect diagnostic on, so an unsettled read
+  names itself instead of returning a plausible rectangle. Wrap the read in
+  `Tuile.without_strict_layout { … }` where being pre-settle *is* the question — that a rect
+  survived a round trip, say — and settle in every other case. See `D_strict_layout`.
 - **Mount with `mount_at(component, rect)`, never `screen.content = c` and a size** — the pane
   hands its content the whole screen, so `mount_at` puts a {Tuile::Component::Layout::Absolute} in
   between, holding the example's rect as a constraint.

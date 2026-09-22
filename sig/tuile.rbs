@@ -5,6 +5,38 @@
 module Tuile
   VERSION: String
 
+  # How a pre-settle {Component#rect} read is reported: `false`, `:warn` to
+  # {#logger}, or `:raise`. Unset — which is how a process starts — answers
+  # the default: **`:raise` under a {FakeScreen}**, where a spec suite is the
+  # audience, and `false` anywhere else. See {StrictLayout}.
+  def self.strict_layout: () -> (Symbol | bool)
+
+  # Chooses for the whole process, overriding that default either way —
+  # `true` means `:raise`, and `nil` hands the choice back:
+  # 
+  #   Tuile.strict_layout = :warn     # a running app, being watched
+  #   Tuile.strict_layout = false     # a spec suite that wants none of it
+  # 
+  # A mode that isn't `false` prepends {StrictLayout} into {Component}, which
+  # is permanent for the process; `false` afterwards makes the check inert
+  # rather than removing it.
+  # 
+  # _@param_ `mode` — `:warn`, `:raise`, `false`, or `nil` for the default.
+  def self.strict_layout=: ((Symbol | bool)? mode) -> void
+
+  # Runs the block with the diagnostic off, for a read taken pre-settle *on
+  # purpose* — asserting that a rect survived a round trip is a question only
+  # the unsettled value answers:
+  # 
+  #   Tuile.without_strict_layout { assert_equal rect, second.rect }
+  # 
+  # Restores whatever was in force, default included, and is not a place to
+  # park work: it silences every read in the block, on this thread and any
+  # other.
+  # 
+  # _@return_ — the block's value.
+  def self.without_strict_layout: () -> Object
+
   def self.logger: () -> Logger
 
   # The logger Tuile writes to. Defaults to a null logger, so the gem is
@@ -3636,6 +3668,26 @@ module Tuile
     # children whose rects it just wrote.
     def flush_layout: () -> void
 
+    # Whether this container owes a {#relayout} — that its *children*'s rects
+    # are out of date.
+    # 
+    # **It says nothing about this component's own {#rect}**, which no pass of
+    # its own touches: the flag that makes *this* rect stale sits on the parent
+    # that assigns it, and {#rect_stale?} is that question asked from here.
+    # Survives detaching, so {#handle_attached} can hand the mark to the {Screen}.
+    def layout_dirty?: () -> bool
+
+    # Whether {#rect} is the *previous* pass's rectangle, because some ancestor
+    # owes a {#relayout} and that pass reassigns every rect below it.
+    # 
+    #   holder.constrain(pane, Rect.new(0, 0, 100, 26))
+    #   pane.left.rect_stale?   # => true — `pane.left.rect` is still the old half
+    # 
+    # {#flush_layout} makes it false; {Tuile.strict_layout} reports every read
+    # taken while it is true. One walk to {#root} per call, which is why no
+    # framework read consults it outside strict mode.
+    def rect_stale?: () -> bool
+
     # This component's own flag — **not** whether the user can see it, which
     # also depends on its ancestors: a shown field inside a hidden panel
     # answers `true`.
@@ -4229,10 +4281,6 @@ module Tuile
     # (`D_hook_visibility`). A leaf inherits the empty body and costs nothing.
     def relayout: () -> void
 
-    # _@return_ — whether this container owes a {#relayout}. Survives
-    # detaching, so {#handle_attached} can hand the mark to the {Screen}.
-    def layout_dirty?: () -> bool
-
     # Whether direct children fully tile {#rect}. Used by the default
     # {#repaint} to decide whether the framework needs to wipe gaps.
     # 
@@ -4339,6 +4387,16 @@ module Tuile
     # `relayout`, shared by the screen's drain and {#flush_layout}. Clearing
     # first, so a pass that marks itself again is honoured rather than lost.
     def perform_relayout: () -> void
+
+    # The nearest ancestor whose pending {#relayout} would rewrite this
+    # component's {#rect}, or `nil` when the rect is current — {#rect_stale?}'s
+    # answer, with the culprit kept for {StrictLayout}'s message.
+    # 
+    # Strictly ancestors, never `self`: a container's own flag means its
+    # children are stale, and {#perform_relayout} clears the flag before the
+    # body runs, so a `relayout` reading its own `width` is asking a settled
+    # question.
+    def stale_layout_ancestor: () -> Component?
 
     # What may assign this component's rect: its parent, whose {#relayout}
     # does. {ScreenPane} answers its {Screen}.
@@ -4449,7 +4507,9 @@ module Tuile
     # 
     # **Layout is deferred, so a rect read in the same turn that dirtied it is
     # the *previous* pass's** — a plausible rectangle, not zeros.
-    # {#flush_layout} brings it up to date (`D_deferred_layout`).
+    # {#flush_layout} brings it up to date (`D_deferred_layout`),
+    # {#rect_stale?} answers whether it is one, and {Tuile.strict_layout} makes
+    # every such read say so.
     attr_accessor rect: Rect
 
     # _@return_ — this
@@ -14415,6 +14475,11 @@ module Tuile
   # run an event loop, so it is *not* suitable for system-testing whole apps
   # — for that, drive the real script through a PTY (see `spec/examples/`).
   # 
+  # It also turns the stale-rect diagnostic on ({Tuile::StrictLayout}): a rect
+  # read before the layout has settled raises here, where in an app it would
+  # quietly answer the previous pass's rectangle. `Tuile.strict_layout = false`
+  # opts a suite out; {Tuile.without_strict_layout} opts one read out.
+  # 
   # Call {Screen.fake} to initialize the fake screen easily. Typical usage:
   # 
   #   before { Screen.fake }
@@ -14869,6 +14934,79 @@ module Tuile
     # {Component::Overlay}s ({Component::Overlay#modal?}). The array must not
     # be mutated by callers.
     attr_reader popups: ::Array[Component::Overlay]
+  end
+
+  # The stale-rect diagnostic: a {Component#rect} read taken while an ancestor
+  # still owes a {Component#relayout} says so, instead of handing back the
+  # previous pass's rectangle in silence. **On wherever a {FakeScreen} is the
+  # installed screen** — a spec suite needs no setup to get it — and off in an
+  # app, which {Tuile.strict_layout} overrides either way:
+  # 
+  #   holder.constrain(pane, Rect.new(0, 0, 100, 26))
+  #   pane.left.rect        # => Tuile::Error: read the rect of #<Tuile::Component::Label
+  #                         #    rect=(0,0 80x50)> while #<TwoPane rect=(0,0 100x26)> owes a
+  #                         #    relayout … at spec/two_pane_spec.rb:42
+  # 
+  # `:warn` logs the same line to {Tuile.logger} and hands the rectangle over,
+  # for watching a running app; `:raise` is the default and what a spec wants,
+  # since the backtrace names the read and a suite that never set a logger
+  # would see nothing at all. For the read that is pre-settle *on purpose*,
+  # {Tuile.without_strict_layout}.
+  # 
+  # Reading `size`, `width`, `height`, `local_rect`, `absolute_rect` or
+  # `to_screen` reports too — they all go through the one reader.
+  # 
+  # **Only reads the app makes are reported** ({PLUMBING}): a read `lib/` makes
+  # on the app's behalf mid-handler is not the app's to fix.
+  # 
+  # == Implementation details
+  # 
+  # {Tuile.strict_layout=} and {FakeScreen} prepend this module into
+  # {Component}, so `rect` stays the bare `attr_reader` — the hottest read in
+  # the toolkit — in every process that never asks. Nothing unprepends; turning
+  # the mode off leaves the check inert. See `D_strict_layout`.
+  module StrictLayout
+    LIB_DIR: String
+    REPORTING: Symbol
+    PLUMBING: ::Array[String]
+
+    # Makes {Component#rect} consult {Tuile.strict_layout} — idempotent, and
+    # permanent for the process.
+    def self.install: () -> void
+
+    # Reports `component`'s rect read as stale, the way `mode` asks for.
+    # 
+    # _@param_ `component` — the component whose rect was read.
+    # 
+    # _@param_ `ancestor` — the ancestor owing the relayout.
+    # 
+    # _@param_ `mode` — `:raise` or `:warn`.
+    def self.report: (Component component, Component ancestor, Symbol mode) -> void
+
+    # _@param_ `component`
+    # 
+    # _@param_ `ancestor`
+    def self.message_for: (Component component, Component ancestor) -> String
+
+    # Whether the app asked the question rather than the framework on its
+    # behalf: the frames between the read and the first one outside the gem
+    # are {PLUMBING} and nothing else.
+    def self.app_read?: () -> bool
+
+    # _@return_ — ` at <path>:<line>` for the frame that made the read,
+    # or `""` when there is none outside the gem.
+    def self.site: () -> String
+
+    # The stack above this file, asked from wherever in it — dropping our own
+    # frames by path rather than by a `caller_locations` offset, which would
+    # be two different numbers and would drift on any refactor here.
+    # 
+    # _@return_ — `Thread::Backtrace::Location`s.
+    def self.frames: () -> ::Array[Object]
+
+    # {Component#rect}, reporting first when it is about to answer the previous
+    # pass's rectangle.
+    def rect: () -> Rect
   end
 
   # An immutable string-with-styling, modeled as a sequence of {Span}s where
