@@ -7,7 +7,7 @@ module Tuile
   # installed screen** — a spec suite needs no setup to get it — and off in an
   # app, which {Tuile.strict_layout} overrides either way:
   #
-  #   pane.rect = Rect.new(0, 0, 100, 26)
+  #   holder.constrain(pane, Rect.new(0, 0, 100, 26))
   #   pane.left.rect        # => Tuile::Error: read the rect of #<Tuile::Component::Label
   #                         #    rect=(0,0 80x50)> while #<TwoPane rect=(0,0 100x26)> owes a
   #                         #    relayout … at spec/two_pane_spec.rb:42
@@ -22,8 +22,7 @@ module Tuile
   # `to_screen` reports too — they all go through the one reader.
   #
   # **Only reads the app makes are reported** ({PLUMBING}): a read `lib/` makes
-  # on the app's behalf mid-handler — `Select#anchor` measuring the face its
-  # just-opened dropdown hangs under — is not the app's to fix.
+  # on the app's behalf mid-handler is not the app's to fix.
   #
   # == Implementation details
   #

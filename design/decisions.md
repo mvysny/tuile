@@ -6755,7 +6755,7 @@ Why not:
   snapped a hand-placed popup back to centre whenever a second one opened, because the rect was the
   only record of where the popup wanted to be. The pass now places each popup from a stored
   placement — `Overlay::At[rect]` for a hand-placed one — so re-running it moves nothing.
-- **Declaring which children a pass places** (`places_child?`, briefly on the strict-layout branch).
+- **Declaring which children a pass places** (`places_child?`, never released).
   It skipped the pane's mark for a popup, and was right only while the declaration matched the
   `relayout` beside it — a promise kept by hand. Placing popups in the pass made the mark honest
   instead.
@@ -6899,35 +6899,19 @@ flag, `rect` is still the bare `attr_reader` it was. Under the fake it is the ot
 nobody should have to *ask* for a diagnostic whose whole audience is the spec suite in front of
 them — and this suite ran green with it on, 0.2 s slower.
 
-**Three carve-outs the suite measured**, of which one survives `D_relayout`. Raw, the predicate raised
-599 times across these examples, and the causes were not spec noise:
+**One carve-out, which is what the default cost.** Raw, the walk reports 268 reads across this
+suite, and all but three are reads `lib/` makes on the app's behalf mid-handler — the framework
+asking its own audited questions, which the app cannot fix and the force-now points above answer
+for. So only a read the app makes is reported (`StrictLayout::PLUMBING`). Of the three left, two
+read an unsettled rect *on purpose* — whether a rect survived a round trip is a question only the
+stale value answers — and that is what `without_strict_layout` is for. On the way it also caught
+four real spec bugs, each an assertion against a rect no pass had assigned.
 
-- *A container that inherits the base no-op `relayout` assigns no rect*, so its mark cannot stale
-  anything below it. A bare `Layout::Absolute` — the placement-free holder every spec mounts
-  through — is dirtied by `add_child` like any container, and reported every read under it.
-- *Only a read the app makes is reported* (`StrictLayout::PLUMBING`): 554 of the remaining reports
-  were reads `lib/` makes on the app's behalf mid-handler, `Select#anchor` measuring the face its
-  own just-opened dropdown hangs under being the pattern. The app cannot fix those, and they are
-  what the five force-now points above answer for.
-- *A popup owes the pane no pass*, which took 23 down to 6 and was a fix to the marking rather
-  than to the diagnostic.
-
-`D_relayout` removed the first and third: `Absolute` now places its children, and the pane places
-its popups, so opening one marks it honestly. The predicate is the plain dirty-ancestor walk plus
-`PLUMBING`, and on `D_relayout`'s suite it reported three reads: two deliberately unsettled, and a
-label under a newly opened popup whose rect the pane's pass re-derives unchanged.
-
-**That last one is a false alarm, and it is accepted.** Every popup open marks the pane, because the
+**The third is a false alarm, and it is accepted.** Every popup open marks the pane, because the
 pane's pass is what places popups, and the mark is honest; what the walk cannot know is that the
 pass will hand content the rect it already has. The cost is one `settle` in a spec that opens a
 popup and then reads a rect under it in the same turn — reading mid-configuration, which is the
 smell this diagnostic exists to point at whether or not the value happened to hold.
-
-Four of the six survivors were real spec bugs — a resize that re-assigned the rect the pane already
-had and so drove nothing, a round trip comparing a never-laid-out rect against itself, two gestures
-aimed at a rect from before its window shrank. The other two read an unsettled rect *on purpose*,
-since whether a rect survived a round trip is a question only the stale value answers; that is what
-`without_strict_layout` is for.
 
 **`:raise` is what `true` means, because `:warn` is invisible to the audience.** `Tuile.logger`
 defaults to `Logger.new(IO::NULL)`, so a warning in a spec suite that never set a logger prints
@@ -6946,9 +6930,8 @@ Why not:
 - **Public `layout_dirty?` and nothing else** (the issue's own weaker alternative): it confirms a
   suspicion, which is the part that was never the expensive one. Shipped anyway, alongside
   `rect_stale?`, because a diagnostic invites an assertion.
-- **Reporting a framework-entered read too, behind a fourth mode.** Those 554 reports were the
-  framework asking its own audited questions mid-handler; a mode to see them measures the marking,
-  and where the marking was wrong the answer was to fix it, not to watch it.
+- **Reporting a framework-entered read too, behind a fourth mode.** A mode to see those 265 reads
+  measures the marking, and where the marking is wrong the answer is to fix it, not to watch it.
 - **Recording a suspect read and reporting it after the settle, only if the rect changed.** Precise
   where the walk guesses, and it would have silenced the popup case. It was worked through and
   declined: the report lands at the settle, so the read site has to travel in the message and the
@@ -6956,10 +6939,9 @@ Why not:
   needs its own comparison, since a parent can move while the child's local rect holds; a read no
   settle follows is never checked; and a read that was right but moved later in the same turn is
   reported anyway. All of that to remove one measured false alarm whose fix is a `settle`.
-- **Declaring which children a pass places, so a mark skips the rest** (`places_child?`, on this
-  branch until `D_relayout`). A promise kept by hand beside the `relayout` it describes — see
-  `D_relayout`'s own entry.
+- **Declaring which children a pass places, so a mark skips the rest** (`places_child?`). A promise
+  kept by hand beside the `relayout` it describes — `D_relayout` has why it went.
 - **Opt-in even in specs**, with a documented `spec_helper` line. The reader who needs this is by
   definition not looking for it, and a line you have to know to write reaches the same person a doc
-  does. The default is affordable only because of the carve-outs — on a predicate that cries wolf
-  599 times it would have been the wrong trade.
+  does. The default is affordable only because of `PLUMBING` — on a predicate that cries wolf 268
+  times it would have been the wrong trade.

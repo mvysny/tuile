@@ -156,8 +156,8 @@ module Tuile
         select = mount_at(Component::Select.new(items: %w[a b c]), Rect.new(0, 0, 20, 1))
         Screen.instance.focused = select
         Tuile.strict_layout = :raise
-        # Opening the dropdown appends a popup, which marks the pane — and the
-        # placement then reads the Select's own rect to anchor against.
+        # Opening the dropdown marks the pane, and the framework then reads the
+        # Select's own rect to anchor against — a read the app did not make.
         Screen.instance.__send__(:handle_key?, "\r")
         assert select.instance_variable_get(:@overlay).open?
       end

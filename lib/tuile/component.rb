@@ -325,9 +325,8 @@ module Tuile
     # Whether {#rect} is the *previous* pass's rectangle, because some ancestor
     # owes a {#relayout} and that pass reassigns every rect below it.
     #
-    #   pane.rect = Rect.new(0, 0, 100, 26)
+    #   holder.constrain(pane, Rect.new(0, 0, 100, 26))
     #   pane.left.rect_stale?   # => true — `pane.left.rect` is still the old half
-    #   pane.rect_stale?        # => false — nothing above it is dirty
     #
     # {#flush_layout} makes it false; {Tuile.strict_layout} reports every read
     # taken while it is true. One walk to {#root} per call, which is why no
@@ -1001,7 +1000,7 @@ module Tuile
     # Refuses a parent this component cannot live under, `check_locked`-style —
     # raise, or return and be adopted. The base accepts every one;
     # {Component::Overlay} is the single override, since its whole contract
-    # (placed by nobody, `open?`, `visible=`, outside-click dismissal) is the
+    # (its placement, `open?`, `visible=`, outside-click dismissal) is the
     # pane's popup stack and nowhere else.
     #
     # {#add_child} asks **before** it touches anything, alongside the type and

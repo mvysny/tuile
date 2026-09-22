@@ -273,8 +273,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   pass sees a container mid-configuration. A rect read in the *same* turn that dirtied it is stale;
   `Component#flush_layout` is the force-now. See `D_deferred_layout`.
 - **A pre-settle rect read raises under a {Tuile::FakeScreen}, and the predicate is a dirty
-  *ancestor* that places** — only for a read the app made; a component's own `layout_dirty?` is
-  about its *children*, so a check reading that fires on the fresh rect and misses the stale one.
+  *ancestor*** — only for a read the app made; a component's own `layout_dirty?` is about its
+  *children*, so a check reading that fires on the fresh rect and misses the stale one.
   `Tuile.strict_layout` chooses per process, `Tuile.without_strict_layout` per read. See `D_strict_layout`.
 - **A detached tree defers too, and remembers** — the mark survives on the component,
   `handle_attached` hands it to the {Tuile::Screen}, and a tree with no screen gets its rects from an
