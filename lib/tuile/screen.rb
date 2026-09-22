@@ -766,8 +766,12 @@ module Tuile
     # redraws, so that test TTY is not painted over. {FakeScreen#initialize}
     # self-installs as the singleton, so subsequent {Screen.instance} calls
     # return the same object.
+    #
+    #   before { Screen.fake(width: 40, height: 12) }   # a narrow, short terminal
+    # @param width [Integer] the terminal's columns.
+    # @param height [Integer] the terminal's rows.
     # @return [FakeScreen]
-    def self.fake = FakeScreen.new
+    def self.fake(width: 160, height: 50) = FakeScreen.new(width: width, height: height)
 
     # Tears the screen down and vacates the singleton slot, moving {#state} to
     # the terminal `:closed`. Unmounts the tree first, so every component gets

@@ -65,15 +65,16 @@ module Tuile
       @strict_layout = mode
     end
 
-    # Runs the block with the diagnostic off, for a read taken pre-settle *on
-    # purpose* — asserting that a rect survived a round trip is a question only
-    # the unsettled value answers:
+    # Runs the block with the diagnostic off, for a *spec's* read taken
+    # pre-settle *on purpose* — asserting that a rect survived a round trip is a
+    # question only the unsettled value answers:
     #
     #   Tuile.without_strict_layout { assert_equal rect, second.rect }
     #
-    # Restores whatever was in force, default included, and is not a place to
-    # park work: it silences every read in the block, on this thread and any
-    # other.
+    # A test tool, not app code: the diagnostic is on only under a {FakeScreen}
+    # or after {.strict_layout=}, so an app's stale read wants settling, not
+    # silencing. Restores whatever was in force, default included, and silences
+    # every read in the block, on this thread and any other.
     # @return [Object] the block's value.
     def without_strict_layout
       previous = @strict_layout

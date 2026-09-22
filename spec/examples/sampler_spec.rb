@@ -33,9 +33,13 @@ module Tuile
     # PickerWindow caption), which the built-in ThemeDef doesn't carry — so
     # point ThemeDef.default at the app's pair the way a real app spec would,
     # and restore it, or every later example in the run inherits it.
-    before do
+    #
+    # An example wanting a smaller terminal says so in its metadata:
+    #
+    #   it "…", screen: { width: 70, height: 16 } do
+    before do |example|
       ThemeDef.default = SamplerExample::APP_THEME
-      Screen.fake
+      Screen.fake(**example.metadata.fetch(:screen, {}))
     end
     after do
       Screen.close
@@ -44,12 +48,12 @@ module Tuile
 
     entries = SamplerExample::Sampler::ENTRIES
 
-    # Mounted at the full screen, but under a holder that places nothing — so an
-    # example resizing the sampler keeps the size it chose. Straight onto
-    # `screen.content` the pane would hand it the whole screen again at the next
-    # settle, and the changed rect would close any menu the example had open.
+    # Mounted as an app mounts it, so it lays out at the example's terminal size.
     def build_sampler
-      mount_at(SamplerExample::Sampler.new, Screen.instance.pane.local_rect)
+      SamplerExample::Sampler.new.tap do |sampler|
+        Screen.instance.content = sampler
+        Screen.instance.flush_layout
+      end
     end
 
     entries.each do |entry|
@@ -154,9 +158,8 @@ module Tuile
     # holds the PTY walk to a couple of keys per pane — and a mnemonic that
     # collided with a sibling would have raised at construction, so building the
     # bar at all is half the assertion.
-    it "reaches every demo from the menu bar, by mnemonic" do
+    it "reaches every demo from the menu bar, by mnemonic", screen: { width: 100, height: 30 } do
       sampler = build_sampler
-      mount_at(sampler, Rect.new(0, 0, 100, 30))
       SamplerNav.paths(SamplerExample::Sampler::MENUS).each do |keys, caption|
         keys.each { |key| sampler.menu_bar.handle_key?(key) }
         assert_equal caption, sampler.demo_window.caption.to_s, "#{keys.join} did not reach #{caption}"
@@ -167,9 +170,8 @@ module Tuile
     # The jump box is the selection model, so the menu writes through it — and
     # the round trip terminates on HasValue#value='s equality check rather than
     # on a re-entrancy guard.
-    it "shows the menu's choice in the jump box, and rebuilds the pane once" do
+    it "shows the menu's choice in the jump box, and rebuilds the pane once", screen: { width: 100, height: 30 } do
       sampler = build_sampler
-      mount_at(sampler, Rect.new(0, 0, 100, 30))
       entry = entries.find { |e| e.caption == "Background" }
 
       builds = 0
@@ -185,9 +187,8 @@ module Tuile
     end
 
     # Focus goes home to the strip after every load, whichever navigator ran.
-    it "returns focus to the menu bar after a jump-box commit" do
+    it "returns focus to the menu bar after a jump-box commit", screen: { width: 100, height: 30 } do
       sampler = build_sampler
-      mount_at(sampler, Rect.new(0, 0, 100, 30))
       sampler.jump_box.focus
       sampler.jump_box.value = entries.find { |e| e.caption == "TextView" }
 
@@ -236,9 +237,8 @@ module Tuile
     # The Visibility pane is the worked example of `visible=`: a conditional
     # form. Driven through Testing on purpose — the locator never returns a
     # hidden component, so the count *is* the assertion a user would make.
-    it "keeps every field of the Scroller pane on screen as Tab walks the form" do
+    it "keeps every field of the Scroller pane on screen as Tab walks the form", screen: { width: 100, height: 30 } do
       sampler = build_sampler
-      mount_at(sampler, Rect.new(0, 0, 100, 30))
       sampler.select_entry(entries.find { _1.caption == "Scroller" })
       Screen.instance.repaint
 
@@ -260,9 +260,8 @@ module Tuile
       assert_includes Screen.instance.buffer.region_text(bottom).first, "Can not be empty"
     end
 
-    it "reveals and re-hides the Visibility demo's conditional fields" do
+    it "reveals and re-hides the Visibility demo's conditional fields", screen: { width: 100, height: 30 } do
       sampler = build_sampler
-      mount_at(sampler, Rect.new(0, 0, 100, 30))
       sampler.select_entry(entries.find { _1.caption == "Visibility" })
       Screen.instance.repaint
 
@@ -288,9 +287,8 @@ module Tuile
 
     # The rows close up completely — the gap around a hidden child goes with it,
     # which is the difference from a Fixed[0] collapse.
-    it "leaves no gap where the Visibility demo's hidden rows were" do
+    it "leaves no gap where the Visibility demo's hidden rows were", screen: { width: 100, height: 30 } do
       sampler = build_sampler
-      mount_at(sampler, Rect.new(0, 0, 100, 30))
       sampler.select_entry(entries.find { _1.caption == "Visibility" })
       Screen.instance.repaint
 
@@ -371,9 +369,10 @@ module Tuile
     # The TabSheet pane's whole claim: a hidden pane is detached from the tree
     # and still comes back exactly as it was left. Guarded here because the
     # demo asserts it in prose on screen.
-    it "keeps a hidden TabSheet pane's scroll position, and falls back to the strip" do
+    # 70x16: small enough that the prose overflows.
+    it "keeps a hidden TabSheet pane's scroll position, and falls back to the strip",
+       screen: { width: 70, height: 16 } do
       sampler = build_sampler
-      mount_at(sampler, Rect.new(0, 0, 70, 16)) # small enough that the prose overflows
       sampler.select_entry(entries.find { |e| e.caption == "TabSheet" })
       Screen.instance.repaint
 
@@ -398,9 +397,8 @@ module Tuile
     # tree — the same shape as the slash-menu demo, which `load_entry` has to
     # close by hand. This one takes itself down on detach, so swapping demos
     # with a menu open must not strand it.
-    it "does not strand an open MenuBar cascade when the demo is swapped" do
+    it "does not strand an open MenuBar cascade when the demo is swapped", screen: { width: 100, height: 30 } do
       sampler = build_sampler
-      mount_at(sampler, Rect.new(0, 0, 100, 30))
       sampler.select_entry(entries.find { |e| e.caption == "MenuBar" })
       Screen.instance.repaint
 
@@ -419,9 +417,8 @@ module Tuile
     # The pane is also the mnemonic demo, and its captions carry the one case
     # the design keeps having to explain: 'o' is File > Open at one level and
     # Edit > Copy at another, with nothing to arbitrate.
-    it "walks the MenuBar pane by mnemonic, one live level at a time" do
+    it "walks the MenuBar pane by mnemonic, one live level at a time", screen: { width: 100, height: 30 } do
       sampler = build_sampler
-      mount_at(sampler, Rect.new(0, 0, 100, 30))
       sampler.select_entry(entries.find { |e| e.caption == "MenuBar" })
 
       pane = sampler.demo_window
@@ -444,11 +441,9 @@ module Tuile
     # reports down a pseudo-terminal. So it is driven here, through the real
     # {Mouse::Router}: FakeScreen runs no loop, so the router sits at `:hover`
     # and delivers every tier.
-    describe "the Mouse pane" do
+    describe "the Mouse pane", screen: { width: 100, height: 30 } do
       let(:sampler) do
-        SamplerExample::Sampler.new.tap do |s|
-          Screen.instance.content = s
-          place(s, Rect.new(0, 0, 100, 30))
+        build_sampler.tap do |s|
           s.select_entry(entries.find { _1.caption == "Mouse" })
           Screen.instance.repaint
         end

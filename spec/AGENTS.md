@@ -9,8 +9,8 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
 ## Invariants
 
 - **The `Screen.fake` / `Screen.close` `before`/`after` pair is the standard setup** — it installs a
-  160×50 {Tuile::FakeScreen} with an in-memory `prints` buffer and no terminal IO, and resets the
-  singleton between examples. Without it, anything touching `Screen.instance` sees leaked state.
+  160×50 {Tuile::FakeScreen} (`Screen.fake(width:, height:)` for another size) with an in-memory
+  `prints` buffer and no terminal IO, and resets the singleton between examples. Without it, anything touching `Screen.instance` sees leaked state.
 - **The fake runs no event loop, so the ordinary `check_locked` admits the example thread** — a spec
   mutating UI from a *spawned* thread raises, exactly as an app would. Don't add a bypass.
 - **Assert painted content against `Screen.instance.buffer`**, not `prints` — `region_text(rect)` /
@@ -36,9 +36,12 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   names itself instead of returning a plausible rectangle. Wrap the read in
   `Tuile.without_strict_layout { … }` where being pre-settle *is* the question — that a rect
   survived a round trip, say — and settle in every other case. See `D_strict_layout`.
-- **Mount with `mount_at(component, rect)`, never `screen.content = c` and a size** — the pane
-  hands its content the whole screen, so `mount_at` puts a {Tuile::Component::Layout::Absolute} in
-  between, holding the example's rect as a constraint.
+- **Mount a widget with `mount_at(component, rect)`, never `screen.content = c` and a size** — the
+  pane hands its content the whole screen, so `mount_at` puts a {Tuile::Component::Layout::Absolute}
+  in between, holding the example's rect as a constraint.
+- **A whole app goes on `screen.content` at the terminal size it is tested at** —
+  `Screen.fake(width:, height:)` starts there, `resize_terminal` changes it mid-example; a holder
+  would skip the pane → content path a real resize takes.
 - **Size or move anything else with `place(component, rect)`** — `rect=` raises outside the parent's
   `relayout`, so `place` goes through whatever places the component: an `Absolute` parent is
   constrained, an open overlay gets `At[rect]`, a parentless root is sized in a throwaway holder, and
