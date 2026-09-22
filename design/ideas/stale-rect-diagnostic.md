@@ -1,8 +1,8 @@
 # Can the stale-rect diagnostic report only reads that were really stale?
 
-**Status:** deferred, 2026-09-22. Split out of `design/ideas/parent-places-every-rect.md`, whose
-brainstorm reached this question and parked it. Nothing here is decided. Pick it up after that idea
-lands.
+**Status:** deferred, 2026-09-22. Split out of the brainstorm that made every rect the parent's
+`relayout`'s to assign (`D_relayout`, landed the same day), which reached this question and parked
+it. Nothing here is decided.
 
 ## Where things stand
 
@@ -13,8 +13,8 @@ everything below it is stale), and it needed three special cases to stop reporti
 `relayout_assigns_rects?`, `StrictLayout::PLUMBING` and `ScreenPane#places_child?`. The branch's
 strict-layout decision entry (only on that branch) has the measurements.
 
-`parent-places-every-rect.md` overturns `places_child?`: the pane places its popups in `relayout`,
-so opening one marks the pane honestly. That brings back the reports that special case suppressed,
+`D_relayout` overturned `places_child?`: the pane places its popups in `relayout`, so opening one
+marks the pane honestly. That brings back the reports that special case suppressed,
 unless the diagnostic stops guessing. The branch's `check_parent` commit (an overlay belongs only on
 the popup stack) stands on its own either way.
 
@@ -52,8 +52,8 @@ stale is a framework bug worth seeing. The costs:
   tree too, where there is no screen queue to ask. The branch's two special cases,
   `relayout_assigns_rects?` and `places_child?`, are unnecessary then: an imprecise filter only
   costs a record that gets dropped.
-- **`PLUMBING` goes.** Under this idea `Select` no longer reads its own rect when opening; the pane
-  reads the anchor inside its pass, which is skipped (`Q_anchor_order`). Any other framework read
+- **`PLUMBING` goes.** `Select` no longer reads its own rect when opening; the pane reads the anchor
+  inside its pass, which is skipped (next point). Any other framework read
   that turns out stale is a framework bug worth reporting.
 - **Record the first suspect read per component and kind per turn**, so a loop over one rect
   produces one report, naming the first site.
@@ -67,7 +67,7 @@ stale is a framework bug worth seeing. The costs:
   default under a `FakeScreen`), `Tuile.without_strict_layout`, and the prepend so an app's `rect`
   stays a bare `attr_reader`.
 - **Reads made inside `perform_relayout` are not recorded.** The pane reads an anchored popup's
-  anchor mid-drain, and the drain corrects it (`parent-places-every-rect.md`'s `Q_anchor_order`).
+  anchor mid-drain, and the drain corrects it (the post-drain anchor check, `D_relayout`).
   Recording it would report the framework correcting itself.
 
 ## `Q_branch_fate`
@@ -77,5 +77,5 @@ and keep only its public surface and specs?
 
 ## Related
 
-`D_deferred_layout` (the residue this answers), `D_relayout`, the parked branch's strict-layout decision entry,
-`design/ideas/parent-places-every-rect.md`.
+`D_deferred_layout` (the residue this answers), `D_relayout`, the parked branch's strict-layout
+decision entry.
