@@ -1,73 +1,46 @@
-# `CompositeField`: several fields behind one value
+# `CompositeField` — several fields behind one value
 
-**Status:** filed 2026-09-04, as what was left over when
-`Component::AbstractWrappingField` shipped and its note graduated — read
-`D_wrapping_field` first, this note assumes it. Nothing here is built. **Its two
-open questions are now answered** by the first consumer, which shipped
-green-field rather than on this base: read `D_date_time_field` before touching
-anything below. What is still open is only whether a *base* is worth extracting,
-which needs a **second** consumer — a `start`/`end` range field is the candidate.
+**Status:** unbuilt, waiting for a second consumer. The first, `Component::DateTimeField` (a
+`Layout::Horizontal` over a `DateField` and a `TimeField`), shipped green-field and answered every
+design question for two halves (`D_date_time_field`). What's left is only whether a shared *base* is
+worth extracting; the candidate second consumer is a `start`/`end` range field. Assumes
+`D_wrapping_field`.
 
-The shape: several fields arranged in a layout behind one typed value, as
-`Component::DateTimeField` is over a `DateField` plus a `TimeField`.
-`AbstractWrappingField` is deliberately *one editor, full stop*, and was built as
-the prototype this learns from.
+## Settled shape
 
-What is already known about its shape:
+- **A sibling of `AbstractWrappingField`, not a subclass** — that base's whole value is one child,
+  no layout, no ordering; inheriting would put both back.
+- **Explicit registration of its fields, never auto-discovery** — a tree walk would descend through a
+  wrapping field into the private editor it hides.
+- **So it loses "the base adds the child"** — `AbstractWrappingField` calls `add_child` itself, which
+  makes *own and hide* a guarantee; a composite lets its subclass populate a layout, so registration
+  replaces it.
+- **`active=` is already the right commit point** — focus moving between its own fields keeps the
+  composite active, so nothing commits spuriously (`D_wrapping_field`).
+- **The `value` / `value=` contract pluralizes unchanged**: read out of my fields, apply into them.
 
-- **A sibling of `AbstractWrappingField`, not a subclass of it.** That base's
-  whole value is that one child removes the layout and the ordering; inheriting
-  from it would put both back.
-- **No auto-discovery of the fields — ever.** A tree walk for "the fields inside
-  me" would descend *through* a wrapping field into the private editor it exists
-  to hide. Registration is explicit.
-- **`active=` already gives it the right commit semantics** — see
-  `D_wrapping_field`, where that seam is chosen partly *because* it survives
-  here: focus moving between two of a composite's own fields keeps the composite
-  active, so it does not spuriously commit. The one hard part it inherits solved.
-- **The abstract pair generalizes by pluralizing.** `value` / `value=` already
-  mean "read the value out of my field(s)" and "apply the value into my
-  field(s)"; a composite changes nothing else about that contract, which is the
-  evidence the prototype transfers.
-- **It cannot inherit the "the base adds the child" guarantee**, and that is
-  another reason it is a sibling. `AbstractWrappingField` calls `add_child`
-  itself, which is what makes *own and hide* a guarantee rather than a
-  convention. A composite must let its subclass populate a layout, so something
-  else has to replace it — explicit registration of which descendants are its
-  fields.
-- **What it must solve, and a wrapping field never had to:** assembling `value`
-  from several children with a diff guard; deciding whether `bad_input?` is "any
-  child" or "the combination" — **both**, as `D_date_time_field` settled it: the
-  guilty child's message first, the combination fault only when no child is
-  guilty, and the child's *latch* relayed along with its message so the report
-  and the red arrive together; which child takes focus on `handle_focus`; and how
-  the layout is expressed without becoming a container. `DateTimeField` answers
-  all four for two halves — the first three as written code, the last by simply
-  *being* the `Horizontal`, which is the answer a base cannot take.
+## What `DateTimeField` answered
 
-**Which component wears the error — answered in `D_date_time_field`, and this
-note's own reading of the background chain was wrong.** It read: `error_bg_color`
-sits at the top of the same chain a child walks, so a child inherits its parent's
-*error* level; verified with a bare `Label` under an invalid `IntegerField`,
-which does come back `Color 88`. But a `Label` answers no level of its own, and
-**every field answers `bg.default_color`** — which resolves *before* the parent
-is consulted. So marking a composite self-invalid reddens the chrome around the
-fields and leaves the fields flat, i.e. the opposite of what this note assumed.
+| question | answer |
+|---|---|
+| assembling `value` | from the children, with a diff guard |
+| `bad_input?`: any child, or the combination? | both — the guilty child's message first, the combination fault only when no child is guilty; the child's latch is relayed with its message so report and red arrive together |
+| who takes focus on `handle_focus` | written code, per composite |
+| the layout without becoming a container | `DateTimeField` *is* the `Horizontal` — the answer a base can't take |
+| who wears the error | the composite paints only the fault no half can wear, syncing `ComponentBackground::INHERIT` onto the halves exactly while it inks; clean, the halves keep their own wells |
 
-The shipped answer: **the composite paints only the fault no half can wear**,
-with its ink synced onto the halves as `ComponentBackground::INHERIT` marks — which also settles
-the ComponentBackground::INHERIT question this note filed as a second one (the marks are *synced to
-the condition*, not permanent, so the halves keep their own wells while the
-composite is clean). And the genuinely hard case, a **combination** error
-(`start > end`) where no single field is wrong, is exactly the one the composite
-wears: honest rather than loud.
+The last one overturned this note's first guess. Every field answers `bg.default_color`, which
+resolves before the parent is consulted, so a self-invalid composite reddens its chrome and leaves
+the fields flat (a bare `Label` does inherit the error level; a field does not — `D_bg_surface`).
+A combination error (`start > end`) is exactly what the composite wears: honest, not loud.
+
+## Open
+
+- `Q_composite_base` — does a range field share enough with `DateTimeField` to earn a base, or is
+  it a second green-field copy (COP: inherit to *be*, not to share)? Decide when it is built.
 
 ## Related
 
-`D_wrapping_field` (the one-editor base this generalizes — its admission test,
-its forwarding test, and `active=` as the commit point), `D_has_validation` and
-`D_bad_input` (the two error channels a composite has to combine),
-`D_caption_ownership` (why an inner label is chrome, and chrome is not what
-failed), `D_bg_surface` (the background chain, and why a field child does not
-inherit an ancestor's error level), `D_date_time_field` (the first consumer:
-every question above answered for two halves, green-field).
+`D_wrapping_field`, `D_date_time_field`, `D_has_validation`, `D_bad_input`, `D_caption_ownership`
+(an inner label is chrome, and chrome isn't what failed), `D_bg_surface`,
+`design/ideas/new-components.md` (Custom Field).

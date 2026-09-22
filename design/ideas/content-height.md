@@ -1,237 +1,158 @@
-# Could a component report how tall its content is, and say when that changes?
+# Content height — can a component say how tall its content is, and when that changes?
 
-**Status:** seed, 2026-09-21, split out of the scroller idea (since graduated to
-`D_scroller`). Brainstorm only — nothing here is decided,
-and the obvious answer runs into `D_declared_size` and `D_box_layouts`, so it
-has to be argued rather than built. **On a successful brainstorm this note
-revisits `Scroller`**: the tracking mode, and the content query that the
-scroller deliberately shipped without — no `FormLayout#total_rows`, since that
-would settle `Q_query_name` before this note is argued. Until then the scroller
-is told (`Scroller#content_rows=`'s rdoc states the interim rule; tracking can
-come later as a new value beside the Integer, so waiting breaks nothing), and
-road 1 below has shipped in general form.
+**Status:** brainstorm, nothing decided. Blocked on `Q_notice_gate`, which
+touches `D_declared_size` and `D_box_layouts`. Until then `Scroller` is told
+(`content_rows=`); tracking would arrive as a new value beside the Integer, so
+waiting breaks nothing.
 
 ## The problem
 
-{Tuile::Component::Scroller} is told how tall its content is (`content_rows=`,
-`D_scroller`). Add a field to the form inside it and the last row is
-unreachable until someone re-assigns the count. `scroller.content_rows =
-form.total_rows` after every `add` / `remove` / `constrain` / `visible=` is a
-rule an app follows or silently doesn't, and nothing detects the miss.
+`Scroller#content_rows=` is assigned by the app (`D_scroller`). Add a field to
+the form inside and the last row is unreachable until someone re-assigns it;
+nothing detects the miss. The scroller is the first component whose own
+arithmetic needs an answer only its child has — every other container's size is
+independent of its children, which is why top-down layout holds everywhere else.
 
-Everywhere else in Tuile, top-down layout doesn't break, because no container's
-size depends on its children. The scroller is the first component whose *own
-arithmetic* needs an answer only the child has. That is why the break shows up
-here and nowhere else.
+**Owner's proposal:** every component computes its content height and notifies
+when it changes; a scroller told to track re-reads it. **Owner's worry:** every
+layout would have to subscribe to its children so "I want to be taller"
+cascades — absurd.
 
-## The owner's proposal, as stated
+## Why the cascade is one hop (to test, not yet proven)
 
-Every component can compute its content height and fires an event when it
-changes. The scroller subscribes, and when told to track, say `content_rows =
-:content` (spelling open), re-reads it. The worry: **every layout would then
-have to subscribe to its children** so that "I want to be taller" cascades up
-correctly, which sounds absurd. So the notice would have to travel some other
-way, and nobody knows which.
+- **The notice needs no subscription and no hook.** `visible=` already notifies
+  upward with `parent&.invalidate_layout` (`component.rb:385`): one level, mark
+  only, and the parent's `relayout` re-reads whatever it derives. No listener, no
+  `Event`; `D_listeners` slots are for non-parent observers. (The deleted
+  `handle_child_visibility_changed` is the precedent: its overrides all only
+  wanted a re-divide.)
+- **The climb stops at the first parent whose size ignores the child — today,
+  every parent.** `Box` hands `Fixed[3]` 3 rows, `FormLayout` hands `rows:`,
+  `Window` hands the inner rect. Every Tuile container is a Flutter *relayout
+  boundary* by construction (`R_layout_pass`, `D_box_layouts`: no `Auto`). The
+  only non-boundary would be a tracking scroller, whose content is usually its
+  direct child.
+- So: content changes → marks its parent → the parent is the scroller → it
+  re-reads. A longer chain needs something in between sized by its children,
+  i.e. `Auto`. **This idea is the door `Auto` would return through**, and must
+  say so.
 
-## A reframing worth testing: the cascade is almost always one step
+## Sketch
 
-Two things make the worry smaller than it looks. Neither has been proven; test
-them before building on them.
+Names are placeholders (`Q_query_name`).
 
-**1. It needn't be a subscription — and since `D_deferred_layout` it needn't
-even be a hook.** The tree already has an upward notice nobody subscribes to:
-`visible=` calls `parent&.invalidate_layout`, one level, the parent pointer as
-the channel. A row notice can be exactly that call — the parent's `relayout`
-re-reads whatever it derives, so the child never has to say *what* changed, and
-a `handle_child_rows_changed` would have to earn something the mark does not
-already give. (The hook this file first cited,
-`handle_child_visibility_changed`, was deleted for that reason: all four
-overrides only wanted their parent to re-divide.) There is no listener to attach
-on `handle_attached` or detach later, and no `Event`; `D_listeners` slots exist
-for *non-parent* observers.
+- **Query:** `Component#rows_for(width) → Integer | nil`, read-only, from own
+  state. `nil` (base) = "no content height, I fill what I'm handed" (a `Box` with
+  an `Expand` child, `List`, a self-scrolling `TextView`).
 
-**2. The climb stops at the first parent whose size does not depend on the
-child — and today that is every parent.** A `Box` gives a `Fixed[3]` child 3
-rows whatever that child thinks it needs. A `FormLayout` gives `rows:`. A
-`Window` gives its content the inner rect. None of them change size when a
-child's content grows, so none of them has anything to forward, and the base
-body's "do nothing" is the correct default. Flutter calls such a node a
-*relayout boundary* and Android's `requestLayout` climbs to the root. By that
-measure, every Tuile container is a boundary by construction (`D_box_layouts`:
-no `Auto`). The only non-boundary is a scroller in tracking mode, and the
-content it scrolls is usually its direct child.
+  | answerer | `rows_for(width)` |
+  |---|---|
+  | `FormLayout` | sum of `item_height` over visible items |
+  | vertical `Box` | all shown children `Fixed`: sum + `spacing` + `padding`; else `nil` |
+  | `Label`, wrapping `TextView` | wrapped row count at `width` — why it takes a width |
 
-So the realistic chain is: **the content changes → it tells its parent → the
-parent is the scroller → the scroller re-reads and re-lays out.** One hop. A
-longer chain appears only if something between them derives its size from its
-children. The only candidate is the `Auto` constraint that `D_box_layouts`
-deleted. **This idea is the door `Auto` would come back through**, and it should
-say so rather than let it happen by accident.
+- **Notice:** after its answer may have changed, a component calls
+  `parent&.invalidate_layout`. Only a component that answers owes it; a
+  `component_contract_spec` check can enforce "non-`nil` `rows_for` ⇒ mutating
+  marks the parent".
+- **Consumer:** `Scroller#content_rows = :content` (`Q_tracking_spelling`). In
+  `relayout` it asks `content.rows_for(inner_width)`, falling back to the
+  viewport on `nil`. An Integer still means "told".
 
-## Sketch, to be torn apart
+**Height only is structural.** Width is settled top-down first, then rows are
+asked *at* that width — one pass (GTK height-for-width, Flutter
+`getMaxIntrinsicHeight(width)`). Both axes at once needs negotiation (Android's
+two-pass `MeasureSpec`), which Tuile refuses. A horizontal scroller would ask the
+mirror `columns_for(height)`, never both together.
 
-Names are placeholders; see `Q_query_name`.
+## Gates
 
-- **The query**: `Component#rows_for(width) → Integer | nil`. `nil` (the base
-  body) means "I have no content height, I fill what I'm handed", which is the
-  honest answer for a `Box` with an `Expand` child, a `List`, or a `TextView`
-  that scrolls itself. Read-only, and computed from the component's own state:
-  - `FormLayout`: the sum of `item_height` over visible items (the `total_rows`
-    the scroller shipped without).
-  - `Box` (vertical): when every shown child is `Fixed`, the sum plus
-    `spacing` and `padding`; otherwise `nil`.
-  - `Label` / a wrapping `TextView`: the wrapped row count at `width`, which is
-    why the query takes a width.
-- **The notice**: after a component's answer may have changed, it calls
-  `parent&.invalidate_layout` — the same one-level, mark-only channel `visible=`
-  uses, absorbed by any parent that derives nothing from it.
-- **The consumer**: `Scroller#content_rows = :content`. In `relayout` it asks
-  `content.rows_for(inner_width)`, falling back to the viewport when the answer
-  is `nil`. An Integer `content_rows` still means "told", unchanged.
+- **`D_declared_size`:** the query passes (optional, read-only, caller is a
+  component, not `Screen`). **The notice does not obviously pass** — it is a
+  push, and `D_scroller` calls a push from the content "the banned channel". The
+  case: the ban is on a push *the framework acts on*; this reaches one opted-in
+  parent. Amending that is the owner's call and rewrites a `D_`.
+- **Retained tree:** a marked drain is not a per-frame rebuild
+  (`D_deferred_layout`); what the promise forbids is a *measurement phase*. Holds
+  while the query runs only in the scroller's `relayout` and `Screen` never
+  learns the word.
+- **COP:** both components stay self-sufficient; data flows up. Fine.
 
-Only a component that answers the query owes the notice. The owner's "every
-container would owe one" becomes "every container that can *measure* owes one":
-`FormLayout`, an all-`Fixed` `Box`, `Label`. A spec can check that: for any
-component whose `rows_for` is non-`nil`, mutating it must fire the notice. That
-is `component_contract_spec`'s kind of check.
+## Roads
 
-## Why "height only" is structural, not "for starters"
-
-Width is decided top-down before anyone measures: the scroller knows
-`inner_width` from its own rect, then asks for rows *at that width*. Measuring
-one axis, given the other, is what keeps this a single pass. GTK's
-height-for-width and Flutter's `getMaxIntrinsicHeight(width)` are the same move.
-Measuring both axes at once is where toolkits need a negotiation (Android's
-`MeasureSpec`, two-pass `measure`), and that is the machinery Tuile refuses. A
-horizontal scroller would be the mirror query, `columns_for(height)`, and would
-never be asked together with this one.
-
-## Does it pass the gates?
-
-- **`D_declared_size`'s re-grow rule**: measurement may come back only as an
-  *optional, read-only, caller-side query*, never as a channel the framework
-  consults. The query passes: optional (`nil`), read-only, and the caller is a
-  component, not `Screen`. **The notice does not obviously pass**: it is a push.
-  `D_scroller` itself calls `on_rows_changed` "the banned push in listener
-  clothing". The argument would be that the rule bans a push *the framework
-  acts on*, and this one reaches exactly one parent that opted in. That
-  amendment is the owner's call, and it would rewrite a `D_` entry, not just add
-  a feature.
-- **The promise, a retained tree**: `D_deferred_layout` settled that a marked,
-  drained layout pass is not a per-frame rebuild, so the drain itself is no
-  longer the question — *measurement inside it* is. The query runs only when the
-  scroller lays out, and the notice only when content actually changes. It
-  holds, as long as `Screen` never learns the word.
-- **COP**: the scroller and its content stay self-sufficient, and data flows up
-  through a hook rather than a service reaching into UI. Fine.
-
-## Roads, including the ones already on the table
-
-1. **Stay told, make staleness detectable.** *Shipped, generalized:* instead of
-   the scroller spotting a request past its count, `Screen#focused=` warns about
-   any focused target whose clip is still empty after the request. Fixes
-   nothing, but turns a silent bug into a logged one, and every road below
-   keeps it.
-2. **Pull at layout time only.** The scroller asks in its own `relayout`. Covers
-   a resize and nothing else.
-3. **Query + a one-level mark upward** (the sketch above): the measuring child
-   calls `parent&.invalidate_layout`, exactly as `visible=` does.
-4. **Query + a climbing request**: a mark that climbs the way `scroll_to_visible`
-   does, each level either absorbing it (a boundary) or passing it on. Strictly
-   more general than 3, and identical to it while every container is a boundary —
-   which is why `invalidate_layout` deliberately does not climb
-   (`D_deferred_layout`). Worth it only if `Auto` returns.
-5. **A listener slot on the content** (`on_rows_changed`). Works for a
-   non-parent observer, which is its only edge over 3. `D_scroller` already
-   leans against it.
-6. ~~**A deferred layout set drained by `Screen` before paint**~~ — *built*, as
-   `D_deferred_layout`. The ruling above ("the promise forbids it in spirit if
-   not in letter") did not survive the argument: a set drained only when
-   something was marked is not a per-frame pass, and Terminal.Gui v2 and Textual
-   are retained-tree TUIs that both run one. The coalescing this road was listed
-   for is free now. What the promise still forbids is a *measurement* phase —
-   which is `Q_notice_gate`, not this.
+| # | road | verdict |
+|---|---|---|
+| 1 | stay told, make staleness visible | **shipped**, generalized: `Screen#focused=` warns when a focus target's clip is still empty (`warn_if_unseen`). Every road keeps it |
+| 2 | pull in the scroller's `relayout` only | covers a resize, nothing else |
+| 3 | query + one-level `parent&.invalidate_layout` | the sketch |
+| 4 | query + a climbing mark (like `scroll_to_visible`), each level absorbing or forwarding | identical to 3 while every container is a boundary; worth it only if `Auto` returns. `invalidate_layout` deliberately doesn't climb (`D_deferred_layout`) |
+| 5 | listener slot on the content (`on_rows_changed`) | only edge over 3 is a non-parent observer; `D_scroller` leans against |
 
 ## Open questions
 
-- `Q_notice_gate`: does a component-to-parent push fall under
-  `D_declared_size`'s ban or not? Everything else waits on this.
-- `Q_query_name`: `rows_for(width)`, `content_rows(width)` (collides with
-  `Scroller#content_rows`), `measure_rows`, `rows_needed`? It must not be
-  `size` / `height` (squatted as reports by `D_declared_size`), and it must say
-  `row` (`D_scroll_nomenclature`).
-- `Q_fire_on_change`: the notice must fire only when the answer actually
-  changed, or a wrapping `Label` re-measured in its own `rect=` re-triggers its
-  parent's layout forever. So the measuring component caches its last answer —
-  a cache, where `D_repaint_cascade`'s style is "derive, don't cache". Or the
-  scroller compares instead and the component fires freely?
-- ~~`Q_reentrancy`~~ — answered by `D_deferred_layout`: a notice fired during the
-  parent's own pass marks, and the mark lands in the same drain set, which
-  iterates. Nothing re-enters, and no guard is needed.
-- ~~`Q_batching`~~ — answered the same way: ten `form.add` calls coalesce into one
-  pass at the settle.
-- `Q_drain_cap`: `Component#flush_layout` drains `until` the dirty set is empty,
-  with no iteration cap, and what makes that safe today is that no container's
-  size depends on its children, so a pass cannot dirty the parent that ran it
-  (`D_deferred_layout` states the invariant). **This idea is what would break
-  it**: a scroller in tracking mode is the first non-boundary, and an A-sizes-B,
-  B-dirties-A cycle would hang the UI thread rather than degrade. Whatever ships
-  here owes either a cap or an argument that the one-hop chain cannot cycle.
-- `Q_tracking_spelling`: `content_rows = :content`, `:auto`, `-1`, or a
-  separate `track_content_rows = true`? `:auto` collides with the vocabulary
-  `D_box_layouts` banned and with "there is no `:auto`" on scrollbars.
-- `Q_hidden`: a hidden child costs no rows (`D_visibility`), so every summing
-  query skips hidden children, and `visible=` already notifies the parent. Is
-  a hidden *content* child `nil` or `0`?
+- `Q_notice_gate`: does a child-to-parent mark fall under `D_declared_size`'s
+  ban? Everything waits on this.
+- `Q_query_name`: `rows_for(width)`, `measure_rows`, `rows_needed`?
+  `content_rows(width)` collides with `Scroller#content_rows`; `size` / `height`
+  are reports (`D_declared_size`); must say `row` (`D_scroll_nomenclature`).
+- `Q_fire_on_change`: the notice must fire only on a real change, or a wrapping
+  `Label` re-measured during its parent's pass re-marks it forever. Cache the
+  last answer (against `D_repaint_cascade`'s "derive, don't cache"), or let the
+  scroller compare and the component fire freely?
+- `Q_drain_cap`: `Screen#flush_layout` drains uncapped; `D_deferred_layout` says
+  that's safe because no pass can dirty the parent that ran it. A tracking
+  scroller is the first non-boundary — an A-sizes-B, B-marks-A cycle hangs the UI
+  thread. Ship a cap, or an argument that one hop cannot cycle.
+- `Q_tracking_spelling`: `:content`, `-1`, or `track_content_rows = true`?
+  `:auto` collides with `D_box_layouts`' banned vocabulary.
+- `Q_hidden`: summing queries skip hidden children (`D_visibility`), and
+  `visible=` already marks the parent. Is a hidden *content* child `nil` or `0`?
 
-## Related
+Answered by `D_deferred_layout`: re-entrancy (a mark during the parent's pass
+lands in the same drain) and batching (ten `form.add` coalesce into one settle).
 
-`design/ideas/form-layout.md`
-(the first answerer), `D_scroller`, `D_declared_size` (the gate),
-`D_box_layouts` (no `Auto`, and why this is its door), `D_relayout` and
-`D_deferred_layout` (the seam this would feed, and the drain `Q_drain_cap` is
-about), `R_layout_pass`, `D_visibility` (the upward mark this copies),
-`D_listeners`, `D_scroll_nomenclature`,
-`Component#scroll_to_visible` (the climbing-request precedent).
+## Graduation owes
 
-`R_layout_pass` now carries Flutter's relayout boundary and `markNeedsLayout`,
-Android's climbing `requestLayout` and what every surveyed toolkit pays for its
-measurement channel — cite it rather than re-deriving. **Still unverified, to
-re-check with provenance markers before either reaches `design/research.md`:**
-Android's `MeasureSpec` two-pass measure, GTK's height-for-width geometry
-management.
+- The `D_declared_size` amendment (or a rejection line there), and a `D_scroller`
+  update: tracking mode, the content query.
+- rdoc on `Scroller#content_rows=` (its interim rule) and on each answerer.
+- The contract-spec check above; a cap or argument for `Q_drain_cap`.
+- The toolkit table below → one `R_` entry with provenance markers.
 
-## Content size elsewhere
+## Content size elsewhere (unverified)
 
-Who knows how tall the content is — moved here from the scroller idea, whose
-clipping, scroll-into-view and granularity halves graduated to `D_clip`,
-`R_paint_context` and `D_scroller`. On graduation the verified rows become one
-`R_` entry in `design/research.md`, each claim carrying a provenance marker.
-
-| Toolkit | Content size |
+| toolkit | content size |
 |---|---|
 | Swing | asked of the content (`Scrollable`) |
 | Android, Flutter | a measure pass |
 | Qt | size hints |
 | Web/CSS | layout |
-| Textual | `virtual_size`, a real bottom-up measurement |
+| Textual | `virtual_size`, real bottom-up measurement |
 | brick, prompt_toolkit | the rendered image |
-| Terminal.Gui v2 | **told**: `SetContentSize()` on the base `View` |
-| ratatui (`tui-scrollview`), ncurses `newpad` | **told**: the oversized buffer you allocate |
+| Terminal.Gui v2 | **told**: `SetContentSize()` on `View` |
+| ratatui `tui-scrollview`, ncurses `newpad` | **told**: the oversized buffer you allocate |
 
-- **Measurement splits by whether the toolkit has a layout pass**, and Tuile is
-  in the told group by construction — so the answer to staleness cannot be
-  "measure it", however the roads above go.
-- **The *render then crop* family — Textual, brick, ncurses pads, notcurses,
-  tui-scrollview — is per-component buffers under another name**: an allocation
-  per component per frame, buying caching. Tuile clips at write instead, and the
-  `Canvas` seam keeps the other family reachable as a {Tuile::Canvas::Backend}
-  rather than a refactor of every widget (`design/ideas/per-component-buffers.md`).
+- Measurement splits by whether the toolkit has a layout pass; Tuile is in the
+  told group by construction, so staleness can't be answered with "measure it".
+- Render-then-crop (Textual, brick, ncurses pads, notcurses, tui-scrollview) is
+  per-component buffers under another name; Tuile clips at write, and the
+  `Canvas::Backend` seam keeps the other family reachable
+  (`design/ideas/per-component-buffers.md`).
+- `R_layout_pass` already covers Flutter's relayout boundary / `markNeedsLayout`
+  and Android's climbing `requestLayout` — cite it. Still to verify: Android's
+  two-pass `MeasureSpec`, GTK height-for-width.
 
-**Sources** (to be re-verified with markers on graduation):
-Textual's [widget guide](https://textual.textualize.io/guide/widgets/);
-[Terminal.Gui v2 what's new](https://gui-cs.github.io/Terminal.Gui/docs/newinv2);
-[brick's guide](https://github.com/jtdaugherty/brick/blob/master/docs/guide.rst);
-[tui-scrollview](https://github.com/ratatui/tui-widgets/tree/main/tui-scrollview)
-and ratatui's [scrollable-widgets RFC](https://github.com/ratatui/ratatui/discussions/1924);
+Sources: [Textual widgets](https://textual.textualize.io/guide/widgets/),
+[Terminal.Gui v2](https://gui-cs.github.io/Terminal.Gui/docs/newinv2),
+[brick guide](https://github.com/jtdaugherty/brick/blob/master/docs/guide.rst),
+[tui-scrollview](https://github.com/ratatui/tui-widgets/tree/main/tui-scrollview),
+[ratatui RFC](https://github.com/ratatui/ratatui/discussions/1924),
 [notcurses_plane(3)](https://notcurses.com/notcurses_plane.3.html).
+
+## Related
+
+`D_scroller`, `D_declared_size`, `D_box_layouts`, `D_relayout`,
+`D_deferred_layout`, `R_layout_pass`, `D_visibility`, `D_listeners`,
+`D_scroll_nomenclature`, `D_repaint_cascade`, `Component#scroll_to_visible`,
+`design/ideas/form-layout.md` (the first answerer),
+`design/ideas/per-component-buffers.md`.

@@ -1,20 +1,22 @@
-# Should `run_event_loop` default to `capture_mouse: :drag`?
+# `run_event_loop`'s default mouse level: `:clicks` or `:drag`?
 
-Left over from the draggable-scrollbar idea, which graduated without it: this
-one is about the loop's default, not about the bar.
+**Status:** open question; left over from the draggable scrollbar (`D_draggable_scrollbar`).
 
-## Q_capture_mouse_default — should `run_event_loop` default to `:drag`?
+## Q_capture_mouse_default
 
-Today it is `true` == `:clicks` (mode 1000), which reports no motion, so
-`handle_mouse_drag` never fires and a `VerticalScrollBar`'s handle does not
-move until an app passes `capture_mouse: :drag`. Track-paging works at every
-level, and `examples/sampler.rb` already asks for `:hover`, so the feature is
-demonstrable — but the out-of-the-box answer is "the handle doesn't move",
-which reads as a bug, and a `List` or `TextView` with a visible bar is a far
-commoner sight than a `Scroller`.
+The default `capture_mouse: true` is `:clicks` (mode 1000): no motion, so `handle_mouse_drag` never
+fires and a `VerticalScrollBar`'s handle doesn't move without `capture_mouse: :drag`. Track-paging
+works at every level; `examples/sampler.rb` runs at `:hover`. Out of the box "the handle doesn't
+move" reads as a bug, and a `List` or `TextView` with a bar is far commoner than a `Scroller`.
 
-For: mode 1002 adds reports only while a button is held, and
-`handle_mouse_drag`'s base body is empty, so no existing component can be
-surprised. Against: it is a default change, and nobody has measured the
-traffic on a slow ssh link — `R_mouse_reporting`'s ~84 reports a second is the
-number to weigh, and it was measured for `:hover`, not for a held button.
+- **For:** mode 1002 reports only while a button is held, and the base `handle_mouse_drag` is empty
+  (`VerticalScrollBar` is the only override in `lib/`), so no component can be surprised.
+- **Against:** a default change, and the traffic over slow ssh is unmeasured —
+  `R_mouse_reporting`'s ~84 reports/s is for `:hover` (1003), not a held button.
+
+Graduation owes: `run_event_loop`'s `@param capture_mouse` rdoc, a `**Breaking:**` CHANGELOG line if
+it flips, a measurement into `R_mouse_reporting`.
+
+## Related
+
+`D_draggable_scrollbar`, `D_mouse`, `R_mouse_reporting`.

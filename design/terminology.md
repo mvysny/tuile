@@ -22,7 +22,7 @@ needs a paragraph of justification, that paragraph belongs in one of those three
 | **left_column** | the content column currently painted in a widget's leftmost cell — the horizontal counterpart of `scroll_top_row`. Private wherever it exists (`TextField`, `Tabs`, `MenuBar`): what a caller relies on is the invariant it maintains — the caret, or the selected segment, is in view — not the number. |
 | **viewport_rows** | how many rows of content are visible — always `rect.height`; kept private, since `rect.height` is the public form. |
 | **row_count** | how many rows the wrapped content occupies. Public on `TextArea` (with `caret_row`, its companion); also on the private `WrappedText`, and on `VerticalScrollBar` (`#row_count=`, pushed by its owner). Not on `TextView` / `List`, which have no caller for it. |
-| **caret_row** | the row a text input's caret sits in, counted from the content's first row. `TextArea` only. |
+| **caret_row** | the row a text field's caret sits in, counted from the content's first row. `TextArea` only. |
 | **extent** | the `Size` a widget actually paints inside the `rect` it was given — `Component#extent`, `nil` unless declared, always at the rect's top-left (`Component#local_extent_rect` and `#absolute_extent_rect` position it). What the widget clears outside of, hit-tests, highlights and anchors its dropdown to. The arithmetic is each widget's own (a `Checkbox`'s glyph plus caption; a `Tabs` strip's segments and separators). Distinct from a *slot extent*. |
 | **handle** | the moving part of a scrollbar — the rows standing for the slice of content in view (`handle_start`, `handle_height`, `handle_char`). CSS calls it the *thumb*; Tuile does not. Not drawn at all when the content fits. |
 | **track** | the scrollbar's fixed part: the full viewport height the handle moves within, and the glyph (`track_char`) painted on the rows the handle doesn't cover. Never the bar's *column*, which is "the scrollbar column" (`D_scrollbar_reserve`). |
@@ -46,10 +46,10 @@ content-space.
 | **renderer** | the `item -> row` proc a generic component uses to render an item it knows nothing about. |
 | **selection** | which item or tab a selector currently points at. *View state* when nothing would save it ({Tuile::Component::Tabs}`#selected`), a *value* when a form would (`RadioGroup#value`) — the split `D_tabs` calls the "would a form save it?" test. |
 | **item_count** / **item_index** | how a `List::Cursor` counts and addresses; equal to a row count in a `List`, but the cursor indexes *items*. |
-| **text** | the user-editable **value** of an input ({Tuile::Component::HasValue}, aliased as `text` on `AbstractStringField`). |
+| **text** | the user-editable **value** of a field ({Tuile::Component::HasValue}; `AbstractStringField#text` is the reader `value` answers from). |
 | **caption** | app-authored **chrome** text ({Tuile::Component::HasCaption}) — a `Window` title, a `Button` label. Never a value. |
 | **chrome** | framework- or app-authored decoration around content: captions, borders, footers, an app's status line. |
-| **caret** | the index into an input's `text` where editing happens; always on a cluster boundary. Distinct from the *cursor*. |
+| **caret** | the index into a field's `text` where editing happens; always on a cluster boundary. Distinct from the *cursor*. |
 
 ## Tree, paint and theme
 
@@ -85,7 +85,7 @@ content-space.
 | **grab** | the hold one component has on the mouse from the press it claimed until the release, during which its drags and its up reach it wherever the pointer goes ({Tuile::Screen#grabbed}). Never "capture", which already names the `capture_mouse:` level. |
 | **hovered chain** | the components the pointer is inside, root first, as {Tuile::Mouse::Router} last resolved it; {Tuile::Screen#hovered} is its innermost. Enter and exit are the difference between two of them. |
 | **cursor** | *(two senses, both live)* the hardware terminal cursor (`Screen#cursor_position`), and a `List::Cursor` — the selection position within a list. |
-| **well** | the background an input paints over its whole extent (`Theme#input_bg_color` / `#active_bg_color`), declared as its `bg.default_color`. It terminates inheritance — an ancestor's tint doesn't reach it — but loses to a `bg_color` set on the input itself. Exactly one per widget: a composed field owns the well and marks the field it wraps `ComponentBackground::INHERIT`. |
+| **well** | the background a field paints over its whole extent (`Theme#input_bg_color` / `#active_bg_color`), declared as its `bg.default_color`. It terminates inheritance — an ancestor's tint doesn't reach it — but loses to a `bg_color` set on the field itself. Exactly one per widget: a composed field owns the well and marks the field it wraps `ComponentBackground::INHERIT`. |
 | **token** | a semantic colour name on {Tuile::Theme} — an accent, never a global fg/bg. |
 | **derived token** | a token declared as a Proc of the terminal background; {Tuile::Screen#theme} holds it already **resolved** to a `Color`. |
 | **scheme** | `:dark` or `:light`; a {Tuile::ThemeDef} pairs one {Tuile::Theme} per scheme. |

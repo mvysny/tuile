@@ -1,67 +1,45 @@
-# Is the per-child attribute map a shape worth sharing?
+# Per-child attribute map — share the shape, or keep hand-rolling?
 
-**Status:** seed, 2026-09-19. Filed the same day as a broader question — *is
-there a `HasContent` for a container holding **many** populatable children?* —
-which `FormItem` answered before this file was a day old. What survives is the
-narrow half, kept because it has no other home.
+**Status:** open again. The threshold this note set ("revisit at three") is passed: four containers
+hand-roll the same map.
 
-## What `FormItem` answered, so it isn't re-opened
+## The hand-rolls
 
-The broad version asked for a `HasChildren`: the collection analogue of
-{Tuile::Component::HasContent}, letting a walk ask a container "what did the app
-put in here?" without a class list. Two things killed it:
+| container | map | default on read |
+|---|---|---|
+| `Layout::Box` | `@placements`: `child => {main:, cross:, align:}` | `DEFAULT_PLACEMENT` |
+| `FormLayout` | `@placements`: `item => {rows:}` | `DEFAULT_PLACEMENT` |
+| `Layout::Absolute` | `@rects`: `child => Rect` | none — `fetch` |
+| `ScreenPane` | `@placements`: `popup => placement` (+ `@placed_anchors`) | none — `fetch` |
 
-- **The distinction moved.** `D_form_layout` settled on a
-  `FormItem` wrapping each field, so a `FormLayout`'s children are homogeneous
-  items and nothing else. "Which of my children are the app's and which are my
-  chrome?" is now a question *inside* `FormItem`, where `HasContent` already
-  answers it in words (`D_has_content`).
-- **The implementer count was one.** `Layout` and its subclasses, and nothing
-  else: {Tuile::Component::TabSheet} keeps unselected panes out of the tree and
-  exposes `Tabs::Tab` handles (`D_tabs`); `CheckboxGroup` / `RadioGroup` /
-  `Select` hold **items**, domain objects with a renderer (`D_list_items`);
-  `MenuBar`'s items aren't `Component`s; `ScreenPane#popups` is framework
-  machinery. One implementer is where the locator argument stopped for `Tabs`.
+Each is `{}.compare_by_identity` with the same four moves: put on `add`, write on `constrain` /
+`placement=`, delete on `remove`, `invalidate_layout`. `TabSheet#@panes` is keyed by a `Tabs::Tab`
+handle, not a child, so it is not a fifth. A `Grid`'s per-column specs (`new-components.md`) would
+be column-keyed, not child-keyed.
 
-Also worth not re-deriving: **the tree API cannot be bypassed from app code** —
-`add_child` / `remove_child` / `detach_child` are **protected** on `Component`,
-so an app reaches children only through a container's own `add` / `remove`, and
-`Box#placement` falls back to `DEFAULT_PLACEMENT` rather than crashing on a
-missing entry. There is **no leak bug here**; don't write this up as if there
-were one.
+## Question
 
-## What is left
+`Q_map_shape`: a private helper, a protected trio on `Layout` / `Component`, or nothing?
 
-`Q_map_shape`: `Box` keeps `{child => {main:, cross:, align:}}`, a `FormLayout`
-will keep `{item => {rows:, colspan:}}`, and a `Grid` would keep per-column
-specs. Each hand-rolls the same four moves — put on `add`, delete on `remove`,
-default on read, re-run the layout.
+- **Not a public mixin** — nothing outside the container reads the map, so it fails the locator test
+  and is pure DRY.
+- **Not a `Container` base class** — inherit to *be* a component, never to share code (COP).
+- **Never a second copy of ordering** — `children` stays the sole authority (AGENTS.md, `D_tree_api`).
+- **Never a measurement channel** — nothing here may ask a child how big it wants to be (`D_declared_size`).
+- `ScreenPane` is not a `Layout`, so a home on `Layout` covers three of four.
+- Each map is ~6 lines; `D_float_field`'s *duplicate a shallow shell* may still win at four.
 
-Is that a private helper on `Layout`, a protected trio of methods, or nothing at
-all? Constraints:
+## Settled, don't reopen
 
-- **Not a public mixin.** Nobody outside the container reads the map, so it
-  fails the locator test by construction and is pure DRY — and `D_float_field`'s
-  rule says three hand-rolls is when to look again, two is not. `FormLayout`
-  makes two.
-- **Never a second copy of ordering** — `children` stays the sole ordering
-  authority whatever this becomes (`D_box_layouts`).
-- **Never a measurement channel.** Nothing here may grow into asking a child how
-  big it wants to be (`D_declared_size`).
-- **Not a `Container` base class to share code** — COP: inherit to *be* a
-  component, never to share.
-
-The honest default is **nothing at all**, and that is what happened: `FormLayout`
-shipped 2026-09-19 hand-rolling its map like `Box` does — an identity-keyed
-`{item => {rows:}}`, ~6 lines. Revisit when `Grid` makes it three.
-
-**Update, 2026-09-22: it is four now.** `D_relayout` made every container keep where each child
-wants to be, so `Layout::Absolute` holds `{child => Rect}` and `ScreenPane` a placement per popup,
-each hand-rolled the same way. That is past this file's own threshold; `Q_map_shape` is open again.
+- **No `HasChildren`** (a many-children `HasContent`): `FormItem` wraps each field
+  (`D_form_layout`), so "app's child or my chrome?" is `FormItem`'s question, answered by
+  `HasContent` (`D_has_content`). Layouts were the only implementer: `TabSheet` exposes `Tab`
+  handles (`D_tabs`), the groups and `Select` hold items (`D_list_items`), `MenuBar` items aren't
+  components, popups are machinery.
+- **No leak bug:** the tree API is protected, so an app reaches children only through a container's
+  own `add` / `remove`; a missing entry reads the default, or raises for the two with none.
 
 ## Related
 
-`D_form_layout` (the second hand-roll, and the entry that answered
-the broad question), `D_box_layouts` (the first), `D_has_content`,
-`D_declared_size`, `D_float_field` (duplicate rather than DRY a shallow shell),
-`D_tabs` (where the locator argument stopped last time).
+`D_relayout` (why every container keeps where each child wants to be), `D_box_layouts`,
+`D_form_layout`, `D_has_content`, `D_tree_api`, `D_declared_size`, `D_float_field`, `D_tabs`.

@@ -1,184 +1,102 @@
-# A Binder for Tuile — the pattern to copy, and the vocabulary that comes with it
+# A Binder — Vaadin's pattern, and the layer vocabulary
 
-**Status:** filed 2026-09-03 as a **placeholder plus a settled vocabulary**.
-Nothing is designed here and nothing is implemented; the forms layer is not
-started. Two things earn the file: (1) Vaadin's `Binder` is the pattern to
-copy, and it is worth writing down *which parts* before anyone improvises one,
-and (2) the four-layer terminology below was settled while designing
-`HasBadInput` and has nowhere else to live until a `D_` entry exists — it is
-the reason that channel is called `bad_input` and not `presentation_error`.
+**Status:** placeholder, nothing built. Two things earn the file: which parts of Vaadin's `Binder` to
+copy, and the four-layer vocabulary (settled while designing `HasBadInput`; it is why that channel is
+`bad_input`, not `presentation_error`). `D_has_value` stays the authority: model-mapping, converters,
+`read_only` and a field-side required flag live *above* the field.
 
-`D_has_value` is the standing authority on what belongs above the field:
-"Model-mapping (presentation ⟷ domain) is left to a future forms/binder layer
-*above* the field, never baked into field state", and it parks converters,
-`read_only` and the required-indicator there too. Nothing here overrides that.
+## The vocabulary (settled)
 
-## The terminology (settled — this is the file's real content)
+A `Date` field bound to `Person#birth_date`:
 
-Four layers, and the two arrows that matter. A `Date`-valued field bound to
-`Person#birth_date`:
-
-| layer | example | who speaks it |
+| layer | example | spoken by |
 |---|---|---|
-| **model** | `Person#birth_date` | Binder only |
-| **transformations** | `birth_year` + `birth_month` + `birth_day` → a `Date`; a `birth_date_iso_string` → a `Date` | Binder only |
-| **value** | the `Date`, or `nil` — `HasValue#value` | **both** — the shared layer, which is why `HasValue` is *the* seam |
-| **input** | the glyphs the user typed, a calendar click, a mask's partial fill: `"2020-05-01"`, `"xyz"` | the field owns it; the Binder must be able to *ask about* it |
+| **model** | `Person#birth_date` | Binder |
+| **transformations** | `year` + `month` + `day` → `Date`; an ISO string → `Date` | Binder |
+| **value** | the `Date` or `nil`, `HasValue#value` | both — why `HasValue` is *the* seam |
+| **input** | the glyphs typed, a calendar click, a mask's partial fill | the field; the Binder may *ask* |
 
 | arrow | word | note |
 |---|---|---|
-| input → value | **parse** | *partial* — it can fail, and that failure is **bad input** (`D_bad_input`) |
-| value → input | **format** | *total* — formatting a `Date` into glyphs cannot fail |
-| the parse/format pair, inside a field | the field's **converter** | already the house word (`D_integer_field`: "the converter stays private and hardcoded"; `design/decisions.md:2010`: a `parse`/`format` hook pair *is* the converter strategy) |
-| model ⟷ value, in the Binder | a **transformation** / the Binder's converters | a *chain*, possibly several steps |
+| input → value | **parse** | partial; its failure is **bad input** (`D_bad_input`) |
+| value → input | **format** | total |
+| parse + format inside a field | the field's **converter** | house word; private and hardcoded (`D_integer_field`, `D_float_field`) |
+| model ⟷ value | a **transformation** chain | may be several steps |
 
-Why these words and not Vaadin's, in three lines:
+Why not Vaadin's words:
+- **`presentation` is taken**: Vaadin's `Converter<PRESENTATION, MODEL>` means the *value* layer by it
+  (a `Date` is "the presentation"), and `D_has_value` adopted that axis. It never names glyphs.
+- **A pair can't name a chain**: model → value may be several transformations.
+- **`input` alone means what the user put in; the widget is always a `field`.** The sweep of `lib/`
+  is essentially done (the few remaining hits are the English sense); `design/terminology.md` still
+  says "an input" for the widget (`caret_row`, `text`, `caret`, `well`), and `Theme#input_bg_color`
+  is grandfathered. Don't touch "a renderer whose inputs changed"-style English.
 
-- **`presentation` is unavailable.** Vaadin's `Converter<PRESENTATION, MODEL>`
-  uses it for the **value** layer — `convertToModel` "receives a value that
-  originates from the user", `convertToPresentation` one "that originates from
-  the business object" — so it never names the glyph layer at all, and
-  `D_has_value` already adopted the same axis in prose. `Date` is the tell: it
-  *is* "the presentation" in Binder-speak while saying nothing about
-  formatting.
-- **A pair cannot name a chain.** model→value may be several transformations
-  (an old schema splitting a date across three columns), so naming one arrow
-  after the endpoints of a different chain is what made this confusing.
-- **`input` had to be freed.** Tuile's rdoc used "an input" for the *widget*
-  (~40 real sites, plus `Theme#input_bg_color`). The rule going forward:
-  **"input" alone is what the user put in; the widget is always a `field`**,
-  never "an input" — Tuile already says `field` 188 times, and TERMINOLOGY
-  already calls that background a **well**, so the token name is grandfathered
-  legacy. The sweep is a standalone mechanical pass, deliberately not bundled
-  with an unimplemented design. Note ~30 further hits are the ordinary English
-  sense ("a renderer whose *inputs* changed", "both shorter and longer *inputs*
-  are bugs") and must **not** change.
+**Reserved** for above `value`: `model`, `transformations`, `presentation`, `domain`
+(`D_has_value`'s word for the top). Don't spend them on a field concept.
 
-**Reserved:** `model`, `transformations` and `presentation` belong to the
-layers above `value`; `domain` is the word `D_has_value` uses for the topmost
-one. Don't spend them on a field-level concept. At graduation the layer words
-go to design/terminology.md (one line each, beside `text` and `caption`) and the
-choice to a `D_` entry — a nomenclature ruling in the `D_scroll_nomenclature`
-mould.
+## What to copy from Vaadin (v25.2)
 
-## Why Vaadin's `Binder` is the pattern
+It is the one surveyed toolkit keeping form validity single-sourced without pushing rules into
+widgets — Tuile's split already: the field reports what its parse couldn't represent and never judges
+(`D_bad_input`); the verdict sits in a slot only an outside validator writes (`D_has_validation`).
 
-It is the only one of the surveyed toolkits that keeps *form validity* as a
-single source of truth without pushing rules into the widgets — which is
-exactly the split Tuile has already committed to — the field reports what its
-own parse could not represent and never judges (`D_bad_input`), and the verdict
-lives in a slot only an outside validator writes (`D_has_validation`). The parts
-worth copying, from v25.2:
+- `forField(f).withValidator(pred, msg).bind(get, set)`; `asRequired(msg)` as shorthand.
+- `withConverter` for model ⟷ value, with a conversion-error message; chained.
+- `readBean` / `writeBean` / `writeBeanIfValid` — a write refuses when anything is invalid.
+- `isValid` / `hasChanges` / `validate` → a status aggregate.
+- `binding.validate()` for cross-field rules, driven from the other field's value-change listener.
+- Escape hatches: `setValidatorsDisabled`, `withDefaultValidator(false)`, `setIsAppliedPredicate`.
 
-- **`forField(field).withValidator(pred, message).bind(getter, setter)`** — a
-  builder per binding, rules declared beside the binding and nowhere else;
-  `asRequired("msg")` as the shorthand.
-- **`withConverter`** for the model⟷value transformations, including a
-  conversion-error message, and chains where each step sees the previous
-  step's output.
-- **`readBean` / `writeBean` / `writeBeanIfValid`**, with a write that refuses
-  when anything is invalid.
-- **`isValid` / `hasChanges` / `validate` → `BinderValidationStatus`** as the
-  aggregate the app asks.
-- **`binding.validate()`** for cross-field revalidation ("cannot return before
-  departing"), driven from the other field's value-change listener.
-- **Escape hatches that exist for real reasons:** `setValidatorsDisabled`,
-  `setDefaultValidatorsEnabled(false)` / `withDefaultValidator(false)`, and
-  `setIsAppliedPredicate` for a binding that shouldn't participate at all.
+**Don't copy** `getDefaultValidator` / `addValidationStatusChangeListener` — they repair a *shared*
+invalid/message cell, and Tuile keeps the two facts in two places. `on_bad_input_change` is not that
+listener renamed: it reaches cells the field doesn't own. **Ruby deletes the ceremony**: a validator
+is a proc returning a message or `nil` — no `Validator`, `ValidationResult`, `Result.ok`.
 
-What Tuile should *not* copy: `HasValidator#getDefaultValidator` and
-`addValidationStatusChangeListener`. Both exist to repair a *shared*
-`invalid`/`errorMessage` cell on the component; Tuile puts the two facts in two
-places instead, so the repair has nothing to fix — and note `on_bad_input_change`
-is not that listener under another name: it reaches cells the field does not own,
-rather than reconciling a cell two writers share (`D_bad_input`, and
-`Component::HasValidation`, shipped 2026-09-03 — `D_has_validation`: one stored
-`error_message` the field never writes, so the Binder is its sole writer and
-sets-or-clears it on every validate pass). Ruby also deletes most of the
-ceremony: a validator is a proc returning a message or `nil`, so there is no
-`Validator` interface, no `ValidationResult`, and no `Result.ok`.
+## What the Binder consumes from a field
 
-## What the Binder must consume from a field
+- **`is_a?(HasValue)`** marks bindable (`D_integer_field`).
+- **`respond_to?(:bad_input?) && bad_input?`** — asked at bind, click, write and forced revalidation.
+  The capability may be cached at bind; the status never.
+- **Bad input blocks the write even for an optional field** — optional means "may be empty", not
+  "may be garbage". `empty?` can't answer it: it is `true` for a field full of unparseable glyphs.
+- **`on_bad_input_change`** (shipped) serves an *eager* Binder; `on_value_change` can't stand in —
+  typing `-` into an empty `IntegerField` goes `nil` → `nil` and fires nothing. A click-gated Binder
+  needs neither.
+- **Its own writes must not echo back as edits** — it skips any event whose `from_user?` is false
+  (`D_from_user`). `old_value` was parked there for the Binder to claim when it needs it.
+- **The verdict write is `field.error_message = msg_or_nil` per pass, and the Binder subscribes
+  nothing to show it** — `FormItem` (`D_form_item`) and any app `Label` listen on
+  `on_error_message_change` and paint `HasValidation#shown_message`, which orders the two channels.
 
-- **`is_a?(HasValue)` is the marker** for "this is bindable" — `D_integer_field`
-  says so explicitly.
-- **`field.respond_to?(:bad_input?) && field.bad_input?`** is the bad-input
-  question — **this half exists today** (`D_bad_input`) — asked at bind, at
-  click, at write, and whenever a sibling forces a revalidation. The *capability* is a class fact and may be cached at bind
-  time; the *status* may never be cached.
-- **Bad input must block the write even for an optional field.** This is the
-  failure Vaadin names and the whole reason the channel exists — an optional
-  field means "may be empty", not "may be garbage". And it cannot be reached
-  through `empty?`, which reports `true` for a field full of glyphs the value
-  cannot represent.
-- **A push notice (`on_bad_input_change`) exists now** — shipped for the message
-  cells beside the field, and carrying the *showable* report rather than the raw
-  fact (`D_bad_input`). An **eager** Binder, validating per edit rather than at
-  the Save click, is its second consumer, and `on_value_change` cannot stand in:
-  typing `-` into an empty `IntegerField` moves the value `nil` → `nil` and
-  announces nothing. A Binder gated at the click needs neither and keeps asking
-  the pull.
+## Gating Save: at the click, not on `enabled`
 
-## The Tuile-specific part: gating Save
+Save asks the Binder when pressed; on "no", `ConfirmWindow.alert` names the problems
+(`D_confirm_window`). Vaadin instead enables the button from a status listener
+(`saveButton.setEnabled(binder.hasChanges() && binder.isValid())`). Not copied:
 
-**The gate goes at the click, not on the button's enabled state.** Save asks
-the Binder when pressed and, on "no", opens an alert naming the problems
-(`ConfirmWindow.alert` exists — `D_confirm_window`). Vaadin's idiom is the
-other one (v25.2 `flow/binding-data/components-binder-load.md`):
+- **No disabled state exists** — `ComponentBackground::STATES` is `normal`/`active`; the axis is
+  `design/ideas/enabled-read-only.md`. The click design needs no framework work.
+- **A disabled control can't say why** — no tooltip, and hover is opt-in (`capture_mouse: :hover`)
+  with an unreliable exit.
+- **It removes the only continuous consumer of bad input**, so no settling policy is needed here.
+  (The field side has one anyway: `bad_input_settled?`, `D_bad_input`.) If ever wanted, copy
+  Vaadin's rule: errors count only after the user edited and submitted.
 
-```java
-binder.addStatusChangeListener(event -> {
-    saveButton.setEnabled(event.getBinder().hasChanges()
-                       && event.getBinder().isValid());
-});
-```
+## Open
 
-Three reasons not to copy it, ascending:
+- `Q_binder_signal` — a `Signal` type mirroring Vaadin 25's `validationStatusSignal()`? Nothing has
+  asked; the listener idiom is a proc.
 
-- **`Button` has no disabled state** — no `enabled` axis on `Component`, no
-  `:disabled` in `ComponentBackground::STATES` (AGENTS.md is explicit that the key is absent
-  because the *state* is absent). The enabled design needs framework work
-  first; the click design needs none.
-- **A disabled control says nothing about why**, and a TUI has no channel to
-  explain it: no tooltip, and hover is not even received (mode 1000 is
-  press-only — `design/ideas/hover.md`).
-- **It removes the only *continuous* consumer of the bad-input signal**, so
-  nothing needs a settling policy: a Binder asked only at the click sees one
-  settled state, and the flicker `D_bad_input` describes never arises on this
-  side. (That debt is paid: `bad_input_settled?` gates the well and the notice
-  both, latched where every prefix is bad input — `D_bad_input`.)
+## Graduation owes
 
-If a settling policy is ever wanted here anyway, copy Vaadin's display rule
-rather than inventing one: errors count only after the user has edited a field
-and submitted.
-
-## Open, and deliberately not designed here
-
-Where a rule's message is *stored* and *shown* is answered by
-`D_has_validation`: stored on the field as `HasValidation#error_message`, shown
-as the field's own red *well* plus text in whatever cells surround it — the
-row below it, in a `FormItem` (`D_form_item`), not the inline-right shape first
-sketched. The
-Binder writes it, and does not hold a per-binding cell of its own. Two
-consequences for the port: the write is a plain `field.error_message = msg_or_nil`
-per pass, and the Binder must **subscribe nothing** to show it — `FormItem` and
-an app's own `Label` both register on `on_error_message_change`, which is a list
-(`D_listeners`), and paint `HasValidation#shown_message` so the two error
-channels are ordered in one place. Whether Tuile grows a `Signal` type to
-mirror Vaadin 25's `validationStatusSignal()` is untouched — Tuile's listener
-idiom is a plain proc, and nothing has asked for more.
+- The four layer words → `design/terminology.md`, one line each; the choice → a `D_` nomenclature
+  ruling in the `D_scroll_nomenclature` mould.
+- Reverse the parking in `HasValue`'s rdoc and `D_has_value`'s *deferred* list.
 
 ## Related
 
-`D_bad_input` (the field-side channel this consumes, already shipped),
-`D_on_blur` (the commit point that shipped, and why the push notice stays
-deferred), `D_has_validation` (the
-verdict slot this Binder is the sole writer of; where a message lives and who
-paints it), `D_form_layout` (the column of items that paints it),
-`design/ideas/new-components.md` (Tier 2 Form Layout, Custom Field; infra items 2–3),
-`D_has_value` (the forms layer owns converters, `read_only`, the
-required-indicator; the typed-value survey), `D_integer_field` (the field's own
-converter stays private; `is_a?(HasValue)` is the Binder's marker),
-`D_scroll_nomenclature` (the nomenclature ruling this vocabulary copies),
-`D_confirm_window` (the alert the Save button opens), `D_status_bar` (why the
-framework places no error row).
+`D_has_value`, `D_bad_input`, `D_has_validation`, `D_integer_field`, `D_float_field`, `D_form_item`,
+`D_form_layout`, `D_listeners`, `D_on_blur`, `D_confirm_window`, `D_status_bar` (no framework error
+row), `D_scroll_nomenclature`, `D_from_user`, `design/ideas/enabled-read-only.md`,
+`design/ideas/new-components.md` (Custom Field; infra item 2).

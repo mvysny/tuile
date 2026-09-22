@@ -1,113 +1,88 @@
 # `enabled` and `read_only` — the reachability axis Tuile doesn't have
 
-**Status:** filed 2026-09-20, spun out of the test-gestures design (`D_test_gestures`), which raised
-it and does not own it. Nothing is designed and **nothing is asked for yet** — see *Who is asking* below, which
-is the first thing to re-read before building any of this.
+**Status:** seed, ready but unbuilt; **no caller yet** (`Q_who_asks`). Spun out of
+`D_test_gestures`, which raised it and does not own it.
 
-## What exists today
+## Today
 
-Verified 2026-09-20: **no `enabled` and no `read_only` anywhere in `lib/`.** The axes a component
-has are
+No `enabled` or `read_only` in `lib/`. The axes that exist:
 
-- **`visible?`** — as-if-detached but in the tree; ancestor-inclusive, enforced in the dispatchers
-  through `walk_shown_tree` / `rect_path`, no lifecycle hook (`D_visibility`);
-- **`focusable?`** — may become the focus target, independent of `active?`;
-- **`tab_stop?`** — appears in the Tab cycle (`Screen#cycle_focus` collects these from
-  `walk_shown_tree`);
-- **`active?`** — on the focus chain; a paint-time state, and one of the two `ComponentBackground::STATES` keys.
-
-Two places already say the axis was deferred on purpose, and neither is overridden here:
-
-- {Tuile::Component::HasValue}'s rdoc — *"Deliberately smaller than Vaadin's `HasValue`: read-only,
-  required-indicator, the from-client/old-value event payload, and converters all belong to the
-  not-yet-built form layer, not here."*
-- `design/ideas/binder.md` — the Save-button case, which is the usual *motivation* for `enabled`,
-  and which that file **refuses**: the gate goes at the click, not on a disabled button, because a
-  disabled control in a TUI cannot say why it is disabled (no tooltip, and hover is not even
-  received under mode 1000).
-
-## The two axes are not one knob
-
-- **Disabled** = *not reachable*. Not focusable, not a tab stop, the press does not claim, painted
-  dim. Nothing about it is value-specific, so it would sit on `Component`.
-- **Read-only** = *reachable but not mutable*. Focusable, caret visible, copyable; edits declined.
-  It sits on `HasValue`, and it is the one the forms layer actually asks about.
-
-Vaadin ships both; Swing ships only `enabled`. Shipping only *one* is a live option — and if only
-one, it is **read-only**, because that is the one with a named future caller (the binder) while the
-`enabled` case was argued down in `binder.md`.
-
-## Where the gate would live
-
-**The `visible?` precedent is the whole design.** Visibility is enforced *in the dispatchers* —
-`Mouse::Router#rect_path` walks only shown children, `Screen#cycle_focus` collects stops from
-`walk_shown_tree` — not by a `return false if hidden?` in every handler. The same three spots exist
-for disabled:
-
-| channel | today | disabled would ride |
+| axis | means | enforced by |
 |---|---|---|
-| mouse | `rect_path` / `focus_innermost` | the same walk, skipping disabled subtrees |
-| focus | `focusable?` | `focusable?` answering false while disabled |
-| Tab | `cycle_focus` + `tab_stop?` | the same, for free |
-| keys | delivery to `Screen#focused` | for free — no focus, no keys |
+| `visible?` | as-if-detached, ancestor-inclusive (`D_visibility`) | dispatchers, via `walk_shown_tree` / `Mouse::Router#rect_path` |
+| `focusable?` | may become the focus target; independent of `active?` | `Screen#focused=`, `Router#focus_innermost` |
+| `tab_stop?` | in the Tab cycle | `Screen#cycle_focus` |
+| `active?` | on the focus chain; paint-time, a `ComponentBackground::STATES` key | — |
 
-Per-widget `return false if disabled?` in every `handle_*` is the version that rots, and the root
-`AGENTS.md` already bans its shape (*"A hook-owned resource is synced from an invariant, not toggled
-by the hooks"*).
+Two places park the axis on purpose:
+- `HasValue`'s rdoc: read-only belongs to the not-yet-built form layer (`D_has_value`).
+- `binder.md` refuses the Save-button case, the usual motivation for `enabled`: the
+  gate goes at the click, because a disabled control can't say why (no tooltip; hover is
+  opt-in and cosmetic).
 
-**Read-only has no such spot.** It forbids *mutation*, which no dispatcher enforces, and production
-`value=` must keep working on a read-only field — that is the point of the axis: the **user** can't,
-the app can. So it lands in the widget's own edit path (`insert_text`, the editing `handle_key?`),
-which is also where `D_input_filters` says such rules belong.
+**Closest shipped thing: `List#interactive = false`** (#64) — not focusable, not a tab
+stop, a press bubbles past, the wheel still scrolls, and turning it off while focused
+reuses `Component#repair_focus_after_hiding`. It is a per-widget flag, not dim and not
+ancestor-inclusive, so it is a precedent for `Q_disabled_focus`, not the axis.
+
+## Two axes, not one knob
+
+- **Disabled** = not reachable: not focusable, not a tab stop, the press doesn't claim,
+  painted dim. Not value-specific → `Component`.
+- **Read-only** = reachable, not mutable: focusable, caret, copyable; edits declined →
+  `HasValue`. The one the forms layer asks about.
+
+Vaadin ships both, Swing only `enabled`. If only one: **read-only**, which has a named
+future caller (the binder); `enabled`'s was argued down.
+
+## Where the gate lives
+
+**Disabled follows the `visible?` precedent — in the dispatchers**, not a
+`return false if disabled?` in every handler (the version that rots):
+
+| channel | disabled rides |
+|---|---|
+| mouse | `rect_path` / `focus_innermost`, skipping disabled subtrees |
+| focus | `focusable?` answering false |
+| Tab | `cycle_focus` + `tab_stop?`, for free |
+| keys | for free — no focus, no keys |
+
+**Read-only has no dispatcher spot.** It forbids *user* mutation while `value=` keeps
+working, so it lands in the widget's edit path (`insert_text`, the editing
+`handle_key?`) — where `D_input_filters` puts such rules.
 
 ## Open questions
 
-**`Q_two_axes`** — both, or read-only alone? See above; the asymmetry in callers argues for
-read-only first and `enabled` only when something wants it.
+- **`Q_two_axes`** — both, or read-only alone? Callers argue read-only first.
+- **`Q_enabled_walk`** — ancestor-inclusive? A disabled *panel* wants it, for the same
+  reason `visible` is. That means generalizing `walk_shown_tree` into a "reachable"
+  walk (shown **and** enabled). This, not the flag, is the axis's real cost.
+- **`Q_disabled_focus`** — disabling the focused component: reuse
+  `repair_focus_after_hiding` (as `List#interactive=` does) and have `focused=` refuse a
+  disabled target like a hidden one. One authority for "hand focus out", never a copy.
+- **`Q_disabled_ink`** — a dim cell is chrome painted in several places → a chrome token
+  (`D_color_slots`). It wants `:disabled` in `ComponentBackground::STATES`, which
+  `D_bg_surface` records as **closed**; disabled has a better claim than error had (a
+  per-component state, like `active`), but the claim must be made. Greying *text* is
+  foreground, and `D_bg_surface` allows no foreground knob — so a dim *well*, or re-argue.
+- **`Q_readonly_ink`** — Vaadin drops the well on read-only; dropping `INPUT_WELL` costs
+  no new token.
+- **`Q_who_asks`** — nobody. The binder refused Save, #64 was served by a widget flag,
+  and the gestures only inherit the axis. Don't build ahead of a caller.
 
-**`Q_enabled_walk`** — ancestor-inclusive? `visible` is, via `walk_shown_tree`, *precisely because* a
-per-component test put a field under a hidden panel back in the Tab cycle. A disabled **panel** wants
-the same, which means either a third reachability walk or a generalization of the second one — and
-"reachable" then means shown **and** enabled, which is probably the honest name for the walk. This is
-the real cost of the axis, not the flag.
+## Graduation owes
 
-**`Q_disabled_focus`** — what happens to focus when the focused component is disabled?
-`Component#visible=` calls `repair_focus_after_hiding unless value` and `Screen#focused=` refuses a
-hidden target, so the pair is already written once; `disabled=` either copies it or the two
-generalize together. Copying it is a second authority for "hand focus out of here", which is exactly
-the kind of pair this project merges rather than duplicates.
-
-**`Q_disabled_ink`** — a dim/greyed cell is a color built-in chrome paints in more than one place,
-so by `D_color_slots` it is a chrome token. It also wants `ComponentBackground::STATES` to gain `:disabled`, and
-`decisions.md` records that set as **closed** — *"`ComponentBackground::STATES` stays closed: error is a level in the
-chain, not a state key."* Disabled has a better claim than error did (it is a per-component state,
-like `active`, not a level in the resolution chain) but the claim has to be *made*, not assumed. A
-foreground question also arrives here, and `D_bg_surface` says there is **one background knob and no
-foreground one** — greying text is a foreground change, so either the token is a background
-(dim *well*, matching the error-well precedent) or that rule gets re-argued.
-
-**`Q_readonly_ink`** — Vaadin shows read-only fields without a well. Tuile's well is
-`input_bg_color`; dropping it for read-only is free and needs no new token, which is a point in
-read-only's favour.
-
-**`Q_who_asks`** — **no caller exists today.** The binder refused the Save-button case, and the
-gestures (`D_test_gestures`) merely *inherit* the axis if it appears. Building it
-before a caller is the speculative-generality this project avoids; the file exists so the design is
-ready, not so it gets built.
-
-## What it would owe on the day it ships
-
-A root `AGENTS.md` invariant line (a third reachability rule beside `visible`), a
-`component_contract_spec` catalog entry (it holds for every component and fails silently — the file's
-own gate), a theme token and possibly a `ComponentBackground::STATES` key, CHANGELOG, book, and a visit to the two test
-gestures: `_click` inherits the disabled check **for free** if the gate rides the dispatchers as
-above — if it doesn't, that is the signal this design went per-widget — while `_value=` must grow a
-`read_only?` term of its own, because there is nothing for it to borrow.
+- A root `AGENTS.md` invariant: a third reachability rule beside `visible`.
+- A `component_contract_spec` catalog entry — it holds for every component and fails
+  silently.
+- A theme token, possibly a `STATES` key; CHANGELOG; book; rdoc.
+- `List#interactive=` folded into it, or its rdoc says why not.
+- The test gestures: `Testing.click` inherits the disabled check for free if the gate
+  rides the dispatchers (if it doesn't, the design went per-widget); `Testing.set_value`
+  needs its own `read_only?` term.
 
 ## Related
 
-`D_visibility` (the precedent for the whole shape, and the focus repair), `D_has_value` (read-only
-deferred to the forms layer), `D_color_slots` / `D_bg_surface` (the token, and the no-foreground
-rule), `D_input_filters` (where a mutation rule belongs), `D_key_dispatch` (no gates in the ladder),
-`design/ideas/binder.md` (the Save-button case, refused, and the no-channel-to-explain argument),
-`D_test_gestures` (the gestures that inherit this axis, and what each half of it would cost them).
+`D_visibility`, `D_has_value`, `D_color_slots`, `D_bg_surface`, `D_input_filters`,
+`D_key_dispatch` (no gates in the ladder), `D_test_gestures`, `design/ideas/binder.md`,
+GitHub #64.

@@ -4775,7 +4775,7 @@ Why not:
 - *`Screen#on_focus_changed` alone.* It exists, and is the app-level channel (`D_status_bar`), but a
   *field* cannot commit itself from it, so every app would rewrite the same dispatch-by-identity.
   `design/ideas/hover.md` asks the mirror question for hover (does `on_hover_changed` make
-  `on_mouse_exit` unnecessary?); this is the focus half of the answer, and it is no.
+  `handle_mouse_exit` unnecessary?); this is the focus half of the answer, and it is no.
 - *A public hook, for symmetry with `handle_focus`.* The symmetry is real but cosmetic;
   `D_hook_visibility`'s shape wins, and `__send__`-ing both hooks buys it back where it matters — an
   override may declare any visibility.
@@ -5708,9 +5708,9 @@ The cost we carry:
 - **The wheel is sanctioned and arrives piecemeal.** `List` and `TextView` scroll four rows on
   `:scroll_up` / `:scroll_down`; the scrollers that do not yet consume them get it whenever someone
   wants it, because PageUp/PageDown already do the job.
-- **Window-moving needs its own `D_` when it comes:** motion and release events (modes 1002/1006 —
-  Tuile runs X10 mode 1000, press only), plus the keyboard equivalent the rule above requires
-  *first*.
+- **Window-moving needs its own `D_` when it comes:** the motion it needs is there
+  (`capture_mouse: :drag`, mode 1002, as `D_draggable_scrollbar` uses it), so what it owes is the
+  keyboard equivalent the rule above requires *first*.
 - **Segment-aware Up/Down** (`D_time_field`'s phase 2) is the keyboard's picker, and the shape any
   future "picker" for a typed field takes before an overlay is considered.
 
@@ -6409,25 +6409,15 @@ included — every toolkit surveyed hands a child an already-translated context
 `Buffer` drops the writes, which is why the clip is still a field this object
 has not got.
 
-**Everything outside painting stays in screen space, and that mixed model is
-what an origin costs.** `rect`, {Tuile::Mouse::Event},
-`Component#cursor_position` and `ListDropdown#anchor_to` do not translate: an
-anchored dropdown lives in a different subtree with a different offset, so
-moving *those* buys a `convertPoint` at every level and a parent-relative `rect`
-under it. A widget therefore computes a cursor position from `rect` two lines
-below painting at `(0, 0)`, and getting it wrong is silent — `rect.left + x`
-through a translating canvas lands at twice the offset, inside the component's
-*neighbour*, where its own spec never looks. Three things hold that line:
-`Canvas#fill` takes a paint-space region and `Component#local_rect` /
-`#local_extent_rect` are what to pass it, the rdoc names the space at both ends
-of the seam, and `canvas_spec` greps `lib/` for a screen coordinate at a paint
-call site, with no allowlist.
-
-That paragraph held until 0.17.0, when `rect` became parent-relative too and
-paint space stopped being the odd one out — a component's own coordinates are
-now the space it paints in *and* the space its children are placed in, and the
-conversions are named rather than open-coded. `D_relative_rect` carries that
-half; what survives here is the seam and the origin riding on it.
+**This entry gave painting its origin; `D_relative_rect` moved everything else.**
+`rect`, mouse events and `cursor_position` are no longer screen-space, so a
+component's own coordinates are one space, and the conversions are named. What
+this entry still owns is the seam, and the guard against its silent failure:
+`rect.left + x` through a translating canvas lands in the component's
+*neighbour*, where its own spec never looks. `Canvas#fill` takes a paint-space
+region and `Component#local_rect` / `#local_extent_rect` are what to pass it, the
+rdoc names the space at both ends of the seam, and `canvas_spec` greps `lib/` for
+a screen coordinate at a paint call site, with no allowlist.
 
 Why not:
 
@@ -6770,7 +6760,7 @@ the ones that ask their content have a layout pass to ask through (Swing's
 The cost is real and unpaid: **nothing detects that `content_rows` went stale.**
 Add a field and the last row is unreachable until someone re-assigns it. A push
 from the content is the banned channel; re-reading it in the scroller's own
-`rect=` would cover a resize and nothing else. What takes the edge off is the
+`relayout` would cover a resize and nothing else. What takes the edge off is the
 fallback — the child is given `[content_rows, viewport_rows].max` rows — so a
 scroller whose count is unset or too small degrades to a plain one-child
 container that fills its viewport, rather than to a strip of blank rows.
