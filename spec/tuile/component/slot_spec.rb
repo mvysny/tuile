@@ -61,8 +61,7 @@ module Tuile
       # The region is reserved, not collapsed: a dialog with no message shows
       # the hole rather than reflowing around it.
       it "clears the rect it was given" do
-        Screen.instance.content = slot
-        Testing.place(slot, Rect.new(0, 0, 4, 1))
+        mount_at(slot, Rect.new(0, 0, 4, 1))
         Screen.instance.buffer.set_text(0, 0, StyledString.parse("XXXX"))
         repaint(slot)
         assert_equal ["    "], Screen.instance.buffer.region_text(slot.absolute_rect)
@@ -82,8 +81,7 @@ module Tuile
       end
 
       it "passes a click down to its occupant" do
-        Screen.instance.content = slot
-        Testing.place(slot, Rect.new(0, 0, 10, 1))
+        mount_at(slot, Rect.new(0, 0, 10, 1))
         field = Component::TextField.new
         slot.content = field
         Screen.instance.click(2, 0)
@@ -96,8 +94,7 @@ module Tuile
         window = Component::Window.new
         content = Component::List.new
         window.content = content
-        Screen.instance.content = window
-        Testing.place(window, Rect.new(0, 0, 20, 10))
+        mount_at(window, Rect.new(0, 0, 20, 10))
 
         footer = Component::TextField.new
         window.footer = footer

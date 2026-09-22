@@ -62,8 +62,7 @@ module Tuile
       second = Component::Label.new
       second.text = "second"
       layout.add([first, second], fixed(1))
-      Screen.instance.content = layout
-      Testing.place(layout, Rect.new(0, 0, 10, 5))
+      mount_at(layout, Rect.new(0, 0, 10, 5))
       Screen.instance.repaint
       assert_equal ["first     ", "          ", "second    "],
                    Screen.instance.buffer.region_text(Rect.new(0, 0, 10, 3))

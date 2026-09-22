@@ -237,8 +237,7 @@ module Tuile
 
       it "rewraps the extended last hard line when it crosses wrap width" do
         tv = Component::TextView.new
-        Screen.instance.content = tv
-        Testing.place(tv, Rect.new(0, 0, 5, 4))
+        mount_at(tv, Rect.new(0, 0, 5, 4))
         tv.text = "hello"
         tv.append(" world")
         assert_equal "hello world", tv.text.to_s
@@ -372,8 +371,7 @@ module Tuile
 
       it "drops physical rows so paint reflects the shrunken buffer" do
         tv = Component::TextView.new
-        Screen.instance.content = tv
-        Testing.place(tv, Rect.new(0, 0, 20, 5))
+        mount_at(tv, Rect.new(0, 0, 20, 5))
         tv.text = "a\nb\nc\nd"
         tv.remove_last_n_lines(2)
         Screen.instance.prints.clear
@@ -625,8 +623,7 @@ module Tuile
 
       it "paints the new content after a mid-buffer replace" do
         tv = Component::TextView.new
-        Screen.instance.content = tv
-        Testing.place(tv, Rect.new(0, 0, 20, 5))
+        mount_at(tv, Rect.new(0, 0, 20, 5))
         tv.text = "a\nbbb\nc\nd"
         tv.replace(1, "REPLACED")
         Screen.instance.prints.clear
@@ -1171,8 +1168,7 @@ module Tuile
         # @line_wrap_counts cache rather than always being 1 row each.
         def make_view
           tv = Component::TextView.new
-          Screen.instance.content = tv
-          Testing.place(tv, Rect.new(0, 0, 6, 20))
+          mount_at(tv, Rect.new(0, 0, 6, 20))
           tv
         end
 
@@ -1359,8 +1355,7 @@ module Tuile
 
         it "paint stays consistent after remove" do
           tv = Component::TextView.new
-          Screen.instance.content = tv
-          Testing.place(tv, Rect.new(0, 0, 20, 10))
+          mount_at(tv, Rect.new(0, 0, 20, 10))
           a = tv.create_region
           b = tv.create_region
           a << "first\nsecond"
@@ -1807,8 +1802,7 @@ module Tuile
 
       it "invalidates on change" do
         tv = Component::TextView.new
-        Screen.instance.content = tv
-        Testing.place(tv, Rect.new(0, 0, 10, 3))
+        mount_at(tv, Rect.new(0, 0, 10, 3))
         Screen.instance.invalidated_clear
         tv.scrollbar_visibility = :visible
         assert Screen.instance.invalidated?(tv)
@@ -2160,8 +2154,7 @@ module Tuile
     context "the wheel" do
       def scrollable_view(text: (1..10).map(&:to_s).join("\n"))
         tv = Component::TextView.new
-        Screen.instance.content = tv
-        Testing.place(tv, Rect.new(0, 0, 20, 3))
+        mount_at(tv, Rect.new(0, 0, 20, 3))
         tv.text = text
         tv
       end

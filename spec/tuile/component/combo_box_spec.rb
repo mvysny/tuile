@@ -421,8 +421,7 @@ module Tuile
       # for one: shown while nothing is selected and nothing is typed.
       it "shows while nothing is selected, and gives way to a commit" do
         c = Component::ComboBox.new(items: %w[apple banana])
-        Screen.instance.content = c
-        Testing.place(c, Rect.new(0, 0, 12, 1))
+        mount_at(c, Rect.new(0, 0, 12, 1))
         c.placeholder = "type to filter"
         assert_equal "type to filter", field(c).placeholder
         Screen.instance.repaint

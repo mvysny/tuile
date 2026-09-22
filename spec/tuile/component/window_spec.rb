@@ -266,8 +266,7 @@ module Tuile
 
       it "invalidates the window so the bottom border repaints" do
         w = Component::Window.new
-        Screen.instance.content = w
-        Testing.place(w, Rect.new(0, 0, 20, 10))
+        mount_at(w, Rect.new(0, 0, 20, 10))
         Screen.instance.invalidated_clear
         w.footer = Component::List.new
         assert Screen.instance.invalidated?(w)
@@ -394,8 +393,7 @@ module Tuile
       let(:w) do
         w = Component::Window.new
         w.content = Component::List.new
-        Screen.instance.content = w
-        Testing.place(w, Rect.new(0, 0, 20, 10))
+        mount_at(w, Rect.new(0, 0, 20, 10))
         w
       end
 
@@ -479,8 +477,7 @@ module Tuile
       let(:w) do
         w = Component::Window.new
         w.content = Component::List.new
-        Screen.instance.content = w
-        Testing.place(w, Rect.new(0, 0, 20, 10))
+        mount_at(w, Rect.new(0, 0, 20, 10))
         # content.rect = Rect.new(1, 1, 18, 8)
         w
       end
@@ -549,9 +546,8 @@ module Tuile
           list = Component::List.new
           list.lines = (1..40).map { "row #{_1}" }
           w.content = list
-          Screen.instance.content = w
           w.scrollbar = scrollbar
-          Testing.place(w, Rect.new(0, 0, 40, 12))
+          mount_at(w, Rect.new(0, 0, 40, 12))
           Screen.instance.repaint
           Screen.instance.clear
           Screen.instance.invalidate(w)

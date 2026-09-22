@@ -18,8 +18,7 @@ module Tuile
         column.add(save)
         column.add(cancel)
         column.add(field)
-        Screen.instance.content = w
-        Testing.place(w, Rect.new(0, 0, 40, 10))
+        mount_at(w, Rect.new(0, 0, 40, 10))
       end
     end
 

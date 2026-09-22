@@ -180,8 +180,7 @@ module Tuile
 
       it "paints its bg_color across text and pad" do
         label = Component::Label.new("hi")
-        Screen.instance.content = label
-        Testing.place(label, Rect.new(0, 0, 5, 1))
+        mount_at(label, Rect.new(0, 0, 5, 1))
         label.bg_color = :red
         repaint(label)
         assert_equal ["\e[41mhi   \e[0m"], Screen.instance.buffer.region_ansi(label.absolute_rect)
@@ -189,8 +188,7 @@ module Tuile
 
       it "paints its bg_color across blank rows past the last text line" do
         label = Component::Label.new("hi")
-        Screen.instance.content = label
-        Testing.place(label, Rect.new(0, 0, 3, 2))
+        mount_at(label, Rect.new(0, 0, 3, 2))
         label.bg_color = :red
         repaint(label)
         assert_equal ["\e[41mhi \e[0m", "\e[41m   \e[0m"], Screen.instance.buffer.region_ansi(label.absolute_rect)
@@ -198,8 +196,7 @@ module Tuile
 
       it "fills behind a styled span without dropping its fg" do
         label = Component::Label.new(StyledString.styled("hi", fg: :green))
-        Screen.instance.content = label
-        Testing.place(label, Rect.new(0, 0, 4, 1))
+        mount_at(label, Rect.new(0, 0, 4, 1))
         label.bg_color = :red
         repaint(label)
         assert_equal ["\e[32;41mhi\e[39m  \e[0m"], Screen.instance.buffer.region_ansi(label.absolute_rect)
@@ -209,8 +206,7 @@ module Tuile
       # background. That is a restyle of the text, so it belongs on the text.
       it "leaves a span's own background alone — with_bg on the text is the way" do
         label = Component::Label.new(StyledString.styled("hi", bg: :blue))
-        Screen.instance.content = label
-        Testing.place(label, Rect.new(0, 0, 4, 1))
+        mount_at(label, Rect.new(0, 0, 4, 1))
         label.bg_color = :red
         repaint(label)
         assert_equal Color::BLUE, Screen.instance.buffer.cell(0, 0).style.bg

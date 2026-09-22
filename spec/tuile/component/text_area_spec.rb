@@ -644,32 +644,28 @@ module Tuile
     context "the mouse" do
       it "positions caret at clicked row and column" do
         a = area(width: 5, height: 3, text: "hello world")
-        Screen.instance.content = a
-        Testing.place(a, Rect.new(2, 3, 5, 3)) # rewraps
+        mount_at(a, Rect.new(2, 3, 5, 3)) # rewraps
         Screen.instance.click(4, 4) # row 1 col 2
         assert_equal 8, a.caret # row 1 = "world" start 6, col 2 → 8
       end
 
       it "clamps column past last char to row end" do
         a = area(width: 5, height: 3, text: "hi\nbye")
-        Screen.instance.content = a
-        Testing.place(a, Rect.new(0, 0, 5, 3))
+        mount_at(a, Rect.new(0, 0, 5, 3))
         Screen.instance.click(4, 0) # row 0 "hi", click past end
         assert_equal 2, a.caret
       end
 
       it "snaps to end of text when clicked past the last row" do
         a = area(width: 5, height: 3, text: "hi")
-        Screen.instance.content = a
-        Testing.place(a, Rect.new(0, 0, 5, 3))
+        mount_at(a, Rect.new(0, 0, 5, 3))
         Screen.instance.click(0, 2) # row 2, no content there
         assert_equal 2, a.caret
       end
 
       it "ignores clicks outside the rect" do
         a = area(text: "hello")
-        Screen.instance.content = a
-        Testing.place(a, Rect.new(0, 0, 10, 3))
+        mount_at(a, Rect.new(0, 0, 10, 3))
         a.caret = 3
         Screen.instance.click(100, 100)
         assert_equal 3, a.caret
@@ -939,8 +935,7 @@ module Tuile
 
       it "resolves a click on a glyph's left half before it, right half after" do
         a = area(width: 10, height: 3, text: "日本語")
-        Screen.instance.content = a
-        Testing.place(a, Rect.new(0, 0, 10, 3))
+        mount_at(a, Rect.new(0, 0, 10, 3))
         { 0 => 0, 1 => 1, 2 => 1, 3 => 2, 4 => 2, 5 => 3 }.each do |column, expected|
           a.caret = 0
           Screen.instance.click(column, 0)

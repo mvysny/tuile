@@ -11,8 +11,7 @@ module Tuile
     # free track, so every number below is checkable by hand.
     def bar(rows: 40, top: 0, height: 5)
       Component::VerticalScrollBar.new(row_count: rows, scroll_top_row: top).tap do |b|
-        screen.content = b
-        Testing.place(b, Rect.new(0, 0, 1, height))
+        mount_at(b, Rect.new(0, 0, 1, height))
       end
     end
 

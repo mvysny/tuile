@@ -174,8 +174,7 @@ module Tuile
 
       it "an undeclared extent still blanks the whole rect" do
         c = Component.new
-        Screen.instance.content = c
-        Testing.place(c, Rect.new(0, 0, 4, 1))
+        mount_at(c, Rect.new(0, 0, 4, 1))
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXX"))
         repaint(c)
         assert_equal "    ", Screen.instance.buffer.region_text(c.absolute_rect).first
@@ -186,8 +185,7 @@ module Tuile
       # blanked first (D_progress_bar).
       it "a declared extent equal to the rect blanks nothing" do
         c = Class.new(Component) { def extent = Size.new(4, 1) }.new
-        Screen.instance.content = c
-        Testing.place(c, Rect.new(0, 0, 4, 1))
+        mount_at(c, Rect.new(0, 0, 4, 1))
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXX"))
         repaint(c)
         assert_equal "XXXX", Screen.instance.buffer.region_text(c.absolute_rect).first
@@ -207,8 +205,7 @@ module Tuile
 
       it "clear_outside_extent blanks the L a narrowed extent leaves" do
         c = Class.new(Component) { def extent = Size.new(4, 1) }.new
-        Screen.instance.content = c
-        Testing.place(c, Rect.new(0, 0, 8, 3))
+        mount_at(c, Rect.new(0, 0, 8, 3))
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXXXXXX"))
         Screen.instance.buffer.set_text(0, 1, StyledString.plain("XXXXXXXX"))
 
@@ -227,8 +224,7 @@ module Tuile
         row = Class.new(Component::Layout::Horizontal) { def extent = Size.new(rect.width, 1) }.new(spacing: 2)
         row.add([Component.new, Component.new], Component::Layout::Expand[1],
                 cross: Component::Layout::Fixed[1])
-        Screen.instance.content = row
-        Testing.place(row, Rect.new(0, 0, 8, 2))
+        mount_at(row, Rect.new(0, 0, 8, 2))
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXXXXXX"))
 
         Screen.instance.repaint
@@ -237,8 +233,7 @@ module Tuile
 
       it "leaves the extent's own cells alone, so an unchanged repaint re-emits nothing of it" do
         cb = Component::Checkbox.new.tap { _1.caption = "Enable" }
-        Screen.instance.content = cb
-        Testing.place(cb, Rect.new(0, 0, 40, 1))
+        mount_at(cb, Rect.new(0, 0, 40, 1))
         Screen.instance.repaint
         Screen.instance.prints.clear
 
@@ -260,8 +255,7 @@ module Tuile
         pane = Component::Layout::Absolute.new
         child = yield
         pane.add(child)
-        Screen.instance.content = pane
-        Testing.place(pane, outer)
+        mount_at(pane, outer)
         Testing.place(child, inner)
         child
       end
@@ -379,9 +373,8 @@ module Tuile
 
       it "invalidates when rect changes" do
         c = Component::Layout::Absolute.new
-        Screen.instance.content = c
         Screen.instance.invalidated_clear
-        Testing.place(c, Rect.new(0, 0, 10, 5))
+        mount_at(c, Rect.new(0, 0, 10, 5))
         assert Screen.instance.invalidated?(c)
       end
 
@@ -785,8 +778,7 @@ module Tuile
       # is that the resolved answer reaches the canvas at all.
       it "reaches the cells the component paints" do
         c = Component::Label.new("hi")
-        Screen.instance.content = c
-        Testing.place(c, Rect.new(0, 0, 2, 1))
+        mount_at(c, Rect.new(0, 0, 2, 1))
         c.bg_color = 52
         repaint(c)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
@@ -896,9 +888,8 @@ module Tuile
           def extent = Size.new(4, 1)
         end.new
         panel.add(field)
-        Screen.instance.content = panel
         panel.bg_color = 22
-        Testing.place(panel, Rect.new(0, 0, 8, 2))
+        mount_at(panel, Rect.new(0, 0, 8, 2))
         Testing.place(field, Rect.new(0, 0, 8, 2))
 
         field.send(:clear_outside_extent, Screen.instance.canvas)
@@ -911,9 +902,8 @@ module Tuile
           define_method(:default_bg_color) { Color.new(52) }
           def extent = Size.new(4, 1)
         end.new
-        Screen.instance.content = field
         field.bg_color = 22
-        Testing.place(field, Rect.new(0, 0, 8, 1))
+        mount_at(field, Rect.new(0, 0, 8, 1))
 
         field.send(:clear_outside_extent, Screen.instance.canvas)
         assert_equal Color.new(22), Screen.instance.buffer.cell(5, 0).style.bg
@@ -988,9 +978,8 @@ module Tuile
           def extent = Size.new(4, 1)
         end.new
         panel.add(field)
-        Screen.instance.content = panel
         panel.bg_color = 22
-        Testing.place(panel, Rect.new(0, 0, 8, 1))
+        mount_at(panel, Rect.new(0, 0, 8, 1))
         Testing.place(field, Rect.new(0, 0, 8, 1))
         field.bg_color = Component::BG_INHERIT
 
@@ -1569,13 +1558,11 @@ module Tuile
       # @return [Array(Component::Layout::Vertical, Component, Component)] an
       #   attached, sized form of two tab stops.
       def form
-        screen = Screen.instance
         box = Component::Layout::Vertical.new
         first = tab_stop
         second = tab_stop
         box.add([first, second], Component::Layout::Fixed[1])
-        screen.content = box
-        Testing.place(box, Rect.new(0, 0, 20, 4))
+        mount_at(box, Rect.new(0, 0, 20, 4))
         [box, first, second]
       end
 
@@ -1615,8 +1602,7 @@ module Tuile
         panel.add(leaf, Component::Layout::Fixed[1])
         anchor = tab_stop
         outer.add([anchor, panel], Component::Layout::Fixed[1])
-        screen.content = outer
-        Testing.place(outer, Rect.new(0, 0, 20, 4))
+        mount_at(outer, Rect.new(0, 0, 20, 4))
         screen.focused = anchor
 
         panel.visible = false
@@ -1675,8 +1661,7 @@ module Tuile
           leaf = tab_stop
           panel.add(leaf, Component::Layout::Fixed[1])
           outer.add([anchor, panel], Component::Layout::Fixed[1])
-          screen.content = outer
-          Testing.place(outer, Rect.new(0, 0, 20, 4))
+          mount_at(outer, Rect.new(0, 0, 20, 4))
           screen.focused = leaf
 
           panel.visible = false
@@ -1713,8 +1698,7 @@ module Tuile
           panel = Component::Layout::Vertical.new
           leaf = tab_stop
           panel.add(leaf, Component::Layout::Fixed[1])
-          screen.content = panel
-          Testing.place(panel, Rect.new(0, 0, 20, 4))
+          mount_at(panel, Rect.new(0, 0, 20, 4))
 
           panel.visible = false
           assert_raises(Tuile::Error) { screen.focused = leaf }
@@ -1727,8 +1711,7 @@ module Tuile
           box = Component::Layout::Vertical.new
           label = Component::Label.new("VISIBLE")
           box.add(label, Component::Layout::Percent[100])
-          screen.content = box
-          Testing.place(box, Rect.new(0, 0, 20, 1))
+          mount_at(box, Rect.new(0, 0, 20, 1))
           screen.repaint
           assert_includes screen.buffer.row_text(0), "VISIBLE"
 
@@ -1742,8 +1725,7 @@ module Tuile
           box = Component::Layout::Vertical.new
           label = Component::Label.new("VISIBLE")
           box.add(label, Component::Layout::Percent[100])
-          screen.content = box
-          Testing.place(box, Rect.new(0, 0, 20, 1))
+          mount_at(box, Rect.new(0, 0, 20, 1))
           screen.repaint
           before = screen.buffer.row_text(0)
 
@@ -1761,8 +1743,7 @@ module Tuile
           layout = Component::Layout::Absolute.new
           child = tab_stop
           layout.add(child)
-          screen.content = layout
-          Testing.place(layout, Rect.new(0, 0, 20, 4))
+          mount_at(layout, Rect.new(0, 0, 20, 4))
           Testing.place(child, Rect.new(0, 0, 20, 1))
 
           child.visible = false

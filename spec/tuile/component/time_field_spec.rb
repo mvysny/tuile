@@ -11,8 +11,7 @@ module Tuile
     # row, and focuses it (so key dispatch reaches its inner editor).
     def field(width: 20)
       f = Component::TimeField.new
-      Screen.instance.content = f
-      Testing.place(f, Rect.new(0, 0, width, 1))
+      mount_at(f, Rect.new(0, 0, width, 1))
       Screen.instance.focused = f
       f
     end

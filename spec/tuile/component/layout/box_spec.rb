@@ -593,8 +593,7 @@ module Tuile
       let(:attached) do
         layout = box
         layout.add(Component.new, fixed(1))
-        Screen.instance.content = layout
-        Testing.place(layout, Rect.new(0, 0, 10, 10))
+        mount_at(layout, Rect.new(0, 0, 10, 10))
         layout
       end
 

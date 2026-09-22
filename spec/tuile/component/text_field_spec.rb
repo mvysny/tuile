@@ -23,8 +23,7 @@ module Tuile
       # well reached past it to the theme, so setting one on a field did nothing.
       it "honors its own bg_color over the well" do
         f = Component::TextField.new
-        Screen.instance.content = f
-        Testing.place(f, Rect.new(0, 0, 10, 1))
+        mount_at(f, Rect.new(0, 0, 10, 1))
         f.text = "hi"
         f.bg_color = 52
         repaint(f)
@@ -36,8 +35,7 @@ module Tuile
       # to keep the focus shade names both states instead.
       it "a flat bg_color is flat whether focused or not" do
         f = Component::TextField.new
-        Screen.instance.content = f
-        Testing.place(f, Rect.new(0, 0, 10, 1))
+        mount_at(f, Rect.new(0, 0, 10, 1))
         f.bg_color = 52
         f.active = true
         repaint(f)
@@ -46,8 +44,7 @@ module Tuile
 
       it "a state map keeps a focus shade of the app's choosing" do
         f = Component::TextField.new
-        Screen.instance.content = f
-        Testing.place(f, Rect.new(0, 0, 10, 1))
+        mount_at(f, Rect.new(0, 0, 10, 1))
         f.bg_color = { normal: 52, active: 33 }
         repaint(f)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
@@ -555,24 +552,21 @@ module Tuile
     context "the mouse" do
       it "positions caret at clicked column" do
         f = field(width: 20, text: "hello")
-        Screen.instance.content = f
-        Testing.place(f, Rect.new(2, 3, 20, 1))
+        mount_at(f, Rect.new(2, 3, 20, 1))
         Screen.instance.click(4, 3) # col 4 - rect.left 2 = 2
         assert_equal 2, f.caret
       end
 
       it "clamps caret to text length when clicking past last char" do
         f = field(width: 20, text: "hi")
-        Screen.instance.content = f
-        Testing.place(f, Rect.new(0, 0, 20, 1))
+        mount_at(f, Rect.new(0, 0, 20, 1))
         Screen.instance.click(10, 0) # col 10, past 'hi'
         assert_equal 2, f.caret
       end
 
       it "ignores clicks outside the rect" do
         f = field(width: 10, text: "hello")
-        Screen.instance.content = f
-        Testing.place(f, Rect.new(0, 0, 10, 1))
+        mount_at(f, Rect.new(0, 0, 10, 1))
         f.caret = 3
         Screen.instance.click(100, 100)
         assert_equal 3, f.caret
@@ -731,8 +725,7 @@ module Tuile
 
       it "resolves a click on a glyph's left half before it, right half after" do
         f = field(width: 20, text: "日本語")
-        Screen.instance.content = f
-        Testing.place(f, Rect.new(0, 0, 20, 1))
+        mount_at(f, Rect.new(0, 0, 20, 1))
         { 0 => 0, 1 => 1, 2 => 1, 3 => 2, 4 => 2, 5 => 3 }.each do |column, expected|
           f.caret = 0
           Screen.instance.click(column, 0)
@@ -920,8 +913,7 @@ module Tuile
       context "mouse" do
         it "resolves a click to a cluster boundary" do
           f = field(width: 20, text: "#{acute}x")
-          Screen.instance.content = f
-          Testing.place(f, Rect.new(0, 0, 20, 1))
+          mount_at(f, Rect.new(0, 0, 20, 1))
           Screen.instance.click(1, 0)
           assert_equal 2, f.caret
         end

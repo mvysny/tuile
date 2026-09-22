@@ -44,8 +44,8 @@ module DeferredLayout
     case component.parent
     when nil
       holder = Tuile::Component::Layout::Absolute.new
-      holder.add(component, rect)
       screen.content = holder
+      holder.add(component, rect)
     when Tuile::Component::Layout::Absolute
       component.parent.constrain(component, rect)
     else

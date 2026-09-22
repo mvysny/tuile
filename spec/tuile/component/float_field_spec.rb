@@ -9,8 +9,7 @@ module Tuile
     # 20-wide row, and focuses it (so key dispatch reaches its inner field).
     def field(top: 0, width: 20)
       f = Component::FloatField.new
-      Screen.instance.content = f
-      Testing.place(f, Rect.new(0, top, width, 1))
+      mount_at(f, Rect.new(0, top, width, 1))
       Screen.instance.focused = f
       f
     end
@@ -389,8 +388,7 @@ module Tuile
       # An app should not have to know this widget is a TextField in a trenchcoat.
       it "forwards to the inner field, which paints it while empty" do
         f = Component::FloatField.new
-        Screen.instance.content = f
-        Testing.place(f, Rect.new(0, 0, 12, 1))
+        mount_at(f, Rect.new(0, 0, 12, 1))
         f.placeholder = "0.0-1.0"
         assert_equal "0.0-1.0", f.placeholder
         assert_equal "0.0-1.0", inner(f).placeholder
@@ -400,8 +398,7 @@ module Tuile
 
       it "gives way to a value and returns when cleared" do
         f = Component::FloatField.new
-        Screen.instance.content = f
-        Testing.place(f, Rect.new(0, 0, 12, 1))
+        mount_at(f, Rect.new(0, 0, 12, 1))
         f.placeholder = "0.0-1.0"
         f.value = 0.5
         Screen.instance.repaint

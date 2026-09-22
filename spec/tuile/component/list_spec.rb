@@ -692,8 +692,7 @@ module Tuile
     context "the mouse" do
       def scrollable_list
         l = Component::List.new
-        Screen.instance.content = l
-        Testing.place(l, Rect.new(0, 0, 20, 3))
+        mount_at(l, Rect.new(0, 0, 20, 3))
         l.lines = (0..9).map(&:to_s)
         l
       end
@@ -1176,8 +1175,7 @@ module Tuile
 
       it "invalidates when changed" do
         l = Component::List.new
-        Screen.instance.content = l
-        Testing.place(l, Rect.new(0, 0, 20, 5))
+        mount_at(l, Rect.new(0, 0, 20, 5))
         Screen.instance.invalidated_clear
         l.show_cursor_when_inactive = true
         assert Screen.instance.invalidated?(l)

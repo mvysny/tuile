@@ -46,8 +46,9 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
 - **Size or move anything else with `Testing.place(component, rect)`** — `rect=` raises outside
   the parent's `relayout`, so `place` goes through whatever places the component: an `Absolute`
   parent is constrained, an open overlay gets `At[rect]`, a parentless root is sized in a throwaway
-  holder. The pane is sized by `resize_terminal`; a child of any other container raises — move it
-  by its constraint there.
+  holder. It never changes the tree, so the pane's content raises — attach with `mount_at` — as
+  does a child of any other container: move it by its constraint there. The pane is sized by
+  `resize_terminal`.
 - **The contract suite's stray sweep paints through `paint_unclipped`, not `paint`** — through
   `Screen#canvas_for` the strays never reach the buffer, so the sweep becomes a test of `Screen`
   and cannot fail. See `D_clip`.

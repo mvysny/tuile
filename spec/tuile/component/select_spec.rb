@@ -63,9 +63,8 @@ module Tuile
         s.items = %w[one two]
         panel = Component::Layout::Absolute.new
         panel.add(s)
-        Screen.instance.content = panel
         panel.bg_color = 52
-        Testing.place(panel, Rect.new(0, 0, 20, 5))
+        mount_at(panel, Rect.new(0, 0, 20, 5))
         Testing.place(s, Rect.new(0, 0, 20, 5))
         repaint(s)
 
@@ -76,8 +75,7 @@ module Tuile
       it "honors a bg_color set on it" do
         s = Component::Select.new
         s.items = %w[one two]
-        Screen.instance.content = s
-        Testing.place(s, Rect.new(0, 0, 20, 1))
+        mount_at(s, Rect.new(0, 0, 20, 1))
         s.bg_color = 52
         repaint(s)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
@@ -518,12 +516,11 @@ module Tuile
 
       it "closes the dropdown when the click lands on inert decoration" do
         layout = Component::Layout::Absolute.new
-        Screen.instance.content = layout
         s = Component::Select.new(items: default_items)
         layout.add(s)
         Testing.place(s, Rect.new(0, 0, 20, 1))
         layout.add(Component::Label.new("inert"), Rect.new(0, 10, 20, 1))
-        Testing.place(layout, Rect.new(0, 0, 60, 20))
+        mount_at(layout, Rect.new(0, 0, 60, 20))
         s.focus
         key(Keys::ENTER)
         assert overlay(s).open?

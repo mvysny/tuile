@@ -765,8 +765,7 @@ module Tuile
 
       let(:label) do
         Component::Label.new("hello").tap do |l|
-          screen.content = l
-          Testing.place(l, Rect.new(1, 1, 8, 1))
+          mount_at(l, Rect.new(1, 1, 8, 1))
         end
       end
 
@@ -810,9 +809,8 @@ module Tuile
       it "canvas_for moves the clip into backend coordinates" do
         pane = Component::Layout::Absolute.new
         inner = Component::Label.new("hello")
-        screen.content = pane
         pane.add(inner)
-        Testing.place(pane, Rect.new(2, 3, 20, 5))
+        mount_at(pane, Rect.new(2, 3, 20, 5))
         Testing.place(inner, Rect.new(1, 1, 8, 1))
 
         # (0, 0) of the pane is screen (2, 3); the label's own origin is one
@@ -845,9 +843,8 @@ module Tuile
       it "bounds a component by its own rect, with no ancestor cutting anything" do
         pane = Component::Layout::Absolute.new
         child = Component.new
-        screen.content = pane
         pane.add(child)
-        Testing.place(pane, Rect.new(0, 0, 40, 5))
+        mount_at(pane, Rect.new(0, 0, 40, 5))
         Testing.place(child, Rect.new(0, 0, 3, 1))
 
         assert_equal child.local_rect, screen.clip_for(child)
@@ -857,8 +854,7 @@ module Tuile
       # owes is never missing a cut. These are its edges.
       it "answers local_rect when every ancestor contains its child" do
         node = Component::Layout::Absolute.new
-        screen.content = node
-        Testing.place(node, Rect.new(0, 0, 40, 20))
+        mount_at(node, Rect.new(0, 0, 40, 20))
         w = 40
         h = 20
         5.times do
@@ -876,9 +872,8 @@ module Tuile
       it "counts a child exactly filling its parent as contained, and one column more as cut" do
         pane = Component::Layout::Absolute.new
         child = Component.new
-        screen.content = pane
         pane.add(child)
-        Testing.place(pane, Rect.new(0, 0, 10, 4))
+        mount_at(pane, Rect.new(0, 0, 10, 4))
 
         Testing.place(child, Rect.new(0, 0, 10, 4))
         assert_equal child.local_rect, screen.clip_for(child)
@@ -890,9 +885,8 @@ module Tuile
       it "counts an offset child running past the right edge as cut" do
         pane = Component::Layout::Absolute.new
         child = Component.new
-        screen.content = pane
         pane.add(child)
-        Testing.place(pane, Rect.new(0, 0, 10, 4))
+        mount_at(pane, Rect.new(0, 0, 10, 4))
         Testing.place(child, Rect.new(1, 0, 10, 4))
 
         assert_equal Rect.new(0, 0, 9, 4), screen.clip_for(child)
@@ -901,9 +895,8 @@ module Tuile
       it "counts a child above its parent's top edge as cut" do
         pane = Component::Layout::Absolute.new
         child = Component.new
-        screen.content = pane
         pane.add(child)
-        Testing.place(pane, Rect.new(0, 0, 10, 4))
+        mount_at(pane, Rect.new(0, 0, 10, 4))
         Testing.place(child, Rect.new(0, -1, 10, 4))
 
         assert_equal Rect.new(0, 1, 10, 3), screen.clip_for(child)
@@ -912,9 +905,8 @@ module Tuile
       it "answers an empty rect for a component with none, rather than taking the fast path out" do
         pane = Component::Layout::Absolute.new
         child = Component.new
-        screen.content = pane
         pane.add(child)
-        Testing.place(pane, Rect.new(0, 0, 10, 4))
+        mount_at(pane, Rect.new(0, 0, 10, 4))
         Testing.place(child, Rect.new(0, 0, 0, 0))
 
         assert_predicate screen.clip_for(child), :empty?
@@ -923,9 +915,8 @@ module Tuile
       it "reaches a child as the ancestor's box, in the child's own coordinates" do
         pane = Component::Layout::Absolute.new
         child = Component.new
-        screen.content = pane
         pane.add(child)
-        Testing.place(pane, Rect.new(10, 5, 6, 2))
+        mount_at(pane, Rect.new(10, 5, 6, 2))
         Testing.place(child, Rect.new(0, -1, 6, 4))
 
         assert_equal Rect.new(0, 1, 6, 2), screen.clip_for(child)
@@ -935,10 +926,9 @@ module Tuile
         outer = Component::Layout::Absolute.new
         inner = Component::Layout::Absolute.new
         leaf = Component.new
-        screen.content = outer
         outer.add(inner)
         inner.add(leaf)
-        Testing.place(outer, Rect.new(0, 0, 10, 10))
+        mount_at(outer, Rect.new(0, 0, 10, 10))
         Testing.place(inner, Rect.new(1, 1, 12, 9))
         Testing.place(leaf, Rect.new(0, 0, 12, 9))
 
@@ -952,8 +942,7 @@ module Tuile
       # collapses. That is what makes "can this show anything?" one predicate.
       it "hands a scrolled-away child an empty clip, on either axis" do
         pane = Component::Layout::Absolute.new
-        screen.content = pane
-        Testing.place(pane, Rect.new(0, 0, 6, 2))
+        mount_at(pane, Rect.new(0, 0, 6, 2))
 
         { "above" => Rect.new(0, -9, 6, 4),
           "below" => Rect.new(0, 40, 6, 4),
@@ -970,9 +959,8 @@ module Tuile
       it "hands a partly scrolled child the rows that remain" do
         pane = Component::Layout::Absolute.new
         child = Component.new
-        screen.content = pane
         pane.add(child)
-        Testing.place(pane, Rect.new(0, 0, 6, 2))
+        mount_at(pane, Rect.new(0, 0, 6, 2))
         Testing.place(child, Rect.new(0, -3, 6, 4))
 
         assert_equal Rect.new(0, 3, 6, 1), screen.clip_for(child)
@@ -996,9 +984,8 @@ module Tuile
       it "follows the ancestor rather than being cached, so a scroll shows on the next paint" do
         pane = Component::Layout::Absolute.new
         child = Component.new
-        screen.content = pane
         pane.add(child)
-        Testing.place(pane, Rect.new(0, 0, 6, 2))
+        mount_at(pane, Rect.new(0, 0, 6, 2))
         Testing.place(child, Rect.new(0, 0, 6, 4))
         assert_equal Rect.new(0, 0, 6, 2), screen.clip_for(child)
 
@@ -1011,8 +998,7 @@ module Tuile
       # whatever opened it. Verified rather than assumed.
       it "does not reach a popup opened from inside a small subtree" do
         pane = Component::Layout::Absolute.new
-        screen.content = pane
-        Testing.place(pane, Rect.new(0, 0, 4, 1))
+        mount_at(pane, Rect.new(0, 0, 4, 1))
         popup = Component::Popup.new(content: Component::Label.new("hi"))
         popup.open
         content = popup.content
@@ -1256,10 +1242,9 @@ module Tuile
       # hidden rather than parked where nobody can see it (`D_clip`).
       it "hides the hardware cursor when a clip cuts the caret away" do
         pane = Component::Layout::Absolute.new
-        screen.content = pane
         field = Component::TextField.new
         pane.add(field)
-        Testing.place(pane, Rect.new(0, 0, 20, 1))
+        mount_at(pane, Rect.new(0, 0, 20, 1))
         Testing.place(field, Rect.new(0, 2, 10, 1)) # below the one row the pane has to give
         screen.focused = field
         screen.prints.clear
@@ -1272,10 +1257,9 @@ module Tuile
 
       it "keeps the cursor when the clip contains it" do
         pane = Component::Layout::Absolute.new
-        screen.content = pane
         field = Component::TextField.new
         pane.add(field)
-        Testing.place(pane, Rect.new(0, 0, 20, 5))
+        mount_at(pane, Rect.new(0, 0, 20, 5))
         Testing.place(field, Rect.new(0, 2, 10, 1))
         screen.focused = field
 

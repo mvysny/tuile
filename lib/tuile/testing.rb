@@ -51,6 +51,13 @@ module Tuile
   #   field.visible = false
   #   field.flush_layout                            # before reading any rect
   #
+  # `place` never attaches: that is the spec's own step. The pane hands its
+  # content the whole screen, so to attach at a size put an `Absolute` between:
+  #
+  #   holder = Component::Layout::Absolute.new
+  #   Screen.instance.content = holder
+  #   holder.add(field, Rect.new(0, 0, 20, 1))      # attached, at that rect
+  #
   # The terminal is 160×50; pick another size with `Screen.fake(width:, height:)`,
   # or resize mid-example as the terminal would report it:
   #
@@ -227,23 +234,22 @@ module Tuile
         component.value = value
       end
 
-      # Puts `component` at `rect` through whatever places it, since
-      # {Component#rect=} raises outside the parent's `relayout`:
+      # Moves `component` to `rect` within the parent it already has, through
+      # whatever places it there, since {Component#rect=} raises outside the
+      # parent's `relayout`. It never changes the tree:
       #
       #   Testing.place(label, Rect.new(0, 0, 10, 1))      # a parentless root
       #   Testing.place(field, Rect.new(2, 1, 20, 1))      # moves it in its Layout::Absolute
       #   Testing.place(popup, Rect.new(5, 5, 30, 10))     # an open overlay: At[rect]
       #
       # A parentless root is sized in a throwaway {Component::Layout::Absolute}
-      # and released again, so it stays unattached. A child of the pane that is
-      # not an overlay is moved into a fresh holder that replaces the content —
-      # straight on the pane it would be handed the whole screen on the next pass.
-      # The pane itself is sized by {FakeScreen#resize_terminal}.
+      # and released again, so it stays unattached.
       # @param component [Component]
       # @param rect [Rect] in the parent's coordinates (the screen's, for an
       #   overlay).
-      # @raise [ArgumentError] if any other container places `component` —
-      #   move it by its constraint there.
+      # @raise [ArgumentError] if any other container places `component` — move
+      #   it by its constraint there. That includes the pane's content, which is
+      #   always the whole screen: put a {Component::Layout::Absolute} in between.
       # @return [Component] `component`, settled.
       def place(component, rect)
         parent = component.parent
@@ -256,13 +262,12 @@ module Tuile
         when Component::Layout::Absolute
           parent.constrain(component, rect)
         when ScreenPane
-          if component.is_a?(Component::Overlay)
-            component.placement = Component::Overlay::At[rect]
-          else
-            holder = Component::Layout::Absolute.new
-            Screen.instance.content = holder
-            holder.add(component, rect)
+          unless component.is_a?(Component::Overlay)
+            raise ArgumentError, "place: the pane gives its content, #{component}, the whole screen; " \
+                                 "put a Layout::Absolute in between, or resize the terminal"
           end
+
+          component.placement = Component::Overlay::At[rect]
         else
           raise ArgumentError, "place: #{parent} places #{component} itself; constrain it there"
         end

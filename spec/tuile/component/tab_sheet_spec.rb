@@ -122,11 +122,10 @@ module Tuile
 
       it "keeps a hidden pane's state, so it comes back as the user left it" do
         sheet = Component::TabSheet.new
-        Screen.instance.content = sheet
         field = Component::TextField.new
         sheet.add_tab("First", field)
         sheet.add_tab("Second", Component::Label.new("Second"))
-        Testing.place(sheet, Rect.new(0, 0, 40, 5))
+        mount_at(sheet, Rect.new(0, 0, 40, 5))
         field.text = "typed"
         sheet.select_next
         sheet.select_previous
@@ -277,10 +276,9 @@ module Tuile
     context "painting" do
       it "puts the strip on the top row and the pane below it" do
         sheet = Component::TabSheet.new
-        Screen.instance.content = sheet
         sheet.add_tab("First", Component::Label.new("PANE ONE"))
         sheet.add_tab("Second", Component::Label.new("PANE TWO"))
-        Testing.place(sheet, Rect.new(0, 0, 20, 3))
+        mount_at(sheet, Rect.new(0, 0, 20, 3))
         Screen.instance.repaint
         buffer = Screen.instance.buffer
         assert_equal " First │ Second     ", buffer.region_text(sheet.strip.absolute_rect).join
@@ -293,12 +291,11 @@ module Tuile
       # the sheet — whose children tile it.
       it "keeps the pane painted when the strip takes focus" do
         gappy = Component::Layout::Vertical.new(spacing: 1)
-        Screen.instance.content = gappy
         sheet = Component::TabSheet.new
         sheet.add_tab("First", Component::Label.new("PANE ONE"))
         gappy.add(Component::Label.new("prompt"), Component::Layout::Fixed[1])
         gappy.add(sheet, Component::Layout::Expand[1])
-        Testing.place(gappy, Rect.new(0, 0, 20, 6))
+        mount_at(gappy, Rect.new(0, 0, 20, 6))
         Screen.instance.repaint
 
         Screen.instance.focused = sheet.strip
@@ -308,10 +305,9 @@ module Tuile
 
       it "repaints the new pane over the old one's cells" do
         sheet = Component::TabSheet.new
-        Screen.instance.content = sheet
         sheet.add_tab("First", Component::Label.new("PANE ONE"))
         sheet.add_tab("Second", Component::Label.new("TWO"))
-        Testing.place(sheet, Rect.new(0, 0, 20, 3))
+        mount_at(sheet, Rect.new(0, 0, 20, 3))
         Screen.instance.repaint
         sheet.select_next
         Screen.instance.repaint

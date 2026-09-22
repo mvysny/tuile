@@ -205,8 +205,7 @@ module Tuile
             super
           end
         end.new
-        screen.content = outer
-        Testing.place(outer, Rect.new(0, 0, 10, 5))
+        mount_at(outer, Rect.new(0, 0, 10, 5))
         s = Component::Scroller.new(Component::Layout::Absolute.new, content_rows: 40)
         outer.add(s)
         Testing.place(s, Rect.new(0, 0, 10, 5))

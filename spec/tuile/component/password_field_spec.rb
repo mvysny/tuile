@@ -164,8 +164,7 @@ module Tuile
 
       it "resolves a click to the mask glyph clicked" do
         f = field(width: 20, text: "日本語")
-        Screen.instance.content = f
-        Testing.place(f, Rect.new(0, 0, 20, 1))
+        mount_at(f, Rect.new(0, 0, 20, 1))
         Screen.instance.click(2, 0)
         assert_equal 2, f.caret
       end

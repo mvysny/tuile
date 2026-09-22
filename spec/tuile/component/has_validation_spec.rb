@@ -132,8 +132,7 @@ module Tuile
       end
 
       it "uses Theme#error_active_bg_color while the field has focus" do
-        screen.content = field
-        Testing.place(field, Rect.new(0, 0, 10, 1))
+        mount_at(field, Rect.new(0, 0, 10, 1))
         screen.focused = field
         field.error_message = "Required"
         repaint(field)
@@ -233,8 +232,7 @@ module Tuile
         window = Component::Window.new
         window.caption = "Login"
         window.content = field
-        screen.content = window
-        Testing.place(window, Rect.new(0, 0, 20, 5))
+        mount_at(window, Rect.new(0, 0, 20, 5))
         field.error_message = "Required"
         repaint(window)
 

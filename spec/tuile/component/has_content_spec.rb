@@ -30,11 +30,8 @@ module Tuile
     end
 
     let(:host) do
-      h = host_class.new
-      Screen.instance.pane.content = h
-      # The pane assigns its content the whole screen at the settle; drain that
-      # pass here so each example counts only its own.
-      h.flush_layout
+      h = mount_at(host_class.new, Rect.new(0, 0, 160, 50))
+      # Drain the mount's pass so each example counts only its own.
       h.layout_calls.clear
       h
     end
