@@ -448,7 +448,7 @@ module Tuile
       let(:sampler) do
         SamplerExample::Sampler.new.tap do |s|
           Screen.instance.content = s
-          s.rect = Rect.new(0, 0, 100, 30)
+          place(s, Rect.new(0, 0, 100, 30))
           s.select_entry(entries.find { _1.caption == "Mouse" })
           Screen.instance.repaint
         end

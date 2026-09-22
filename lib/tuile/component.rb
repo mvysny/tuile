@@ -241,18 +241,37 @@ module Tuile
     # **The children do not move yet**: this only marks a {#relayout}, so a
     # child's rect read back in the same turn is still the previous pass's —
     # {#flush_layout} first.
+    #
+    # **Only the parent's {#relayout} may call this**, and it raises from
+    # anywhere else, a component with no parent included. To move a child,
+    # change what its parent places it by — {Layout::Absolute#constrain},
+    # {Layout::Box#constrain}, {Component::Overlay#placement=} — and to size a
+    # tree that has no screen, hold it in a {Layout::Absolute}:
+    #
+    #   holder = Component::Layout::Absolute.new
+    #   holder.add(tree, Rect.new(0, 0, 40, 10))
+    #   holder.flush_layout
+    #
+    # A subclass reacts to a new rect in {#handle_rect_changed}; it cannot
+    # override this, because a `protected` override is callable only from its
+    # own class, and the parent calling it is not one.
     # @param new_rect [Rect] new position. Does nothing if the new rectangle is
     #   the same as the old one.
+    # @raise [Tuile::Error] unless the parent's {#relayout} is running.
     def rect=(new_rect)
       raise TypeError, "expected Rect, got #{new_rect.inspect}" unless new_rect.is_a? Rect
+
+      check_placer
       return if @rect == new_rect
 
-      prev_width = @rect.width
+      old_rect = @rect
       @rect = new_rect
-      handle_width_changed if prev_width != new_rect.width
+      handle_width_changed if old_rect.width != new_rect.width
+      handle_rect_changed(old_rect)
       invalidate
       invalidate_layout
     end
+    protected :rect=
 
     # Runs every {#relayout} this component's *tree* owes, so its rects are
     # current — the force-now that makes a detached tree measurable:
@@ -985,6 +1004,12 @@ module Tuile
     # @return [void]
     def handle_width_changed; end
 
+    # Called once the parent has given this component a different rect, before
+    # anything repaints. Does nothing by default.
+    # @param _old_rect [Rect] the rect it had.
+    # @return [void]
+    def handle_rect_changed(_old_rect); end
+
     # Mirror of {#handle_focus}: the component just lost focus, to another component
     # or to nothing. The commit point a Tab-away still reaches — Tab is
     # unconditional, so {Component::TextField#on_enter} never fires for a user
@@ -1274,8 +1299,46 @@ module Tuile
     # @return [void]
     def perform_relayout
       @layout_dirty = false
-      relayout
+      Component.__send__(:placing, self) { relayout }
     end
+
+    # What may assign this component's rect: its parent, whose {#relayout}
+    # does. {ScreenPane} answers its {Screen}.
+    # @return [Component, Screen, nil]
+    def placer = parent
+
+    # @raise [Tuile::Error] unless {#placer} is the one placing right now.
+    # @return [void]
+    def check_placer
+      current = Thread.current[PLACING]
+      return if !current.nil? && current.equal?(placer)
+
+      if parent.nil?
+        raise Tuile::Error, "#{self} has no parent to place it; to size a detached tree, " \
+                            "hold it in a Layout::Absolute (add(tree, rect), then flush_layout)"
+      end
+      raise Tuile::Error, "#{self}'s rect assigned outside #{parent}'s relayout; change what the parent " \
+                          "places it by instead (Absolute#constrain, Box#constrain, Overlay#placement=)"
+    end
+
+    # The thread-local naming what is placing children right now.
+    # @return [Symbol]
+    PLACING = :tuile_placing
+    private_constant :PLACING
+
+    # Runs the block as `placer`, the one thing whose children's rects may be
+    # assigned inside it. A thread-local, because a tree with no screen places
+    # children too.
+    # @param placer [Component, Screen]
+    # @return [Object] the block's value.
+    def self.placing(placer)
+      outer = Thread.current[PLACING]
+      Thread.current[PLACING] = placer
+      yield
+    ensure
+      Thread.current[PLACING] = outer
+    end
+    private_class_method :placing
 
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the

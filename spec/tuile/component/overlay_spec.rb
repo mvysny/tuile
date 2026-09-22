@@ -96,9 +96,9 @@ module Tuile
       end
 
       it "does not grab focus or center when opened" do
-        content = Component::Layout.new
+        content = Component::Layout::Absolute.new
         field = Component::TextField.new
-        field.rect = Rect.new(0, 0, 10, 1)
+        place(field, Rect.new(0, 0, 10, 1))
         content.add(field)
         Screen.instance.content = content
         Screen.instance.focused = field
@@ -117,7 +117,7 @@ module Tuile
 
       it "keeps it through a resize, which re-runs the pane's pass" do
         o = Component::Overlay.new(content: list_of(%w[a b])).open(at(Rect.new(12, 7, 20, 2)))
-        Screen.instance.pane.rect = Rect.new(0, 0, 100, 30)
+        place(Screen.instance.pane, Rect.new(0, 0, 100, 30))
         assert_equal Rect.new(12, 7, 20, 2), settle(o).rect
       end
 
@@ -169,7 +169,7 @@ module Tuile
         o.close
         Screen.instance.invalidated_clear
 
-        o.rect = Rect.new(40, 20, 3, 1)
+        place(o, Rect.new(40, 20, 3, 1))
         refute Screen.instance.invalidated?(tiled)
       end
     end

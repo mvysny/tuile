@@ -7,7 +7,7 @@ module Tuile
 
     let(:screen) { Screen.instance }
 
-    let(:content) { Component::Layout.new }
+    let(:content) { Component::Layout::Absolute.new }
 
     # A scroller showing 5 rows of a 40-row content, wide enough for the bar to
     # take its two columns.
@@ -32,7 +32,7 @@ module Tuile
       end
 
       it "is re-placed when the scroller moves" do
-        scroller.rect = Rect.new(0, 0, 20, 8)
+        place(scroller, Rect.new(0, 0, 20, 8))
         assert_equal Rect.new(0, 0, 18, 40), settle(content).rect
       end
 
@@ -189,7 +189,7 @@ module Tuile
       # The half of the contract an outer scroller depends on: it is told where
       # the rect sits *after* this scroll, not where it sat when asked.
       it "passes the request up with the rect where its own scroll left it" do
-        outer = Class.new(Component::Layout) do
+        outer = Class.new(Component::Layout::Absolute) do
           attr_reader :requests
 
           def initialize
@@ -203,10 +203,10 @@ module Tuile
           end
         end.new
         screen.content = outer
-        outer.rect = Rect.new(0, 0, 10, 5)
-        s = Component::Scroller.new(Component::Layout.new, content_rows: 40)
+        place(outer, Rect.new(0, 0, 10, 5))
+        s = Component::Scroller.new(Component::Layout::Absolute.new, content_rows: 40)
         outer.add(s)
-        s.rect = Rect.new(0, 0, 10, 5)
+        place(s, Rect.new(0, 0, 10, 5))
 
         s.scroll_to_visible(Rect.new(0, 6, 8, 2))
 
@@ -321,7 +321,7 @@ module Tuile
       end
 
       it "gives the bar's columns back to the content when it is gone" do
-        content = Component::Layout.new
+        content = Component::Layout::Absolute.new
         s = scroller(content)
         s.scrollbar_visibility = :gone
 
@@ -351,7 +351,7 @@ module Tuile
 
       it "follows the scroller's resize" do
         s = scroller
-        s.rect = Rect.new(0, 0, 20, 8)
+        place(s, Rect.new(0, 0, 20, 8))
         assert_equal Rect.new(19, 0, 1, 8), settle(Testing.get(Component::VerticalScrollBar, in: s)).rect
       end
 

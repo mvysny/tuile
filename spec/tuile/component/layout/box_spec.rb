@@ -42,9 +42,10 @@ module Tuile
       it "raises NotImplementedError when the axis hooks are missing" do
         bare = Component::Layout::Box.new
         bare.add(Component.new, fixed(1))
-        bare.rect = Rect.new(0, 0, 10, 10)
-        # At the flush, not at the mutation: `rect=` only marks the pass.
-        assert_raises(NotImplementedError) { bare.flush_layout }
+        holder = Component::Layout::Absolute.new
+        holder.add(bare, Rect.new(0, 0, 10, 10))
+        # At the flush, not at the mutation: `add` only marks the pass.
+        assert_raises(NotImplementedError) { holder.flush_layout }
       end
     end
 
@@ -52,28 +53,28 @@ module Tuile
       it "gives a Fixed child exactly its cells" do
         layout = box
         layout.add(Component.new, fixed(3))
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
         assert_equal [3], heights(layout)
       end
 
       it "packs children from the start edge, leaving slack at the end" do
         layout = box
         layout.add([Component.new, Component.new], fixed(2))
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
         assert_equal [Rect.new(0, 0, 10, 2), Rect.new(0, 2, 10, 2)], rects(layout)
       end
 
       it "separates children by spacing" do
         layout = box(spacing: 2)
         layout.add([Component.new, Component.new], fixed(1))
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
         assert_equal [0, 3], tops(layout)
       end
 
       it "insets children by padding" do
         layout = box(padding: insets(top: 2, left: 3, right: 1))
         layout.add(Component.new, fixed(1))
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
         assert_equal Rect.new(3, 2, 6, 1), rects(layout).first
       end
 
@@ -81,7 +82,7 @@ module Tuile
         layout = box
         layout.add(Component.new, fixed(3))
         layout.add(Component.new, expand(1))
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
         assert_equal [3, 7], heights(layout)
       end
 
@@ -89,7 +90,7 @@ module Tuile
         layout = box
         layout.add(Component.new, expand(1))
         layout.add(Component.new, expand(3))
-        layout.rect = Rect.new(0, 0, 10, 12)
+        place(layout, Rect.new(0, 0, 10, 12))
         assert_equal [3, 9], heights(layout)
       end
 
@@ -98,14 +99,14 @@ module Tuile
       it "hands the remainder to the earliest Expand children, one cell each" do
         layout = box
         5.times { layout.add(Component.new, expand(1)) }
-        layout.rect = Rect.new(0, 0, 10, 12)
+        place(layout, Rect.new(0, 0, 10, 12))
         assert_equal [3, 3, 2, 2, 2], heights(layout)
       end
 
       it "never loses a cell to rounding" do
         layout = box
         7.times { layout.add(Component.new, expand(1)) }
-        layout.rect = Rect.new(0, 0, 10, 30)
+        place(layout, Rect.new(0, 0, 10, 30))
         assert_equal 30, heights(layout).sum
       end
     end
@@ -114,7 +115,7 @@ module Tuile
       it "takes its share of the available extent" do
         layout = box
         layout.add(Component.new, percent(25))
-        layout.rect = Rect.new(0, 0, 10, 20)
+        place(layout, Rect.new(0, 0, 10, 20))
         assert_equal [5], heights(layout)
       end
 
@@ -123,7 +124,7 @@ module Tuile
       it "is measured after spacing and padding are deducted" do
         layout = box(spacing: 1, padding: insets(top: 2))
         layout.add([Component.new, Component.new], percent(50))
-        layout.rect = Rect.new(0, 0, 10, 13)
+        place(layout, Rect.new(0, 0, 10, 13))
         assert_equal [5, 5], heights(layout)
         assert_equal [2, 8], tops(layout)
       end
@@ -133,7 +134,7 @@ module Tuile
       it "starves in declaration order, giving the loser an empty rect" do
         layout = box
         3.times { layout.add(Component.new, fixed(4)) }
-        layout.rect = Rect.new(0, 0, 10, 6)
+        place(layout, Rect.new(0, 0, 10, 6))
         assert_equal [4, 2, 0], heights(layout)
         assert rects(layout).last.empty?
       end
@@ -141,14 +142,14 @@ module Tuile
       it "gives every child an empty rect when padding exceeds the extent" do
         layout = box(padding: 5)
         layout.add([Component.new, Component.new], fixed(1))
-        layout.rect = Rect.new(0, 0, 4, 4)
+        place(layout, Rect.new(0, 0, 4, 4))
         assert all_empty?(layout)
       end
 
       it "gives every child an empty rect when spacing alone exhausts the extent" do
         layout = box(spacing: 10)
         layout.add([Component.new, Component.new], expand(1))
-        layout.rect = Rect.new(0, 0, 10, 5)
+        place(layout, Rect.new(0, 0, 10, 5))
         assert_equal [0, 0], heights(layout)
       end
     end
@@ -158,10 +159,10 @@ module Tuile
         layout = box
         child = Component.new
         layout.add(child, fixed(1))
-        layout.rect = Rect.new(0, 0, 40, 5)
+        place(layout, Rect.new(0, 0, 40, 5))
         refute rect_of(child).empty?
 
-        layout.rect = Rect.new(0, 0, 0, 5)
+        place(layout, Rect.new(0, 0, 0, 5))
         assert rect_of(child).empty?, rect_of(child).inspect
       end
 
@@ -171,10 +172,10 @@ module Tuile
         leaf = Component.new
         inner.add(leaf, fixed(1))
         layout.add(inner, expand(1))
-        layout.rect = Rect.new(0, 0, 40, 5)
+        place(layout, Rect.new(0, 0, 40, 5))
         refute rect_of(leaf).empty?
 
-        layout.rect = Rect.new(0, 0, 40, 0)
+        place(layout, Rect.new(0, 0, 40, 0))
         assert rect_of(leaf).empty?, rect_of(leaf).inspect
       end
 
@@ -221,7 +222,7 @@ module Tuile
         middle = Component.new
         bottom = Component.new
         layout.add([top, middle, bottom], expand(1))
-        layout.rect = Rect.new(0, 0, 10, 9)
+        place(layout, Rect.new(0, 0, 10, 9))
         assert_equal [3, 3, 3], heights(layout)
 
         middle.visible = false
@@ -234,7 +235,7 @@ module Tuile
         middle = Component.new
         bottom = Component.new
         layout.add([top, middle, bottom], fixed(1))
-        layout.rect = Rect.new(0, 0, 10, 9)
+        place(layout, Rect.new(0, 0, 10, 9))
         assert_equal [0, 2, 4], tops(layout)
 
         middle.visible = false
@@ -248,7 +249,7 @@ module Tuile
         layout = box
         child = Component.new
         layout.add(child, fixed(3))
-        layout.rect = Rect.new(4, 2, 10, 9)
+        place(layout, Rect.new(4, 2, 10, 9))
 
         child.visible = false
         assert_predicate rect_of(child), :empty?
@@ -263,7 +264,7 @@ module Tuile
         layout.add(top, fixed(2))
         layout.add(middle, fixed(3), cross: fixed(6), align: :center)
         layout.add(bottom, expand(1))
-        layout.rect = Rect.new(0, 0, 10, 12)
+        place(layout, Rect.new(0, 0, 10, 12))
         before = rects(layout)
 
         middle.visible = false
@@ -276,7 +277,7 @@ module Tuile
         first = Component.new
         second = Component.new
         layout.add([first, second], percent(50))
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
         assert_equal [5, 5], heights(layout)
 
         second.visible = false
@@ -290,7 +291,7 @@ module Tuile
         top = Component.new
         bottom = Component.new
         layout.add([top, bottom], fixed(2))
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
 
         bottom.visible = false
         layout.constrain(bottom, fixed(5))
@@ -303,28 +304,28 @@ module Tuile
       it "fills the cross extent by default" do
         layout = box
         layout.add(Component.new, fixed(1))
-        layout.rect = Rect.new(0, 0, 40, 10)
+        place(layout, Rect.new(0, 0, 40, 10))
         assert_equal 40, rects(layout).first.width
       end
 
       it "honors a Fixed cross constraint" do
         layout = box
         layout.add(Component.new, fixed(1), cross: fixed(30))
-        layout.rect = Rect.new(0, 0, 100, 10)
+        place(layout, Rect.new(0, 0, 100, 10))
         assert_equal 30, rects(layout).first.width
       end
 
       it "clamps a Fixed cross constraint to what is available" do
         layout = box
         layout.add(Component.new, fixed(1), cross: fixed(30))
-        layout.rect = Rect.new(0, 0, 12, 10)
+        place(layout, Rect.new(0, 0, 12, 10))
         assert_equal 12, rects(layout).first.width
       end
 
       it "honors a Percent cross constraint" do
         layout = box
         layout.add(Component.new, fixed(1), cross: percent(50))
-        layout.rect = Rect.new(0, 0, 40, 10)
+        place(layout, Rect.new(0, 0, 40, 10))
         assert_equal 20, rects(layout).first.width
       end
 
@@ -333,14 +334,14 @@ module Tuile
         %i[start center end].each do |align|
           layout.add(Component.new, fixed(1), cross: fixed(20), align:)
         end
-        layout.rect = Rect.new(0, 0, 100, 10)
+        place(layout, Rect.new(0, 0, 100, 10))
         assert_equal [0, 40, 80], lefts(layout)
       end
 
       it "offsets alignment from the padded inner rect, not the raw one" do
         layout = box(padding: insets(left: 4, right: 6))
         layout.add(Component.new, fixed(1), cross: fixed(10), align: :end)
-        layout.rect = Rect.new(0, 0, 30, 10)
+        place(layout, Rect.new(0, 0, 30, 10))
         # inner spans columns 4..23 (20 wide), so an :end-aligned 10 starts at 14.
         assert_equal 14, rects(layout).first.left
       end
@@ -350,7 +351,7 @@ module Tuile
       it "applies one constraint to every element of an Enumerable" do
         layout = box
         layout.add([Component.new, Component.new, Component.new], fixed(2))
-        layout.rect = Rect.new(0, 0, 10, 20)
+        place(layout, Rect.new(0, 0, 10, 20))
         assert_equal [2, 2, 2], heights(layout)
       end
 
@@ -380,7 +381,7 @@ module Tuile
         layout = box
         child = Component.new
         layout.send(:add_child, child)
-        layout.rect = Rect.new(0, 0, 40, 10)
+        place(layout, Rect.new(0, 0, 40, 10))
         assert_equal Rect.new(0, 0, 40, 1), rect_of(child)
       end
 
@@ -389,7 +390,7 @@ module Tuile
         top = Component.new
         bottom = Component.new
         layout.add([top, bottom], fixed(1))
-        layout.rect = Rect.new(0, 0, 40, 10)
+        place(layout, Rect.new(0, 0, 40, 10))
 
         layout.remove(top)
         assert_equal 0, rect_of(bottom).top
@@ -415,7 +416,7 @@ module Tuile
         layout = box
         child = Component.new
         layout.add(child, fixed(1), cross: fixed(10), align: :center)
-        layout.rect = Rect.new(0, 0, 40, 10)
+        place(layout, Rect.new(0, 0, 40, 10))
         assert_equal Rect.new(15, 0, 10, 1), rect_of(child)
 
         layout.constrain(child, fixed(4))
@@ -428,7 +429,7 @@ module Tuile
         body = Component.new
         layout.add(header, fixed(1))
         layout.add(body, fixed(5))
-        layout.rect = Rect.new(0, 0, 40, 20)
+        place(layout, Rect.new(0, 0, 40, 20))
         assert_equal [1, 5], heights(layout)
 
         layout.constrain(body, expand(1))
@@ -457,7 +458,7 @@ module Tuile
         leaf = Component.new
         inner.add(leaf, fixed(1))
         layout.add([inner, Component.new], expand(1))
-        layout.rect = Rect.new(0, 0, 40, 10)
+        place(layout, Rect.new(0, 0, 40, 10))
         refute rect_of(leaf).empty?
 
         layout.constrain(inner, fixed(0))
@@ -471,7 +472,7 @@ module Tuile
         main = Component.new
         layout.add(sidebar, expand(1))
         layout.add(main, expand(1))
-        layout.rect = Rect.new(0, 0, 40, 10)
+        place(layout, Rect.new(0, 0, 40, 10))
         assert_equal [5, 5], heights(layout)
 
         layout.constrain(sidebar, fixed(0))
@@ -493,7 +494,7 @@ module Tuile
         layout = box
         child = Component.new
         layout.add(child, fixed(1), cross: fixed(10))
-        layout.rect = Rect.new(0, 0, 40, 10)
+        place(layout, Rect.new(0, 0, 40, 10))
         assert_raises(ArgumentError) { layout.constrain(child, align: :middle) }
         assert_equal Rect.new(0, 0, 10, 1), rect_of(child)
       end
@@ -502,7 +503,7 @@ module Tuile
         layout = box
         child = Component.new
         layout.add(child, fixed(1))
-        layout.rect = Rect.new(0, 0, 40, 10)
+        place(layout, Rect.new(0, 0, 40, 10))
         Screen.instance.invalidated_clear
         layout.constrain(child, fixed(1))
         refute Screen.instance.invalidated?(layout)
@@ -512,7 +513,7 @@ module Tuile
     context "relayout triggers" do
       it "assigns rects on add, after the layout already has one" do
         layout = box
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
         child = Component.new
         layout.add(child, fixed(4))
         assert_equal Rect.new(0, 0, 10, 4), rect_of(child)
@@ -530,7 +531,7 @@ module Tuile
         first = Component.new
         second = Component.new
         layout.add([first, second], fixed(2))
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
         assert_equal 2, rect_of(second).top
         layout.remove(first)
         assert_equal 0, rect_of(second).top
@@ -562,7 +563,7 @@ module Tuile
         layout.add(child, fixed(5))
         layout.remove(child)
         layout.add(child)
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
         assert_equal [1], heights(layout)
       end
     end
@@ -587,7 +588,7 @@ module Tuile
         layout = box
         layout.add(Component.new, fixed(1))
         Screen.instance.content = layout
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
         layout
       end
 
@@ -610,7 +611,7 @@ module Tuile
         detached = box
         error = error_from do
           detached.add(Component.new, fixed(1))
-          detached.rect = Rect.new(0, 0, 10, 10)
+          place(detached, Rect.new(0, 0, 10, 10))
           detached.spacing = 2
         end
         assert_nil error
@@ -621,7 +622,7 @@ module Tuile
       it "relayouts" do
         layout = box
         layout.add([Component.new, Component.new], fixed(1))
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
         layout.spacing = 3
         assert_equal [0, 4], tops(layout)
       end
@@ -639,7 +640,7 @@ module Tuile
       it "relayouts" do
         layout = box
         layout.add(Component.new, fixed(1))
-        layout.rect = Rect.new(0, 0, 10, 10)
+        place(layout, Rect.new(0, 0, 10, 10))
         layout.padding = insets(top: 3)
         assert_equal 3, rects(layout).first.top
       end

@@ -35,11 +35,11 @@ module Tuile
 
     # A focusable widget in the tiled content, so focus has somewhere real to be.
     def focused_field
-      layout = Component::Layout.new
+      layout = Component::Layout::Absolute.new
       screen.content = layout
       Component::TextField.new.tap do |f|
         layout.add(f)
-        f.rect = Rect.new(0, 5, 20, 1)
+        place(f, Rect.new(0, 5, 20, 1))
         screen.focused = f
       end
     end
@@ -169,23 +169,9 @@ module Tuile
         assert(rows(n).all? { _1.length == 34 })
       end
 
-      # There is no declared box to refuse — a Notification is an Overlay, and
-      # #reposition re-derives the rect from the messages on every mutation.
-      it "derives its box from the messages, discarding a caller-assigned rect" do
-        n = Component::Notification.show("Saved")
-        derived = box(n)
-
-        n.rect = Rect.new(0, 0, 5, 5)
-        n.add_message("Again")
-
-        refute_equal 5, box(n).width
-        assert_equal derived.width, box(n).width
-        assert_equal screen.size.width, box(n).left + box(n).width # still corner-anchored
-      end
-
       def narrow_screen(width, height)
         screen.instance_variable_set(:@size, Size.new(width, height))
-        screen.pane.rect = Rect.new(0, 0, width, height)
+        place(screen.pane, Rect.new(0, 0, width, height))
       end
     end
 

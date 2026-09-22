@@ -60,9 +60,61 @@ module DeferredLayout
   end
 end
 
+# Puts a component at a rect the only way a rect gets there: through what places
+# it. A spec never writes `rect=` — {Tuile::Component#rect=} raises outside the
+# parent's `relayout`.
+module Placing
+  # @param component [Tuile::Component]
+  # @param rect [Tuile::Rect] in the parent's coordinates (the screen's, for an
+  #   overlay).
+  # @return [Tuile::Component] `component`, settled.
+  def place(component, rect)
+    parent = component.parent
+    case parent
+    when nil
+      return resize_pane(component, rect) if component.is_a?(Tuile::ScreenPane)
+
+      # A root has nothing to place it, so a holder does, and lets go again:
+      # the rect it assigned stays.
+      holder = Tuile::Component::Layout::Absolute.new
+      holder.add(component, rect)
+      holder.flush_layout
+      holder.remove(component)
+    when Tuile::Component::Layout::Absolute
+      parent.constrain(component, rect)
+    when Tuile::ScreenPane
+      if component.is_a?(Tuile::Component::Overlay)
+        component.placement = Tuile::Component::Overlay::At[rect]
+      else
+        holder = Tuile::Component::Layout::Absolute.new
+        Tuile::Screen.instance.content = holder
+        holder.add(component, rect)
+      end
+    else
+      raise ArgumentError, "place: #{parent} places #{component} itself; constrain it there"
+    end
+    settle(component)
+  end
+
+  private
+
+  # @param pane [Tuile::ScreenPane]
+  # @param rect [Tuile::Rect] at the origin, the terminal's new size.
+  # @return [Tuile::ScreenPane]
+  def resize_pane(pane, rect)
+    unless rect.left.zero? && rect.top.zero?
+      raise ArgumentError, "place: the pane fills the terminal, so #{rect} must sit at 0,0"
+    end
+
+    Tuile::Screen.instance.resize_terminal(rect.width, rect.height)
+    pane
+  end
+end
+
 RSpec.configure do |config|
   config.example_status_persistence_file_path = ".rspec_status"
   config.expect_with :minitest
   config.include PaintOne
   config.include DeferredLayout
+  config.include Placing
 end

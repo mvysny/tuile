@@ -7,7 +7,7 @@ module Tuile
 
     def button(caption: "OK", width: 10, active: true, &on_click)
       b = Component::Button.new(caption, &on_click)
-      b.rect = Rect.new(0, 0, width, 1)
+      place(b, Rect.new(0, 0, width, 1))
       b.active = active if active
       b
     end
@@ -42,7 +42,7 @@ module Tuile
 
       it "invalidates when the caption changes" do
         b = Component::Button.new("a")
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         layout.add(b)
         Screen.instance.content = layout
         Screen.instance.invalidated_clear
@@ -95,7 +95,7 @@ module Tuile
     context "handle_mouse" do
       it "fires on_click on a left-click inside the rect" do
         screen = Screen.instance
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         fired = 0
         b = button(active: false) { fired += 1 }
@@ -106,7 +106,7 @@ module Tuile
 
       it "focuses the button on left-click (via super)" do
         screen = Screen.instance
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         b = button(active: false)
         layout.add(b)
@@ -120,11 +120,11 @@ module Tuile
       # the two and the click silently drops the user's last edit.
       it "focuses before firing on_click, so a blurred field commits first" do
         screen = Screen.instance
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         log = []
         field = Component::TextField.new
-        field.rect = Rect.new(0, 1, 10, 1)
+        place(field, Rect.new(0, 1, 10, 1))
         field.define_singleton_method(:handle_blur) { log << :blur }
         layout.add(field)
         b = button(active: false) { log << :click }
@@ -138,7 +138,7 @@ module Tuile
 
       it "ignores non-left-button events" do
         screen = Screen.instance
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         fired = 0
         b = button { fired += 1 }
@@ -149,7 +149,7 @@ module Tuile
 
       it "ignores clicks outside the rect" do
         screen = Screen.instance
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         fired = 0
         b = button { fired += 1 }
@@ -160,7 +160,7 @@ module Tuile
 
       it "focuses but does not fire when the click lands on the rect's blank tail" do
         screen = Screen.instance
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         fired = 0
         b = button(caption: "OK", width: 30, active: false) { fired += 1 }
@@ -213,7 +213,7 @@ module Tuile
 
       it "keeps a double-width caption inside rect — clipping is by display width" do
         b = button(caption: "日本語テキスト", width: 8, active: false)
-        b.rect = Rect.new(2, 0, 8, 1)
+        place(b, Rect.new(2, 0, 8, 1))
         repaint(b)
         buffer = Screen.instance.buffer
         # "[ 日本語テキスト ]" is 18 columns wide; a char-count clip would have
@@ -232,11 +232,11 @@ module Tuile
       end
 
       it "inherits an ancestor's bg_color when inactive" do
-        parent = Component::Layout.new
-        parent.rect = Rect.new(0, 0, 6, 1)
+        parent = Component::Layout::Absolute.new
+        place(parent, Rect.new(0, 0, 6, 1))
         b = Component::Button.new("Ok")
         parent.add(b)
-        b.rect = Rect.new(0, 0, 6, 1)
+        place(b, Rect.new(0, 0, 6, 1))
         parent.bg_color = 52
         repaint(b)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
@@ -246,7 +246,7 @@ module Tuile
     context "integration: Tab cycling and Enter activation" do
       it "Tab moves through buttons and Enter fires the focused one" do
         screen = Screen.instance
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         a_fired = 0
         b_fired = 0

@@ -7,7 +7,7 @@ module Tuile
 
     def checkbox(caption: "Syslog", width: 10, active: false, value: false)
       cb = Component::Checkbox.new(caption, value:)
-      cb.rect = Rect.new(0, 0, width, 1)
+      place(cb, Rect.new(0, 0, width, 1))
       cb.active = active
       cb
     end
@@ -15,7 +15,7 @@ module Tuile
     # Attaches the checkbox to the screen so invalidation and click-to-focus,
     # both gated on `attached?`, actually do something.
     def attached_checkbox(**kwargs)
-      layout = Component::Layout.new
+      layout = Component::Layout::Absolute.new
       Screen.instance.content = layout
       checkbox(**kwargs).tap { layout.add(_1) }
     end
@@ -144,7 +144,7 @@ module Tuile
 
       it "does not toggle on a row below the painted one" do
         cb = attached_checkbox(caption: "Syslog", width: 40)
-        cb.rect = Rect.new(0, 0, 40, 3)
+        place(cb, Rect.new(0, 0, 40, 3))
         Screen.instance.click(1, 2)
         assert_equal false, cb.value
       end
@@ -206,7 +206,7 @@ module Tuile
 
       it "keeps a double-width caption inside rect — clipping is by display width" do
         cb = checkbox(caption: "日本語テキスト", width: 8)
-        cb.rect = Rect.new(2, 0, 8, 1)
+        place(cb, Rect.new(2, 0, 8, 1))
         repaint(cb)
         buffer = Screen.instance.buffer
         # "[ ] 日本語テキスト" is 18 columns; a char-count clip would have painted
@@ -217,11 +217,11 @@ module Tuile
       end
 
       it "shows an inherited bg_color on the row's blank tail" do
-        parent = Component::Layout.new
-        parent.rect = Rect.new(0, 0, 20, 1)
+        parent = Component::Layout::Absolute.new
+        place(parent, Rect.new(0, 0, 20, 1))
         cb = Component::Checkbox.new("Syslog")
         parent.add(cb)
-        cb.rect = Rect.new(0, 0, 20, 1)
+        place(cb, Rect.new(0, 0, 20, 1))
         parent.bg_color = 52
         repaint(cb)
         buffer = Screen.instance.buffer
@@ -233,7 +233,7 @@ module Tuile
     context "integration: Tab cycling and Space activation" do
       it "Tab moves through checkboxes and Space toggles the focused one" do
         screen = Screen.instance
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         a = Component::Checkbox.new("A")
         b = Component::Checkbox.new("B")

@@ -285,11 +285,11 @@ module SamplerExample
 
     # Clamps the caret into the new rect, so a shrink cannot strand it — and
     # with it the hardware cursor — outside what this widget paints.
-    # @param new_rect [Tuile::Rect]
-    def rect=(new_rect)
+    # @param old_rect [Tuile::Rect]
+    def handle_rect_changed(old_rect)
       super
-      @caret = Tuile::Point.new(@caret.x.clamp(0, [new_rect.width - 1, 0].max),
-                                @caret.y.clamp(0, [new_rect.height - 1, 0].max))
+      @caret = Tuile::Point.new(@caret.x.clamp(0, [rect.width - 1, 0].max),
+                                @caret.y.clamp(0, [rect.height - 1, 0].max))
     end
 
     # @return [void]

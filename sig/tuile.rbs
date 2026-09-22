@@ -2858,6 +2858,10 @@ module Tuile
     # whose {Component#handle_mouse_down?} claimed the press still held.
     def grabbed: () -> Component?
 
+    # Gives the pane the whole screen — the one rect no parent's pass assigns,
+    # so the screen places it itself.
+    def size_pane: () -> void
+
     # Whether anything on `component`'s ancestor chain actually cuts it — the
     # test that lets {#clip_for} answer {Component#local_rect} outright.
     # 
@@ -3496,6 +3500,7 @@ module Tuile
     extend Tuile::Listeners::Declare
     BG_STATES: ::Array[Symbol]
     BG_INHERIT: Symbol
+    PLACING: Symbol
 
     def initialize: () -> void
 
@@ -4087,6 +4092,12 @@ module Tuile
     # Called whenever the component width changes. Does nothing by default.
     def handle_width_changed: () -> void
 
+    # Called once the parent has given this component a different rect, before
+    # anything repaints. Does nothing by default.
+    # 
+    # _@param_ `_old_rect` — the rect it had.
+    def handle_rect_changed: (Rect _old_rect) -> void
+
     # Mirror of {#handle_focus}: the component just lost focus, to another component
     # or to nothing. The commit point a Tab-away still reaches — Tab is
     # unconditional, so {Component::TextField#on_enter} never fires for a user
@@ -4328,6 +4339,21 @@ module Tuile
     # `relayout`, shared by the screen's drain and {#flush_layout}. Clearing
     # first, so a pass that marks itself again is honoured rather than lost.
     def perform_relayout: () -> void
+
+    # What may assign this component's rect: its parent, whose {#relayout}
+    # does. {ScreenPane} answers its {Screen}.
+    def placer: () -> (Component | Screen)?
+
+    def check_placer: () -> void
+
+    # Runs the block as `placer`, the one thing whose children's rects may be
+    # assigned inside it. A thread-local, because a tree with no screen places
+    # children too.
+    # 
+    # _@param_ `placer`
+    # 
+    # _@return_ — the block's value.
+    def self.placing: ((Component | Screen) placer) -> Object
 
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the
@@ -6036,10 +6062,10 @@ module Tuile
       class Absolute < Layout
         def initialize: () -> void
 
-        # _@param_ `child`
+        # _@param_ `child` — one child, or several sharing the rect.
         # 
-        # _@param_ `rect` — where the child sits, in this layout's coordinates.
-        def add: (Component child, Rect rect) -> void
+        # _@param_ `rect` — where the child sits, in this layout's coordinates; `nil` keeps the rect the child already has, which for a new component is empty.
+        def add: ((Component | ::Enumerable[Component]) child, ?Rect? rect) -> void
 
         # Moves a child already in the layout; it takes the new rect on the next
         # settle.
@@ -6628,16 +6654,16 @@ module Tuile
       # _@return_ — a placement.
       def default_placement: () -> Object
 
-      # Reassigns the overlay's rect, escalating to a full scene repaint when an
-      # open overlay shrinks or moves so its new rect no longer covers the cells
-      # it previously painted. An overlay overdraws the scene without clipping
-      # and nothing clears underneath it, so {Screen#repaint}'s overlay-only fast
-      # path would repaint into the new rect and leave the vacated cells showing
-      # stale content. When the new rect fully covers the old one (the overlay
-      # only grew), the fast path is correct and the full repaint is skipped.
+      # Escalates to a full scene repaint when an open overlay shrinks or moves
+      # so its new rect no longer covers the cells it previously painted. An
+      # overlay overdraws the scene without clipping and nothing clears
+      # underneath it, so {Screen#repaint}'s overlay-only fast path would repaint
+      # into the new rect and leave the vacated cells showing stale content.
+      # When the new rect fully covers the old one (the overlay only grew), the
+      # fast path is correct and the full repaint is skipped.
       # 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
+      # _@param_ `old_rect`
+      def handle_rect_changed: (Rect old_rect) -> void
 
       # Mounts this overlay on the {Screen} at `placement`; the pane assigns the
       # rect on the next settle.
@@ -7051,8 +7077,12 @@ module Tuile
       # ungated by geometry.
       def extent: () -> Size
 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
+      # Closes the cascade — only on a *changed* rect, which is all this hook
+      # hears: a layout re-assigning the same rect (which {Layout::Box} does on
+      # any child mutation) must not.
+      # 
+      # _@param_ `old_rect`
+      def handle_rect_changed: (Rect old_rect) -> void
 
       # Closes the cascade when the strip leaves the focus chain, so tabbing (or
       # clicking) away doesn't strand an open menu.
@@ -7099,7 +7129,7 @@ module Tuile
 
       # The rect's *width* is the only part of it the offset depends on, so this
       # hook is the whole geometry story; {Component#rect=} invalidates for us,
-      # and {#rect=} closes the cascade rather than re-anchoring it.
+      # and {#handle_rect_changed} closes the cascade rather than re-anchoring it.
       def handle_width_changed: () -> void
 
       # Scrolls the minimum needed to show the highlighted segment whole, and is
@@ -14464,6 +14494,14 @@ module Tuile
     # _@param_ `button` — `:left`, `:middle` or `:right`.
     def click: (Integer x, Integer y, ?button: Symbol) -> void
 
+    # The terminal reporting a new size, routed as its own report would be: the
+    # pane takes the whole screen, and every popup is placed again.
+    # 
+    # _@param_ `width`
+    # 
+    # _@param_ `height`
+    def resize_terminal: (Integer width, Integer height) -> void
+
     # Half a {#click}, for a spec about the grab — what is claimed, what the
     # drag does, what the release lands on.
     # 
@@ -14576,6 +14614,7 @@ module Tuile
   class ScreenPane < Tuile::Component
     BG_STATES: ::Array[Symbol]
     BG_INHERIT: Symbol
+    PLACING: Symbol
 
     def initialize: () -> void
 
@@ -14751,6 +14790,9 @@ module Tuile
     # 
     # _@param_ `child`
     def handle_child_removed: (Component child) -> void
+
+    # The pane's rect is the screen's to assign, since no parent's pass could.
+    def placer: () -> Screen
 
     # _@param_ `popup`
     def place: (Component::Overlay popup) -> void

@@ -25,7 +25,7 @@ module Tuile
     end
 
     context "focused=" do
-      before { screen.content = Component::Layout.new }
+      before { screen.content = Component::Layout::Absolute.new }
 
       def add_window
         w = Component::Window.new
@@ -79,7 +79,7 @@ module Tuile
       end
 
       it "marks all ancestor layouts active when focusing a nested window" do
-        nested_layout = Component::Layout.new
+        nested_layout = Component::Layout::Absolute.new
         screen.content.add(nested_layout)
         w = Component::Window.new
         nested_layout.add(w)
@@ -89,8 +89,8 @@ module Tuile
       end
 
       it "deactivates ancestor layouts when focus moves to a different branch" do
-        layout1 = Component::Layout.new
-        layout2 = Component::Layout.new
+        layout1 = Component::Layout::Absolute.new
+        layout2 = Component::Layout::Absolute.new
         screen.content.add(layout1)
         screen.content.add(layout2)
         w1 = Component::Window.new
@@ -113,7 +113,7 @@ module Tuile
         # A field seven rows down a container that records what it is asked to
         # show, so an assertion reads the converted rect rather than `(0, 0)`.
         def recorded_field
-          layout = Class.new(Component::Layout) do
+          layout = Class.new(Component::Layout::Absolute) do
             attr_reader :requests
 
             def initialize
@@ -129,7 +129,7 @@ module Tuile
           screen.content = layout
           field = Component::TextField.new
           layout.add(field)
-          field.rect = Rect.new(0, 7, 10, 1)
+          place(field, Rect.new(0, 7, 10, 1))
           [layout, field]
         end
 
@@ -190,11 +190,11 @@ module Tuile
         end
 
         def field_at(rect)
-          layout = Component::Layout.new
+          layout = Component::Layout::Absolute.new
           screen.content = layout
           field = Component::TextField.new
           layout.add(field)
-          field.rect = rect
+          place(field, rect)
           field
         end
 
@@ -215,7 +215,7 @@ module Tuile
       end
 
       it "delivers a key to the focused window nested under layouts" do
-        nested_layout = Component::Layout.new
+        nested_layout = Component::Layout::Absolute.new
         screen.content.add(nested_layout)
         w = Component::Window.new
         nested_layout.add(w)
@@ -318,7 +318,7 @@ module Tuile
       end
 
       it "fires on the component that lost focus, before the new one is focused" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         log = []
         w1 = watch(Component::Window.new, log, :w1)
@@ -377,7 +377,7 @@ module Tuile
       end
 
       it "honors a handler that moves focus itself: that assignment wins, and this one stops" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         log = []
         w1 = Component::Window.new
@@ -401,7 +401,7 @@ module Tuile
           def handle_focus = (@log ||= []) << :focus
           def handle_blur = (@log ||= []) << :blur
         end
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         w = klass.new
         layout.add([w, Component::Window.new])
@@ -436,7 +436,7 @@ module Tuile
 
       it "invalidates the whole tree so the next repaint uses the new colors" do
         w = Component::Window.new
-        screen.content = Component::Layout.new
+        screen.content = Component::Layout::Absolute.new
         screen.content.add(w)
         screen.invalidated_clear
         screen.theme = Theme::LIGHT
@@ -451,7 +451,7 @@ module Tuile
       it "invalidates a Theme::Ref-backed background so it re-resolves" do
         screen.theme = Theme::DARK.with(custom: { panel_bg: Color.palette(52) })
         w = Component::Window.new
-        screen.content = Component::Layout.new
+        screen.content = Component::Layout::Absolute.new
         screen.content.add(w)
         w.bg_color = Theme.ref(:panel_bg)
         screen.invalidated_clear
@@ -470,7 +470,7 @@ module Tuile
       it "fires handle_theme_changed pre-order across the attached tree, popups included" do
         order = []
         listener = ->(c) { -> { order << c } }
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         label = Component::Label.new
         layout.add(label)
         screen.content = layout
@@ -483,7 +483,7 @@ module Tuile
       end
 
       it "fires an override however narrow its visibility, and keeps walking past it" do
-        narrowed = Class.new(Component::Layout) do
+        narrowed = Class.new(Component::Layout::Absolute) do
           attr_reader :hook_calls
 
           protected
@@ -506,7 +506,7 @@ module Tuile
 
       it "the hook observes the new theme" do
         seen = nil
-        screen.content = Component::Layout.new
+        screen.content = Component::Layout::Absolute.new
         screen.content.on_theme_changed { seen = screen.theme }
         screen.theme = Theme::LIGHT
         assert_equal Theme::LIGHT, seen
@@ -514,7 +514,7 @@ module Tuile
 
       it "does not fire handle_theme_changed when assigned an equal theme" do
         fired = false
-        screen.content = Component::Layout.new
+        screen.content = Component::Layout::Absolute.new
         screen.content.on_theme_changed { fired = true }
         screen.theme = Theme::DARK
         refute fired
@@ -523,7 +523,7 @@ module Tuile
       it "a hook rebuilding content mid-traversal is safe and the rebuilt text repaints" do
         label = Component::Label.new
         label.text = StyledString.styled("old", fg: Theme::DARK.error_color)
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         layout.add(label)
         screen.content = layout
         label.on_theme_changed { label.text = StyledString.styled("new", fg: screen.theme.error_color) }
@@ -672,25 +672,25 @@ module Tuile
 
     context "content=" do
       it "sets the content" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         assert_equal layout, screen.content
       end
 
       it "positions content to fill the whole screen — the pane reserves no row" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         assert_equal Rect.new(0, 0, 160, 50), layout.rect
       end
 
       it "deactivates all components in the old content tree when content changes" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         w = Component::Window.new
         screen.content = layout
         layout.add(w)
         screen.focused = w
         assert w.active?
-        screen.content = Component::Layout.new
+        screen.content = Component::Layout::Absolute.new
         assert !w.active?
       end
     end
@@ -698,7 +698,7 @@ module Tuile
     context "invalidate" do
       it "marks a component as invalidated" do
         w = Component::Window.new
-        screen.content = Component::Layout.new
+        screen.content = Component::Layout::Absolute.new
         screen.content.add(w)
         screen.invalidated_clear
         screen.invalidate(w)
@@ -719,7 +719,7 @@ module Tuile
       # drop it in exactly the case it is for: `repaint` bails on
       # `return unless did_paint`, and nothing here was invalidated.
       it "rings even when nothing was invalidated" do
-        screen.content = Component::Layout.new
+        screen.content = Component::Layout::Absolute.new
         screen.invalidated_clear
         screen.clear
 
@@ -754,7 +754,7 @@ module Tuile
       let(:label) do
         Component::Label.new("hello").tap do |l|
           screen.content = l
-          l.rect = Rect.new(1, 1, 8, 1)
+          place(l, Rect.new(1, 1, 8, 1))
         end
       end
 
@@ -796,12 +796,12 @@ module Tuile
       end
 
       it "canvas_for moves the clip into backend coordinates" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         inner = Component::Label.new("hello")
         screen.content = pane
         pane.add(inner)
-        pane.rect = Rect.new(2, 3, 20, 5)
-        inner.rect = Rect.new(1, 1, 8, 1)
+        place(pane, Rect.new(2, 3, 20, 5))
+        place(inner, Rect.new(1, 1, 8, 1))
 
         # (0, 0) of the pane is screen (2, 3); the label's own origin is one
         # further in, and the clip lands where its cells do.
@@ -831,12 +831,12 @@ module Tuile
     # part of this, which is what makes the bound one it cannot widen (`D_clip`).
     context "#clip_for" do
       it "bounds a component by its own rect, with no ancestor cutting anything" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 40, 5)
-        child.rect = Rect.new(0, 0, 3, 1)
+        place(pane, Rect.new(0, 0, 40, 5))
+        place(child, Rect.new(0, 0, 3, 1))
 
         assert_equal child.local_rect, screen.clip_for(child)
       end
@@ -844,17 +844,17 @@ module Tuile
       # The fast path answers `local_rect` outright when nothing cuts, so what it
       # owes is never missing a cut. These are its edges.
       it "answers local_rect when every ancestor contains its child" do
-        node = Component::Layout.new
+        node = Component::Layout::Absolute.new
         screen.content = node
-        node.rect = Rect.new(0, 0, 40, 20)
+        place(node, Rect.new(0, 0, 40, 20))
         w = 40
         h = 20
         5.times do
-          child = Component::Layout.new
+          child = Component::Layout::Absolute.new
           node.add(child)
           w -= 2
           h -= 2
-          child.rect = Rect.new(1, 1, w, h)
+          place(child, Rect.new(1, 1, w, h))
           node = child
         end
 
@@ -862,73 +862,73 @@ module Tuile
       end
 
       it "counts a child exactly filling its parent as contained, and one column more as cut" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 10, 4)
+        place(pane, Rect.new(0, 0, 10, 4))
 
-        child.rect = Rect.new(0, 0, 10, 4)
+        place(child, Rect.new(0, 0, 10, 4))
         assert_equal child.local_rect, screen.clip_for(child)
 
-        child.rect = Rect.new(0, 0, 11, 4)
+        place(child, Rect.new(0, 0, 11, 4))
         assert_equal Rect.new(0, 0, 10, 4), screen.clip_for(child)
       end
 
       it "counts an offset child running past the right edge as cut" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 10, 4)
-        child.rect = Rect.new(1, 0, 10, 4)
+        place(pane, Rect.new(0, 0, 10, 4))
+        place(child, Rect.new(1, 0, 10, 4))
 
         assert_equal Rect.new(0, 0, 9, 4), screen.clip_for(child)
       end
 
       it "counts a child above its parent's top edge as cut" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 10, 4)
-        child.rect = Rect.new(0, -1, 10, 4)
+        place(pane, Rect.new(0, 0, 10, 4))
+        place(child, Rect.new(0, -1, 10, 4))
 
         assert_equal Rect.new(0, 1, 10, 3), screen.clip_for(child)
       end
 
       it "answers an empty rect for a component with none, rather than taking the fast path out" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 10, 4)
-        child.rect = Rect.new(0, 0, 0, 0)
+        place(pane, Rect.new(0, 0, 10, 4))
+        place(child, Rect.new(0, 0, 0, 0))
 
         assert_predicate screen.clip_for(child), :empty?
       end
 
       it "reaches a child as the ancestor's box, in the child's own coordinates" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(10, 5, 6, 2)
-        child.rect = Rect.new(0, -1, 6, 4)
+        place(pane, Rect.new(10, 5, 6, 2))
+        place(child, Rect.new(0, -1, 6, 4))
 
         assert_equal Rect.new(0, 1, 6, 2), screen.clip_for(child)
       end
 
       it "intersects the whole ancestor chain" do
-        outer = Component::Layout.new
-        inner = Component::Layout.new
+        outer = Component::Layout::Absolute.new
+        inner = Component::Layout::Absolute.new
         leaf = Component.new
         screen.content = outer
         outer.add(inner)
         inner.add(leaf)
-        outer.rect = Rect.new(0, 0, 10, 10)
-        inner.rect = Rect.new(1, 1, 12, 9)
-        leaf.rect = Rect.new(0, 0, 12, 9)
+        place(outer, Rect.new(0, 0, 10, 10))
+        place(inner, Rect.new(1, 1, 12, 9))
+        place(leaf, Rect.new(0, 0, 12, 9))
 
         # outer's box lands at (-1, -1, 10, 10) in the leaf's space; inner's box
         # and the leaf's own rect are already there. The overlap survives.
@@ -939,16 +939,16 @@ module Tuile
       # empty box: the component's own rect is folded in, so the intersection
       # collapses. That is what makes "can this show anything?" one predicate.
       it "hands a scrolled-away child an empty clip, on either axis" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         screen.content = pane
-        pane.rect = Rect.new(0, 0, 6, 2)
+        place(pane, Rect.new(0, 0, 6, 2))
 
         { "above" => Rect.new(0, -9, 6, 4),
           "below" => Rect.new(0, 40, 6, 4),
           "to the right" => Rect.new(20, 0, 6, 4) }.each do |where, rect|
           child = Component.new
           pane.add(child)
-          child.rect = rect
+          place(child, rect)
 
           assert_predicate screen.clip_for(child), :empty?, "scrolled #{where}"
         end
@@ -956,12 +956,12 @@ module Tuile
 
       # The boundary beside it: one row still showing is an ordinary clip.
       it "hands a partly scrolled child the rows that remain" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 6, 2)
-        child.rect = Rect.new(0, -3, 6, 4)
+        place(pane, Rect.new(0, 0, 6, 2))
+        place(child, Rect.new(0, -3, 6, 4))
 
         assert_equal Rect.new(0, 3, 6, 1), screen.clip_for(child)
       end
@@ -969,28 +969,28 @@ module Tuile
       # An empty one means something else: a chain allowing no cell at all, so
       # nothing may be painted.
       it "hands down an empty rect when an ancestor has none to give" do
-        outer = Component::Layout.new
-        collapsed = Component::Layout.new
+        outer = Component::Layout::Absolute.new
+        collapsed = Component::Layout::Absolute.new
         leaf = Component.new
         screen.content = outer
         outer.add(collapsed)
         collapsed.add(leaf)
-        collapsed.rect = Rect.new(0, 0, 0, 0) # a collapsed subtree paints nothing
-        leaf.rect = Rect.new(0, 0, 4, 4)
+        place(collapsed, Rect.new(0, 0, 0, 0)) # a collapsed subtree paints nothing
+        place(leaf, Rect.new(0, 0, 4, 4))
 
         assert_predicate screen.clip_for(leaf), :empty?
       end
 
       it "follows the ancestor rather than being cached, so a scroll shows on the next paint" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 6, 2)
-        child.rect = Rect.new(0, 0, 6, 4)
+        place(pane, Rect.new(0, 0, 6, 2))
+        place(child, Rect.new(0, 0, 6, 4))
         assert_equal Rect.new(0, 0, 6, 2), screen.clip_for(child)
 
-        child.rect = Rect.new(0, -2, 6, 4)
+        place(child, Rect.new(0, -2, 6, 4))
         assert_equal Rect.new(0, 2, 6, 2), screen.clip_for(child)
       end
 
@@ -998,9 +998,9 @@ module Tuile
       # dropdown, since a popup hangs off the pane and shares no ancestor with
       # whatever opened it. Verified rather than assumed.
       it "does not reach a popup opened from inside a small subtree" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         screen.content = pane
-        pane.rect = Rect.new(0, 0, 4, 1)
+        place(pane, Rect.new(0, 0, 4, 1))
         popup = Component::Popup.new(content: Component::Label.new("hi"))
         popup.open
         content = popup.content
@@ -1011,7 +1011,7 @@ module Tuile
 
     context "repaint" do
       before do
-        screen.content = Component::Layout.new
+        screen.content = Component::Layout::Absolute.new
         screen.invalidated_clear
       end
 
@@ -1022,7 +1022,7 @@ module Tuile
         # A bare Layout places nothing, so without this the window keeps the empty
         # rect it was constructed with — and the drain filter then (correctly)
         # drops its content as sitting under an empty-rect ancestor.
-        w.rect = Rect.new(0, 0, 40, 10)
+        place(w, Rect.new(0, 0, 40, 10))
         screen.invalidated_clear
         w
       end
@@ -1047,21 +1047,22 @@ module Tuile
         w = add_window
         repainted = false
         w.content.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
-        w.rect = Rect.new(0, 0, 0, 0)
+        place(w, Rect.new(0, 0, 0, 0))
         screen.invalidate(w.content)
         screen.repaint
         refute repainted
       end
 
       it "skips it however stale its own rect is, so a forgetful container is inert" do
-        w = add_window
-        # A container that fails to zero its children on an empty rect of its own
-        # — the fault the filter exists to make harmless (`D_empty_ancestor`).
-        stale = w.content.rect
-        w.rect = Rect.new(0, 0, 0, 0)
-        w.content.rect = stale
+        # An Absolute places its children whatever its own size, so under an
+        # empty one they keep a non-empty rect — the stale geometry the filter
+        # exists to make harmless (`D_empty_ancestor`).
+        holder = Component::Layout::Absolute.new
+        child = Component::List.new
+        holder.add(child, Rect.new(0, 0, 10, 5))
+        mount_at(holder, Rect.new(0, 0, 0, 0))
         repainted = false
-        w.content.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
+        child.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         screen.needs_full_repaint
         screen.repaint
         refute repainted
@@ -1242,12 +1243,12 @@ module Tuile
       # no clip can reach: a caret scrolled out of its viewport has to be
       # hidden rather than parked where nobody can see it (`D_clip`).
       it "hides the hardware cursor when a clip cuts the caret away" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         screen.content = pane
         field = Component::TextField.new
         pane.add(field)
-        pane.rect = Rect.new(0, 0, 20, 1)
-        field.rect = Rect.new(0, 2, 10, 1) # below the one row the pane has to give
+        place(pane, Rect.new(0, 0, 20, 1))
+        place(field, Rect.new(0, 2, 10, 1)) # below the one row the pane has to give
         screen.focused = field
         screen.prints.clear
         screen.invalidate(field)
@@ -1258,12 +1259,12 @@ module Tuile
       end
 
       it "keeps the cursor when the clip contains it" do
-        pane = Component::Layout.new
+        pane = Component::Layout::Absolute.new
         screen.content = pane
         field = Component::TextField.new
         pane.add(field)
-        pane.rect = Rect.new(0, 0, 20, 5)
-        field.rect = Rect.new(0, 2, 10, 1)
+        place(pane, Rect.new(0, 0, 20, 5))
+        place(field, Rect.new(0, 2, 10, 1))
         screen.focused = field
 
         assert_equal Point.new(0, 2), screen.cursor_position
@@ -1326,7 +1327,7 @@ module Tuile
       end
 
       it "delegates to content when no popup is open" do
-        screen.content = Component::Layout.new
+        screen.content = Component::Layout::Absolute.new
         screen.focused = screen.content
         handled = false
         screen.content.define_singleton_method(:handle_key?) do |_|
@@ -1338,7 +1339,7 @@ module Tuile
       end
 
       it "TAB cycles focus forward instead of dispatching to content" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         t1 = Component::TextField.new
         t2 = Component::TextField.new
@@ -1353,7 +1354,7 @@ module Tuile
       end
 
       it "SHIFT_TAB cycles focus backward instead of dispatching to content" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         t1 = Component::TextField.new
         t2 = Component::TextField.new
@@ -1368,11 +1369,11 @@ module Tuile
         # The cursor-owner suppression in Component#handle_key? would
         # otherwise swallow printable keys; Screen must intercept TAB before
         # the dispatch reaches the field.
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         t1 = Component::TextField.new
         t2 = Component::TextField.new
-        t1.rect = Rect.new(0, 0, 20, 1)
+        place(t1, Rect.new(0, 0, 20, 1))
         layout.add([t1, t2])
         screen.focused = t1
         refute_nil screen.cursor_position
@@ -1385,7 +1386,7 @@ module Tuile
 
     context "#handle_mouse" do
       it "delegates to content when no popups are open" do
-        screen.content = Component::Layout.new
+        screen.content = Component::Layout::Absolute.new
         received = false
         screen.content.define_singleton_method(:handle_mouse_down?) { |_| received = true }
         screen.click(0, 0)
@@ -1393,7 +1394,7 @@ module Tuile
       end
 
       it "does not delegate to content when popups are open and click is outside them" do
-        screen.content = Component::Layout.new
+        screen.content = Component::Layout::Absolute.new
         received = false
         screen.content.define_singleton_method(:handle_mouse_down?) { |_| received = true }
         screen.add_popup(Component::Popup.new)
@@ -1418,7 +1419,7 @@ module Tuile
 
       context "remove_popup focus repair" do
         it "falls back to the now-topmost popup when the closed popup held focus" do
-          screen.content = Component::Layout.new
+          screen.content = Component::Layout::Absolute.new
           screen.content.add(Component::Window.new)
           bottom = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["a"] })
           screen.add_popup(bottom)
@@ -1432,7 +1433,7 @@ module Tuile
         end
 
         it "falls back to content when the only popup closes and held focus" do
-          layout = Component::Layout.new
+          layout = Component::Layout::Absolute.new
           screen.content = layout
           w = Component::Window.new
           w.content = Component::List.new
@@ -1456,7 +1457,7 @@ module Tuile
         end
 
         it "leaves focus untouched when the closed popup did not own focus" do
-          layout = Component::Layout.new
+          layout = Component::Layout::Absolute.new
           screen.content = layout
           w = Component::Window.new
           layout.add(w)
@@ -1471,7 +1472,7 @@ module Tuile
         end
 
         it "leaves focus untouched when a non-topmost popup closes (focus is in the topmost)" do
-          screen.content = Component::Layout.new
+          screen.content = Component::Layout::Absolute.new
           screen.content.add(Component::Window.new)
           bottom = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["a"] })
           screen.add_popup(bottom)
@@ -1488,7 +1489,7 @@ module Tuile
           # Reproduces the bug where opening a popup from window B (not the first
           # child) and pressing ESC moved focus to window A (the first child)
           # because the layout cascade picks the first focusable child.
-          layout = Component::Layout.new
+          layout = Component::Layout::Absolute.new
           screen.content = layout
           first = Component::Window.new
           first.content = Component::List.new
@@ -1513,7 +1514,7 @@ module Tuile
           # If we close bottom (focus is in top, so focus is untouched), then
           # close top, focus should still climb back to the original owner —
           # not get stranded on a detached component and fall through to content.
-          layout = Component::Layout.new
+          layout = Component::Layout::Absolute.new
           screen.content = layout
           first = Component::Window.new
           first.content = Component::List.new
@@ -1543,7 +1544,7 @@ module Tuile
           # If the prior focus has had its focusable? flipped off (or became a
           # non-focusable component since it was snapshotted), don't restore
           # to it — fall through to content's first tab stop.
-          layout = Component::Layout.new
+          layout = Component::Layout::Absolute.new
           screen.content = layout
           tab_stop = Component::List.new
           flippable = Class.new(Component) do
@@ -1576,7 +1577,7 @@ module Tuile
         end
 
         before do
-          screen.content = Component::Layout.new
+          screen.content = Component::Layout::Absolute.new
           screen.content.add(Component::Window.new)
         end
 
@@ -1628,7 +1629,7 @@ module Tuile
 
     context "focus_next / focus_previous" do
       it "advances to the first tab stop when nothing is focused yet" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         t1 = Component::TextField.new
         t2 = Component::TextField.new
@@ -1640,7 +1641,7 @@ module Tuile
       end
 
       it "wraps from the last tab stop back to the first" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         t1 = Component::TextField.new
         t2 = Component::TextField.new
@@ -1652,7 +1653,7 @@ module Tuile
       end
 
       it "advances backwards with focus_previous, wrapping from first to last" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         t1 = Component::TextField.new
         t2 = Component::TextField.new
@@ -1665,7 +1666,7 @@ module Tuile
 
       it "from no-tab-stop focus, Tab goes to first; Shift+Tab to last" do
         # Focus parked on a Window (focusable, not a tab_stop).
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         bare_window = Component::Window.new
         t1 = Component::TextField.new
@@ -1684,7 +1685,7 @@ module Tuile
       end
 
       it "is a no-op (returns false) when there are no tab stops" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         bare_window = Component::Window.new
         layout.add(bare_window)
@@ -1699,13 +1700,13 @@ module Tuile
       end
 
       it "confines cycling to the topmost popup when one is open" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         outer = Component::TextField.new
         layout.add(outer)
         inner1 = Component::TextField.new
         inner2 = Component::TextField.new
-        popup_layout = Component::Layout.new
+        popup_layout = Component::Layout::Absolute.new
         popup_layout.add([inner1, inner2])
         popup = Component::Popup.new(content: popup_layout)
         screen.add_popup(popup)
@@ -1738,10 +1739,10 @@ module Tuile
         # The registry sits above the component tree: nothing a focused widget
         # does suppresses it. That's its whole point — and why EDITING_KEYS are
         # refused at registration instead.
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         field = Component::TextField.new
-        field.rect = Rect.new(0, 0, 20, 1)
+        place(field, Rect.new(0, 0, 20, 1))
         layout.add(field)
         screen.focused = field
         refute_nil screen.cursor_position
@@ -1873,7 +1874,7 @@ module Tuile
       end
 
       it "the shortcut's block runs on the event-loop thread (mutating UI works)" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         screen.register_global_shortcut(Keys::CTRL_L) do
           screen.add_popup(Component::Popup.new)
@@ -2015,7 +2016,7 @@ module Tuile
       it "refuses a real mutator once closed" do
         screen.close
 
-        assert_raises(Tuile::Error) { screen.content = Component::Layout.new }
+        assert_raises(Tuile::Error) { screen.content = Component::Layout::Absolute.new }
       end
 
       it "close is idempotent" do
@@ -2145,7 +2146,7 @@ module Tuile
     context "#paste (FakeScreen's door onto #handle_paste)" do
       def field
         f = Component::TextField.new
-        f.rect = Rect.new(0, 0, 20, 1)
+        place(f, Rect.new(0, 0, 20, 1))
         f
       end
 
@@ -2168,7 +2169,7 @@ module Tuile
       it "the event loop turns a PasteEvent into handle_paste" do
         with_real_screen do |real|
           f = Component::TextField.new
-          f.rect = Rect.new(0, 0, 20, 1)
+          place(f, Rect.new(0, 0, 20, 1))
           real.content = f
           real.focused = f
           t = Thread.new { real.send(:event_loop) }

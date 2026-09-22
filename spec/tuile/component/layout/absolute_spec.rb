@@ -20,18 +20,17 @@ module Tuile
       layout.add(Component.new, Rect.new(1, 1, 8, 2))
       assert layout.rect.empty?
       assert_equal [Rect.new(1, 1, 8, 2)], rects(layout)
-      layout.rect = Rect.new(0, 0, 40, 20)
+      place(layout, Rect.new(0, 0, 40, 20))
       assert_equal [Rect.new(1, 1, 8, 2)], rects(layout)
     end
 
-    it "puts the rect back if the child's is written behind its back" do
+    it "leaves a child added without a rect empty until it is constrained" do
       layout = Component::Layout::Absolute.new
       child = Component.new
-      layout.add(child, Rect.new(0, 0, 10, 1))
-      settle(layout)
-      child.rect = Rect.new(5, 5, 1, 1)
-      layout.rect = Rect.new(0, 0, 40, 20)
-      assert_equal Rect.new(0, 0, 10, 1), settle(layout).children.first.rect
+      layout.add(child)
+      assert settle(layout).children.first.rect.empty?
+      layout.constrain(child, Rect.new(0, 0, 10, 1))
+      assert_equal [Rect.new(0, 0, 10, 1)], rects(layout)
     end
 
     describe "#constrain" do

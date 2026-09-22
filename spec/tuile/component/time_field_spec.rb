@@ -12,7 +12,7 @@ module Tuile
     def field(width: 20)
       f = Component::TimeField.new
       Screen.instance.content = f
-      f.rect = Rect.new(0, 0, width, 1)
+      place(f, Rect.new(0, 0, width, 1))
       Screen.instance.focused = f
       f
     end
@@ -535,11 +535,11 @@ module Tuile
       it "consumes PageUp/PageDown, so a scope root binding them never sees them" do
         f = Component::TimeField.new
         seen = []
-        Screen.instance.content = Component::Layout.new.tap do |root|
+        Screen.instance.content = Component::Layout::Absolute.new.tap do |root|
           root.add(f)
           root.define_singleton_method(:handle_key?) { |k| seen << k }
         end
-        f.rect = Rect.new(0, 0, 20, 1)
+        place(f, Rect.new(0, 0, 20, 1))
         Screen.instance.focused = f
         f.value = at(13, 45)
         key(Keys::PAGE_UP)

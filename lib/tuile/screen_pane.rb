@@ -312,6 +312,10 @@ module Tuile
 
     private
 
+    # The pane's rect is the screen's to assign, since no parent's pass could.
+    # @return [Screen]
+    def placer = screen
+
     # @param popup [Component::Overlay]
     # @return [void]
     def place(popup)

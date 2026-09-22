@@ -171,7 +171,7 @@ module Tuile
         holder = Component::Layout::Absolute.new
         holder.add(component, rect)
         Screen.instance.content = holder
-      when ScreenPane then component.rect = rect # an open popup places itself
+      when ScreenPane then component.placement = Component::Overlay::At[rect]
       else component.parent.constrain(component, rect)
       end
       Screen.instance.flush_layout
@@ -354,7 +354,7 @@ module Tuile
           before = descendant_rects(component)
           skip "no children to place" if before.empty?
 
-          component.__send__(:relayout)
+          component.__send__(:perform_relayout)
           Screen.instance.flush_layout
           assert_equal before, descendant_rects(component),
                        "#{klass} moved its children on a second pass over the same state"

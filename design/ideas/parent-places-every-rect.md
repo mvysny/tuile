@@ -251,7 +251,12 @@ graduate without it. Nothing here depends on the diagnostic.
    the request ("place me again"), `declared_size_in` is the size a placement reads, and
    `Popup#center` is gone. Left for graduation: the older `D_` entries that describe
    `reposition` as it was (`D_overlay`, `D_notification`, `D_confirm_window` history).
-3. `Q_rect_writer`.
+3. `Q_rect_writer`. **Done (2026-09-22):** `rect=` is protected and `check_placer` raises unless
+   the parent's `perform_relayout` is running (a thread-local; `Screen` places the pane). The three
+   `rect=` overrides became `handle_rect_changed(old_rect)`, because Ruby lets a `protected`
+   override be called only from its own class, which the parent is not. `Absolute#add`'s rect
+   became optional, keeping the child's current one; the spec suite goes through a `place` helper,
+   and `FakeScreen#resize_terminal` replaced assigning the pane a rect.
 
 These are one breaking change, built from `master`. The parked `strict-layout-diagnostic` branch is
 not a prerequisite; its fate is `design/ideas/stale-rect-diagnostic.md`'s. On graduation the principle needs a `D_` entry of its own, and

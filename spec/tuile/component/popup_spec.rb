@@ -164,7 +164,7 @@ module Tuile
 
       # Simulate a SIGWINCH-driven reposition: shrink the screen, re-lay out.
       Screen.instance.instance_variable_set(:@size, Size.new(100, 30))
-      Screen.instance.pane.rect = Rect.new(0, 0, 100, 30)
+      place(Screen.instance.pane, Rect.new(0, 0, 100, 30))
       # HALF of 100x30 = 50x15; centered at ((100-50)/2, (30-15)/2) = (25, 7).
       assert_equal Rect.new(25, 7, 50, 15), settle(p).rect
     end
@@ -259,16 +259,6 @@ module Tuile
       p.open
       assert p.active?
       assert_equal p, Screen.instance.focused.root.popups.first
-    end
-
-    it "recenters on the next pass, ignoring a caller-assigned top-left" do
-      p = Component::Popup.new(declared_size: Fraction::HALF)
-      p.open
-      p.rect = p.rect.at(Point.new(12, 7))
-
-      p.reposition
-      assert_equal 40, settle(p).rect.left # re-centered, ignoring the manual move
-      assert_equal 12, p.rect.top
     end
   end
 

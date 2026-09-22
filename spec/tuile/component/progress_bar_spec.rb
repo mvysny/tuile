@@ -7,14 +7,14 @@ module Tuile
 
     def bar(width: 20, **kwargs)
       b = Component::ProgressBar.new(**kwargs)
-      b.rect = Rect.new(0, 0, width, 1)
+      place(b, Rect.new(0, 0, width, 1))
       b
     end
 
     # Attaches the bar, so invalidation and the ticker — both gated on
     # `attached?` — actually do something.
     def attached_bar(**kwargs)
-      layout = Component::Layout.new
+      layout = Component::Layout::Absolute.new
       Screen.instance.content = layout
       bar(**kwargs).tap { layout.add(_1) }
     end
@@ -189,7 +189,7 @@ module Tuile
 
       it "paints the first row only and clears the rest of a taller rect" do
         b = attached_bar
-        b.rect = Rect.new(0, 0, 4, 3)
+        place(b, Rect.new(0, 0, 4, 3))
         b.value = 1.0
         repaint(b)
         assert_equal ["████", "    ", "    "], Screen.instance.buffer.region_text(b.absolute_rect)
@@ -198,7 +198,7 @@ module Tuile
       it "paints 0- and 1-column rects without raising" do
         b = bar(width: 0)
         repaint(b)
-        b.rect = Rect.new(0, 0, 1, 1)
+        place(b, Rect.new(0, 0, 1, 1))
         b.value = 0.5
         assert_equal "░", row(b)
         b.value = 1.0
@@ -222,7 +222,7 @@ module Tuile
       end
 
       it "shows an ancestor's bg_color behind the track" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         layout.bg_color = Color::BLUE
         Screen.instance.content = layout
         b = bar.tap { layout.add(_1) }
@@ -250,7 +250,7 @@ module Tuile
 
     context "indeterminate" do
       it "starts no ticker while detached, and starts one on attach" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         b = bar(indeterminate: true)
         assert_empty queue.tickers
@@ -284,7 +284,7 @@ module Tuile
       end
 
       it "cancels the ticker on detach, and starts a fresh one on re-attach" do
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         b = bar(indeterminate: true).tap { layout.add(_1) }
 
@@ -318,7 +318,7 @@ module Tuile
       it "never blanks the bar, at any width, across a whole cycle" do
         b = attached_bar(indeterminate: true)
         (1..9).each do |width|
-          b.rect = Rect.new(0, 0, width, 1)
+          place(b, Rect.new(0, 0, width, 1))
           period = width + [width / 5, 1].max - 1
           period.times do
             painted = row(b)

@@ -205,19 +205,18 @@ module Tuile
         raise ArgumentError, "#{self.class} has no default placement — open(Overlay::At[rect])"
       end
 
-      # Reassigns the overlay's rect, escalating to a full scene repaint when an
-      # open overlay shrinks or moves so its new rect no longer covers the cells
-      # it previously painted. An overlay overdraws the scene without clipping
-      # and nothing clears underneath it, so {Screen#repaint}'s overlay-only fast
-      # path would repaint into the new rect and leave the vacated cells showing
-      # stale content. When the new rect fully covers the old one (the overlay
-      # only grew), the fast path is correct and the full repaint is skipped.
-      # @param new_rect [Rect]
+      # Escalates to a full scene repaint when an open overlay shrinks or moves
+      # so its new rect no longer covers the cells it previously painted. An
+      # overlay overdraws the scene without clipping and nothing clears
+      # underneath it, so {Screen#repaint}'s overlay-only fast path would repaint
+      # into the new rect and leave the vacated cells showing stale content.
+      # When the new rect fully covers the old one (the overlay only grew), the
+      # fast path is correct and the full repaint is skipped.
+      # @param old_rect [Rect]
       # @return [void]
-      def rect=(new_rect)
-        old_rect = rect
+      def handle_rect_changed(old_rect)
         super
-        screen.needs_full_repaint if open? && !new_rect.contains_rect?(old_rect)
+        screen.needs_full_repaint if open? && !rect.contains_rect?(old_rect)
       end
 
       # Mounts this overlay on the {Screen} at `placement`; the pane assigns the

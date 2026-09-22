@@ -312,10 +312,12 @@ module Tuile
 
     it "renders text into its rect" do
       label = Component::Label.new
-      label.rect = Rect.new(0, 0, 5, 1)
       label.text = "hi"
-      label.repaint
-      assert_equal ["hi   "], Screen.instance.buffer.region_text(label.rect)
+      holder = Component::Layout::Absolute.new
+      holder.add(label, Rect.new(0, 0, 5, 1))   # a parent places it; nothing else may
+      Screen.instance.content = holder
+      Screen.instance.repaint
+      assert_equal ["hi   "], Screen.instance.buffer.region_text(label.absolute_rect)
     end
   end
 end

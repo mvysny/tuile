@@ -95,7 +95,7 @@ module Tuile
       # an empty pane rect is an *ancestor* empty rect, and {#repaint}'s drain
       # filter would take the whole tree with it.
       @pane = ScreenPane.new
-      @pane.rect = Rect.new(0, 0, @size.width, @size.height)
+      size_pane
       @mouse_router = Mouse::Router.new(self)
       # App-level keyboard shortcuts dispatched by {#handle_key?} before keys
       # reach the pane. See {#register_global_shortcut}.
@@ -990,6 +990,13 @@ module Tuile
 
     private
 
+    # Gives the pane the whole screen — the one rect no parent's pass assigns,
+    # so the screen places it itself.
+    # @return [void]
+    def size_pane
+      Component.__send__(:placing, self) { @pane.__send__(:rect=, Rect.new(0, 0, @size.width, @size.height)) }
+    end
+
     # Whether anything on `component`'s ancestor chain actually cuts it — the
     # test that lets {#clip_for} answer {Component#local_rect} outright.
     #
@@ -1184,7 +1191,7 @@ module Tuile
       check_locked
       @buffer.resize(size) unless @buffer.size == size
       needs_full_repaint
-      @pane.rect = Rect.new(0, 0, size.width, size.height)
+      size_pane
       repaint
     end
 

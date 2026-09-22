@@ -13,7 +13,7 @@ module Tuile
     def tabs(width: 40, active: false, captions: %w[Details Payment Shipping])
       strip = Component::Tabs.new
       captions.each { |caption| strip.add_tab(caption) }
-      strip.rect = Rect.new(0, 0, width, 1)
+      place(strip, Rect.new(0, 0, width, 1))
       strip.active = active
       strip
     end
@@ -21,7 +21,7 @@ module Tuile
     # Attaches the strip to the screen, so invalidation and click-to-focus —
     # both gated on `attached?` — actually do something.
     def attached_tabs(**kwargs)
-      layout = Component::Layout.new
+      layout = Component::Layout::Absolute.new
       Screen.instance.content = layout
       tabs(**kwargs).tap { layout.add(_1) }
     end
@@ -289,7 +289,7 @@ module Tuile
 
       it "ignores a click on a row it does not paint" do
         strip = attached_tabs
-        strip.rect = Rect.new(0, 0, 40, 3)
+        place(strip, Rect.new(0, 0, 40, 3))
         Screen.instance.click(11, 2)
         assert_equal 0, strip.selected_index
       end
@@ -366,9 +366,9 @@ module Tuile
         strip = tabs(width: 12)
         strip.selected_index = 2
         assert_equal 18, offset(strip)
-        strip.rect = Rect.new(0, 0, 40, 1)
+        place(strip, Rect.new(0, 0, 40, 1))
         assert_equal 0, offset(strip)
-        strip.rect = Rect.new(0, 0, 12, 1)
+        place(strip, Rect.new(0, 0, 12, 1))
         assert_equal 18, offset(strip)
         strip.tabs.last.remove # the selection lands on "Payment", and the strip is 19 columns
         assert_equal 7, offset(strip)
@@ -422,7 +422,7 @@ module Tuile
 
       it "is empty when there are no tabs" do
         strip = Component::Tabs.new
-        strip.rect = Rect.new(0, 0, 40, 1)
+        place(strip, Rect.new(0, 0, 40, 1))
         assert_equal 0, strip.extent.width
       end
     end
@@ -448,7 +448,7 @@ module Tuile
 
       it "paints an empty strip as blank" do
         strip = Component::Tabs.new
-        strip.rect = Rect.new(0, 0, 4, 1)
+        place(strip, Rect.new(0, 0, 4, 1))
         repaint(strip)
         assert_equal "    ", Screen.instance.buffer.region_text(strip.absolute_rect).join
       end
@@ -497,7 +497,7 @@ module Tuile
         it "keeps the caption's own colors under the strip's styling" do
           strip = Component::Tabs.new
           strip.add_tab(StyledString.styled("Red", fg: :red))
-          strip.rect = Rect.new(0, 0, 10, 1)
+          place(strip, Rect.new(0, 0, 10, 1))
           strip.active = true
           repaint(strip)
           cell = Screen.instance.buffer.cell(1, 0)
@@ -511,7 +511,7 @@ module Tuile
         strip = Component::Tabs.new
         strip.add_tab("日本")
         strip.add_tab("B")
-        strip.rect = Rect.new(0, 0, 20, 1)
+        place(strip, Rect.new(0, 0, 20, 1))
         repaint(strip)
         assert_equal Size.new(10, 1), strip.extent
         assert_equal " 日本 │ B ", Screen.instance.buffer.region_text(strip.absolute_extent_rect).join

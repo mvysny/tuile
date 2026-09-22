@@ -46,10 +46,10 @@ module Tuile
 
     # A layout filling the screen with `child` at (0, 0, 10, 5).
     def content_with(child)
-      layout = Component::Layout.new
+      layout = Component::Layout::Absolute.new
       screen.content = layout
       layout.add(child)
-      child.rect = Rect.new(0, 0, 10, 5)
+      place(child, Rect.new(0, 0, 10, 5))
       layout
     end
 
@@ -58,9 +58,9 @@ module Tuile
         inner = recorder
         outer = recorder
         content_with(outer)
-        outer.rect = Rect.new(0, 0, 20, 10)
+        place(outer, Rect.new(0, 0, 20, 10))
+        place(inner, Rect.new(2, 2, 5, 5)) # while it has no parent: `outer` places nothing
         outer.send(:add_child, inner)
-        inner.rect = Rect.new(2, 2, 5, 5)
 
         screen.press(3, 3)
         assert_equal %i[down down], [inner.log.first.first, outer.log.first.first]
@@ -70,9 +70,9 @@ module Tuile
         inner = recorder(claims: true)
         outer = recorder
         content_with(outer)
-        outer.rect = Rect.new(0, 0, 20, 10)
+        place(outer, Rect.new(0, 0, 20, 10))
+        place(inner, Rect.new(2, 2, 5, 5)) # while it has no parent: `outer` places nothing
         outer.send(:add_child, inner)
-        inner.rect = Rect.new(2, 2, 5, 5)
 
         screen.press(3, 3)
         assert_equal 1, inner.log.size
@@ -92,12 +92,12 @@ module Tuile
         field.define_singleton_method(:handle_blur) { log << :blur }
         button = Component::Button.new("Save")
         button.on_click { log << :click }
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         layout.add(field)
-        field.rect = Rect.new(0, 0, 10, 1)
+        place(field, Rect.new(0, 0, 10, 1))
         layout.add(button)
-        button.rect = Rect.new(0, 2, 10, 1)
+        place(button, Rect.new(0, 2, 10, 1))
         screen.focused = field
 
         screen.press(0, 2)
@@ -111,7 +111,7 @@ module Tuile
       it "focuses from a press on the dead tail the widget does not paint" do
         button = Component::Button.new("OK")
         content_with(button)
-        button.rect = Rect.new(0, 0, 30, 1)
+        place(button, Rect.new(0, 0, 30, 1))
         fired = 0
         button.on_click { fired += 1 }
 
@@ -232,9 +232,9 @@ module Tuile
         inner = recorder
         outer = recorder(claims: true)
         content_with(outer)
-        outer.rect = Rect.new(0, 0, 20, 10)
+        place(outer, Rect.new(0, 0, 20, 10))
+        place(inner, Rect.new(2, 2, 5, 5)) # while it has no parent: `outer` places nothing
         outer.send(:add_child, inner)
-        inner.rect = Rect.new(2, 2, 5, 5)
 
         screen.scroll(:down, 3, 3)
 
@@ -255,12 +255,12 @@ module Tuile
       it "exits the component the pointer left before entering the one it reached" do
         left = recorder
         right = recorder
-        layout = Component::Layout.new
+        layout = Component::Layout::Absolute.new
         screen.content = layout
         layout.add(left)
-        left.rect = Rect.new(0, 0, 5, 5)
+        place(left, Rect.new(0, 0, 5, 5))
         layout.add(right)
-        right.rect = Rect.new(5, 0, 5, 5)
+        place(right, Rect.new(5, 0, 5, 5))
 
         screen.move(1, 1)
         assert_equal left, screen.hovered
@@ -328,7 +328,7 @@ module Tuile
       it "routes a press to the topmost popup containing it" do
         beneath = recorder(claims: true)
         content_with(beneath)
-        beneath.rect = Rect.new(0, 0, 80, 40)
+        place(beneath, Rect.new(0, 0, 80, 40))
         overlay = Component::Overlay.new(content: list_of("a"))
         overlay.open(Component::Overlay::At[Rect.new(5, 5, 5, 3)])
 

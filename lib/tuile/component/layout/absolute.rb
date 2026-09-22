@@ -27,11 +27,17 @@ module Tuile
           @rects = {}.compare_by_identity
         end
 
-        # @param child [Component]
-        # @param rect [Rect] where the child sits, in this layout's coordinates.
+        # @param child [Component, Enumerable<Component>] one child, or several
+        #   sharing the rect.
+        # @param rect [Rect, nil] where the child sits, in this layout's
+        #   coordinates; `nil` keeps the rect the child already has, which for a
+        #   new component is empty.
         # @raise [TypeError] if `child` is not a {Component} or `rect` not a {Rect}.
         # @return [void]
-        def add(child, rect)
+        def add(child, rect = nil)
+          return child.each { add(_1, rect) } if child.is_a?(Enumerable)
+
+          rect ||= child.rect if child.is_a?(Component)
           validate_rect(rect)
           add_child(child)
           @rects[child] = rect

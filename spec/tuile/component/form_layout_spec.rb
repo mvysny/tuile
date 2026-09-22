@@ -107,7 +107,7 @@ module Tuile
       it "re-runs the pass when the form is resized" do
         item = form.add(username, caption: "Username")
         mount
-        form.rect = Rect.new(2, 1, 30, 12)
+        place(form, Rect.new(2, 1, 30, 12))
         assert_equal Rect.new(0, 0, 30, 3), settle(item).rect
       end
     end
@@ -135,7 +135,7 @@ module Tuile
         form.add(username, caption: "Username")
         form.add(Component::Button.new("Save"))
         mount
-        form.rect = Rect.new(0, 0, 0, 0)
+        place(form, Rect.new(0, 0, 0, 0))
         assert(settle(form).children.all? { _1.rect.empty? })
       end
     end
