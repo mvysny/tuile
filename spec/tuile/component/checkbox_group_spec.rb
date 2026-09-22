@@ -22,13 +22,8 @@ module Tuile
       Screen.instance.send(:handle_key?, code)
     end
 
-    # Rows as painted. The list is what paints them, so repaint *it* — the
-    # group's own repaint only clears the background and re-invalidates it.
-    # Every row carries List's one-column gutter, hence the leading space.
-    def rows(cbg)
-      repaint(cbg.list)
-      Screen.instance.buffer.region_text(cbg.absolute_rect)
-    end
+    # Rows as painted. Every row carries List's one-column gutter, hence the leading space.
+    def rows(cbg) = Testing.paint(cbg).text
 
     it "is a focusable container that is not itself the tab stop" do
       cg = group
@@ -207,9 +202,9 @@ module Tuile
       it "keeps a styled label's spans" do
         cg = group(items: [:err])
         cg.item_label = ->(_) { StyledString.styled("Errors", fg: Color::RED) }
-        repaint(cg.list)
-        assert_equal Color::RED, Screen.instance.buffer.cell(5, 0).style.fg, "the label, past the gutter and glyph"
-        assert_nil Screen.instance.buffer.cell(1, 0).style.fg, "the glyph stays unstyled"
+        painted = Testing.paint(cg.list)
+        assert_equal Color::RED, painted.cell(5, 0).style.fg, "the label, past the gutter and glyph"
+        assert_nil painted.cell(1, 0).style.fg, "the glyph stays unstyled"
       end
 
       it "toggles items of any type, not just strings" do
@@ -267,9 +262,10 @@ module Tuile
       layout.add(cg)
       Testing.place(cg, Rect.new(0, 0, 20, 3))
       layout.bg_color = 52
-      assert_equal [" [ ] Errors         ", " [ ] Warnings       ", " [ ] Info           "], rows(cg)
-      assert_equal Color.new(52), Screen.instance.buffer.cell(19, 0).style.bg, "the row's blank tail is tinted"
-      assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg, "and so is the gutter"
+      painted = Testing.paint(cg)
+      assert_equal [" [ ] Errors         ", " [ ] Warnings       ", " [ ] Info           "], painted.text
+      assert_equal Color.new(52), painted.cell(19, 0).style.bg, "the row's blank tail is tinted"
+      assert_equal Color.new(52), painted.cell(0, 0).style.bg, "and so is the gutter"
     end
 
     it "scrolls rather than growing when the rect is shorter than the items" do

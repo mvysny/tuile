@@ -24,8 +24,7 @@ module Tuile
       "s3cret".each_char { |c| f.handle_key?(c) }
       assert_equal "s3cret", f.text
       assert_equal "s3cret", f.value
-      repaint(f)
-      assert_equal ["******    "], Screen.instance.buffer.region_text(f.absolute_rect)
+      assert_equal ["******    "], Testing.paint(f).text
     end
 
     it "is empty like any text field" do
@@ -36,22 +35,21 @@ module Tuile
     context "repaint" do
       it "paints the mask on the inactive well" do
         f = field(text: "abc")
-        repaint(f)
+        painted = Testing.paint(f)
         assert_equal [Screen.instance.theme.input_bg("***       ")],
-                     Screen.instance.buffer.region_ansi(f.absolute_rect)
+                     painted.region_ansi(f.local_rect)
       end
 
       it "uses the active well when active" do
         f = field(text: "abc", active: true)
-        repaint(f)
+        painted = Testing.paint(f)
         assert_equal [Screen.instance.theme.active_bg("***       ")],
-                     Screen.instance.buffer.region_ansi(f.absolute_rect)
+                     painted.region_ansi(f.local_rect)
       end
 
       it "paints an all-spaces row when empty" do
         f = field
-        repaint(f)
-        assert_equal [" " * 10], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal [" " * 10], Testing.paint(f).text
       end
     end
 
@@ -59,8 +57,7 @@ module Tuile
       it "repaints with the new glyph" do
         f = field(text: "abc")
         f.mask_char = "•"
-        repaint(f)
-        assert_equal ["•••       "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["•••       "], Testing.paint(f).text
       end
 
       it "invalidates on change" do
@@ -98,8 +95,7 @@ module Tuile
       it "accepts a combining cluster that measures one column" do
         f = field(text: "ab")
         f.mask_char = "é"
-        repaint(f)
-        assert_equal ["éé        "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["éé        "], Testing.paint(f).text
       end
     end
 
@@ -107,16 +103,14 @@ module Tuile
       it "shows the plaintext" do
         f = field(text: "s3cret")
         f.revealed = true
-        repaint(f)
-        assert_equal ["s3cret    "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["s3cret    "], Testing.paint(f).text
       end
 
       it "re-masks when set back to false" do
         f = field(text: "s3cret")
         f.revealed = true
         f.revealed = false
-        repaint(f)
-        assert_equal ["******    "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["******    "], Testing.paint(f).text
       end
 
       it "coerces to true/false" do
@@ -171,8 +165,7 @@ module Tuile
 
       it "paints one mask glyph per character, not per grapheme cluster" do
         f = field(width: 10, text: "é") # decomposed "é": 2 chars, 1 column
-        repaint(f)
-        assert_equal ["**        "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["**        "], Testing.paint(f).text
       end
 
       it "holds the one-display-character-per-character contract" do
@@ -187,8 +180,7 @@ module Tuile
         f.caret = 11
         assert_equal 6, f.send(:left_column)
         assert_equal Point.new(5, 0), f.cursor_position
-        repaint(f)
-        assert_equal ["***** "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["***** "], Testing.paint(f).text
       end
     end
 
@@ -199,12 +191,11 @@ module Tuile
       it "removes every mask glyph of one cluster on BACKSPACE" do
         f = field(width: 10, text: "abe\u{0301}", active: true)
         f.caret = 4
-        repaint(f)
-        assert_equal ["****      "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["****      "], Testing.paint(f).text
         f.handle_key?(Keys::BACKSPACE)
-        repaint(f)
+        painted = Testing.paint(f)
         assert_equal "ab", f.text
-        assert_equal ["**        "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["**        "], painted.text
       end
 
       it "keeps the cursor on a mask column after the caret snaps" do
@@ -246,13 +237,12 @@ module Tuile
         f = Component::PasswordField.new
         Testing.place(f, Rect.new(0, 0, 12, 1))
         f.placeholder = "password"
-        repaint(f)
-        assert_equal ["password    "], Screen.instance.buffer.region_text(f.absolute_rect)
-        assert_equal Screen.instance.theme.placeholder_color, Screen.instance.buffer.cell(0, 0).style.fg
+        painted = Testing.paint(f)
+        assert_equal ["password    "], painted.text
+        assert_equal Screen.instance.theme.placeholder_color, painted.cell(0, 0).style.fg
 
         f.text = "hunter2"
-        repaint(f)
-        assert_equal ["*******     "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["*******     "], Testing.paint(f).text
       end
     end
   end

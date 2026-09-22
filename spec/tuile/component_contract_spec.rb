@@ -317,7 +317,7 @@ module Tuile
           component = instance_exec(&catalog[klass])
           buffer = paint(component)
           buffer.flush
-          repaint(component)
+          Testing.paint(component)
           assert_equal "", buffer.flush, "#{klass} re-emitted cells it had already painted"
         end
       end

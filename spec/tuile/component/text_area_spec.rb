@@ -14,9 +14,9 @@ module Tuile
         Testing.place(a, Rect.new(0, 0, 10, 3))
         a.text = "hi"
         parent.bg_color = 52
-        repaint(a)
-        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 0).style.bg, "content row"
-        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 2).style.bg, "blank row"
+        painted = Testing.paint(a)
+        assert_equal Screen.instance.theme.input_bg_color, painted.cell(0, 0).style.bg, "content row"
+        assert_equal Screen.instance.theme.input_bg_color, painted.cell(0, 2).style.bg, "blank row"
       end
     end
 
@@ -30,10 +30,6 @@ module Tuile
 
     # Visible plain text of each painted row, read from the back-buffer over
     # the component's rect.
-    def rows_text(comp)
-      Screen.instance.buffer.region_text(comp.absolute_rect)
-    end
-
     it "defaults to empty text and zero caret" do
       a = Component::TextArea.new
       assert_equal "", a.text
@@ -135,44 +131,37 @@ module Tuile
       it "wraps at whitespace boundaries (absorbs the breaking whitespace)" do
         a = area(width: 5, height: 3, text: "hello world")
         # rows: "hello", "world" — the breaking space is absorbed.
-        repaint(a)
-        assert_equal ["hello", "world", "     "], rows_text(a)
+        assert_equal ["hello", "world", "     "], Testing.paint(a).text
       end
 
       it "hard-wraps a token longer than the row width" do
         a = area(width: 5, height: 3, text: "abcdefghij")
-        repaint(a)
-        assert_equal ["abcde", "fghij", "     "], rows_text(a)
+        assert_equal ["abcde", "fghij", "     "], Testing.paint(a).text
       end
 
       it "honors hard newlines" do
         a = area(width: 10, height: 3, text: "a\nb\nc")
-        repaint(a)
-        assert_equal ["a         ", "b         ", "c         "], rows_text(a)
+        assert_equal ["a         ", "b         ", "c         "], Testing.paint(a).text
       end
 
       it "shows a trailing empty row when text ends with a newline" do
         a = area(width: 5, height: 3, text: "hi\n")
-        repaint(a)
-        assert_equal ["hi   ", "     ", "     "], rows_text(a)
+        assert_equal ["hi   ", "     ", "     "], Testing.paint(a).text
       end
 
       it "absorbs whole runs of whitespace at a soft-wrap point" do
         a = area(width: 5, height: 3, text: "foo    bar")
-        repaint(a)
         # "foo" fits, the run "    " is absorbed at the soft-wrap, then "bar"
-        assert_equal ["foo  ", "bar  ", "     "], rows_text(a)
+        assert_equal ["foo  ", "bar  ", "     "], Testing.paint(a).text
       end
 
       it "re-wraps when width changes" do
         a = area(width: 11, height: 2, text: "hello world")
         # initial wrap: single row "hello world"
-        repaint(a)
-        assert_equal ["hello world", "           "], rows_text(a)
+        assert_equal ["hello world", "           "], Testing.paint(a).text
 
         Testing.place(a, Rect.new(0, 0, 5, 2))
-        repaint(a)
-        assert_equal %w[hello world], rows_text(a)
+        assert_equal %w[hello world], Testing.paint(a).text
       end
     end
 
@@ -712,24 +701,21 @@ module Tuile
 
       it "uses the active bg when active" do
         a = area(width: 5, height: 1, text: "hi", active: true)
-        repaint(a)
+        painted = Testing.paint(a)
         assert_equal [Screen.instance.theme.active_bg("hi   ")],
-                     Screen.instance.buffer.region_ansi(a.absolute_rect)
+                     painted.region_ansi(a.local_rect)
       end
 
       it "uses the inactive bg when inactive" do
         a = area(width: 5, height: 1, text: "hi", active: false)
-        repaint(a)
+        painted = Testing.paint(a)
         assert_equal [Screen.instance.theme.input_bg("hi   ")],
-                     Screen.instance.buffer.region_ansi(a.absolute_rect)
+                     painted.region_ansi(a.local_rect)
       end
 
       it "fills every row, including blanks past the text" do
         a = area(width: 5, height: 3, text: "hi", active: false)
-        repaint(a)
-        # Three rows, each filled to the full width.
-        assert_equal 3, Screen.instance.buffer.region_text(a.absolute_rect).length
-        assert_equal ["hi   ", "     ", "     "], rows_text(a)
+        assert_equal ["hi   ", "     ", "     "], Testing.paint(a).text
       end
     end
 
@@ -915,8 +901,7 @@ module Tuile
     context "wide characters" do
       it "wraps to a column budget, not a character count" do
         a = area(width: 10, height: 3, text: "日本語のテキストです") # 10 chars, 20 columns
-        repaint(a)
-        assert_equal ["日本語のテ", "キストです", " " * 10], rows_text(a)
+        assert_equal ["日本語のテ", "キストです", " " * 10], Testing.paint(a).text
       end
 
       it "does not paint past its rect" do
@@ -956,14 +941,12 @@ module Tuile
         # file to NFC would turn a literal decomposed "é" into one character and
         # silently void the test.
         a = area(width: 3, height: 3, text: "abe\u0301 xy")
-        repaint(a)
-        assert_equal ["abe\u0301", "xy ", "   "], rows_text(a)
+        assert_equal ["abe\u0301", "xy ", "   "], Testing.paint(a).text
       end
 
       it "terminates and paints blank when a glyph is wider than the whole row" do
         a = area(width: 1, height: 3, text: "日本")
-        repaint(a)
-        assert_equal [" ", " ", " "], rows_text(a)
+        assert_equal [" ", " ", " "], Testing.paint(a).text
       end
     end
 

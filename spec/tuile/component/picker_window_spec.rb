@@ -16,8 +16,7 @@ module Tuile
       assert_equal Component::PickerWindow::Option.new("a", StyledString.plain("all")),
                    picker.content.items.first
       Testing.place(picker, Rect.new(0, 0, 20, 3))
-      repaint(picker.content)
-      assert_equal "a all", Screen.instance.buffer.region_text(picker.content.absolute_rect).first.strip
+      assert_equal "a all", Testing.paint(picker.content).text.first.strip
     end
 
     # The picker recommends no ink of its own: a plain caption inherits the
@@ -33,9 +32,7 @@ module Tuile
       def paint(options, column:, row: 0)
         picker = Component::PickerWindow.new("foo", options) {}
         Testing.place(picker, Rect.new(0, 0, 20, 4))
-        repaint(picker.content)
-        rect = picker.content.rect
-        Screen.instance.buffer.cell(rect.left + column, rect.top + row)
+        Testing.paint(picker.content).cell(column, row)
       end
 
       it "leaves a String caption in the terminal's own foreground" do

@@ -13,9 +13,10 @@ require "tuile"
 # SGR escapes from painted output.
 require "rainbow"
 
-# Paints one component the way {Tuile::Screen#repaint} would. There is no other
-# way: `Component#repaint` takes a required {Tuile::Canvas}, and that canvas
-# carries the component's resolved background (`D_canvas`).
+# Paints one component — itself, not its children — onto the *screen's* buffer,
+# the way {Tuile::Screen#repaint} would. Only for a spec about that buffer: cells
+# a repaint must clear, `prints`, the dirty flush, what lands past the rect. What
+# a component paints is {Tuile::Testing.paint}.
 module PaintOne
   # Settles the layout first, exactly as {Tuile::Screen#repaint} does — paint
   # is the heaviest reader of rects there is, and no event has been dispatched

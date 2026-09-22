@@ -33,56 +33,49 @@ module Tuile
     it "clears background when text is empty" do
       label = Component::Label.new
       Testing.place(label, Rect.new(0, 0, 5, 1))
-      repaint(label)
-      assert_equal ["     "], Screen.instance.buffer.region_text(label.absolute_rect)
+      assert_equal ["     "], Testing.paint(label).text
     end
 
     it "prints only first line when height is 1" do
       label = Component::Label.new
       Testing.place(label, Rect.new(0, 0, 5, 1))
       label.text = "1\n2\n3"
-      repaint(label)
-      assert_equal ["1    "], Screen.instance.buffer.region_text(label.absolute_rect)
+      assert_equal ["1    "], Testing.paint(label).text
     end
 
     it "prints multiple lines within rect height" do
       label = Component::Label.new
       Testing.place(label, Rect.new(0, 0, 10, 3))
       label.text = "foo\nbar\nbaz"
-      repaint(label)
-      assert_equal ["foo       ", "bar       ", "baz       "], Screen.instance.buffer.region_text(label.absolute_rect)
+      assert_equal ["foo       ", "bar       ", "baz       "], Testing.paint(label).text
     end
 
     it "clips lines vertically when text has more lines than height" do
       label = Component::Label.new
       Testing.place(label, Rect.new(0, 0, 10, 2))
       label.text = "one\ntwo\nthree"
-      repaint(label)
-      assert_equal ["one       ", "two       "], Screen.instance.buffer.region_text(label.absolute_rect)
+      assert_equal ["one       ", "two       "], Testing.paint(label).text
     end
 
     it "pads rows past the last text line with blanks" do
       label = Component::Label.new
       Testing.place(label, Rect.new(0, 0, 5, 3))
       label.text = "hi"
-      repaint(label)
-      assert_equal ["hi   ", "     ", "     "], Screen.instance.buffer.region_text(label.absolute_rect)
+      assert_equal ["hi   ", "     ", "     "], Testing.paint(label).text
     end
 
     it "truncates lines longer than rect width" do
       label = Component::Label.new
       Testing.place(label, Rect.new(0, 0, 5, 1))
       label.text = "hello world"
-      repaint(label)
-      assert_equal ["hell…"], Screen.instance.buffer.region_text(label.absolute_rect)
+      assert_equal ["hell…"], Testing.paint(label).text
     end
 
     it "handles nil text gracefully" do
       label = Component::Label.new
       Testing.place(label, Rect.new(0, 0, 5, 1))
       label.text = nil
-      repaint(label)
-      assert_equal ["     "], Screen.instance.buffer.region_text(label.absolute_rect)
+      assert_equal ["     "], Testing.paint(label).text
     end
 
     it "re-clips text when width changes" do
@@ -90,8 +83,7 @@ module Tuile
       Testing.place(label, Rect.new(0, 0, 3, 1))
       label.text = "hello world"
       Testing.place(label, Rect.new(0, 0, 5, 1))
-      repaint(label)
-      assert_equal ["hell…"], Screen.instance.buffer.region_text(label.absolute_rect)
+      assert_equal ["hell…"], Testing.paint(label).text
     end
 
     it "walk_tree calls block on itself" do
@@ -127,19 +119,19 @@ module Tuile
         label = Component::Label.new
         Testing.place(label, Rect.new(0, 0, 5, 1))
         label.text = StyledString.styled("hi", fg: :red)
-        repaint(label)
+        painted = Testing.paint(label)
         # styled "hi" padded to 5 cols: red "hi" then default-style spaces
-        assert_equal ["\e[31mhi\e[0m   "], Screen.instance.buffer.region_ansi(label.absolute_rect)
+        assert_equal ["\e[31mhi\e[0m   "], painted.region_ansi(label.local_rect)
       end
 
       it "preserves styling through ellipsis truncation" do
         label = Component::Label.new
         Testing.place(label, Rect.new(0, 0, 5, 1))
         label.text = StyledString.styled("hello world", fg: :red)
-        repaint(label)
+        painted = Testing.paint(label)
         # ellipsize keeps spans on the surviving chars; the default ellipsis
         # is plain, so it lands after the SGR reset.
-        assert_equal ["\e[31mhell\e[0m…"], Screen.instance.buffer.region_ansi(label.absolute_rect)
+        assert_equal ["\e[31mhell\e[0m…"], painted.region_ansi(label.local_rect)
       end
     end
 
@@ -161,9 +153,9 @@ module Tuile
         parent.add(label)
         Testing.place(label, Rect.new(0, 0, 5, 1))
         parent.bg_color = 52
-        repaint(label)
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg, "glyph cell"
-        assert_equal Color.new(52), Screen.instance.buffer.cell(4, 0).style.bg, "padding cell"
+        painted = Testing.paint(label)
+        assert_equal Color.new(52), painted.cell(0, 0).style.bg, "glyph cell"
+        assert_equal Color.new(52), painted.cell(4, 0).style.bg, "padding cell"
       end
 
       it "lets its own bg_color override an inherited one" do
@@ -174,32 +166,28 @@ module Tuile
         Testing.place(label, Rect.new(0, 0, 5, 1))
         parent.bg_color = 52
         label.bg_color = 22
-        repaint(label)
-        assert_equal Color.new(22), Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color.new(22), Testing.paint(label).cell(0, 0).style.bg
       end
 
       it "paints its bg_color across text and pad" do
         label = Component::Label.new("hi")
         mount_at(label, Rect.new(0, 0, 5, 1))
         label.bg_color = :red
-        repaint(label)
-        assert_equal ["\e[41mhi   \e[0m"], Screen.instance.buffer.region_ansi(label.absolute_rect)
+        assert_equal ["\e[41mhi   \e[0m"], Testing.paint(label).region_ansi(label.local_rect)
       end
 
       it "paints its bg_color across blank rows past the last text line" do
         label = Component::Label.new("hi")
         mount_at(label, Rect.new(0, 0, 3, 2))
         label.bg_color = :red
-        repaint(label)
-        assert_equal ["\e[41mhi \e[0m", "\e[41m   \e[0m"], Screen.instance.buffer.region_ansi(label.absolute_rect)
+        assert_equal ["\e[41mhi \e[0m", "\e[41m   \e[0m"], Testing.paint(label).region_ansi(label.local_rect)
       end
 
       it "fills behind a styled span without dropping its fg" do
         label = Component::Label.new(StyledString.styled("hi", fg: :green))
         mount_at(label, Rect.new(0, 0, 4, 1))
         label.bg_color = :red
-        repaint(label)
-        assert_equal ["\e[32;41mhi\e[39m  \e[0m"], Screen.instance.buffer.region_ansi(label.absolute_rect)
+        assert_equal ["\e[32;41mhi\e[39m  \e[0m"], Testing.paint(label).region_ansi(label.local_rect)
       end
 
       # The one thing #bg did that bg_color does not: stomp a span's own
@@ -208,13 +196,12 @@ module Tuile
         label = Component::Label.new(StyledString.styled("hi", bg: :blue))
         mount_at(label, Rect.new(0, 0, 4, 1))
         label.bg_color = :red
-        repaint(label)
-        assert_equal Color::BLUE, Screen.instance.buffer.cell(0, 0).style.bg
-        assert_equal Color::RED, Screen.instance.buffer.cell(3, 0).style.bg # the pad
+        painted = Testing.paint(label)
+        assert_equal Color::BLUE, painted.cell(0, 0).style.bg
+        assert_equal Color::RED, painted.cell(3, 0).style.bg # the pad
 
         label.text = label.text.with_bg(:red)
-        repaint(label)
-        assert_equal Color::RED, Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color::RED, Testing.paint(label).cell(0, 0).style.bg
       end
     end
   end

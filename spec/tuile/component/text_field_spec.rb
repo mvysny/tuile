@@ -14,9 +14,9 @@ module Tuile
         Testing.place(f, Rect.new(0, 0, 10, 1))
         f.text = "hi"
         parent.bg_color = 52
-        repaint(f)
-        refute_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
-        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
+        painted = Testing.paint(f)
+        refute_equal Color.new(52), painted.cell(0, 0).style.bg
+        assert_equal Screen.instance.theme.input_bg_color, painted.cell(0, 0).style.bg
       end
 
       # Issue #11: bg_color= documented itself as tinting the component, but the
@@ -26,9 +26,9 @@ module Tuile
         mount_at(f, Rect.new(0, 0, 10, 1))
         f.text = "hi"
         f.bg_color = 52
-        repaint(f)
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
-        assert_equal Color.new(52), Screen.instance.buffer.cell(9, 0).style.bg # the padded tail too
+        painted = Testing.paint(f)
+        assert_equal Color.new(52), painted.cell(0, 0).style.bg
+        assert_equal Color.new(52), painted.cell(9, 0).style.bg # the padded tail too
       end
 
       # A field has a caret, so it can afford a flat surface; an app that wants
@@ -38,19 +38,16 @@ module Tuile
         mount_at(f, Rect.new(0, 0, 10, 1))
         f.bg_color = 52
         f.active = true
-        repaint(f)
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color.new(52), Testing.paint(f).cell(0, 0).style.bg
       end
 
       it "a state map keeps a focus shade of the app's choosing" do
         f = Component::TextField.new
         mount_at(f, Rect.new(0, 0, 10, 1))
         f.bg_color = { normal: 52, active: 33 }
-        repaint(f)
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color.new(52), Testing.paint(f).cell(0, 0).style.bg
         f.active = true
-        repaint(f)
-        assert_equal Color.new(33), Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color.new(33), Testing.paint(f).cell(0, 0).style.bg
       end
     end
 
@@ -576,23 +573,23 @@ module Tuile
     context "repaint" do
       it "fills the rect with the inactive bg and text on top when inactive" do
         f = field(width: 10, text: "hi", active: false)
-        repaint(f)
+        painted = Testing.paint(f)
         assert_equal [Screen.instance.theme.input_bg("hi        ")],
-                     Screen.instance.buffer.region_ansi(f.absolute_rect)
+                     painted.region_ansi(f.local_rect)
       end
 
       it "uses the active bg when active" do
         f = field(width: 10, text: "hi", active: true)
-        repaint(f)
+        painted = Testing.paint(f)
         assert_equal [Screen.instance.theme.active_bg("hi        ")],
-                     Screen.instance.buffer.region_ansi(f.absolute_rect)
+                     painted.region_ansi(f.local_rect)
       end
 
       it "paints an all-spaces row when text is empty" do
         f = field(width: 10, active: false)
-        repaint(f)
+        painted = Testing.paint(f)
         assert_equal [Screen.instance.theme.input_bg(" " * 10)],
-                     Screen.instance.buffer.region_ansi(f.absolute_rect)
+                     painted.region_ansi(f.local_rect)
       end
 
       it "is a no-op for empty rect" do
@@ -612,44 +609,41 @@ module Tuile
 
       it "paints the hint in the placeholder ink while empty" do
         f = hinted
-        repaint(f)
-        assert_equal ["dd.mm.yyyy  "], Screen.instance.buffer.region_text(f.absolute_rect)
-        assert_equal Screen.instance.theme.placeholder_color, Screen.instance.buffer.cell(0, 0).style.fg
+        painted = Testing.paint(f)
+        assert_equal ["dd.mm.yyyy  "], painted.text
+        assert_equal Screen.instance.theme.placeholder_color, painted.cell(0, 0).style.fg
       end
 
       # The hint stands *on* the well rather than replacing it: repaint does not
       # call super, so this padded row is the only thing that clears the rect.
       it "covers the whole rect with the field's own well" do
         f = hinted
-        repaint(f)
-        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
-        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(11, 0).style.bg
-        assert_nil Screen.instance.buffer.cell(11, 0).style.fg
+        painted = Testing.paint(f)
+        assert_equal Screen.instance.theme.input_bg_color, painted.cell(0, 0).style.bg
+        assert_equal Screen.instance.theme.input_bg_color, painted.cell(11, 0).style.bg
+        assert_nil painted.cell(11, 0).style.fg
       end
 
       it "gives way to content as soon as there is any" do
         f = hinted
         f.text = "0"
-        repaint(f)
-        assert_equal ["0           "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["0           "], Testing.paint(f).text
       end
 
       it "comes back when the field is emptied again" do
         f = hinted(text: "01.02.2026")
-        repaint(f)
-        assert_equal ["01.02.2026  "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["01.02.2026  "], Testing.paint(f).text
         f.text = ""
-        repaint(f)
-        assert_equal ["dd.mm.yyyy  "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["dd.mm.yyyy  "], Testing.paint(f).text
       end
 
       # No focus term in the condition: a format hint is wanted most exactly
       # while the user is typing into the field.
       it "stays visible while the field has focus" do
         f = hinted(active: true)
-        repaint(f)
-        assert_equal ["dd.mm.yyyy  "], Screen.instance.buffer.region_text(f.absolute_rect)
-        assert_equal Screen.instance.theme.active_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
+        painted = Testing.paint(f)
+        assert_equal ["dd.mm.yyyy  "], painted.text
+        assert_equal Screen.instance.theme.active_bg_color, painted.cell(0, 0).style.bg
       end
 
       # An empty required field is the commonest invalid state, and the state in
@@ -657,34 +651,30 @@ module Tuile
       it "stays visible on an invalid field's red well" do
         f = hinted(hint: "required")
         f.error_message = "must not be blank"
-        repaint(f)
-        assert_equal ["required    "], Screen.instance.buffer.region_text(f.absolute_rect)
-        assert_equal Screen.instance.theme.error_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
-        assert_equal Screen.instance.theme.placeholder_color, Screen.instance.buffer.cell(0, 0).style.fg
+        painted = Testing.paint(f)
+        assert_equal ["required    "], painted.text
+        assert_equal Screen.instance.theme.error_bg_color, painted.cell(0, 0).style.bg
+        assert_equal Screen.instance.theme.placeholder_color, painted.cell(0, 0).style.fg
       end
 
       # Ellipsized, not clipped: a middle-cut "dd.mm.yyy" reads as a complete
       # format that happens to be wrong, where "dd.mm…" reads as truncated.
       it "ellipsizes a hint wider than the rect" do
         f = hinted(width: 6)
-        repaint(f)
-        assert_equal ["dd.mm…"], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["dd.mm…"], Testing.paint(f).text
       end
 
       it "measures the ellipsis by columns, not characters" do
         f = hinted(width: 5, hint: "日本語です")
-        repaint(f)
-        assert_equal ["日本…"], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["日本…"], Testing.paint(f).text
       end
 
       it "paints nothing but the well when unset, or set to empty" do
         blank = [Screen.instance.theme.input_bg(" " * 12)]
         f = field(width: 12, active: false)
-        repaint(f)
-        assert_equal blank, Screen.instance.buffer.region_ansi(f.absolute_rect)
+        assert_equal blank, Testing.paint(f).region_ansi(f.local_rect)
         f.placeholder = ""
-        repaint(f)
-        assert_equal blank, Screen.instance.buffer.region_ansi(f.absolute_rect)
+        assert_equal blank, Testing.paint(f).region_ansi(f.local_rect)
       end
 
       it "never reaches the value, a paste, or max_text_length" do
@@ -718,9 +708,9 @@ module Tuile
 
       it "drops a glyph straddling the right edge rather than half-painting it" do
         f = field(width: 5, text: "日本語", active: false)
-        repaint(f)
+        painted = Testing.paint(f)
         assert_equal [Screen.instance.theme.input_bg("日本 ")],
-                     Screen.instance.buffer.region_ansi(f.absolute_rect)
+                     painted.region_ansi(f.local_rect)
       end
 
       it "resolves a click on a glyph's left half before it, right half after" do
@@ -1012,8 +1002,7 @@ module Tuile
         f.caret = 11
         assert_equal 6, f.send(:left_column)
         assert_equal Point.new(5, 0), f.cursor_position
-        repaint(f)
-        assert_equal ["world "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["world "], Testing.paint(f).text
       end
 
       it "follows the caret back left" do
@@ -1021,8 +1010,7 @@ module Tuile
         f.caret = 11
         f.caret = 0
         assert_equal 0, f.send(:left_column)
-        repaint(f)
-        assert_equal ["hello "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["hello "], Testing.paint(f).text
       end
 
       it "scrolls the minimum needed rather than centring the caret" do
@@ -1038,8 +1026,7 @@ module Tuile
         # to 4 keeps the caret's own column (6) inside the window.
         assert_equal 4, f.send(:left_column)
         assert_equal Point.new(2, 0), f.cursor_position
-        repaint(f)
-        assert_equal ["語  "], Screen.instance.buffer.region_text(f.absolute_rect)
+        assert_equal ["語  "], Testing.paint(f).text
       end
     end
 

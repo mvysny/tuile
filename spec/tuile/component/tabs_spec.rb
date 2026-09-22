@@ -316,8 +316,7 @@ module Tuile
       def offset(strip) = strip.send(:left_column)
 
       def painted(strip)
-        repaint(strip)
-        Screen.instance.buffer.region_text(strip.absolute_rect).join
+        Testing.paint(strip).text.join
       end
 
       it "does not scroll while the strip fits, wherever the selection is" do
@@ -350,7 +349,7 @@ module Tuile
         strip.selected_index = 1
         assert_equal 4, offset(strip)
         assert_equal "<VeryLong>", painted(strip)
-        repaint(strip)
+        Testing.paint(strip)
         assert_equal 4, offset(strip)
       end
 
@@ -403,8 +402,7 @@ module Tuile
       it "paints a cue in the style of the cell it covers" do
         strip = tabs(width: 12, active: true)
         strip.selected_index = 1
-        repaint(strip)
-        cell = Screen.instance.buffer.cell(11, 0) # over "Payment"'s trailing padding
+        cell = Testing.paint(strip).cell(11, 0) # over "Payment"'s trailing padding
         assert_equal ">", cell.grapheme
         assert cell.style.bold
         assert_equal Screen.instance.theme.active_bg_color, cell.style.bg
@@ -435,29 +433,26 @@ module Tuile
 
       it "pads each caption and joins with the separator" do
         strip = tabs
-        repaint(strip)
+        painted = Testing.paint(strip)
         assert_equal " Details │ Payment │ Shipping           ",
-                     Screen.instance.buffer.region_text(strip.absolute_rect).join
+                     painted.text.join
       end
 
       it "clips the overflowing segment at the rect edge, cueing the rest" do
         strip = tabs(width: 12)
-        repaint(strip)
-        assert_equal " Details │ >", Screen.instance.buffer.region_text(strip.absolute_rect).join
+        assert_equal " Details │ >", Testing.paint(strip).text.join
       end
 
       it "paints an empty strip as blank" do
         strip = Component::Tabs.new
         Testing.place(strip, Rect.new(0, 0, 4, 1))
-        repaint(strip)
-        assert_equal "    ", Screen.instance.buffer.region_text(strip.absolute_rect).join
+        assert_equal "    ", Testing.paint(strip).text.join
       end
 
       it "uses a custom separator" do
         strip = tabs(captions: %w[A B])
         strip.separator = "|"
-        repaint(strip)
-        assert_equal " A | B ", Screen.instance.buffer.region_text(strip.absolute_extent_rect).join
+        assert_equal " A | B ", Testing.paint(strip).region_text(strip.local_extent_rect).join
       end
 
       it "refuses an empty separator" do
@@ -468,8 +463,7 @@ module Tuile
         it "is bold even when the strip is unfocused, and unselected ones are not" do
           strip = tabs(active: false)
           strip.selected_index = 1
-          repaint(strip)
-          buffer = Screen.instance.buffer
+          buffer = Testing.paint(strip)
           (10..18).each { |x| assert buffer.cell(x, 0).style.bold, "column #{x} should be bold" }
           [1, 9, 21].each { |x| refute buffer.cell(x, 0).style.bold, "column #{x} should not be bold" }
         end
@@ -477,8 +471,7 @@ module Tuile
         it "sits on active_bg_color only while the strip is on the focus chain" do
           strip = tabs(active: true)
           strip.selected_index = 1
-          repaint(strip)
-          buffer = Screen.instance.buffer
+          buffer = Testing.paint(strip)
           highlight = Screen.instance.theme.active_bg_color
           # The padding columns are part of the segment, so the highlight covers
           # them; the separator column beside them is chrome and stays clear.
@@ -490,8 +483,7 @@ module Tuile
 
         it "carries no background while the strip is unfocused" do
           strip = tabs(active: false)
-          repaint(strip)
-          assert_nil Screen.instance.buffer.cell(1, 0).style.bg
+          assert_nil Testing.paint(strip).cell(1, 0).style.bg
         end
 
         it "keeps the caption's own colors under the strip's styling" do
@@ -499,8 +491,7 @@ module Tuile
           strip.add_tab(StyledString.styled("Red", fg: :red))
           Testing.place(strip, Rect.new(0, 0, 10, 1))
           strip.active = true
-          repaint(strip)
-          cell = Screen.instance.buffer.cell(1, 0)
+          cell = Testing.paint(strip).cell(1, 0)
           assert_equal Color::RED, cell.style.fg
           assert cell.style.bold
           assert_equal Screen.instance.theme.active_bg_color, cell.style.bg
@@ -512,9 +503,8 @@ module Tuile
         strip.add_tab("日本")
         strip.add_tab("B")
         Testing.place(strip, Rect.new(0, 0, 20, 1))
-        repaint(strip)
         assert_equal Size.new(10, 1), strip.extent
-        assert_equal " 日本 │ B ", Screen.instance.buffer.region_text(strip.absolute_extent_rect).join
+        assert_equal " 日本 │ B ", Testing.paint(strip).region_text(strip.local_extent_rect).join
       end
     end
 

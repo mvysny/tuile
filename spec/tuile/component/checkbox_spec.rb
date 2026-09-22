@@ -176,23 +176,19 @@ module Tuile
 
       it "paints [ ] when unchecked and [x] when checked" do
         cb = checkbox(caption: "Syslog", width: 10)
-        repaint(cb)
-        assert_equal "[ ] Syslog", Screen.instance.buffer.region_text(cb.absolute_rect).join
+        assert_equal "[ ] Syslog", Testing.paint(cb).text.join
         cb.toggle
-        repaint(cb)
-        assert_equal "[x] Syslog", Screen.instance.buffer.region_text(cb.absolute_rect).join
+        assert_equal "[x] Syslog", Testing.paint(cb).text.join
       end
 
       it "paints an unset caption without crashing" do
         cb = checkbox(caption: nil, width: 6)
-        repaint(cb)
-        assert_equal "[ ]   ", Screen.instance.buffer.region_text(cb.absolute_rect).join
+        assert_equal "[ ]   ", Testing.paint(cb).text.join
       end
 
       it "highlights the extent, not the whole row, when active" do
         cb = checkbox(caption: "Syslog", width: 20, active: true)
-        repaint(cb)
-        buffer = Screen.instance.buffer
+        buffer = Testing.paint(cb)
         assert_equal Screen.instance.theme.active_bg_color, buffer.cell(0, 0).style.bg
         assert_equal Screen.instance.theme.active_bg_color, buffer.cell(9, 0).style.bg
         assert_nil buffer.cell(10, 0).style.bg
@@ -200,8 +196,7 @@ module Tuile
 
       it "ellipsizes a caption too wide for the rect" do
         cb = checkbox(caption: "Enable syslog", width: 8)
-        repaint(cb)
-        assert_equal "[ ] Ena…", Screen.instance.buffer.region_text(cb.absolute_rect).join
+        assert_equal "[ ] Ena…", Testing.paint(cb).text.join
       end
 
       it "keeps a double-width caption inside rect — clipping is by display width" do
@@ -223,8 +218,7 @@ module Tuile
         parent.add(cb)
         Testing.place(cb, Rect.new(0, 0, 20, 1))
         parent.bg_color = 52
-        repaint(cb)
-        buffer = Screen.instance.buffer
+        buffer = Testing.paint(cb)
         assert_equal Color.new(52), buffer.cell(0, 0).style.bg  # behind the glyph
         assert_equal Color.new(52), buffer.cell(15, 0).style.bg # the dead tail
       end

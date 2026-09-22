@@ -14,9 +14,9 @@ module Tuile
         Testing.place(tv, Rect.new(0, 0, 10, 3))
         tv.text = "hello"
         parent.bg_color = 52
-        repaint(tv)
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg, "content row"
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 2).style.bg, "blank row"
+        painted = Testing.paint(tv)
+        assert_equal Color.new(52), painted.cell(0, 0).style.bg, "content row"
+        assert_equal Color.new(52), painted.cell(0, 2).style.bg, "blank row"
       end
     end
 
@@ -2193,8 +2193,7 @@ module Tuile
 
     context "repaint" do
       def painted_lines(text_view)
-        repaint(text_view)
-        Screen.instance.buffer.region_text(text_view.absolute_rect)
+        Testing.paint(text_view).text
       end
 
       it "does not paint when rect is empty" do
@@ -2269,8 +2268,7 @@ module Tuile
         tv = Component::TextView.new
         Testing.place(tv, Rect.new(0, 0, 10, 1))
         tv.text = StyledString.styled("hi", fg: :red)
-        repaint(tv)
-        raw = Screen.instance.buffer.region_ansi(tv.absolute_rect)[0]
+        raw = Testing.paint(tv).region_ansi(tv.local_rect)[0]
         assert_includes raw, "\e[31m"
         assert_includes raw, "hi"
       end
@@ -2279,8 +2277,7 @@ module Tuile
         tv = Component::TextView.new
         Testing.place(tv, Rect.new(0, 0, 5, 2))
         tv.text = StyledString.styled("hello world", fg: :red)
-        repaint(tv)
-        rows = Screen.instance.buffer.region_ansi(tv.absolute_rect)
+        rows = Testing.paint(tv).region_ansi(tv.local_rect)
         first_line = rows[0]
         second_line = rows[1]
         assert_includes first_line, "\e[31m"

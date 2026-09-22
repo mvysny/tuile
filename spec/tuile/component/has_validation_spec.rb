@@ -120,13 +120,12 @@ module Tuile
 
     describe "the error well" do
       # The field paints the *verdict*; the message needs cells it does not own.
-      def row_ansi(component) = screen.buffer.row_ansi(component.absolute_rect.top)
+      def row_ansi(component) = Testing.paint(component).row_ansi(0)
 
       it "paints the field's background in Theme#error_bg_color" do
         Testing.place(field, Rect.new(0, 0, 10, 1))
         field.text = "bob"
         field.error_message = "Required"
-        repaint(field)
 
         assert_includes row_ansi(field), "48;5;88"
       end
@@ -135,7 +134,6 @@ module Tuile
         mount_at(field, Rect.new(0, 0, 10, 1))
         screen.focused = field
         field.error_message = "Required"
-        repaint(field)
 
         assert_includes row_ansi(field), "48;5;95"
       end
@@ -145,7 +143,6 @@ module Tuile
       it "shows on an empty field" do
         Testing.place(field, Rect.new(0, 0, 10, 1))
         field.error_message = "Required"
-        repaint(field)
 
         assert_includes row_ansi(field), "48;5;88"
       end
@@ -154,9 +151,8 @@ module Tuile
         Testing.place(field, Rect.new(0, 0, 10, 1))
         field.text = "bob"
         field.error_message = "Required"
-        repaint(field)
+        assert_includes row_ansi(field), "48;5;88"
         field.error_message = nil
-        repaint(field)
 
         refute_includes row_ansi(field), "48;5;88"
         assert_includes row_ansi(field), "48;5;238"
@@ -166,7 +162,6 @@ module Tuile
         screen.theme = Theme::LIGHT
         Testing.place(field, Rect.new(0, 0, 10, 1))
         field.error_message = "Required"
-        repaint(field)
 
         assert_includes row_ansi(field), "48;5;224"
       end
@@ -176,10 +171,9 @@ module Tuile
         Testing.place(composed, Rect.new(0, 0, 10, 1))
         Testing.get(Component::TextField, in: composed).text = "12"
         composed.error_message = "Too small"
-        repaint(Testing.get(Component::TextField, in: composed))
 
         assert_nil Testing.get(Component::TextField, in: composed).error_message
-        assert_includes screen.buffer.row_ansi(0), "48;5;88"
+        assert_includes row_ansi(composed), "48;5;88"
       end
 
       it "reaches a group's List rows the same way" do
@@ -187,9 +181,9 @@ module Tuile
         group.items = %w[alpha beta]
         Testing.place(group, Rect.new(0, 0, 20, 2))
         group.error_message = "Pick one"
-        repaint(group.list)
+        painted = Testing.paint(group.list)
 
-        assert_includes screen.buffer.row_ansi(0), "48;5;88"
+        assert_includes painted.row_ansi(0), "48;5;88"
       end
 
       # A Checkbox declares no well of its own, so this is the only background
@@ -197,12 +191,10 @@ module Tuile
       it "reaches a Checkbox, which has no well when valid" do
         box = Component::Checkbox.new("I accept")
         Testing.place(box, Rect.new(0, 0, 20, 1))
-        repaint(box)
-        refute_includes screen.buffer.row_ansi(0), "48;5;88"
+        refute_includes Testing.paint(box).row_ansi(0), "48;5;88"
 
         box.error_message = "You must accept"
-        repaint(box)
-        assert_includes screen.buffer.row_ansi(0), "48;5;88"
+        assert_includes Testing.paint(box).row_ansi(0), "48;5;88"
       end
 
       # Outside its extent the widget is not there — ambient_bg_color, which
@@ -211,11 +203,11 @@ module Tuile
         box = Component::Checkbox.new("ok")
         Testing.place(box, Rect.new(0, 0, 40, 1))
         box.error_message = "nope"
-        repaint(box)
+        buffer = Testing.paint(box)
 
         painted = box.extent.width
-        assert_includes screen.buffer.region_ansi(Rect.new(0, 0, painted, 1)).first, "48;5;88"
-        refute_includes screen.buffer.region_ansi(Rect.new(painted, 0, 40 - painted, 1)).first, "48;5;88"
+        assert_includes buffer.region_ansi(Rect.new(0, 0, painted, 1)).first, "48;5;88"
+        refute_includes buffer.region_ansi(Rect.new(painted, 0, 40 - painted, 1)).first, "48;5;88"
       end
 
       # An app tinting a panel must not be able to switch the signal off.
@@ -223,7 +215,6 @@ module Tuile
         Testing.place(field, Rect.new(0, 0, 10, 1))
         field.bg_color = Color::BLUE
         field.error_message = "Required"
-        repaint(field)
 
         assert_includes row_ansi(field), "48;5;88"
       end
@@ -234,39 +225,36 @@ module Tuile
         window.content = field
         mount_at(window, Rect.new(0, 0, 20, 5))
         field.error_message = "Required"
-        repaint(window)
+        painted = Testing.paint(window)
 
-        refute_includes screen.buffer.row_ansi(0), "48;5;88"
+        refute_includes painted.row_ansi(0), "48;5;88"
       end
     end
 
     describe "bad input paints the well too" do
-      def row_ansi(component) = screen.buffer.row_ansi(component.absolute_rect.top)
+      def row_ansi(component) = Testing.paint(component).row_ansi(0)
 
       it "marks an IntegerField holding input its value cannot represent" do
         int = Component::IntegerField.new
         Testing.place(int, Rect.new(0, 0, 10, 1))
         Testing.get(Component::TextField, in: int).text = "-"
-        repaint(Testing.get(Component::TextField, in: int))
 
         assert int.bad_input?
         assert_nil int.error_message
-        assert_includes screen.buffer.row_ansi(0), "48;5;88"
+        assert_includes row_ansi(int), "48;5;88"
       end
 
       it "clears as soon as the input parses" do
         int = Component::IntegerField.new
         Testing.place(int, Rect.new(0, 0, 10, 1))
         Testing.get(Component::TextField, in: int).text = "-4"
-        repaint(Testing.get(Component::TextField, in: int))
 
-        refute_includes screen.buffer.row_ansi(0), "48;5;88"
+        refute_includes row_ansi(int), "48;5;88"
       end
 
       it "leaves a field with no bad-input report to the verdict alone" do
         Testing.place(field, Rect.new(0, 0, 10, 1))
         field.text = "anything"
-        repaint(field)
 
         refute_includes row_ansi(field), "48;5;88"
       end

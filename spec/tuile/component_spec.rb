@@ -298,9 +298,9 @@ module Tuile
           end.new
         end
 
-        repaint(child)
+        painted = Testing.paint(child)
 
-        assert_equal ["XXX                 "], Screen.instance.buffer.region_text(Rect.new(0, 0, 20, 1))
+        assert_equal ["XXX                 "], painted.region_text(Rect.new(0, 0, 20, 1))
       end
     end
 
@@ -780,8 +780,7 @@ module Tuile
         c = Component::Label.new("hi")
         mount_at(c, Rect.new(0, 0, 2, 1))
         c.bg_color = 52
-        repaint(c)
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color.new(52), Testing.paint(c).cell(0, 0).style.bg
       end
 
       it "reaches them from an ancestor, with the component none the wiser" do
@@ -791,8 +790,7 @@ module Tuile
         root.add(leaf)
         root.bg_color = 52
         Testing.place(leaf, Rect.new(0, 0, 2, 1))
-        repaint(leaf)
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color.new(52), Testing.paint(leaf).cell(0, 0).style.bg
       end
 
       it "keeps a Theme::Ref unresolved in the reader" do
@@ -1077,8 +1075,7 @@ module Tuile
       it "clears background on a leaf with non-empty rect" do
         c = Component.new
         Testing.place(c, Rect.new(0, 0, 3, 1))
-        repaint(c)
-        assert_equal ["   "], Screen.instance.buffer.region_text(c.absolute_rect)
+        assert_equal ["   "], Testing.paint(c).text
       end
 
       # Marks every cell of `container`'s rect, so "did it clear?" is asserted on

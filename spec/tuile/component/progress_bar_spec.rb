@@ -20,8 +20,7 @@ module Tuile
     end
 
     def row(component)
-      repaint(component)
-      Screen.instance.buffer.region_text(component.absolute_rect).first
+      Testing.paint(component).text.first
     end
 
     # The expected row: `filled` block glyphs starting at `offset`, track either side.
@@ -191,8 +190,7 @@ module Tuile
         b = attached_bar
         Testing.place(b, Rect.new(0, 0, 4, 3))
         b.value = 1.0
-        repaint(b)
-        assert_equal ["████", "    ", "    "], Screen.instance.buffer.region_text(b.absolute_rect)
+        assert_equal ["████", "    ", "    "], Testing.paint(b).text
       end
 
       it "paints 0- and 1-column rects without raising" do
@@ -208,17 +206,16 @@ module Tuile
       it "paints in the terminal default foreground by default" do
         b = bar
         b.value = 0.5
-        repaint(b)
-        assert_nil Screen.instance.buffer.cell(0, 0).style.fg
+        assert_nil Testing.paint(b).cell(0, 0).style.fg
       end
 
       it "paints both glyphs in bar_color" do
         b = bar(width: 2)
         b.bar_color = Color::GREEN
         b.value = 0.5
-        repaint(b)
-        assert_equal Color::GREEN, Screen.instance.buffer.cell(0, 0).style.fg
-        assert_equal Color::GREEN, Screen.instance.buffer.cell(1, 0).style.fg
+        painted = Testing.paint(b)
+        assert_equal Color::GREEN, painted.cell(0, 0).style.fg
+        assert_equal Color::GREEN, painted.cell(1, 0).style.fg
       end
 
       it "shows an ancestor's bg_color behind the track" do
@@ -226,8 +223,7 @@ module Tuile
         layout.bg_color = Color::BLUE
         Screen.instance.content = layout
         b = bar.tap { layout.add(_1) }
-        repaint(b)
-        assert_equal Color::BLUE, Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color::BLUE, Testing.paint(b).cell(0, 0).style.bg
       end
     end
 
@@ -235,12 +231,10 @@ module Tuile
       it "re-resolves a Theme::Ref after a theme change" do
         b = attached_bar
         b.bar_color = Theme.ref(:active_border_color)
-        repaint(b)
-        assert_equal Theme::DARK.active_border_color, Screen.instance.buffer.cell(0, 0).style.fg
+        assert_equal Theme::DARK.active_border_color, Testing.paint(b).cell(0, 0).style.fg
 
         Screen.instance.theme = Theme::DARK.with(active_border_color: Color::MAGENTA)
-        repaint(b)
-        assert_equal Color::MAGENTA, Screen.instance.buffer.cell(0, 0).style.fg
+        assert_equal Color::MAGENTA, Testing.paint(b).cell(0, 0).style.fg
       end
 
       it "raises at assignment on a Ref the theme lacks" do

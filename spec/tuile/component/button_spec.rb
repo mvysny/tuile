@@ -187,28 +187,26 @@ module Tuile
 
       it "paints an unset caption as an empty pair of brackets" do
         b = button(caption: nil, width: 6, active: false)
-        repaint(b)
-        assert_equal "[  ]  ", Screen.instance.buffer.region_text(b.absolute_rect).join
+        assert_equal "[  ]  ", Testing.paint(b).text.join
       end
 
       it "draws `[ caption ]` plain when inactive" do
         b = button(caption: "Ok", width: 6, active: false)
-        repaint(b)
-        assert_includes Screen.instance.buffer.region_text(b.absolute_rect).join, "[ Ok ]"
+        assert_includes Testing.paint(b).text.join, "[ Ok ]"
       end
 
       it "applies the theme's active_bg highlight when active" do
         b = button(caption: "Ok", width: 6, active: true)
-        repaint(b)
-        assert_includes Screen.instance.buffer.region_text(b.absolute_rect).join, "[ Ok ]"
-        assert_equal Screen.instance.theme.active_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
+        painted = Testing.paint(b)
+        assert_includes painted.text.join, "[ Ok ]"
+        assert_equal Screen.instance.theme.active_bg_color, painted.cell(0, 0).style.bg
       end
 
       it "ellipsizes the label to rect.width" do
         b = button(caption: "WideCaption", width: 6, active: false)
-        repaint(b)
+        painted = Testing.paint(b)
         # "[ WideCaption ]" ellipsized to 6 columns = "[ Wid…"
-        assert_equal "[ Wid…", Screen.instance.buffer.region_text(b.absolute_rect).join
+        assert_equal "[ Wid…", painted.text.join
       end
 
       it "keeps a double-width caption inside rect — clipping is by display width" do
@@ -224,8 +222,7 @@ module Tuile
 
       it "keeps the caption's own spans and paints the highlight over them" do
         b = button(caption: StyledString.styled("Ok", fg: Color::RED), width: 6, active: true)
-        repaint(b)
-        cell = Screen.instance.buffer.cell(2, 0)
+        cell = Testing.paint(b).cell(2, 0)
         assert_equal "O", cell.grapheme
         assert_equal Color::RED, cell.style.fg
         assert_equal Screen.instance.theme.active_bg_color, cell.style.bg
@@ -238,8 +235,7 @@ module Tuile
         parent.add(b)
         Testing.place(b, Rect.new(0, 0, 6, 1))
         parent.bg_color = 52
-        repaint(b)
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color.new(52), Testing.paint(b).cell(0, 0).style.bg
       end
     end
 

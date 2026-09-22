@@ -49,15 +49,13 @@ module Tuile
     def popups = Screen.instance.pane.popups
 
     def strip(bar)
-      repaint(bar)
-      Screen.instance.buffer.region_text(bar.absolute_rect).first
+      Testing.paint(bar).text.first
     end
 
     # The open panel's painted rows, rstripped.
     def panel_rows
       list = popups.last.instance_variable_get(:@list)
-      repaint(list)
-      Screen.instance.buffer.region_text(list.absolute_rect).map(&:rstrip)
+      Testing.paint(list).text.map(&:rstrip)
     end
 
     it "is a focusable, childless tab stop" do
@@ -111,19 +109,17 @@ module Tuile
 
       it "highlights the item Enter would open, but only while focused" do
         bar = menu_bar
-        strip(bar)
-        assert_equal Theme::DARK.active_bg_color, Screen.instance.buffer.cell(1, 0).style.bg
+        assert_equal Theme::DARK.active_bg_color, Testing.paint(bar).cell(1, 0).style.bg
         Screen.instance.focused = nil
-        strip(bar)
-        assert_nil Screen.instance.buffer.cell(1, 0).style.bg
+        assert_nil Testing.paint(bar).cell(1, 0).style.bg
       end
 
       it "moves the highlight with the selection" do
         bar = menu_bar
         key(Keys::RIGHT_ARROW)
-        strip(bar)
-        assert_nil Screen.instance.buffer.cell(1, 0).style.bg
-        assert_equal Theme::DARK.active_bg_color, Screen.instance.buffer.cell(7, 0).style.bg
+        painted = Testing.paint(bar)
+        assert_nil painted.cell(1, 0).style.bg
+        assert_equal Theme::DARK.active_bg_color, painted.cell(7, 0).style.bg
       end
 
       it "clips an overflowing strip at the rect edge, cueing the rest" do
@@ -732,16 +728,15 @@ module Tuile
           bar = Component::MenuBar.new
           bar.add_item("File", mnemonic: "f")
           mount_at(bar, Rect.new(0, 0, 40, 1))
-          repaint(bar)
+          painted = Testing.paint(bar)
 
-          assert_includes Screen.instance.buffer.region_ansi(bar.absolute_rect).first, "\e[4m"
+          assert_includes painted.region_ansi(bar.local_rect).first, "\e[4m"
         end
 
         # with_bg preserves other attributes, so the highlight can't eat the cue.
         it "survives the focused highlight" do
           bar = mnemonic_bar
-          repaint(bar)
-          row = Screen.instance.buffer.region_ansi(bar.absolute_rect).first
+          row = Testing.paint(bar).region_ansi(bar.local_rect).first
 
           assert_includes row, "\e[4m"
         end
@@ -750,9 +745,9 @@ module Tuile
           mnemonic_bar
           key("f")
           list = popups.last.instance_variable_get(:@list)
-          repaint(list)
+          painted = Testing.paint(list)
 
-          assert_includes Screen.instance.buffer.region_ansi(list.absolute_rect).join, "\e[4m"
+          assert_includes painted.region_ansi(list.local_rect).join, "\e[4m"
         end
       end
 

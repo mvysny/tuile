@@ -10,9 +10,9 @@ module Tuile
         w = Component::Window.new("Hi")
         Testing.place(w, Rect.new(0, 0, 6, 3))
         w.bg_color = 52
-        repaint(w)
-        assert_equal "┌", Screen.instance.buffer.cell(0, 0).grapheme
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+        painted = Testing.paint(w)
+        assert_equal "┌", painted.cell(0, 0).grapheme
+        assert_equal Color.new(52), painted.cell(0, 0).style.bg
       end
     end
 
@@ -57,40 +57,37 @@ module Tuile
       it "paints an all-dashes top border when the caption was never set" do
         w = Component::Window.new
         Testing.place(w, Rect.new(0, 0, 6, 3))
-        repaint(w)
-        assert_equal "┌────┐", Screen.instance.buffer.region_text(Rect.new(0, 0, 6, 1)).join
+        assert_equal "┌────┐", Testing.paint(w).region_text(Rect.new(0, 0, 6, 1)).join
       end
 
       it "keeps a double-width caption inside the box — clipping is by display width" do
         w = Component::Window.new("日本語テキスト")
         Testing.place(w, Rect.new(0, 0, 10, 3))
-        repaint(w)
+        painted = Testing.paint(w)
         # inner width is 8: "日本語テ" fits exactly, then the closing corner.
-        assert_equal "┌日本語テ┐", Screen.instance.buffer.region_text(Rect.new(0, 0, 10, 1)).join
+        assert_equal "┌日本語テ┐", painted.region_text(Rect.new(0, 0, 10, 1)).join
       end
 
       it "fills the dash remainder by display width when a wide glyph is dropped" do
         w = Component::Window.new("日本語")
         Testing.place(w, Rect.new(0, 0, 7, 3))
-        repaint(w)
+        painted = Testing.paint(w)
         # inner width is 5: "日本" (4 cols) fits, the third glyph is dropped,
         # and one dash fills the leftover column.
-        assert_equal "┌日本─┐", Screen.instance.buffer.region_text(Rect.new(0, 0, 7, 1)).join
+        assert_equal "┌日本─┐", painted.region_text(Rect.new(0, 0, 7, 1)).join
       end
 
       it "keeps the caption's own colors while inactive" do
         w = Component::Window.new(StyledString.styled("Hi", fg: Color::RED))
         Testing.place(w, Rect.new(0, 0, 6, 3))
-        repaint(w)
-        assert_equal Color::RED, Screen.instance.buffer.cell(1, 0).style.fg
+        assert_equal Color::RED, Testing.paint(w).cell(1, 0).style.fg
       end
 
       it "overrides the caption's colors with the border color while active" do
         w = Component::Window.new(StyledString.styled("Hi", fg: Color::RED))
         Testing.place(w, Rect.new(0, 0, 6, 3))
         w.active = true
-        repaint(w)
-        assert_equal Screen.instance.theme.active_border_color, Screen.instance.buffer.cell(1, 0).style.fg
+        assert_equal Screen.instance.theme.active_border_color, Testing.paint(w).cell(1, 0).style.fg
       end
 
       it "does not paint past rect.width on a degenerate 1-column window" do
@@ -361,18 +358,18 @@ module Tuile
         w = Component::Window.new
         Testing.place(w, Rect.new(0, 0, 20, 10))
         w.footer_text = "hi"
-        repaint(w)
+        painted = Testing.paint(w)
         # inner width 18: "hi" + 16 dashes
-        assert_equal "└hi#{"─" * 16}┘", Screen.instance.buffer.region_text(w.absolute_rect).last
+        assert_equal "└hi#{"─" * 16}┘", painted.text.last
       end
 
       it "clips footer_text to the inner width" do
         w = Component::Window.new
         Testing.place(w, Rect.new(0, 0, 6, 4))
         w.footer_text = "far-too-long"
-        repaint(w)
+        painted = Testing.paint(w)
         # inner width 4
-        assert_equal "└far-┘", Screen.instance.buffer.region_text(w.absolute_rect).last
+        assert_equal "└far-┘", painted.text.last
       end
 
       it "is hidden while a footer component occupies the bottom row" do
@@ -380,10 +377,8 @@ module Tuile
         Testing.place(w, Rect.new(0, 0, 20, 10))
         w.footer_text = "hi"
         w.footer = Component::List.new
-        repaint(w)
-        # component present → the border row is plain dashes (the component
-        # overpaints the interior when it repaints)
-        assert_equal "└#{"─" * 18}┘", Screen.instance.buffer.region_text(w.absolute_rect).last
+        # the empty footer list covers the row's interior; no "hi" anywhere
+        assert_equal "└#{" " * 18}┘", Testing.paint(w).text.last
       end
     end
 
@@ -503,9 +498,9 @@ module Tuile
       it "smokes" do
         w = Component::Window.new
         Testing.place(w, Rect.new(0, 0, 20, 20))
-        repaint(w)
-        assert_equal "┌", Screen.instance.buffer.cell(0, 0).grapheme
-        assert_equal "┘", Screen.instance.buffer.cell(19, 19).grapheme
+        painted = Testing.paint(w)
+        assert_equal "┌", painted.cell(0, 0).grapheme
+        assert_equal "┘", painted.cell(19, 19).grapheme
       end
 
       it "does not print when rect is empty" do
@@ -518,15 +513,13 @@ module Tuile
         w = Component::Window.new
         Testing.place(w, Rect.new(0, 0, 20, 10))
         w.active = true
-        repaint(w)
-        assert_equal Screen.instance.theme.active_border_color, Screen.instance.buffer.cell(0, 0).style.fg
+        assert_equal Screen.instance.theme.active_border_color, Testing.paint(w).cell(0, 0).style.fg
       end
 
       it "leaves the border uncolored when inactive" do
         w = Component::Window.new
         Testing.place(w, Rect.new(0, 0, 20, 10))
-        repaint(w)
-        assert_nil Screen.instance.buffer.cell(0, 0).style.fg
+        assert_nil Testing.paint(w).cell(0, 0).style.fg
       end
 
       it "clears the interior itself when there is no content to cover it" do

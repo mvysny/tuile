@@ -21,9 +21,10 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   its parent, so `region_text(field.rect)` on a nested widget reads the wrong cells and
   `click(field.rect.left, …)` misses. Identical only at the tree root, which is why either spelling
   passes in the simplest specs. See `D_relative_rect`.
-- **Paint one component with the suite-wide `repaint(component)` helper** — `Component#repaint`
-  takes a required {Tuile::Canvas} and the canvas carries the component's resolved background, so
-  `component.repaint` alone is not a thing. See `D_canvas`.
+- **Assert what a component paints with `Testing.paint(component)`** — a buffer of its own, `(0, 0)`
+  at its top-left, children included. The suite-wide `repaint(component)` paints it alone onto the
+  *screen's* buffer, only for a spec about that buffer: pre-marked cells a repaint must clear,
+  `prints`, the dirty flush, what lands past the rect. See `D_canvas`.
 - **A spec that parents a component and paints it directly must lay the parent out** — a parent
   left at its default empty rect clips its whole subtree to nothing, so the child paints
   nothing and the assertion fails far from the cause. `Screen#repaint` skips such a subtree

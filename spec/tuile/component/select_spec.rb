@@ -22,12 +22,9 @@ module Tuile
 
     # The dropdown's *painted* rows: the list renders items lazily, so what it
     # shows can only be read off the buffer (and carries List's row gutters).
-    def rows(sel)
-      repaint(menu(sel))
-      Screen.instance.buffer.region_text(menu(sel).absolute_rect).map(&:strip)
-    end
+    def rows(sel) = Testing.paint(menu(sel)).text.map(&:strip)
 
-    def face(sel) = Screen.instance.buffer.region_text(sel.absolute_rect).first
+    def face(sel) = Testing.paint(sel).text.first
 
     it "is a focusable, childless tab stop" do
       s = select
@@ -66,10 +63,10 @@ module Tuile
         panel.bg_color = 52
         mount_at(panel, Rect.new(0, 0, 20, 5))
         Testing.place(s, Rect.new(0, 0, 20, 5))
-        repaint(s)
+        painted = Testing.paint(s)
 
-        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 1).style.bg
+        assert_equal Screen.instance.theme.input_bg_color, painted.cell(0, 0).style.bg
+        assert_equal Color.new(52), painted.cell(0, 1).style.bg
       end
 
       it "honors a bg_color set on it" do
@@ -77,8 +74,7 @@ module Tuile
         s.items = %w[one two]
         mount_at(s, Rect.new(0, 0, 20, 1))
         s.bg_color = 52
-        repaint(s)
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color.new(52), Testing.paint(s).cell(0, 0).style.bg
       end
     end
 
@@ -100,7 +96,6 @@ module Tuile
       it "value= renders the label on the face and does not open the dropdown" do
         s = select
         s.value = "warn"
-        repaint(s)
         assert_equal "warn               ▾", face(s)
         refute overlay(s).open?
       end
@@ -109,14 +104,12 @@ module Tuile
         s = select
         s.item_label = :upcase.to_proc
         s.value = "warn"
-        repaint(s)
         assert_equal "WARN               ▾", face(s)
       end
 
       it "clear blanks the face" do
         s = select(value: "warn")
         s.clear
-        repaint(s)
         assert_nil s.value
         assert_equal "                   ▾", face(s)
       end
@@ -124,7 +117,6 @@ module Tuile
       it "accepts a value that is not among items" do
         s = select
         s.value = "trace"
-        repaint(s)
         assert_equal "trace", s.value
         assert_equal "trace              ▾", face(s)
       end
@@ -132,14 +124,12 @@ module Tuile
       it "never asks item_label to render a nil value" do
         s = select
         s.item_label = ->(item) { item.fetch(:name) } # would raise on nil
-        repaint(s)
         assert_equal "                   ▾", face(s)
       end
 
       it "ellipsizes a label wider than the face" do
         s = select(items: ["a very long log level name indeed"], width: 12)
         s.value = s.items.first
-        repaint(s)
         assert_equal "a very lon…▾", face(s)
       end
     end
@@ -147,21 +137,18 @@ module Tuile
     describe "the face well" do
       it "is the input well while unfocused" do
         s = select(value: "warn")
-        repaint(s)
-        assert_equal Theme::DARK.input_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Theme::DARK.input_bg_color, Testing.paint(s).cell(0, 0).style.bg
       end
 
       it "is the active well while on the focus chain" do
         s = select(value: "warn")
         s.focus
-        repaint(s)
-        assert_equal Theme::DARK.active_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Theme::DARK.active_bg_color, Testing.paint(s).cell(0, 0).style.bg
       end
 
       it "spans the whole row, the ▾ column included" do
         s = select
-        repaint(s)
-        assert_equal Theme::DARK.input_bg_color, Screen.instance.buffer.cell(19, 0).style.bg
+        assert_equal Theme::DARK.input_bg_color, Testing.paint(s).cell(19, 0).style.bg
       end
     end
 
@@ -415,7 +402,6 @@ module Tuile
       it "renders nothing selected when the value is absent from items" do
         s = select(value: "warn")
         s.items = %w[trace fatal]
-        repaint(s)
         assert_equal "warn               ▾", face(s) # the value still shows
         s.focus
         key(Keys::ENTER)

@@ -105,8 +105,7 @@ module Tuile
       it "clears background when there are no children" do
         layout = Component::Layout.new
         Testing.place(layout, Rect.new(0, 0, 5, 2))
-        repaint(layout)
-        assert_equal ["     ", "     "], Screen.instance.buffer.region_text(layout.absolute_rect)
+        assert_equal ["     ", "     "], Testing.paint(layout).text
       end
 
       it "does not clear background when children fully tile the rect" do

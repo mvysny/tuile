@@ -132,8 +132,7 @@ module Tuile
         Testing.place(l, Rect.new(0, 0, 20, 2))
         l.renderer = ->(person, _w) { person[:name] }
         l.items = [{ name: "Ada" }, { name: "Linus" }]
-        repaint(l)
-        rows = Screen.instance.buffer.region_text(l.absolute_rect)
+        rows = Testing.paint(l).text
         assert_includes rows[0], "Ada"
         assert_includes rows[1], "Linus"
       end
@@ -184,8 +183,7 @@ module Tuile
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 20, 1))
         l.items = [42]
-        repaint(l)
-        assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "42"
+        assert_includes Testing.paint(l).text.first, "42"
       end
 
       it "parses ANSI in a String rendering" do
@@ -193,9 +191,9 @@ module Tuile
         Testing.place(l, Rect.new(0, 0, 20, 1))
         l.renderer = ->(item, _w) { "\e[31m#{item}\e[0m" }
         l.items = ["hi"]
-        repaint(l)
-        assert_includes Screen.instance.buffer.region_ansi(l.absolute_rect).first, "hi"
-        assert_equal Color::RED, Screen.instance.buffer.cell(1, 0).style.fg
+        painted = Testing.paint(l)
+        assert_includes painted.region_ansi(l.local_rect).first, "hi"
+        assert_equal Color::RED, painted.cell(1, 0).style.fg
       end
 
       it "keeps only the first line of a multi-line rendering" do
@@ -203,8 +201,7 @@ module Tuile
         Testing.place(l, Rect.new(0, 0, 20, 2))
         l.renderer = ->(item, _w) { "#{item}\nand more" }
         l.items = ["one"]
-        repaint(l)
-        rows = Screen.instance.buffer.region_text(l.absolute_rect)
+        rows = Testing.paint(l).text
         assert_includes rows[0], "one"
         refute_includes rows[1], "and more"
       end
@@ -213,10 +210,9 @@ module Tuile
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 20, 1))
         l.items = [{ name: "Ada" }]
-        repaint(l)
+        Testing.paint(l)
         l.renderer = ->(person, _w) { person[:name] }
-        repaint(l)
-        assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "Ada"
+        assert_includes Testing.paint(l).text.first, "Ada"
       end
 
       it "hands the renderer the columns the row body gets" do
@@ -225,7 +221,7 @@ module Tuile
         widths = []
         l.renderer = ->(item, w) { widths << w and item }
         l.items = ["x"]
-        repaint(l)
+        Testing.paint(l)
         assert_equal [18], widths, "20 columns less a gutter either side"
       end
 
@@ -236,7 +232,7 @@ module Tuile
         widths = []
         l.renderer = ->(item, w) { widths << w and item }
         l.items = ["x"]
-        repaint(l)
+        Testing.paint(l)
         assert_equal [17], widths
       end
 
@@ -255,11 +251,9 @@ module Tuile
         Testing.place(l, Rect.new(0, 0, 20, 1))
         l.renderer = ->(item, w) { "#{item}:#{w}" }
         l.items = ["w"]
-        repaint(l)
-        assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "w:18"
+        assert_includes Testing.paint(l).text.first, "w:18"
         Testing.place(l, Rect.new(0, 0, 30, 1))
-        repaint(l)
-        assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "w:28"
+        assert_includes Testing.paint(l).text.first, "w:28"
       end
 
       it "re-renders a width-dependent row when the scrollbar takes its column" do
@@ -267,10 +261,9 @@ module Tuile
         Testing.place(l, Rect.new(0, 0, 20, 1))
         l.renderer = ->(item, w) { "#{item}:#{w}" }
         l.items = ["w"]
-        repaint(l)
+        Testing.paint(l)
         l.scrollbar_visibility = :visible
-        repaint(l)
-        assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "w:17"
+        assert_includes Testing.paint(l).text.first, "w:17"
       end
 
       it "raises on a renderer that does not take the width" do
@@ -308,42 +301,42 @@ module Tuile
 
       it "renders only the rows in the viewport" do
         l, rendered = counting_list(10)
-        repaint(l)
+        Testing.paint(l)
         assert_equal [1, 2, 3], rendered
       end
 
       it "memoizes a rendered row across repaints" do
         l, rendered = counting_list(3)
-        repaint(l)
-        repaint(l)
+        Testing.paint(l)
+        Testing.paint(l)
         assert_equal [1, 2, 3], rendered
       end
 
       it "re-renders after a width change" do
         l, rendered = counting_list(3)
-        repaint(l)
+        Testing.paint(l)
         Testing.place(l, Rect.new(0, 0, 30, 3))
         rendered.clear
-        repaint(l)
+        Testing.paint(l)
         assert_equal [1, 2, 3], rendered
       end
 
       it "re-renders after a new renderer" do
         l, rendered = counting_list(3)
-        repaint(l)
+        Testing.paint(l)
         l.renderer = ->(item, _w) { "item #{item}" }
         rendered.clear
-        repaint(l)
+        painted = Testing.paint(l)
         assert_equal [], rendered
-        assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "item 1"
+        assert_includes painted.text.first, "item 1"
       end
 
       it "re-renders the viewport after the items are re-assigned" do
         l, rendered = counting_list(3)
-        repaint(l)
+        Testing.paint(l)
         l.items = [1, 2, 3, 4]
         rendered.clear
-        repaint(l)
+        Testing.paint(l)
         assert_equal [1, 2, 3], rendered
       end
 
@@ -354,7 +347,7 @@ module Tuile
         assert_equal 100, rendered.size, "the whole list should have been scanned"
         assert_empty l.instance_variable_get(:@row_cache)
         rendered.clear
-        repaint(l)
+        Testing.paint(l)
         assert_equal [1, 2, 3], rendered, "the viewport should still need rendering after a scan"
       end
     end
@@ -1102,8 +1095,7 @@ module Tuile
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 20, 5))
         l.lines = %w[hello world]
-        repaint(l)
-        rows = Screen.instance.buffer.region_text(l.absolute_rect)
+        rows = Testing.paint(l).text
         assert_includes rows[0], "hello"
         assert_includes rows[1], "world"
       end
@@ -1112,17 +1104,16 @@ module Tuile
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 20, 3))
         l.lines = %w[a b c d e]
-        repaint(l)
+        painted = Testing.paint(l)
         # Painting fills exactly rect.height rows of the buffer.
-        assert_equal 3, Screen.instance.buffer.region_text(l.absolute_rect).length
+        assert_equal 3, painted.text.length
       end
 
       it "pads short lines to full width" do
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 10, 1))
         l.lines = ["hi"]
-        repaint(l)
-        painted_line = Screen.instance.buffer.region_text(l.absolute_rect).first
+        painted_line = Testing.paint(l).text.first
         assert_equal 10, painted_line.length
       end
 
@@ -1132,9 +1123,9 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         l.active = true
-        repaint(l)
+        painted = Testing.paint(l)
         # Second painted line (cursor row) should carry ANSI color codes.
-        line1_content = Screen.instance.buffer.region_ansi(l.absolute_rect)[1]
+        line1_content = painted.region_ansi(l.local_rect)[1]
         assert line1_content.include?("\e["),
                "Expected cursor line to have ANSI color codes, got: #{line1_content.inspect}"
       end
@@ -1144,8 +1135,7 @@ module Tuile
         Testing.place(l, Rect.new(0, 0, 20, 2))
         l.lines = %w[a b c d]
         l.scroll_top_row = 2
-        repaint(l)
-        line0, line1 = Screen.instance.buffer.region_text(l.absolute_rect)
+        line0, line1 = Testing.paint(l).text
         assert_includes line0, "c"
         assert_includes line1, "d"
       end
@@ -1156,8 +1146,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         # active stays false
-        repaint(l)
-        line1_content = Screen.instance.buffer.region_ansi(l.absolute_rect)[1]
+        line1_content = Testing.paint(l).region_ansi(l.local_rect)[1]
         assert !line1_content.include?("\e["),
                "Expected no ANSI color codes when inactive, got: #{line1_content.inspect}"
       end
@@ -1168,8 +1157,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         l.show_cursor_when_inactive = true
-        repaint(l)
-        line1_content = Screen.instance.buffer.region_ansi(l.absolute_rect)[1]
+        line1_content = Testing.paint(l).region_ansi(l.local_rect)[1]
         assert line1_content.include?("\e["),
                "Expected cursor line to have ANSI color codes when show_cursor_when_inactive=true, " \
                "got: #{line1_content.inspect}"
@@ -1182,8 +1170,7 @@ module Tuile
         Testing.place(l, Rect.new(0, 0, 10, 3))
         l.lines = ["hi"] # one content row, then two blank filler rows
         l.bg_color = 52
-        repaint(l)
-        buf = Screen.instance.buffer
+        buf = Testing.paint(l)
         assert_equal Color.new(52), buf.cell(0, 0).style.bg, "content row, left edge"
         assert_equal Color.new(52), buf.cell(9, 0).style.bg, "content row, right edge"
         assert_equal Color.new(52), buf.cell(0, 2).style.bg, "blank filler row"
@@ -1197,8 +1184,7 @@ module Tuile
         Testing.place(l, Rect.new(0, 0, 10, 2))
         l.lines = ["hi"]
         parent.bg_color = 52
-        repaint(l)
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 1).style.bg
+        assert_equal Color.new(52), Testing.paint(l).cell(0, 1).style.bg
       end
 
       it "composes the cursor highlight over the bg_color fill" do
@@ -1208,8 +1194,7 @@ module Tuile
         l.bg_color = 52
         l.cursor = Component::List::Cursor.new(position: 1)
         l.active = true
-        repaint(l)
-        buf = Screen.instance.buffer
+        buf = Testing.paint(l)
         assert_equal Color.new(52), buf.cell(0, 0).style.bg, "non-cursor row keeps the panel tint"
         assert_equal Screen.instance.theme.active_bg_color, buf.cell(0, 1).style.bg, "cursor row overlays active_bg"
       end
@@ -1218,9 +1203,9 @@ module Tuile
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 10, 2))
         l.lines = ["hi"]
-        repaint(l)
-        assert_nil Screen.instance.buffer.cell(0, 0).style.bg, "content row"
-        assert_nil Screen.instance.buffer.cell(0, 1).style.bg, "filler row"
+        painted = Testing.paint(l)
+        assert_nil painted.cell(0, 0).style.bg, "content row"
+        assert_nil painted.cell(0, 1).style.bg, "filler row"
       end
     end
 

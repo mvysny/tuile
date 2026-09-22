@@ -318,8 +318,7 @@ module Tuile
     describe "rendering" do
       it "paints a ▾ affordance in the last column" do
         c = combo(width: 20)
-        repaint(c)
-        assert_equal "▾", Screen.instance.buffer.cell(19, 0).grapheme
+        assert_equal "▾", Testing.paint(c).cell(19, 0).grapheme
       end
 
       # The dropdown keeps the field's width, so a scrolling one buys the
