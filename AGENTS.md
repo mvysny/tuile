@@ -66,12 +66,11 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **A slot is a {Tuile::Listeners}, declared with `listener :on_foo`** — append, and remove your
   own. Read the slot, never `@on_foo`: it is built on first read and nil until asked. See `D_listeners`.
 - **No `on_` method is *defined* in `lib/`, reader or writer** — every reader is macro-generated,
-  and a writer is the replace operation that was deleted.
+  and there is no writer. See `D_listeners`.
 - **An empty list is meaningful, and each slot's rdoc says what its empty means** — so a widget's
   own default is a flag (`escape_clears_focus`), never a listener an app must remove by identity.
   See `D_escape_opt_out`.
-- **Every slot fires one {Tuile::Event}**, nested beside whatever fires it; a listener taking no
-  parameters is called with none, one needing two raises at registration.
+- **Every slot fires one {Tuile::Event}**, nested beside whatever fires it.
 - **`handle_` marks the override point and says nothing about the return; a trailing `?` does** —
   exactly the handlers a dispatcher *routes* take it and return a verdict: `handle_key?`,
   `handle_text_input_key?`, `MenuBar#handle_mnemonic?`. The test is "is there an alternative
@@ -148,13 +147,12 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   {Tuile::Screen#clip_for} bounds it by its own rect and every ancestor's. So a parent may hand out
   a rect it will not show in full, and a scrolled-away child paints into nothing. See `D_clip`.
 - **A component owns no part of the clip, and a re-grown hook may only narrow** — a bound a
-  component could widen is not a bound, which is why `clip_rect` and `effective_clip` were built and
-  deleted; the deferred shape is a container's `clip_rect_for(child)`. See `D_clip`.
+  component could widen is not a bound. See `D_clip`.
 - **The default `repaint` clears the gaps *and* re-invalidates the children; opting out means
   skipping the clear, never the cascade** — call `invalidate_children`, or grandchildren under a
   cleared ancestor silently vanish. See `D_repaint_cascade`, `D_component_contract`.
 - **Never blank a cell you are about to paint over** — `Cell#set` only dirties on a real change, so
-  a redundant clear re-emits the cell; that cost 925 bytes per unchanged `Window` repaint. See `D_progress_bar`.
+  a redundant clear re-emits the cell. See `D_progress_bar`.
 - **A container assigns *every* child a rect on every pass, including when its own rect is empty** —
   a `return if rect.empty?` strands children at stale coordinates for the next full repaint. See `D_empty_ancestor`.
 - **`Screen#repaint`'s drain filter is the backstop, not the fix** — it drops anything with an empty
@@ -239,8 +237,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   `Layout#handle_key?` nor `Window#handle_key?` exists.
 - **Below all three rungs, an unhandled `q` or ESC stops the loop**, so a scope root binding bare
   `q` must return `true` or the app quits. See `D_quit_key`.
-- **There is no framework jump-to-widget mnemonic** — `key_shortcut` and the capture phase were
-  deleted in 0.10.0; an app writes a `handle_key?` on its content layout. Re-grow only as sugar over
+- **There is no framework jump-to-widget mnemonic** — `key_shortcut` and the capture phase are
+  gone; an app writes a `handle_key?` on its content layout. Re-grow only as sugar over
   an ancestor's `handle_key?`, never as a dispatch phase. See `D_key_dispatch`.
 - **There is no general key *callback*** — override `handle_key?` and `super` for the rest; one
   callback slot cannot be shared, and a pre-dispatch veto is the capture phase again. The *named*
@@ -253,8 +251,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **Two sanitizing layers, and the line is deliberate** — `Keys.normalize_paste` fixes *terminal*
   artifacts, `preprocess_paste` decides what a *text buffer* may hold; a new rule goes in whichever
   owns the reason, never both.
-- **An input filter goes on `insert_text`, never on a key seam** — a key handler never sees a paste,
-  which is how all three numeric fields shipped broken until 0.15.0. See `D_input_filters`.
+- **An input filter goes on `insert_text`, never on a key seam** — a key handler never sees a paste.
+  See `D_input_filters`.
 - **Popup focus repair has a fixed order, and an out-of-order close rewrites the snapshots** so no
   saved focus strands inside a detached popup ({Tuile::ScreenPane#handle_child_removed} carries the
   order; read `screen_pane_spec`'s regression cases before refactoring it).
@@ -263,7 +261,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 
 - **A component never advertises how big it wants to be; its parent assigns its `rect`.** No
   `content_size`, no `Sizing`, no min/preferred/max, no shrink-to-fit — a container computes
-  rectangles in plain Ruby in its `relayout`. Keeps the retained-tree promise; See `D_box_layouts`.
+  rectangles in plain Ruby in its `relayout`. Keeps the retained-tree promise. See `D_box_layouts`.
 - **{Tuile::Component#relayout} is the sole place a container assigns its children's rects** —
   *`relayout` : geometry :: `repaint` : ink*: framework-invoked, idempotent, never called directly.
   Every other input to it ends in `invalidate_layout`. See `D_relayout`.
@@ -394,9 +392,9 @@ One line per directory; `ls` is the file index, and each class's rdoc says what 
   layouts `Box`, `Vertical`, `Horizontal`.
 - `spec/` — one spec per source file mirroring `lib/tuile/`, the contract suite, and the PTY-based
   system tests for `examples/`. Rules: `spec/AGENTS.md`
-- `book/` — the guide, read cover to cover: ten chapters plus `book/README.md`.
+- `book/` — the guide, read cover to cover from `book/README.md`.
 - `design/` — the lazy docs; see *Design docs* above.
-- `examples/` — runnable demos: `hello_world.rb`, `sampler.rb`, `file_commander.rb`.
+- `examples/` — runnable demos, each driven by a PTY system test.
 - `benchmark/` — display-width and repaint micro-benchmarks (`rake benchmark`).
 - `sig/tuile.rbs` — sord-generated RBS signatures; `rake sig` regenerates, CI fails on drift.
 - `tasks/` — extra rake tasks, loaded by the `Rakefile`.
@@ -437,7 +435,7 @@ bundle exec rake benchmark                   # display-width / repaint micro-ben
 ```
 
 `rake check` is what to run before committing; it is the same suite the release gate re-runs, and
-`rake sig` can dirty the tree. CI (`.github/workflows/ci.yml`) runs `rspec` on Ruby 3.3 / 3.4 / 4.0
+`rake sig` can dirty the tree. CI (`.github/workflows/ci.yml`) runs `rspec` across the supported Rubies
 and a separate `check` job that also fails on `sig/` drift. Coverage is not gated — treat the
 number as a signal. The release runbook is `design/releasing.md`.
 
@@ -459,6 +457,3 @@ never rewrite the whole file shorter — both are lossy. `design/verify_design_t
 `rake design_tripwires`, part of `rake check`) checks the caps, the cites, the question headings
 and the `CLAUDE.md` symlinks. `CLAUDE.md` is a symlink to `AGENTS.md` beside every one of them —
 never a file with content, even though Claude Code's `#` shortcut and `/init` target it by name.
-
-*Doc layout seeded from the `design-docs` skill (mvysny, `~/.claude/skills`); this project needs
-nothing from it.*
