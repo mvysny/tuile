@@ -128,8 +128,8 @@ module FileCommanderExample
   end
 
   # Top-level layout. Header label on the first row, two side-by-side
-  # windows below. `rect=` re-runs on the initial mount and on every WINCH,
-  # so the split tracks the terminal size automatically.
+  # windows below. `relayout` re-runs on the initial mount and on every
+  # WINCH, so the split tracks the terminal size automatically.
   class FileCommander < Tuile::Component::Layout
     def initialize(left_dir, right_dir)
       super()

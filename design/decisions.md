@@ -3070,8 +3070,9 @@ Split {Component::Popup} in two. `Overlay < Component` is the bare
 floating layer — the mount/dismiss lifecycle, `owner`, `on_close`,
 `close_on_outside_click`, a placement the pane applies, and the full-repaint
 escalation on a rect change — and `Popup < Overlay` adds the modal dialog on
-top: a declared size, a centered default placement, `focusable?`, and ESC/`q`. `Popup.new(modal: false)` is
-gone; the `@modal` ivar with it, since `modal?` is now a constant on each class.
+top: a declared size, a centered default placement, `focusable?`, and ESC/`q`.
+`Popup.new(modal: false)` is gone; the `@modal` ivar with it, since `modal?` is
+now a constant on each class.
 `Notification` and `ListDropdown` both reparent onto `Overlay`.
 
 **Why.** The cut line was not invented — it is exactly what `ScreenPane` calls on
@@ -3379,7 +3380,7 @@ fixed-arity. A shadow tree at 1/10 scale (`D_final_tree`): `children.size` stops
 says, `walk_tree` visits things that aren't UI, and every generic walk tolerates ghosts forever, all to
 buy index arithmetic. A `Slot` is not a placeholder: it has a rect, clears it, and routes.
 
-**Why not holder sub-containers built from `Layout`.** Wrapping each region in a bare `Layout`
+**Why not holder sub-containers built from `Layout`.** Wrapping each region in a `Layout::Absolute`
 needs no framework change at all, which is exactly the tell — an app can already do it. It costs a
 tree level *and* rect plumbing per region, and it is a placeholder with geometry.
 

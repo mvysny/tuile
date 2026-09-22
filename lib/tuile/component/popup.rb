@@ -68,9 +68,9 @@ module Tuile
       #   and focus repair falls back to it when its subtree has no tab stop.
       def focusable? = true
 
-      # Sets the popup's box; an open popup takes it on the next settle. Accepts a {Fraction} (resolved
-      # against the screen every layout pass, so it tracks resize) or an
-      # absolute {Size} (clamped to the screen). This is **authoritative**, not
+      # Sets the popup's box; an open popup takes it on the next settle.
+      # Accepts a {Fraction} (resolved against the screen every layout pass, so
+      # it tracks resize) or an absolute {Size} (clamped to the screen). This is **authoritative**, not
       # a preference: the screen applies exactly what you ask for (clamped),
       # with no negotiation — a popup has no siblings to compete with.
       # @param new_size [Size, Fraction]

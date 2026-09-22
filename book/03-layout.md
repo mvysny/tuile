@@ -256,9 +256,9 @@ board.constrain(body, Tuile::Rect.new(0, 2, 40, 20))
 
 ## Stacks without the arithmetic: `Vertical` and `Horizontal`
 
-A hand-written `relayout` is the right tool for genuinely two-dimensional geometry, and
-tedious for the most common shape in any app: a stack. So Tuile ships two
-*box* layouts that do that arithmetic for you. You declare what extent each
+A hand-written `relayout` is the right tool for genuinely two-dimensional
+geometry, and tedious for the most common shape in any app: a stack. So
+Tuile ships two *box* layouts that do that arithmetic for you. You declare what extent each
 child should get, and the box hands down rectangles through the very same
 `rect=`:
 
@@ -390,8 +390,8 @@ list_width  = (rect.width / 3).clamp(20, 40)  # a third, but never <20 or >40
 The first is in `examples/sampler.rb` twice — the sidebar in its CheckboxGroup
 pane and the one in its List pane — and both keep a `relayout` override. That's
 the intended division of labour rather than a gap to work around: use a box for
-the stack, drop to a `Layout` subclass for the region that genuinely needs arithmetic —
-usually nesting one inside the other, so only the awkward part carries any. The
+the stack, drop to a `Layout` subclass for the region that genuinely needs
+arithmetic — usually nesting one inside the other, so only the awkward part carries any. The
 sampler does exactly that, and porting it to these layouts took it from 59
 hand-written rectangles down to a handful (5 today).
 
