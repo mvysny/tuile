@@ -270,14 +270,14 @@ module Tuile
         Size.new([painted_width - @left_column, rect.width].min, 1)
       end
 
-      # @param new_rect [Rect]
+      # Closes the cascade — only on a *changed* rect, which is all this hook
+      # hears: a layout re-assigning the same rect (which {Layout::Box} does on
+      # any child mutation) must not.
+      # @param old_rect [Rect]
       # @return [void]
-      def rect=(new_rect)
-        # Only a *changed* rect closes the menu: a layout re-assigning the same
-        # rect (which {Layout::Box} does on any child mutation) must not.
-        changed = rect != new_rect
+      def handle_rect_changed(old_rect)
         super
-        @cascade.close if changed
+        @cascade.close
       end
 
       # Closes the cascade when the strip leaves the focus chain, so tabbing (or
@@ -383,7 +383,7 @@ module Tuile
 
       # The rect's *width* is the only part of it the offset depends on, so this
       # hook is the whole geometry story; {Component#rect=} invalidates for us,
-      # and {#rect=} closes the cascade rather than re-anchoring it.
+      # and {#handle_rect_changed} closes the cascade rather than re-anchoring it.
       # @return [void]
       def handle_width_changed
         super

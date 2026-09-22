@@ -25,7 +25,6 @@ module Tuile
     # mounted on the screen and laid out 40x5.
     def sheet(count: 2)
       sheet = Component::TabSheet.new
-      Screen.instance.content = sheet
       count.times { |i| sheet.add_tab("Tab#{i}", Component::TextField.new) }
       mount_at(sheet, Rect.new(0, 0, 40, 5))
     end
@@ -126,7 +125,7 @@ module Tuile
         field = Component::TextField.new
         sheet.add_tab("First", field)
         sheet.add_tab("Second", Component::Label.new("Second"))
-        sheet.rect = Rect.new(0, 0, 40, 5)
+        place(sheet, Rect.new(0, 0, 40, 5))
         field.text = "typed"
         sheet.select_next
         sheet.select_previous
@@ -280,7 +279,7 @@ module Tuile
         Screen.instance.content = sheet
         sheet.add_tab("First", Component::Label.new("PANE ONE"))
         sheet.add_tab("Second", Component::Label.new("PANE TWO"))
-        sheet.rect = Rect.new(0, 0, 20, 3)
+        place(sheet, Rect.new(0, 0, 20, 3))
         Screen.instance.repaint
         buffer = Screen.instance.buffer
         assert_equal " First │ Second     ", buffer.region_text(sheet.strip.absolute_rect).join
@@ -298,7 +297,7 @@ module Tuile
         sheet.add_tab("First", Component::Label.new("PANE ONE"))
         gappy.add(Component::Label.new("prompt"), Component::Layout::Fixed[1])
         gappy.add(sheet, Component::Layout::Expand[1])
-        gappy.rect = Rect.new(0, 0, 20, 6)
+        place(gappy, Rect.new(0, 0, 20, 6))
         Screen.instance.repaint
 
         Screen.instance.focused = sheet.strip
@@ -311,7 +310,7 @@ module Tuile
         Screen.instance.content = sheet
         sheet.add_tab("First", Component::Label.new("PANE ONE"))
         sheet.add_tab("Second", Component::Label.new("TWO"))
-        sheet.rect = Rect.new(0, 0, 20, 3)
+        place(sheet, Rect.new(0, 0, 20, 3))
         Screen.instance.repaint
         sheet.select_next
         Screen.instance.repaint

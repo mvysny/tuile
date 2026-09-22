@@ -243,18 +243,37 @@ module Tuile
     # **The children do not move yet**: this only marks a {#relayout}, so a
     # child's rect read back in the same turn is still the previous pass's —
     # {#flush_layout} first.
+    #
+    # **Only the parent's {#relayout} may call this**, and it raises from
+    # anywhere else, a component with no parent included. To move a child,
+    # change what its parent places it by — {Layout::Absolute#constrain},
+    # {Layout::Box#constrain}, {Component::Overlay#placement=} — and to size a
+    # tree that has no screen, hold it in a {Layout::Absolute}:
+    #
+    #   holder = Component::Layout::Absolute.new
+    #   holder.add(tree, Rect.new(0, 0, 40, 10))
+    #   holder.flush_layout
+    #
+    # A subclass reacts to a new rect in {#handle_rect_changed}; it cannot
+    # override this, because a `protected` override is callable only from its
+    # own class, and the parent calling it is not one.
     # @param new_rect [Rect] new position. Does nothing if the new rectangle is
     #   the same as the old one.
+    # @raise [Tuile::Error] unless the parent's {#relayout} is running.
     def rect=(new_rect)
       raise TypeError, "expected Rect, got #{new_rect.inspect}" unless new_rect.is_a? Rect
+
+      check_placer
       return if @rect == new_rect
 
-      prev_width = @rect.width
+      old_rect = @rect
       @rect = new_rect
-      handle_width_changed if prev_width != new_rect.width
+      handle_width_changed if old_rect.width != new_rect.width
+      handle_rect_changed(old_rect)
       invalidate
       invalidate_layout
     end
+    protected :rect=
 
     # Runs every {#relayout} this component's *tree* owes, so its rects are
     # current — the force-now that makes a detached tree measurable:
@@ -783,7 +802,7 @@ module Tuile
     # A property of the parent chain alone — no {Screen} is consulted, so
     # assembling a tree needs no screen in the process at all:
     #
-    #   layout = Component::Layout::Absolute.new
+    #   layout = Component::Layout::Vertical.new
     #   layout.add(label)      # legal with no Screen; neither is attached yet
     #   screen.content = layout # now both are
     #
@@ -885,7 +904,7 @@ module Tuile
       child.__send__(:check_parent, self)
       at.nil? ? @children.push(child) : @children.insert(at, child)
       child.parent = self
-      invalidate_layout if places_child?(child)
+      invalidate_layout
     end
 
     # Drops `child` and notifies {#handle_child_removed}.
@@ -921,7 +940,7 @@ module Tuile
 
       @children.delete(child)
       child.parent = nil
-      invalidate_layout if places_child?(child)
+      invalidate_layout
     end
 
     # Called once this component's tree has been mounted on a {ScreenPane},
@@ -1026,6 +1045,12 @@ module Tuile
     # Called whenever the component width changes. Does nothing by default.
     # @return [void]
     def handle_width_changed; end
+
+    # Called once the parent has given this component a different rect, before
+    # anything repaints. Does nothing by default.
+    # @param _old_rect [Rect] the rect it had.
+    # @return [void]
+    def handle_rect_changed(_old_rect); end
 
     # Mirror of {#handle_focus}: the component just lost focus, to another component
     # or to nothing. The commit point a Tab-away still reaches — Tab is
@@ -1312,7 +1337,7 @@ module Tuile
     # @return [void]
     def perform_relayout
       @layout_dirty = false
-      relayout
+      Component.__send__(:placing, self) { relayout }
     end
 
     # The nearest ancestor whose pending {#relayout} would rewrite this
@@ -1325,54 +1350,48 @@ module Tuile
     # question.
     # @return [Component, nil]
     def stale_layout_ancestor
-      child = self
       node = parent
-      until node.nil?
-        return node if node.__send__(:stales_child?, child)
-
-        child = node
-        node = node.parent
-      end
-      nil
+      node = node.parent until node.nil? || node.layout_dirty?
+      node
     end
 
-    # Whether a pending pass of this container's would rewrite `child`'s rect:
-    # the mark, plus both halves of "and it is about *that* child".
-    # @param child [Component] a direct child.
-    # @return [Boolean]
-    def stales_child?(child) = layout_dirty? && relayout_assigns_rects? && places_child?(child)
+    # What may assign this component's rect: its parent, whose {#relayout}
+    # does. {ScreenPane} answers its {Screen}.
+    # @return [Component, Screen, nil]
+    def placer = parent
 
-    # Whether a pass of this component's would assign any rect at all. One that
-    # inherits the base no-op {#relayout} — a bare
-    # {Component::Layout::Absolute}, the placement-free holder every spec mounts
-    # through, and every leaf — provably assigns none, so its mark cannot make
-    # any rect below it stale. Asked of the *singleton*, so a spec that defines
-    # `relayout` on one instance counts.
-    #
-    # Deliberately **not** consulted by the three mutators: this is provable and
-    # so safe to trust in a diagnostic, but skipping a *mark* on it would leave
-    # a container that grows a `relayout` later with children nothing ever
-    # placed. {#places_child?} is the declaration that does gate the mark.
-    # @return [Boolean]
-    def relayout_assigns_rects? = method(:relayout).owner != Component
+    # @raise [Tuile::Error] unless {#placer} is the one placing right now.
+    # @return [void]
+    def check_placer
+      current = Thread.current[PLACING]
+      return if !current.nil? && current.equal?(placer)
 
-    # Whether a pass of this container's assigns `child`'s rect — `true` for
-    # every child, unless a container says otherwise:
-    #
-    #   # ScreenPane: popups assign their own rect in Overlay#reposition
-    #   def places_child?(child) = child.equal?(@content)
-    #
-    # The three tree mutators skip {#invalidate_layout} for a child the answer
-    # is `false` for, so adopting one schedules no pass, and {#rect_stale?}
-    # stops accusing an ancestor of a rewrite it will not make.
-    #
-    # **Answer `false` only where the `relayout` beside it proves it**, and keep
-    # the two together: unlike {#relayout_assigns_rects?}, nothing here is
-    # derived, so a container that starts placing a child it disclaims gets no
-    # pass and no complaint — the child simply keeps the rect it had.
-    # @param _child [Component] a direct child.
-    # @return [Boolean]
-    def places_child?(_child) = true
+      if parent.nil?
+        raise Tuile::Error, "#{self} has no parent to place it; to size a detached tree, " \
+                            "hold it in a Layout::Absolute (add(tree, rect), then flush_layout)"
+      end
+      raise Tuile::Error, "#{self}'s rect assigned outside #{parent}'s relayout; change what the parent " \
+                          "places it by instead (Absolute#constrain, Box#constrain, Overlay#placement=)"
+    end
+
+    # The thread-local naming what is placing children right now.
+    # @return [Symbol]
+    PLACING = :tuile_placing
+    private_constant :PLACING
+
+    # Runs the block as `placer`, the one thing whose children's rects may be
+    # assigned inside it. A thread-local, because a tree with no screen places
+    # children too.
+    # @param placer [Component, Screen]
+    # @return [Object] the block's value.
+    def self.placing(placer)
+      outer = Thread.current[PLACING]
+      Thread.current[PLACING] = placer
+      yield
+    ensure
+      Thread.current[PLACING] = outer
+    end
+    private_class_method :placing
 
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the

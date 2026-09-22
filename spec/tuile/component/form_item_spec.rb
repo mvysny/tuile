@@ -76,7 +76,7 @@ module Tuile
 
       it "assigns every child a rect even when its own is empty" do
         mount
-        item.rect = Rect.new(0, 0, 0, 0)
+        place(item, Rect.new(0, 0, 0, 0))
         assert(settle(item).children.all? { _1.rect.empty? })
       end
     end

@@ -10,7 +10,7 @@ module Tuile
     def field(top: 0, width: 20)
       f = Component::BigDecimalField.new
       Screen.instance.content = f
-      f.rect = Rect.new(0, top, width, 1)
+      place(f, Rect.new(0, top, width, 1))
       Screen.instance.focused = f
       f
     end
@@ -333,7 +333,7 @@ module Tuile
       it "forwards to the inner field, which paints it while empty" do
         f = Component::BigDecimalField.new
         Screen.instance.content = f
-        f.rect = Rect.new(0, 0, 12, 1)
+        place(f, Rect.new(0, 0, 12, 1))
         f.placeholder = "0.00"
         assert_equal "0.00", f.placeholder
         assert_equal "0.00", inner(f).placeholder
@@ -344,7 +344,7 @@ module Tuile
       it "gives way to a value and returns when cleared" do
         f = Component::BigDecimalField.new
         Screen.instance.content = f
-        f.rect = Rect.new(0, 0, 12, 1)
+        place(f, Rect.new(0, 0, 12, 1))
         f.placeholder = "0.00"
         f.value = BigDecimal("1.5")
         Screen.instance.repaint

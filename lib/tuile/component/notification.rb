@@ -42,8 +42,7 @@ module Tuile
     # - **Follow a theme flip.** A `Theme::Ref` `color:` is resolved once, when
     #   the message is added — a toast lives seconds, so there is no
     #   {Component#handle_theme_changed} rebuild.
-    # - **Take a size.** An {Overlay} has no declared box; the messages decide
-    #   this one's, in {#reposition}.
+    # - **Take a size.** The messages decide the box, in {#declared_size_in}.
     class Notification < Overlay
       # Most messages held at once, counting both the painted ones and any
       # waiting for room. Chosen from reading time rather than geometry: the
@@ -117,8 +116,6 @@ module Tuile
       private_class_method :new
 
       def initialize
-        # Built before `super`, because Overlay#initialize assigns the content
-        # and our #reposition override reads every one of these.
         @messages = []
         @high_water = 0
         @ticker = nil
@@ -152,31 +149,22 @@ module Tuile
 
         @messages << message
         @high_water = [@high_water, natural_width(message)].max
-        reposition
+        restack
         sync_ticker
       end
 
-      # Recomputes the box from its messages and re-anchors it to the screen's
-      # top-right corner — so a SIGWINCH re-wraps and re-anchors, where
-      # {Overlay#reposition} would have kept the stale left column of a *derived*
-      # position (off-screen entirely if the terminal narrowed).
-      #
-      # Rebuilds the {TextView}'s text too, and every mutation routes through
-      # here, because the four are one computation: the wrap width *is* the box
-      # width, the height *is* the wrapped row count, the left edge *is* derived
-      # from the width.
-      # @return [void]
-      def reposition
-        if @messages.empty?
-          self.rect = Rect.new(0, 0, 0, 0)
-          return
-        end
+      # @return [Overlay::TopRight] a notification opens in the corner.
+      def default_placement = TopRight[]
 
-        width = box_width
-        rows = @messages.flat_map { |message| wrap_message(message, width - 2) }
-        height = [rows.size + 2, cap_height].min
-        @view.text = join_rows(rows)
-        self.rect = Rect.new([screen.size.width - width, 0].max, 0, width, height)
+      # The box its messages need: as wide as the widest message held so far
+      # and as tall as they wrap to at that width, each capped by the screen.
+      # @param screen_size [Size]
+      # @return [Size]
+      def declared_size_in(screen_size)
+        return Size.new(0, 0) if @messages.empty?
+
+        width = box_width(screen_size)
+        Size.new(width, [wrapped_rows(width).size + 2, cap_height(screen_size)].min)
       end
 
       # A left press dismisses the whole box, every message with it. Every other
@@ -218,14 +206,36 @@ module Tuile
         sync_ticker
       end
 
+      protected
+
+      # Wraps the messages to the width the pane gave the box — the wrap the
+      # height in {#declared_size_in} was measured with.
+      # @return [void]
+      def relayout
+        super
+        @view.text = join_rows(wrapped_rows(rect.width)) if rect.width > 2
+      end
+
       private
+
+      # A message came or went: the text is re-wrapped here, and the box is
+      # re-measured by the pane.
+      # @return [void]
+      def restack
+        invalidate_layout
+        reposition
+      end
+
+      # @param width [Integer] the box width, border included.
+      # @return [Array<StyledString>] every message, wrapped inside the border.
+      def wrapped_rows(width) = @messages.flat_map { |message| wrap_message(message, width - 2) }
 
       # Retires the oldest message, closing the box when it was the last. Runs on
       # the event-loop thread, from the ticker.
       # @return [void]
       def retire_oldest
         @messages.shift
-        @messages.empty? ? close : reposition
+        @messages.empty? ? close : restack
         sync_ticker
       end
 
@@ -269,17 +279,20 @@ module Tuile
       # is applied here, last. Storing the clamped value instead would let a
       # SIGWINCH that narrows the terminal ratchet the box permanently down to
       # the narrow cap, with nothing to restore it when the terminal widens.
+      # @param screen_size [Size]
       # @return [Integer]
-      def box_width = [@high_water + 2, cap_width].min
+      def box_width(screen_size) = [@high_water + 2, cap_width(screen_size)].min
 
+      # @param screen_size [Size]
       # @return [Integer]
-      def cap_width
-        [[(screen.size.width * WIDTH_FRACTION).to_i, MIN_CAP_WIDTH].max, screen.size.width].min
+      def cap_width(screen_size)
+        [[(screen_size.width * WIDTH_FRACTION).to_i, MIN_CAP_WIDTH].max, screen_size.width].min
       end
 
+      # @param screen_size [Size]
       # @return [Integer] at least 3: two border rows plus one row of message.
-      def cap_height
-        [[(screen.size.height * HEIGHT_FRACTION).to_i, 3].max, screen.size.height].min
+      def cap_height(screen_size)
+        [[(screen_size.height * HEIGHT_FRACTION).to_i, 3].max, screen_size.height].min
       end
 
       # Wraps one message to `width` columns, capped at {MAX_ROWS_PER_MESSAGE}

@@ -19,10 +19,7 @@ module Tuile
         column.add(cancel)
         column.add(field)
         Screen.instance.content = w
-        w.rect = Rect.new(0, 0, 40, 10)
-        # Settled here, not `mount_at`: the examples below want the rest of the
-        # screen to hold no component at all.
-        settle(w)
+        place(w, Rect.new(0, 0, 40, 10))
       end
     end
 
@@ -307,7 +304,7 @@ module Tuile
 
         it "names what a cell reaches when something else is on top" do
           over = modal_popup
-          over.rect = save.absolute_rect
+          place(over, save.absolute_rect)
           e = assert_raises(Testing::AssertionError) { Testing.click(save) }
           assert_includes e.message, "is not clickable"
           assert_includes e.message, "a press there reaches #<Popup"
@@ -340,7 +337,7 @@ module Tuile
         it "does not raise when the press lands and nobody claims it" do
           label = Component::Label.new.tap { _1.text = "hi" }
           column.add(label)
-          window.rect = Rect.new(0, 0, 40, 10)
+          place(window, Rect.new(0, 0, 40, 10))
           Testing.click(label)
           assert_empty clicks
         end
@@ -411,10 +408,13 @@ module Tuile
           assert_same Testing.component_path_at(point).last, receiver_of(point)
         end
 
-        it "agrees on a cell no component paints" do
+        # The window is held at 40x10 in an Absolute that fills the screen, so
+        # outside the window only that holder is under the pointer.
+        it "agrees on a cell outside the window, where only its holder is" do
           point = Point.new(120, 40)
-          assert_nil Testing.component_path_at(point).last
-          assert_nil receiver_of(point)
+          holder = window.parent
+          assert_same holder, Testing.component_path_at(point).last
+          assert_same holder, receiver_of(point)
         end
 
         it "agrees inside an open popup" do

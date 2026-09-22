@@ -2715,10 +2715,12 @@ module Tuile
     def on_focus_changed: () -> Listeners
 
     # Internal — use {Component::Overlay#open} instead. Adds the overlay to
-    # {#pane}; a {Component::Popup} is additionally centered and focused.
+    # {#pane} at `placement`; a {Component::Popup} is additionally focused.
     # 
     # _@param_ `window` — any overlay, modal or not.
-    def add_popup: (Component::Overlay window) -> void
+    # 
+    # _@param_ `placement` — see {Component::Overlay}; `nil` takes the overlay's default.
+    def add_popup: (Component::Overlay window, ?Object? placement) -> void
 
     # Runs the event loop on the calling thread, taking over stdin (raw mode,
     # echo off): keys and mouse events are dispatched via {#handle_key?} /
@@ -2887,6 +2889,10 @@ module Tuile
     # _@return_ — the component holding the mouse grab — the one
     # whose {Component#handle_mouse_down?} claimed the press still held.
     def grabbed: () -> Component?
+
+    # Gives the pane the whole screen — the one rect no parent's pass assigns,
+    # so the screen places it itself.
+    def size_pane: () -> void
 
     # Whether anything on `component`'s ancestor chain actually cuts it — the
     # test that lets {#clip_for} answer {Component#local_rect} outright.
@@ -3526,6 +3532,7 @@ module Tuile
     extend Tuile::Listeners::Declare
     BG_STATES: ::Array[Symbol]
     BG_INHERIT: Symbol
+    PLACING: Symbol
 
     def initialize: () -> void
 
@@ -3988,7 +3995,7 @@ module Tuile
     # A property of the parent chain alone — no {Screen} is consulted, so
     # assembling a tree needs no screen in the process at all:
     # 
-    #   layout = Component::Layout::Absolute.new
+    #   layout = Component::Layout::Vertical.new
     #   layout.add(label)      # legal with no Screen; neither is attached yet
     #   screen.content = layout # now both are
     # 
@@ -4152,6 +4159,12 @@ module Tuile
 
     # Called whenever the component width changes. Does nothing by default.
     def handle_width_changed: () -> void
+
+    # Called once the parent has given this component a different rect, before
+    # anything repaints. Does nothing by default.
+    # 
+    # _@param_ `_old_rect` — the rect it had.
+    def handle_rect_changed: (Rect _old_rect) -> void
 
     # Mirror of {#handle_focus}: the component just lost focus, to another component
     # or to nothing. The commit point a Tab-away still reaches — Tab is
@@ -4401,42 +4414,20 @@ module Tuile
     # question.
     def stale_layout_ancestor: () -> Component?
 
-    # Whether a pending pass of this container's would rewrite `child`'s rect:
-    # the mark, plus both halves of "and it is about *that* child".
-    # 
-    # _@param_ `child` — a direct child.
-    def stales_child?: (Component child) -> bool
+    # What may assign this component's rect: its parent, whose {#relayout}
+    # does. {ScreenPane} answers its {Screen}.
+    def placer: () -> (Component | Screen)?
 
-    # Whether a pass of this component's would assign any rect at all. One that
-    # inherits the base no-op {#relayout} — a bare
-    # {Component::Layout::Absolute}, the placement-free holder every spec mounts
-    # through, and every leaf — provably assigns none, so its mark cannot make
-    # any rect below it stale. Asked of the *singleton*, so a spec that defines
-    # `relayout` on one instance counts.
-    # 
-    # Deliberately **not** consulted by the three mutators: this is provable and
-    # so safe to trust in a diagnostic, but skipping a *mark* on it would leave
-    # a container that grows a `relayout` later with children nothing ever
-    # placed. {#places_child?} is the declaration that does gate the mark.
-    def relayout_assigns_rects?: () -> bool
+    def check_placer: () -> void
 
-    # Whether a pass of this container's assigns `child`'s rect — `true` for
-    # every child, unless a container says otherwise:
+    # Runs the block as `placer`, the one thing whose children's rects may be
+    # assigned inside it. A thread-local, because a tree with no screen places
+    # children too.
     # 
-    #   # ScreenPane: popups assign their own rect in Overlay#reposition
-    #   def places_child?(child) = child.equal?(@content)
+    # _@param_ `placer`
     # 
-    # The three tree mutators skip {#invalidate_layout} for a child the answer
-    # is `false` for, so adopting one schedules no pass, and {#rect_stale?}
-    # stops accusing an ancestor of a rewrite it will not make.
-    # 
-    # **Answer `false` only where the `relayout` beside it proves it**, and keep
-    # the two together: unlike {#relayout_assigns_rects?}, nothing here is
-    # derived, so a container that starts placing a child it disclaims gets no
-    # pass and no complaint — the child simply keeps the rect it had.
-    # 
-    # _@param_ `_child` — a direct child.
-    def places_child?: (Component _child) -> bool
+    # _@return_ — the block's value.
+    def self.placing: ((Component | Screen) placer) -> Object
 
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the
@@ -5549,7 +5540,7 @@ module Tuile
       attr_accessor text: (StyledString | String)?
     end
 
-    # A modal dialog: an {Component::Overlay} that centers itself on the screen,
+    # A modal dialog: an {Component::Overlay} centered on the screen, which
     # grabs focus, scopes keys to its own subtree, blocks clicks beneath it, and
     # closes on ESC or `q`.
     # 
@@ -5600,19 +5591,14 @@ module Tuile
       # and focus repair falls back to it when its subtree has no tab stop.
       def focusable?: () -> bool
 
-      # Re-resolves {#declared_size} against the current screen and recenters the popup
-      # *itself* (this is not laying out content — the popup's own rect). Called
-      # on {Overlay#open}, on {#declared_size=}, and by the screen's layout pass,
-      # so a {Fraction} tracks SIGWINCH.
+      # {#declared_size} resolved against `screen_size`: a {Fraction} scaled, a
+      # {Size} clamped.
       # 
-      # The final rect is computed and assigned in one step rather than sizing at
-      # the origin and then centering: the intermediate origin rect rarely covers
-      # the previous one, which would make {Overlay#rect=}'s shrink/move
-      # detection fire a full repaint on every resize.
-      def reposition: () -> void
+      # _@param_ `screen_size`
+      def declared_size_in: (Size screen_size) -> Size
 
-      # Recenters the popup on the screen, preserving its current width/height.
-      def center: () -> void
+      # _@return_ — a popup opens centered.
+      def default_placement: () -> Overlay::Centered
 
       # `q` and ESC close the popup. The popup sits on the focus chain of
       # whatever it wraps, so the key reaches here by bubbling up from the
@@ -5710,15 +5696,35 @@ module Tuile
     end
 
     # A layout doesn't paint anything by itself: its job is to position child
-    # components. Two families, both top-down (see book ch3):
+    # components. Three ways to use one, all top-down (see book ch3):
     # 
-    # - {Absolute} — you compute every child's rectangle yourself in a
+    # - Subclass {Layout} and compute every child's rectangle yourself in a
     #   {Component#relayout} override. Total control, and the base for anything
-    #   unusual.
+    #   unusual:
+    # 
+    #     class SplitPane < Component::Layout
+    #       def initialize
+    #         super
+    #         add(@sidebar = Component::List.new)
+    #         add(@main = Component::Window.new("Main"))
+    #       end
+    # 
+    #       protected
+    # 
+    #       def relayout
+    #         left = width * 4 / 10
+    #         @sidebar.rect = Rect.new(0, 0, left, height)
+    #         @main.rect = Rect.new(left, 0, width - left, height)
+    #       end
+    #     end
+    # 
+    #   The framework runs it after a resize, an `add` or `remove`, and a
+    #   child's {Component#visible=}.
+    # - {Absolute} — you give each child a fixed {Rect} and the layout assigns
+    #   exactly that.
     # - {Box} / {Vertical} / {Horizontal} — you declare each child's extent as
     #   a {Fixed}, {Percent} or {Expand} constraint and the layout does the
-    #   arithmetic. Sugar over the same child-`rect` assignment, for the common
-    #   case.
+    #   arithmetic.
     # 
     # Children that fully tile the layout's rect repaint themselves and
     # cover everything; children that leave gaps (e.g. a form with widgets
@@ -5878,32 +5884,6 @@ module Tuile
         attr_reader left: Integer
       end
 
-      # Absolute layout: the base to subclass when the arithmetic is yours.
-      # Extend it, `add` the children, and divide {Component#local_rect}
-      # between them in a {Component#relayout} override:
-      # 
-      #   class SplitPane < Component::Layout::Absolute
-      #     def initialize
-      #       super
-      #       add(@sidebar = Component::List.new)
-      #       add(@main = Component::Window.new("Main"))
-      #     end
-      # 
-      #     protected
-      # 
-      #     def relayout
-      #       left = width * 4 / 10
-      #       @sidebar.rect = Rect.new(0, 0, left, height)
-      #       @main.rect = Rect.new(left, 0, width - left, height)
-      #     end
-      #   end
-      # 
-      # The framework runs it after a resize, an `add` or `remove`, and a
-      # child's {Component#visible=} — so `add` and `visible=` come free, where
-      # the `rect=` override this replaced only ever saw the resize.
-      class Absolute < Layout
-      end
-
       # Abstract base of the one-dimensional box layouts. Children are stacked
       # along a *main* axis in the order they were added, each getting the extent
       # its constraint asks for; across the *cross* axis they are sized one at a
@@ -5938,8 +5918,7 @@ module Tuile
       # 
       # Every child-list mutation re-runs the whole pass, because in a box the
       # children move: removing one shifts everything after it, and adding one
-      # shrinks every {Expand} share. ({Absolute} can skip this — there, siblings
-      # are independent.)
+      # shrinks every {Expand} share.
       # 
       # Main-axis resolution order, against
       # `available = extent - padding - spacing * (children - 1)`:
@@ -6139,6 +6118,48 @@ module Tuile
         attr_accessor padding: (Insets | Integer)
       end
 
+      # Places each child at the {Rect} it was added with, in this layout's own
+      # coordinates, and does no arithmetic of its own:
+      # 
+      #   layout = Component::Layout::Absolute.new
+      #   layout.add(title, Rect.new(0, 0, 40, 1))
+      #   layout.add(body, Rect.new(0, 2, 40, 10))
+      #   layout.constrain(body, Rect.new(0, 2, 40, 20))   # moves it on the next settle
+      # 
+      # The rect is where the child wants to be, and this layout's
+      # {Component#relayout} is what assigns it, so moving a child means
+      # {#constrain}ing it rather than writing its `rect`. A rect that sticks out
+      # of this layout is clipped at paint time, and this layout's own size
+      # doesn't matter: a detached `Absolute` with no rect still places its
+      # children, which is how a spec measures a tree that has no screen.
+      # 
+      # When the rects depend on this layout's size, subclass {Layout} and write
+      # the `relayout` instead.
+      class Absolute < Layout
+        def initialize: () -> void
+
+        # _@param_ `child` — one child, or several sharing the rect.
+        # 
+        # _@param_ `rect` — where the child sits, in this layout's coordinates; `nil` keeps the rect the child already has, which for a new component is empty.
+        def add: ((Component | ::Enumerable[Component]) child, ?Rect? rect) -> void
+
+        # Moves a child already in the layout; it takes the new rect on the next
+        # settle.
+        # 
+        # _@param_ `child` — a child of this layout.
+        # 
+        # _@param_ `rect`
+        def constrain: (Component child, Rect rect) -> void
+
+        # _@param_ `child`
+        def remove: (Component child) -> void
+
+        def relayout: () -> void
+
+        # _@param_ `rect`
+        def validate_rect: (Object rect) -> void
+      end
+
       # Stacks children top to bottom. The main axis is vertical, so a child's
       # positional constraint is its **height** and `cross:` is its **width**;
       # `align: :start` is the left edge, `:end` the right.
@@ -6284,9 +6305,6 @@ module Tuile
       def initialize: (?items: ::Array[untyped], ?value: Object?) -> void
 
       def tab_stop?: () -> bool
-
-      # Re-anchors the (open) dropdown after a move or resize.
-      def relayout: () -> void
 
       # Closes the dropdown when the Select leaves the focus chain, so tabbing
       # away doesn't strand an open menu. Safe against re-entrancy: focus never
@@ -6590,17 +6608,24 @@ module Tuile
     end
 
     # A component mounted on the {Screen}'s overlay stack rather than in the
-    # tiled tree: it floats above the content at a rect the caller assigns, and
-    # has an open/close lifecycle instead of a parent that lays it out.
+    # tiled tree: it floats above the content, and has an open/close lifecycle.
+    # It opens with a *placement* — where it wants to be — and the
+    # {ScreenPane}'s layout pass turns that into its rect, again on every
+    # resize:
     # 
     #   overlay = Component::Overlay.new(content: Component::Label.new("saved"))
-    #   overlay.rect = Rect.new(10, 4, 20, 1)   # you place it — nothing else does
-    #   overlay.open                            # mounts it on the Screen
+    #   overlay.open(Overlay::At[Rect.new(10, 4, 20, 1)])   # mounts it on the Screen
+    #   overlay.placement = Overlay::At[Rect.new(10, 6, 20, 1)]   # moves it
     #   overlay.close
     # 
     # That is the whole of it — floating, plus the lifecycle, {#on_close},
     # outside-click dismissal and {#owner}. {Component::Popup} is the subclass
-    # that adds a declared size, self-centering, focus and key handling.
+    # that adds a declared size, centering, focus and key handling.
+    # 
+    # A placement is any object answering `rect_for(overlay, screen_size)`:
+    # {At} a fixed rect, {Centered} and {TopRight} an overlay that declares its
+    # size ({#declared_size_in}), {ListDropdown::Anchored} a dropdown hanging off
+    # a field.
     # 
     # The wrapped content fills the overlay's whole {#rect}; for a frame and a
     # caption, wrap a {Component::Window} and let it draw its own border.
@@ -6617,13 +6642,10 @@ module Tuile
     # non-modal overlay is therefore driven from its owner's key handler
     # ({Component::Select} forwarding to its dropdown) instead of claiming focus.
     # 
-    # **A derived position needs a {#reposition} override.** The default is a
-    # no-op: the rect is whatever the caller last assigned. An overlay whose
-    # position is computed — from the screen, or from an anchor — must recompute
-    # it there, or it keeps a stale rect after a SIGWINCH and sits off-screen
-    # entirely if the terminal narrowed. Closing on resize is equally legal
-    # ({Component::MenuBar} drops its cascade from `rect=` rather than walking
-    # every level to re-anchor it).
+    # **An overlay whose size changes calls {#reposition}**, which asks the pane
+    # to place it again; the placement itself stays put. That is how a growing
+    # {Component::Notification} or a re-measured {Component::ConfirmWindow}
+    # gets its new rect.
     # 
     # UI-thread-confined, like every component (see {Screen}).
     class Overlay < Component
@@ -6696,25 +6718,41 @@ module Tuile
       # mid-way through closing a batch of overlays, and a raise propagates).
       def on_close: () -> Listeners
 
-      # Reassigns the overlay's rect, escalating to a full scene repaint when an
-      # open overlay shrinks or moves so its new rect no longer covers the cells
-      # it previously painted. An overlay overdraws the scene without clipping
-      # and nothing clears underneath it, so {Screen#repaint}'s overlay-only fast
-      # path would repaint into the new rect and leave the vacated cells showing
-      # stale content. When the new rect fully covers the old one (the overlay
-      # only grew), the fast path is correct and the full repaint is skipped.
+      # The box this overlay asks for on a screen of `screen_size` — what
+      # {Centered} and {TopRight} place. A bare overlay declares none.
       # 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
+      # _@param_ `_screen_size`
+      def declared_size_in: (Size _screen_size) -> Size
 
-      # Mounts this overlay on the {Screen}.
+      # The placement a bare {#open} uses. A bare overlay has none, because
+      # nothing about it says where it goes.
       # 
-      #   overlay = Component::Overlay.new(content: label).open   # construct and mount
+      # _@return_ — a placement.
+      def default_placement: () -> Object
+
+      # Escalates to a full scene repaint when an open overlay shrinks or moves
+      # so its new rect no longer covers the cells it previously painted. An
+      # overlay overdraws the scene without clipping and nothing clears
+      # underneath it, so {Screen#repaint}'s overlay-only fast path would repaint
+      # into the new rect and leave the vacated cells showing stale content.
+      # When the new rect fully covers the old one (the overlay only grew), the
+      # fast path is correct and the full repaint is skipped.
+      # 
+      # _@param_ `old_rect`
+      def handle_rect_changed: (Rect old_rect) -> void
+
+      # Mounts this overlay on the {Screen} at `placement`; the pane assigns the
+      # rect on the next settle.
+      # 
+      #   Component::Popup.new(content: window).open   # its default: centered
+      #   overlay.open(Overlay::At[Rect.new(10, 4, 20, 1)])
       # 
       # There is deliberately no class-level `Overlay.open` factory — see
       # `design/decisions.md` `D_popup_open`; returning `self` is what keeps the
       # one-liner above available without one.
-      def open: () -> self
+      # 
+      # _@param_ `placement` — where it wants to be; see the class docs.
+      def open: (?Object placement) -> self
 
       # Removes this overlay from the {Screen}. No-op if not currently open.
       def close: () -> void
@@ -6722,10 +6760,19 @@ module Tuile
       # _@return_ — true if this overlay is currently mounted on the screen.
       def open?: () -> bool
 
-      # Recomputes this overlay's own rect (not its content's layout). A no-op
-      # here — the rect is whatever the caller assigned — and the hook a subclass
-      # with a *derived* position overrides; see the class docs. Called on
-      # {#open} and by the screen's layout pass, so an override tracks SIGWINCH.
+      # Where this overlay wants to be, or `nil` while closed.
+      # 
+      # _@return_ — the placement it was opened or moved with.
+      def placement: () -> Object?
+
+      # Moves the open overlay; it takes the new rect on the next settle.
+      # 
+      # _@param_ `placement` — see the class docs.
+      def placement=: (Object placement) -> void
+
+      # Asks the pane to place this overlay again, because something its
+      # placement reads — its declared size, its row count — changed. A no-op
+      # while closed: {#open} places it anyway.
       def reposition: () -> void
 
       # Fires {#on_close}. A subclass overriding this **must** call `super`, or
@@ -6768,6 +6815,39 @@ module Tuile
       # {Component::MenuBar::Cascade} chains each panel to the one it dropped out
       # of.
       attr_accessor owner: Component?
+
+      # Places the overlay at exactly `rect`, in screen coordinates.
+      # 
+      #   overlay.open(Overlay::At[Rect.new(10, 4, 20, 1)])
+      # 
+      # @!attribute [r] rect
+      #   @return [Rect]
+      class At < Data
+        # _@param_ `_overlay`
+        # 
+        # _@param_ `_screen_size`
+        def rect_for: (Overlay _overlay, Size _screen_size) -> Rect
+
+        attr_reader rect: Rect
+      end
+
+      # Centers the overlay on the screen at the size it declares
+      # ({Overlay#declared_size_in}) — {Popup}'s default.
+      class Centered < Data
+        # _@param_ `overlay`
+        # 
+        # _@param_ `screen_size`
+        def rect_for: (Overlay overlay, Size screen_size) -> Rect
+      end
+
+      # Puts the overlay in the screen's top-right corner at the size it
+      # declares ({Overlay#declared_size_in}) — {Notification}'s default.
+      class TopRight < Data
+        # _@param_ `overlay`
+        # 
+        # _@param_ `screen_size`
+        def rect_for: (Overlay overlay, Size screen_size) -> Rect
+      end
 
       # What {#on_close} fires.
       # 
@@ -7086,8 +7166,12 @@ module Tuile
       # ungated by geometry.
       def extent: () -> Size
 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
+      # Closes the cascade — only on a *changed* rect, which is all this hook
+      # hears: a layout re-assigning the same rect (which {Layout::Box} does on
+      # any child mutation) must not.
+      # 
+      # _@param_ `old_rect`
+      def handle_rect_changed: (Rect old_rect) -> void
 
       # Closes the cascade when the strip leaves the focus chain, so tabbing (or
       # clicking) away doesn't strand an open menu.
@@ -7134,7 +7218,7 @@ module Tuile
 
       # The rect's *width* is the only part of it the offset depends on, so this
       # hook is the whole geometry story; {Component#rect=} invalidates for us,
-      # and {#rect=} closes the cascade rather than re-anchoring it.
+      # and {#handle_rect_changed} closes the cascade rather than re-anchoring it.
       def handle_width_changed: () -> void
 
       # Scrolls the minimum needed to show the highlighted segment whole, and is
@@ -7524,12 +7608,13 @@ module Tuile
         # _@param_ `item`
         def push_beside: (Integer level, Item item) -> void
 
-        # Mounts a panel for `item`'s children and yields it for geometry.
+        # Builds a panel for `item`'s children and yields it to be anchored,
+        # which is what opens it.
         # 
         # _@param_ `item`
         # 
         # _@param_ `highlight` — `false` parks the cursor off content, so nothing is highlighted.
-        def push: (Item item, ?highlight: bool) ?{ (ListDropdown drop, Integer rows, Integer width) -> void } -> void
+        def push: (Item item, ?highlight: bool) ?{ (ListDropdown drop, Integer width) -> void } -> void
 
         # Closes the deepest panel; at depth 1 that closes the cascade.
         def pop: () -> void
@@ -7764,7 +7849,7 @@ module Tuile
       # _@param_ `text`
       def placeholder=: (String? text) -> void
 
-      # Resizes the field and re-anchors the dropdown if it is open.
+      # Resizes the field; the open dropdown follows the combo by itself.
       def relayout: () -> void
 
       def handle_focus: () -> void
@@ -10876,8 +10961,7 @@ module Tuile
     # - **Follow a theme flip.** A `Theme::Ref` `color:` is resolved once, when
     #   the message is added — a toast lives seconds, so there is no
     #   {Component#handle_theme_changed} rebuild.
-    # - **Take a size.** An {Overlay} has no declared box; the messages decide
-    #   this one's, in {#reposition}.
+    # - **Take a size.** The messages decide the box, in {#declared_size_in}.
     class Notification < Tuile::Component::Overlay
       MAX_MESSAGES: Integer
       MAX_ROWS_PER_MESSAGE: Integer
@@ -10910,16 +10994,14 @@ module Tuile
       # _@param_ `color` — see {show}.
       def add_message: ((String | StyledString)? text, ?color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?) -> void
 
-      # Recomputes the box from its messages and re-anchors it to the screen's
-      # top-right corner — so a SIGWINCH re-wraps and re-anchors, where
-      # {Overlay#reposition} would have kept the stale left column of a *derived*
-      # position (off-screen entirely if the terminal narrowed).
+      # _@return_ — a notification opens in the corner.
+      def default_placement: () -> Overlay::TopRight
+
+      # The box its messages need: as wide as the widest message held so far
+      # and as tall as they wrap to at that width, each capped by the screen.
       # 
-      # Rebuilds the {TextView}'s text too, and every mutation routes through
-      # here, because the four are one computation: the wrap width *is* the box
-      # width, the height *is* the wrapped row count, the left edge *is* derived
-      # from the width.
-      def reposition: () -> void
+      # _@param_ `screen_size`
+      def declared_size_in: (Size screen_size) -> Size
 
       # A left press dismisses the whole box, every message with it. Every other
       # press is claimed and inert, so nothing beneath the toast acts on it.
@@ -10936,6 +11018,19 @@ module Tuile
       def handle_attached: () -> void
 
       def handle_detached: () -> void
+
+      # Wraps the messages to the width the pane gave the box — the wrap the
+      # height in {#declared_size_in} was measured with.
+      def relayout: () -> void
+
+      # A message came or went: the text is re-wrapped here, and the box is
+      # re-measured by the pane.
+      def restack: () -> void
+
+      # _@param_ `width` — the box width, border included.
+      # 
+      # _@return_ — every message, wrapped inside the border.
+      def wrapped_rows: (Integer width) -> ::Array[StyledString]
 
       # Retires the oldest message, closing the box when it was the last. Runs on
       # the event-loop thread, from the ticker.
@@ -10965,12 +11060,17 @@ module Tuile
       # is applied here, last. Storing the clamped value instead would let a
       # SIGWINCH that narrows the terminal ratchet the box permanently down to
       # the narrow cap, with nothing to restore it when the terminal widens.
-      def box_width: () -> Integer
+      # 
+      # _@param_ `screen_size`
+      def box_width: (Size screen_size) -> Integer
 
-      def cap_width: () -> Integer
+      # _@param_ `screen_size`
+      def cap_width: (Size screen_size) -> Integer
 
+      # _@param_ `screen_size`
+      # 
       # _@return_ — at least 3: two border rows plus one row of message.
-      def cap_height: () -> Integer
+      def cap_height: (Size screen_size) -> Integer
 
       # Wraps one message to `width` columns, capped at {MAX_ROWS_PER_MESSAGE}
       # rows.
@@ -11507,8 +11607,7 @@ module Tuile
     #   drop.list.on_item_chosen { |e| commit(e.item) }    # caller commits
     #   # …then, from the driver's key handler:
     #   drop.items = matches                         # caller filters
-    #   drop.anchor_to(absolute_rect, rows: matches.size)  # below the driver, or flipped
-    #   drop.open
+    #   drop.anchor_to(self)                         # opens it below the driver, or flipped
     #   return true if drop.move(key)  # Up/Down/PgUp/PgDn/^U/^D → list scroll
     #   drop.choose if key == Keys::ENTER            # commit the highlight
     # 
@@ -11534,7 +11633,7 @@ module Tuile
 
       def initialize: () -> void
 
-      # _@param_ `items` — the items to show, one row each; see {List#items=}.
+      # _@param_ `items` — the items to show, one row each; see {List#items=}. An open dropdown resizes to the new count on the next settle.
       def items=: (::Array[untyped] items) -> void
 
       # _@return_ — the items currently shown.
@@ -11558,13 +11657,15 @@ module Tuile
       # _@return_ — whether the highlight moved there.
       def select: (Integer index) -> bool
 
-      # Sizes and places the dropdown against `anchor`: directly beneath it,
-      # flipped above when `rows` won't fit below, clamped — with the list
-      # scrolling — when neither side has room. Horizontally the left edges line
-      # up, sliding left only far enough to keep the panel on screen.
+      # sord duck - #call looks like a duck type, replacing with untyped
+      # Opens the dropdown against `anchor` — directly beneath it, flipped above
+      # when its rows won't fit below, clamped (with the list scrolling) when
+      # neither side has room — or moves it there if it is open already.
+      # Horizontally the left edges line up, sliding left only far enough to
+      # keep the panel on screen.
       # 
-      #   drop.anchor_to(field.absolute_rect, rows: matches.size)   # field width
-      #   drop.anchor_to(absolute_extent_rect, rows: items.size, width: measured)
+      #   drop.anchor_to(self)                            # follows the field, its width
+      #   drop.anchor_to(self, width: method(:menu_width))
       # 
       # Vertical flips but horizontal slides because covering the driver would
       # hide what is being chosen, while sharing its columns is the point.
@@ -11572,30 +11673,28 @@ module Tuile
       # **`anchor` is the region actually occupied, and may be taller than one
       # row** — "beneath" means the row *after* it, so a multi-row driver (a
       # {Component::TextArea} carrying an autocomplete menu) is cleared entirely
-      # rather than overdrawn from its second row down. A widget that paints one
-      # row but may be *assigned* more height passes its face, not its rect:
-      # {ComboBox} and {Select} both do, since a {Window} content slot hands them
-      # the full inner height.
+      # rather than overdrawn from its second row down. A component anchor is
+      # read through its {Component#absolute_extent_rect}, so a widget that
+      # paints one row but is *assigned* more height ({ComboBox}, {Select})
+      # hangs the panel off its face.
       # 
-      # _@param_ `anchor` — the region the driver occupies **in screen coordinates** — a dropdown hangs off {ScreenPane} and shares no offset with its driver, so a driver passes {Component#absolute_rect} or {Component#absolute_extent_rect}. Of any height; the dropdown never covers it.
+      # The height is the item count, capped at `max_rows`, and follows
+      # {#items=}. Settles before it returns, so a driver can forward a key to
+      # the list, or read {#cursor_row_rect}, in the same handler.
       # 
-      # _@param_ `rows` — how many rows there are to show — the content count, not the height: more than fits turns the scrollbar on. `0` collapses the dropdown to an empty rect (drivers close instead).
+      # _@param_ `anchor` — the driver, followed wherever it moves, or a fixed region in screen coordinates. Of any height; the dropdown never covers it.
       # 
-      # _@param_ `width` — the panel's width in columns, clamped to the screen. Defaults to the anchor's, which lines both edges up with a field; a driver that measured its labels passes its own. A label wider than the screen clips — {List} has no horizontal scrolling.
+      # _@param_ `width` — the panel's width in columns, clamped to the screen, or something answering it; `nil` (the default) takes the anchor's, which lines both edges up with a field. A driver that measures its labels passes its own. A label wider than the screen clips — {List} has no horizontal scrolling.
       # 
       # _@param_ `max_rows` — rows shown before the list scrolls.
-      def anchor_to: (
-                       Rect anchor,
-                       rows: Integer,
-                       ?width: Integer,
-                       ?max_rows: Integer
-                     ) -> void
+      def anchor_to: ((Component | Rect) anchor, ?width: (Integer | untyped)?, ?max_rows: Integer) -> void
 
-      # Sizes and places the dropdown *beside* `anchor` — the placement a
-      # cascading submenu wants, where {#anchor_to} is the placement a field's
-      # dropdown wants.
+      # sord duck - #call looks like a duck type, replacing with untyped
+      # Opens the dropdown *beside* `anchor` — the placement a cascading submenu
+      # wants, where {#anchor_to} is the placement a field's dropdown wants —
+      # or moves it there if it is open already.
       # 
-      #   sub.anchor_beside(parent.cursor_row_rect, rows: kids.size, width: measured)
+      #   sub.anchor_beside(parent.cursor_row_rect, width: measured)
       # 
       # Horizontally it sits against `anchor`'s right edge, **flipping** to its
       # left when the right has no room (and clamping to the screen when neither
@@ -11608,19 +11707,12 @@ module Tuile
       # submenu must not cover its parent panel, so it flips *horizontally* and
       # shares its rows.
       # 
-      # _@param_ `anchor` — the row the submenu belongs to, in screen coordinates — typically the parent dropdown's {#cursor_row_rect}. Its width is the parent panel's, which is what the submenu clears.
+      # _@param_ `anchor` — the row the submenu belongs to, in screen coordinates — typically the parent dropdown's {#cursor_row_rect}.
       # 
-      # _@param_ `rows` — how many rows there are to show — the content count, not the height; more than fits turns the scrollbar on. `0` collapses the dropdown to an empty rect (drivers close instead).
-      # 
-      # _@param_ `width` — the panel's width in columns, clamped to the screen. **Required, with no default:** `anchor.width` is the *parent's* width and would be meaningless here, so the caller measures (see `design/decisions.md` `D_select` on why the width policy stays with the driver).
+      # _@param_ `width` — the panel's width in columns, clamped to the screen. **Required, with no default:** the anchor's width is the *parent's* and would be meaningless here, so the caller measures (see `design/decisions.md` `D_select` on why the width policy stays with the driver).
       # 
       # _@param_ `max_rows` — rows shown before the list scrolls.
-      def anchor_beside: (
-                           Rect anchor,
-                           rows: Integer,
-                           width: Integer,
-                           ?max_rows: Integer
-                         ) -> void
+      def anchor_beside: ((Rect | Component) anchor, width: (Integer | untyped), ?max_rows: Integer) -> void
 
       # The highlighted row's rect **on screen** — what a cascading submenu
       # anchors against, via {#anchor_beside}. Screen coordinates because the
@@ -11659,13 +11751,13 @@ module Tuile
       # `items=` too.
       def relayout: () -> void
 
-      # Places the panel and settles the pass, because both anchor methods
-      # promise a panel that *is* placed: a driver reads {#cursor_row_rect} or
-      # forwards a key to the list in the same handler, and both measure rects
-      # this just assigned.
+      # Opens or moves the panel and settles the pass, because both anchor
+      # methods promise a panel that *is* placed: a driver reads
+      # {#cursor_row_rect} or forwards a key to the list in the same handler,
+      # and both measure rects this just assigned.
       # 
-      # _@param_ `rect`
-      def place: (Rect rect) -> void
+      # _@param_ `placement`
+      def anchor_with: (Anchored placement) -> void
 
       # The wrapped list, exposed so a driver can register on {List#on_item_chosen}
       # (its commit) and {List#on_cursor_changed} (a cascading driver drops the
@@ -11683,6 +11775,85 @@ module Tuile
         def focusable?: () -> bool
 
         def tab_stop?: () -> bool
+      end
+
+      # The placement {#anchor_to} and {#anchor_beside} open the dropdown with:
+      # hung off `anchor`, `side` `:below` or `:beside` it, as tall as its rows
+      # up to `max_rows`. The pane re-reads the anchor on every pass and again
+      # once the content has settled, so the panel follows a field that moves.
+      # 
+      # @!attribute [r] anchor
+      #   @return [Component, Rect] a component, followed by its
+      #     {Component#absolute_extent_rect}, or a fixed rect in screen
+      #     coordinates.
+      # @!attribute [r] side
+      #   @return [Symbol] `:below` or `:beside`.
+      # @!attribute [r] width
+      #   @return [Integer, #call, nil] columns, or something answering them when
+      #     called; `nil` takes the anchor's width.
+      # @!attribute [r] max_rows
+      #   @return [Integer] rows shown before the list scrolls.
+      class Anchored < Data
+        # _@return_ — the anchor in screen coordinates, or `nil` when a
+        # component anchor is detached or hidden.
+        def anchor_rect: () -> Rect?
+
+        # _@param_ `drop`
+        # 
+        # _@param_ `screen_size`
+        def rect_for: (ListDropdown drop, Size screen_size) -> Rect
+
+        # Beneath the anchor, flipped above when the rows won't fit below,
+        # clamped — with the list scrolling — when neither side has room; the
+        # left edges line up, sliding left only far enough to stay on screen.
+        # 
+        # _@param_ `anchor`
+        # 
+        # _@param_ `rows`
+        # 
+        # _@param_ `width`
+        # 
+        # _@param_ `screen_size`
+        def below: (
+                     Rect anchor,
+                     Integer rows,
+                     Integer width,
+                     Size screen_size
+                   ) -> Rect
+
+        # Against the anchor's right edge, flipped to its left when the right
+        # has no room; the first row lines up with the anchor, sliding up only
+        # far enough to stay on screen.
+        # 
+        # _@param_ `anchor`
+        # 
+        # _@param_ `rows`
+        # 
+        # _@param_ `width`
+        # 
+        # _@param_ `screen_size`
+        def beside: (
+                      Rect anchor,
+                      Integer rows,
+                      Integer width,
+                      Size screen_size
+                    ) -> Rect
+
+        # _@return_ — a component, followed by its
+        # {Component#absolute_extent_rect}, or a fixed rect in screen
+        # coordinates.
+        attr_reader anchor: (Component | Rect)
+
+        # _@return_ — `:below` or `:beside`.
+        attr_reader side: Symbol
+
+        # sord duck - #call looks like a duck type, replacing with untyped
+        # _@return_ — columns, or something answering them when
+        # called; `nil` takes the anchor's width.
+        attr_reader width: (Integer | untyped)?
+
+        # _@return_ — rows shown before the list scrolls.
+        attr_reader max_rows: Integer
       end
     end
 
@@ -12279,14 +12450,17 @@ module Tuile
         attr_reader source: ConfirmWindow
       end
 
-      # The {Popup} that {#open} wraps the dialog in: its declared size is
-      # derived from the dialog on every {#reposition}, so a message change and
-      # a SIGWINCH both re-measure against the current screen.
+      # The {Popup} that {#open} wraps the dialog in: its size is measured from
+      # the dialog on every layout pass, so a message change and a SIGWINCH both
+      # re-measure against the current screen.
       class MeasuredPopup < Tuile::Component::Popup
         # _@param_ `window`
         def initialize: (ConfirmWindow window) -> void
 
-        def reposition: () -> void
+        # _@param_ `screen_size`
+        # 
+        # _@return_ — {ConfirmWindow#measured_size}.
+        def declared_size_in: (Size screen_size) -> Size
       end
     end
 
@@ -14414,6 +14588,14 @@ module Tuile
     # _@param_ `button` — `:left`, `:middle` or `:right`.
     def click: (Integer x, Integer y, ?button: Symbol) -> void
 
+    # The terminal reporting a new size, routed as its own report would be: the
+    # pane takes the whole screen, and every popup is placed again.
+    # 
+    # _@param_ `width`
+    # 
+    # _@param_ `height`
+    def resize_terminal: (Integer width, Integer height) -> void
+
     # Half a {#click}, for a spec about the grab — what is claimed, what the
     # drag does, what the release lands on.
     # 
@@ -14526,16 +14708,17 @@ module Tuile
   class ScreenPane < Tuile::Component
     BG_STATES: ::Array[Symbol]
     BG_INHERIT: Symbol
+    PLACING: Symbol
 
     def initialize: () -> void
 
     def focusable?: () -> bool
 
-    # Adds an overlay and invalidates it for repaint. A {Component::Popup} is
-    # centered and grabs focus; a bare {Component::Overlay} is left wherever
-    # the caller positioned it and does *not* take focus, so the component that
-    # was focused keeps the cursor and keeps receiving keys — the overlay
-    # floats above the content, driven from app code.
+    # Adds an overlay at `placement` and invalidates it for repaint; the next
+    # settle gives it its rect. A {Component::Popup} grabs focus; a bare
+    # {Component::Overlay} does *not*, so the component that was focused keeps
+    # the cursor and keeps receiving keys — the overlay floats above the
+    # content, driven from app code.
     # 
     # The *whole subtree* is invalidated, not just the overlay wrapper (which
     # paints nothing on its own): a reopened popup may land on cells that the
@@ -14544,7 +14727,22 @@ module Tuile
     # without this the overlay's contents would stay blank on reopen.
     # 
     # _@param_ `window` — any overlay, modal or not.
-    def add_popup: (Component::Overlay window) -> void
+    # 
+    # _@param_ `placement` — where it wants to be (see {Component::Overlay}); `nil` takes its {Component::Overlay#default_placement}.
+    def add_popup: (Component::Overlay window, ?Object? placement) -> void
+
+    # _@param_ `popup` — an open popup.
+    # 
+    # _@return_ — where it wants to be; `nil` if it isn't open here.
+    def placement: (Component::Overlay popup) -> Object?
+
+    # Moves an open popup; it takes the new rect on the next settle.
+    # {Component::Overlay#placement=} is the usual way in.
+    # 
+    # _@param_ `popup` — an open popup.
+    # 
+    # _@param_ `placement` — see {Component::Overlay}.
+    def constrain: (Component::Overlay popup, Object placement) -> void
 
     # Removes a popup. If the popup held focus, focus shifts to the now-topmost
     # remaining popup, falling back to the focus snapshotted when the popup
@@ -14587,25 +14785,12 @@ module Tuile
     def key_scope: () -> Component?
 
     # Gives {#content} the whole pane rect — the pane reserves nothing for
-    # itself.
+    # itself — and each popup the rect its placement asks for, in stacking
+    # order, so a submenu is placed after the panel it hangs from.
     # 
-    # **Content is the only rect a pass of this pane's assigns**, which is what
-    # {#places_child?} declares; keep the two together.
+    # Re-running it moves nothing that stood still: a placement is a rule, so
+    # a second popup opening re-derives the first one's rect unchanged.
     def relayout: () -> void
-
-    # Resizes, then lets each popup re-resolve its
-    # {Component::Popup#declared_size} against the new screen via
-    # {Component::Popup#reposition} — so a {Fraction} size tracks resize, a
-    # modal popup recenters, and a bare {Component::Overlay} keeps the top-left
-    # its owner assigned.
-    # 
-    # Deliberately here rather than in {#relayout}: a popup's position is its
-    # own, not derived from the pane, so the pane re-derives it exactly when the
-    # screen it was resolved against changed — and never when a *second* popup
-    # opens, which would snap the first back to centre.
-    # 
-    # _@param_ `new_rect`
-    def rect=: (Rect new_rect) -> void
 
     # Pane paints nothing itself; its children paint over the entire rect.
     # 
@@ -14700,16 +14885,24 @@ module Tuile
     # _@param_ `child`
     def handle_child_removed: (Component child) -> void
 
-    # Content, and never a popup: an overlay's rect is its own — the caller
-    # assigns it and {Component::Overlay#reposition} re-derives it, asked by
-    # {#rect=} exactly when the screen it was resolved against changed. So
-    # opening or closing one owes this pane no pass, and marks none
-    # (`D_deferred_layout`). Don't move popup placement into {#relayout} to make
-    # a mark honest again — see {#rect=} for why a second popup opening must not
-    # re-place the first.
+    # The pane's rect is the screen's to assign, since no parent's pass could.
+    def placer: () -> Screen
+
+    # _@param_ `popup`
+    def place: (Component::Overlay popup) -> void
+
+    # Leaves a popup whose anchor was detached or hidden at its last rect. It
+    # warns, once, because closing the popup is its owner's job and an owner
+    # that forgot leaves it floating over nothing.
     # 
-    # _@param_ `child`
-    def places_child?: (Component child) -> bool
+    # _@param_ `popup`
+    def lose_anchor: (Component::Overlay popup) -> void
+
+    # Whether an anchored popup's anchor now resolves elsewhere than where its
+    # last placement read it. {Screen#flush_layout} asks once the queue is
+    # empty, because this pass runs *before* the content it anchors to, so a
+    # settle that moved the content handed the pass a stale anchor.
+    def anchors_moved?: () -> bool
 
     # The overlays a click counts as landing *inside*: the one it hit, plus
     # every overlay that one belongs to, up the {Component::Overlay#owner}

@@ -165,7 +165,7 @@ the tree — and neither needs machinery, because bubbling already has the
 right shape. **Put the key on the ancestor that owns the region.**
 
 ```ruby
-class AppLayout < Tuile::Component::Layout::Absolute
+class AppLayout < Tuile::Component::Layout
   def handle_key?(key)
     case key
     when "1" then @files.focus; true

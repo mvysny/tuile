@@ -109,12 +109,6 @@ module Tuile
         invalidate
       end
 
-      # Re-anchors the (open) dropdown after a move or resize.
-      # @return [void]
-      def relayout
-        anchor if @overlay.open?
-      end
-
       # Closes the dropdown when the Select leaves the focus chain, so tabbing
       # away doesn't strand an open menu. Safe against re-entrancy: focus never
       # sits inside the (non-focusable) {ListDropdown}, so closing it repairs no
@@ -212,7 +206,6 @@ module Tuile
 
         @overlay.items = @items
         @overlay.cursor = List::Cursor.new(position: @items.index(value) || 0)
-        @overlay.open unless @overlay.open?
         anchor
       end
 
@@ -231,7 +224,7 @@ module Tuile
       end
 
       # @return [void]
-      def anchor = @overlay.anchor_to(absolute_extent_rect, rows: @items.size, width: menu_width)
+      def anchor = @overlay.anchor_to(self, width: method(:menu_width))
 
       # The dropdown's width: the widest label plus {List}'s two row gutters, plus
       # the scrollbar column when the rows can't all be shown at once — but never

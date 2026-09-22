@@ -25,7 +25,7 @@ module Tuile
       end
 
       it "sizes the occupant to its own rect" do
-        slot.rect = Rect.new(3, 4, 10, 2)
+        place(slot, Rect.new(3, 4, 10, 2))
         label = Component::Label.new("hi")
         slot.content = label
         assert_equal Rect.new(0, 0, 10, 2), settle(label).rect
@@ -34,7 +34,7 @@ module Tuile
 
       it "resizes the occupant when the slot moves" do
         slot.content = (label = Component::Label.new("hi"))
-        slot.rect = Rect.new(1, 1, 8, 3)
+        place(slot, Rect.new(1, 1, 8, 3))
         assert_equal Rect.new(0, 0, 8, 3), settle(label).rect
         assert_equal Rect.new(1, 1, 8, 3), label.absolute_rect
       end
@@ -60,7 +60,7 @@ module Tuile
       # the hole rather than reflowing around it.
       it "clears the rect it was given" do
         Screen.instance.content = slot
-        slot.rect = Rect.new(0, 0, 4, 1)
+        place(slot, Rect.new(0, 0, 4, 1))
         Screen.instance.buffer.set_text(0, 0, StyledString.parse("XXXX"))
         repaint(slot)
         assert_equal ["    "], Screen.instance.buffer.region_text(slot.absolute_rect)
@@ -81,7 +81,7 @@ module Tuile
 
       it "passes a click down to its occupant" do
         Screen.instance.content = slot
-        slot.rect = Rect.new(0, 0, 10, 1)
+        place(slot, Rect.new(0, 0, 10, 1))
         field = Component::TextField.new
         slot.content = field
         Screen.instance.click(2, 0)
@@ -95,7 +95,7 @@ module Tuile
         content = Component::List.new
         window.content = content
         Screen.instance.content = window
-        window.rect = Rect.new(0, 0, 20, 10)
+        place(window, Rect.new(0, 0, 20, 10))
 
         footer = Component::TextField.new
         window.footer = footer

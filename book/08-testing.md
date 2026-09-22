@@ -66,16 +66,21 @@ components don't emit escape sequences — they write styled cells into
 that means the buffer *is* the rendered screen, sitting in memory, fully
 inspectable, before any diffing or I/O. You assert against it directly.
 
-The rhythm is: build the component, give it a `rect`, repaint, read the
-buffer back over that rect.
+The rhythm is: build the component, have a parent place it at a rect,
+repaint, read the buffer back over that rect. A component never takes a
+rect from anyone but its parent's `relayout` — `rect=` raises anywhere
+else — so a test holds it in a `Layout::Absolute`, which places each child
+exactly where it was added:
 
 ```ruby
 label = Component::Label.new
-label.rect = Rect.new(0, 0, 10, 1)
 label.text = "hi"
-label.repaint
+holder = Component::Layout::Absolute.new
+holder.add(label, Rect.new(0, 0, 10, 1))
+Screen.instance.content = holder
+Screen.instance.repaint
 
-assert_equal ["hi        "], Screen.instance.buffer.region_text(label.rect)
+assert_equal ["hi        "], Screen.instance.buffer.region_text(label.absolute_rect)
 ```
 
 {Tuile::Buffer#region_text} returns the plain text of each row in the
@@ -212,8 +217,9 @@ by hand tests a third of what a click is. Drive it through
 {Tuile::FakeScreen}, which posts the gesture the terminal would:
 
 ```ruby
-screen.content = list                      # a press focuses; focus needs a tree
-list.rect = Rect.new(0, 0, 10, 5)
+holder = Component::Layout::Absolute.new
+holder.add(list, Rect.new(0, 0, 10, 5))
+screen.content = holder                    # a press focuses; focus needs a tree
 screen.click(5, 2)                         # press then release, at that cell
 ```
 

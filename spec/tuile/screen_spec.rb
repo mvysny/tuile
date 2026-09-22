@@ -129,7 +129,7 @@ module Tuile
           screen.content = layout
           field = Component::TextField.new
           layout.add(field)
-          field.rect = Rect.new(0, 7, 10, 1)
+          place(field, Rect.new(0, 7, 10, 1))
           [layout, field]
         end
 
@@ -194,7 +194,7 @@ module Tuile
           screen.content = layout
           field = Component::TextField.new
           layout.add(field)
-          field.rect = rect
+          place(field, rect)
           field
         end
 
@@ -754,7 +754,7 @@ module Tuile
       let(:label) do
         Component::Label.new("hello").tap do |l|
           screen.content = l
-          l.rect = Rect.new(1, 1, 8, 1)
+          place(l, Rect.new(1, 1, 8, 1))
         end
       end
 
@@ -800,8 +800,8 @@ module Tuile
         inner = Component::Label.new("hello")
         screen.content = pane
         pane.add(inner)
-        pane.rect = Rect.new(2, 3, 20, 5)
-        inner.rect = Rect.new(1, 1, 8, 1)
+        place(pane, Rect.new(2, 3, 20, 5))
+        place(inner, Rect.new(1, 1, 8, 1))
 
         # (0, 0) of the pane is screen (2, 3); the label's own origin is one
         # further in, and the clip lands where its cells do.
@@ -835,8 +835,8 @@ module Tuile
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 40, 5)
-        child.rect = Rect.new(0, 0, 3, 1)
+        place(pane, Rect.new(0, 0, 40, 5))
+        place(child, Rect.new(0, 0, 3, 1))
 
         assert_equal child.local_rect, screen.clip_for(child)
       end
@@ -846,7 +846,7 @@ module Tuile
       it "answers local_rect when every ancestor contains its child" do
         node = Component::Layout::Absolute.new
         screen.content = node
-        node.rect = Rect.new(0, 0, 40, 20)
+        place(node, Rect.new(0, 0, 40, 20))
         w = 40
         h = 20
         5.times do
@@ -854,7 +854,7 @@ module Tuile
           node.add(child)
           w -= 2
           h -= 2
-          child.rect = Rect.new(1, 1, w, h)
+          place(child, Rect.new(1, 1, w, h))
           node = child
         end
 
@@ -866,12 +866,12 @@ module Tuile
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 10, 4)
+        place(pane, Rect.new(0, 0, 10, 4))
 
-        child.rect = Rect.new(0, 0, 10, 4)
+        place(child, Rect.new(0, 0, 10, 4))
         assert_equal child.local_rect, screen.clip_for(child)
 
-        child.rect = Rect.new(0, 0, 11, 4)
+        place(child, Rect.new(0, 0, 11, 4))
         assert_equal Rect.new(0, 0, 10, 4), screen.clip_for(child)
       end
 
@@ -880,8 +880,8 @@ module Tuile
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 10, 4)
-        child.rect = Rect.new(1, 0, 10, 4)
+        place(pane, Rect.new(0, 0, 10, 4))
+        place(child, Rect.new(1, 0, 10, 4))
 
         assert_equal Rect.new(0, 0, 9, 4), screen.clip_for(child)
       end
@@ -891,8 +891,8 @@ module Tuile
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 10, 4)
-        child.rect = Rect.new(0, -1, 10, 4)
+        place(pane, Rect.new(0, 0, 10, 4))
+        place(child, Rect.new(0, -1, 10, 4))
 
         assert_equal Rect.new(0, 1, 10, 3), screen.clip_for(child)
       end
@@ -902,8 +902,8 @@ module Tuile
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 10, 4)
-        child.rect = Rect.new(0, 0, 0, 0)
+        place(pane, Rect.new(0, 0, 10, 4))
+        place(child, Rect.new(0, 0, 0, 0))
 
         assert_predicate screen.clip_for(child), :empty?
       end
@@ -913,8 +913,8 @@ module Tuile
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(10, 5, 6, 2)
-        child.rect = Rect.new(0, -1, 6, 4)
+        place(pane, Rect.new(10, 5, 6, 2))
+        place(child, Rect.new(0, -1, 6, 4))
 
         assert_equal Rect.new(0, 1, 6, 2), screen.clip_for(child)
       end
@@ -926,9 +926,9 @@ module Tuile
         screen.content = outer
         outer.add(inner)
         inner.add(leaf)
-        outer.rect = Rect.new(0, 0, 10, 10)
-        inner.rect = Rect.new(1, 1, 12, 9)
-        leaf.rect = Rect.new(0, 0, 12, 9)
+        place(outer, Rect.new(0, 0, 10, 10))
+        place(inner, Rect.new(1, 1, 12, 9))
+        place(leaf, Rect.new(0, 0, 12, 9))
 
         # outer's box lands at (-1, -1, 10, 10) in the leaf's space; inner's box
         # and the leaf's own rect are already there. The overlap survives.
@@ -941,14 +941,14 @@ module Tuile
       it "hands a scrolled-away child an empty clip, on either axis" do
         pane = Component::Layout::Absolute.new
         screen.content = pane
-        pane.rect = Rect.new(0, 0, 6, 2)
+        place(pane, Rect.new(0, 0, 6, 2))
 
         { "above" => Rect.new(0, -9, 6, 4),
           "below" => Rect.new(0, 40, 6, 4),
           "to the right" => Rect.new(20, 0, 6, 4) }.each do |where, rect|
           child = Component.new
           pane.add(child)
-          child.rect = rect
+          place(child, rect)
 
           assert_predicate screen.clip_for(child), :empty?, "scrolled #{where}"
         end
@@ -960,8 +960,8 @@ module Tuile
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 6, 2)
-        child.rect = Rect.new(0, -3, 6, 4)
+        place(pane, Rect.new(0, 0, 6, 2))
+        place(child, Rect.new(0, -3, 6, 4))
 
         assert_equal Rect.new(0, 3, 6, 1), screen.clip_for(child)
       end
@@ -975,8 +975,8 @@ module Tuile
         screen.content = outer
         outer.add(collapsed)
         collapsed.add(leaf)
-        collapsed.rect = Rect.new(0, 0, 0, 0) # a collapsed subtree paints nothing
-        leaf.rect = Rect.new(0, 0, 4, 4)
+        place(collapsed, Rect.new(0, 0, 0, 0)) # a collapsed subtree paints nothing
+        place(leaf, Rect.new(0, 0, 4, 4))
 
         assert_predicate screen.clip_for(leaf), :empty?
       end
@@ -986,11 +986,11 @@ module Tuile
         child = Component.new
         screen.content = pane
         pane.add(child)
-        pane.rect = Rect.new(0, 0, 6, 2)
-        child.rect = Rect.new(0, 0, 6, 4)
+        place(pane, Rect.new(0, 0, 6, 2))
+        place(child, Rect.new(0, 0, 6, 4))
         assert_equal Rect.new(0, 0, 6, 2), screen.clip_for(child)
 
-        child.rect = Rect.new(0, -2, 6, 4)
+        place(child, Rect.new(0, -2, 6, 4))
         assert_equal Rect.new(0, 2, 6, 2), screen.clip_for(child)
       end
 
@@ -1000,7 +1000,7 @@ module Tuile
       it "does not reach a popup opened from inside a small subtree" do
         pane = Component::Layout::Absolute.new
         screen.content = pane
-        pane.rect = Rect.new(0, 0, 4, 1)
+        place(pane, Rect.new(0, 0, 4, 1))
         popup = Component::Popup.new(content: Component::Label.new("hi"))
         popup.open
         content = popup.content
@@ -1019,10 +1019,10 @@ module Tuile
         w = Component::Window.new
         w.content = Component::List.new
         screen.content.add(w)
-        # An Absolute places nothing, so without this the window keeps the empty
+        # A bare Layout places nothing, so without this the window keeps the empty
         # rect it was constructed with — and the drain filter then (correctly)
         # drops its content as sitting under an empty-rect ancestor.
-        w.rect = Rect.new(0, 0, 40, 10)
+        place(w, Rect.new(0, 0, 40, 10))
         screen.invalidated_clear
         w
       end
@@ -1047,21 +1047,22 @@ module Tuile
         w = add_window
         repainted = false
         w.content.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
-        w.rect = Rect.new(0, 0, 0, 0)
+        place(w, Rect.new(0, 0, 0, 0))
         screen.invalidate(w.content)
         screen.repaint
         refute repainted
       end
 
       it "skips it however stale its own rect is, so a forgetful container is inert" do
-        w = add_window
-        # A container that fails to zero its children on an empty rect of its own
-        # — the fault the filter exists to make harmless (`D_empty_ancestor`).
-        stale = Tuile.without_strict_layout { w.content.rect }
-        w.rect = Rect.new(0, 0, 0, 0)
-        w.content.rect = stale
+        # An Absolute places its children whatever its own size, so under an
+        # empty one they keep a non-empty rect — the stale geometry the filter
+        # exists to make harmless (`D_empty_ancestor`).
+        holder = Component::Layout::Absolute.new
+        child = Component::List.new
+        holder.add(child, Rect.new(0, 0, 10, 5))
+        mount_at(holder, Rect.new(0, 0, 0, 0))
         repainted = false
-        w.content.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
+        child.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         screen.needs_full_repaint
         screen.repaint
         refute repainted
@@ -1246,8 +1247,8 @@ module Tuile
         screen.content = pane
         field = Component::TextField.new
         pane.add(field)
-        pane.rect = Rect.new(0, 0, 20, 1)
-        field.rect = Rect.new(0, 2, 10, 1) # below the one row the pane has to give
+        place(pane, Rect.new(0, 0, 20, 1))
+        place(field, Rect.new(0, 2, 10, 1)) # below the one row the pane has to give
         screen.focused = field
         screen.prints.clear
         screen.invalidate(field)
@@ -1262,8 +1263,8 @@ module Tuile
         screen.content = pane
         field = Component::TextField.new
         pane.add(field)
-        pane.rect = Rect.new(0, 0, 20, 5)
-        field.rect = Rect.new(0, 2, 10, 1)
+        place(pane, Rect.new(0, 0, 20, 5))
+        place(field, Rect.new(0, 2, 10, 1))
         screen.focused = field
 
         assert_equal Point.new(0, 2), screen.cursor_position
@@ -1372,7 +1373,7 @@ module Tuile
         screen.content = layout
         t1 = Component::TextField.new
         t2 = Component::TextField.new
-        t1.rect = Rect.new(0, 0, 20, 1)
+        place(t1, Rect.new(0, 0, 20, 1))
         layout.add([t1, t2])
         screen.focused = t1
         refute_nil screen.cursor_position
@@ -1741,7 +1742,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         field = Component::TextField.new
-        field.rect = Rect.new(0, 0, 20, 1)
+        place(field, Rect.new(0, 0, 20, 1))
         layout.add(field)
         screen.focused = field
         refute_nil screen.cursor_position
@@ -2145,7 +2146,7 @@ module Tuile
     context "#paste (FakeScreen's door onto #handle_paste)" do
       def field
         f = Component::TextField.new
-        f.rect = Rect.new(0, 0, 20, 1)
+        place(f, Rect.new(0, 0, 20, 1))
         f
       end
 
@@ -2168,7 +2169,7 @@ module Tuile
       it "the event loop turns a PasteEvent into handle_paste" do
         with_real_screen do |real|
           f = Component::TextField.new
-          f.rect = Rect.new(0, 0, 20, 1)
+          place(f, Rect.new(0, 0, 20, 1))
           real.content = f
           real.focused = f
           t = Thread.new { real.send(:event_loop) }

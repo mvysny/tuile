@@ -1650,8 +1650,8 @@ Why not:
   arithmetic, and every non-layout parent must ignore it. The constraint belongs to the parent–child
   *relationship*, hence the `add` call; JavaFX ships it and pays (`R_box_layouts`).
 - **A block-valued cross constraint** (`Left { |avail| [avail, 30].min }`) — allowed by the re-grow
-  rule, but `Fixed` already clamps, a block is un-inspectable and awkward to spec, and `Absolute`
-  remains the escape hatch for a genuinely computed width.
+  rule, but `Fixed` already clamps, a block is un-inspectable and awkward to spec, and a `Layout`
+  subclass remains the escape hatch for a genuinely computed width.
 - **`Fill`** — every toolkit modelling both concepts reserves *fill* for cross-axis stretch
   (`R_box_layouts`), so it would name the main-axis constraint after what `Percent[100]` beside it
   actually does; `Expand` also keeps `Fill` permanently free of a near-synonym.
@@ -1684,7 +1684,7 @@ Why not:
   it reads, so `Box` parameterizes it behind two private hooks and the concretes are ~10 lines: a
   cohesive base, not an `AbstractView` junk drawer.
 - **`Min` / `Max` constraints** — the sampler shows the cost: a sidebar capped at `min(16, width / 3)`
-  caps a *proportion*, unsayable in three constraints, so it keeps a rect-callback `Absolute`. That
+  caps a *proportion*, unsayable in three constraints, so it keeps a rect-callback `Layout` subclass. That
   is the intended division of labour; revisit if capped proportions prove common.
 - **`BorderLayout` / `BorderPane` / Textual's `dock:`** — `Vertical(Fixed, Expand, Fixed)` nests to
   it, and `ScreenPane` already *is* one. **Swing glue and struts** are filler components needed only
@@ -2178,7 +2178,7 @@ numbers agreeing is the reason to trust the bound. Overflow drops the **newest**
 the first messages are the diagnostic ones, the rest cascade noise, and it never reorders — and
 warns via `Tuile.logger`.
 
-**`show` is the only door; `new` is private.** `reposition` derives the rect from the screen corner,
+**`show` is the only door; `new` is private.** Its placement is the screen corner (`Overlay::TopRight`),
 so a second instance lands on exactly the same rect and the two overdraw with no error;
 find-or-create is what makes "at most one" true. The objection that a private constructor forces
 every knob through the factory dissolves here: **`color:` is a property of the message, not of the
@@ -2242,7 +2242,7 @@ Why not:
   `StyledString` has structural equality so it is cheap, and it handles a storm better than any cap
   — but it is a second mechanism against the same problem. Build it if the storm case proves real.
 - **Extracting a `Popover`** now: a screen-corner anchor is arguably the second *kind* of anchoring
-  that would unlock it, but `Notification` ships its own `reposition` first, so the extraction is
+  that would unlock it, but `Notification` shipped its own corner placement first, so the extraction is
   judged with two real implementations rather than one and a guess.
 
 The cost we carry: a wheel spin over the toast is swallowed, so the list beneath does not scroll,
@@ -3068,10 +3068,11 @@ The cost we carry:
 
 Split {Component::Popup} in two. `Overlay < Component` is the bare
 floating layer — the mount/dismiss lifecycle, `owner`, `on_close`,
-`close_on_outside_click`, a no-op `reposition`, and the full-repaint escalation
-in `rect=` — and `Popup < Overlay` adds the modal dialog on top: a declared
-`size`, self-centering, `focusable?`, and ESC/`q`. `Popup.new(modal: false)` is
-gone; the `@modal` ivar with it, since `modal?` is now a constant on each class.
+`close_on_outside_click`, a placement the pane applies, and the full-repaint
+escalation on a rect change — and `Popup < Overlay` adds the modal dialog on
+top: a declared size, a centered default placement, `focusable?`, and ESC/`q`.
+`Popup.new(modal: false)` is gone; the `@modal` ivar with it, since `modal?` is
+now a constant on each class.
 `Notification` and `ListDropdown` both reparent onto `Overlay`.
 
 **Why.** The cut line was not invented — it is exactly what `ScreenPane` calls on
@@ -3123,9 +3124,9 @@ The cost we carry:
   outside the key scope, where `bubble_key` reaches nobody. The `Overlay` rdoc
   states this as the coupling rather than as a ban on overriding, because `Popup`
   overrides both.
-- `Overlay#reposition` is a no-op, so a subclass with a *derived* position owns
-  its own override (`Notification`), and one placed by a driver simply keeps the
-  rect it was given (`ListDropdown`, re-anchored from its driver's `rect=`).
+- An overlay never assigns its own rect: it opens with a placement and the pane's pass applies it.
+  One with a *derived* size answers `declared_size_in` (`Popup`, `Notification`), and a driver's
+  dropdown hangs off the driver itself (`ListDropdown::Anchored`).
 - **Still open:** where `anchor_to` / `anchor_beside` belong. They stay on
   `ListDropdown` for now. The `Popover` extraction (`D_select`, `D_menu_bar`) is
   *cheaper* after this change, since `Overlay` — not the modality-carrying
@@ -3160,7 +3161,7 @@ Why not:
   "sizes itself from its messages". (That override is gone under `D_overlay`, but
   the naming argument stands for the next such subclass.)
 - *`auto_center_with_size(x)`*, a command rather than a property. It has real
-  merit — Tuile already has imperative geometry methods (`center`, `reposition`,
+  merit — Tuile then had imperative geometry methods (`center`, `reposition`,
   `anchor_to`) and a command is honest about the side effect that a bare setter
   hides. Rejected on three counts: it collides with the existing `Popup#center`,
   giving two near-synonymous centering verbs; after `D_overlay` made `Popup`
@@ -3513,9 +3514,9 @@ Why not:
   disagree with itself on every question that matters — does the cursor roam, is there a default,
   what does ESC mean, does a pick close. They share API *shape*, not code.
 
-The cost we carry: sizing is measured and capped at half the screen, re-derived on every
-`reposition`, so a message change and a SIGWINCH both re-measure against the current screen — the
-`Overlay` "derived position needs its own `reposition`" rule applied to a derived *size*. It
+The cost we carry: sizing is measured and capped at half the screen, re-derived on every layout
+pass, so a message change and a SIGWINCH both re-measure against the current screen — a derived
+*size*, read by the pane through `declared_size_in` as `Notification`'s is. It
 re-measures freely rather than grow-only like `Notification`, since a dialog's text changes far less
 often than a toast's. No floor for now; the risk a floor would hedge — a tiny yes/no box lost on a
 busy screen — is really a backdrop problem.
@@ -5257,7 +5258,7 @@ answer `nil` for a collapsed field, and so what stops the hardware cursor parkin
 also drops a component with an empty rect anywhere on its ancestor chain. Not new policy —
 `Component#repaint` gates each component on its *own* empty rect, and this is that same gate made to
 see one hop further — so it removes an inconsistency rather than adding a rule. The point is that it
-holds for a container that has **not** been fixed, including an app's own `Absolute` subclass: a
+holds for a container that has **not** been fixed, including an app's own `Layout` subclass: a
 forgetful container now leaves an inert subtree instead of one that paints at stale coordinates. It
 is also a strictly narrower repaint set, so marginally cheaper. The consequence is that the pane must
 be sized in `Screen#initialize`: under the new filter an unsized pane is an empty *ancestor* rect for
@@ -6720,6 +6721,19 @@ So the framework marks after `rect=`, after the three tree mutators and after a 
 flips, and a container marks for every *other* input to its own arithmetic. Same shape as the
 standing *a hook-owned resource is synced from an invariant, not toggled by the hooks*.
 
+**Sole writer is enforced, and it covers every child, popups included.** Each container keeps, per
+child, where that child wants to be — `Box` a `Fixed` / `Percent` / `Expand`, `Absolute` a `Rect`,
+`ScreenPane` a placement per popup (`Overlay::At`, `Centered`, `TopRight`,
+`ListDropdown::Anchored`) — and moving a child means changing that record, which marks the parent.
+`rect=` is protected and raises unless the parent's pass is running; the `Screen` stands in for the
+pane's. The popups had grown a second layout path: each overlay assigned its own rect, and
+`ScreenPane#rect=` repositioned them on a resize, so the mark `add_child` left on the pane for a
+popup owed a pass that placed nothing — a mark a stale-rect diagnostic then read as "everything
+below is stale". A placement is a rule, so a resize or a second popup re-derives the same rect. An
+anchored dropdown reads its anchor during the pane's pass, which runs *before* the content it hangs
+from, so `Screen#flush_layout` re-checks the anchors once the drain is empty: at most one more round,
+since placing a popup never moves content.
+
 Why not:
 
 - **`layout`.** Taken three ways at the time — `ScreenPane#layout` and `HasContent#layout(content)`,
@@ -6729,7 +6743,7 @@ Why not:
   measure/arrange pair is exactly how it comes back, one well-meaning subclass at a time. `re-`
   says *idempotent re-derivation*, which is what this is.
 - **`handle_relayout`.** The `handle_` / `on_` families are for *notifications* (`D_handler_naming`);
-  `repaint`, `extent`, `cursor_position`, `reposition` and `focusable?` are all framework-invoked
+  `repaint`, `extent`, `cursor_position` and `focusable?` are all framework-invoked
   override points outside both, and this is one of those.
 - **Keeping `handle_child_visibility_changed`.** `Box` and `FormLayout` overrode it only to
   re-divide, `Scroller` and `FormItem` only to `invalidate` — and `visible=` now marks *and*
@@ -6737,10 +6751,31 @@ Why not:
   in `AGENTS.md` went together. A child's flag flip always dirties its parent's own cells (it
   vacated them, and a hidden component paints nothing itself), so the condition was never
   per-container in the first place.
-- **A `ScreenPane#relayout` that also repositions the popups.** It did, briefly, and it is wrong:
-  a popup's position is its own, not derived from the pane, so re-deriving it on *every* pane pass
-  snapped a hand-placed popup back to centre whenever a second one opened. `reposition` belongs to
-  the pane's `rect=` — a screen resize is the one event it exists to track.
+- **A `ScreenPane#relayout` that re-derives popups from their rects.** It did, briefly, and
+  snapped a hand-placed popup back to centre whenever a second one opened, because the rect was the
+  only record of where the popup wanted to be. The pass now places each popup from a stored
+  placement — `Overlay::At[rect]` for a hand-placed one — so re-running it moves nothing.
+- **Declaring which children a pass places** (`places_child?`, briefly on the strict-layout branch).
+  It skipped the pane's mark for a popup, and was right only while the declaration matched the
+  `relayout` beside it — a promise kept by hand. Placing popups in the pass made the mark honest
+  instead.
+- **`protected` alone.** Ruby lets any `Component` call it, so a widget could still move a sibling;
+  the runtime check costs one identity comparison per *write*, so it is always on. It also rules out
+  overriding `rect=`: a protected override is callable only from its own class, which the parent
+  is not, hence `handle_rect_changed`.
+- **Keeping a popup's placement on the overlay**, as `declared_size` was. An overlay can only sit
+  on the pane, and what changes from inside it is its *size*, which a placement reads live
+  (`declared_size_in`, a dropdown's row count) — so the record stays the container's, set once at
+  `open`, the way a `Box` child's `Fixed[1]` outlives its content changing.
+- **`Absolute` staying the base to subclass, with a spec-only `Rect` holder beside it.** The class
+  was empty — a name for "the `Layout` you subclass" — so the arithmetic role moved to `Layout`
+  itself and `Absolute` became what its name says, at the cost of three renames outside `spec/`.
+- **A root-only writer (`root_rect=`) for a tree with no screen.** Holding it in an `Absolute`,
+  whose rects do not depend on its own size, sizes it with no exception to the rule but the pane.
+- **Following an anchor from its source** — `rect=` asking whether it holds a registered anchor —
+  gives the post-drain answer at a cost on every rect write in every app; **a separate popup phase
+  after the content** is simpler and is the second layout path this removed; **a snapshot of the
+  anchor at open**, what `Select` did, never follows the field.
 - **A `ListDropdown` that decides its gutter beside whichever anchor method placed it.** Both
   `anchor_to` and `anchor_beside` wrote `@list.scrollbar_visibility` right after `self.rect =`;
   derived in `relayout` from `items.size > rect.height` instead, it is also right after a plain
@@ -6785,19 +6820,6 @@ half-built. So a detached mark is *remembered* on the component (`@layout_dirty`
 a caller wanting rects from a tree that has no screen calls `flush_layout`. Flutter's
 `RenderObject` is this exactly, down to `attach` re-running `markNeedsLayout()`, and no surveyed
 toolkit lays out inline on a detached tree (`R_layout_pass`).
-
-**Every mutation marks — except a child the container says it does not place.** `add_child` and
-`detach_child` ask `places_child?`, which is `true` for every child unless a container overrides it,
-and `ScreenPane` answers `child.equal?(content)`: an overlay's rect is its own, assigned by the
-caller and re-derived in `Overlay#reposition`, which `ScreenPane#rect=` asks for on a resize and a
-pane pass never touches. So opening a popup owed the pane a pass it could not use, and the pane is
-every component's ancestor — which is how one spurious mark made every rect in the tree read as
-stale while any dropdown was open (`D_strict_layout` has the count). The narrowing is *declared*,
-not derived, so it is safe only next to the `relayout` that proves it: a container that starts
-placing a child it disclaims gets no pass, no complaint, and a child that keeps its old rect. Two
-things follow — the pane's `relayout` and its `places_child?` cite each other, and moving popup
-placement into that `relayout` (which would make the mark honest again) stays ruled out by
-`ScreenPane#rect=`'s own reason: a second popup opening must not re-place the first.
 
 **What it costs, and the audit that priced it.** Rects are stale between mutation and drain, and
 the readers were enumerated up front with the rule that the list growing would mean this was wrong.
@@ -6877,7 +6899,7 @@ flag, `rect` is still the bare `attr_reader` it was. Under the fake it is the ot
 nobody should have to *ask* for a diagnostic whose whole audience is the spec suite in front of
 them — and this suite ran green with it on, 0.2 s slower.
 
-**Three carve-outs the suite measured**, which is what the default cost. Raw, the predicate raised
+**Three carve-outs the suite measured**, of which one survives `D_relayout`. Raw, the predicate raised
 599 times across these examples, and the causes were not spec noise:
 
 - *A container that inherits the base no-op `relayout` assigns no rect*, so its mark cannot stale
@@ -6887,8 +6909,14 @@ them — and this suite ran green with it on, 0.2 s slower.
   were reads `lib/` makes on the app's behalf mid-handler, `Select#anchor` measuring the face its
   own just-opened dropdown hangs under being the pattern. The app cannot fix those, and they are
   what the five force-now points above answer for.
-- *A popup owes the pane no pass*, which took 23 down to 6 and is a fix to the marking rather than
-  to the diagnostic — `D_deferred_layout` carries it.
+- *A popup owes the pane no pass*, which took 23 down to 6 and was a fix to the marking rather
+  than to the diagnostic.
+
+`D_relayout` removed the first and third: `Absolute` now places its children, and the pane places
+its popups, so opening one marks it honestly. The predicate is the plain dirty-ancestor walk plus
+`PLUMBING`, and on `D_relayout`'s suite it reported three reads: two deliberately unsettled, and a
+label under a newly opened popup whose rect the pane's pass re-derives unchanged — a false alarm
+the walk cannot tell apart.
 
 Four of the six survivors were real spec bugs — a resize that re-assigned the rect the pane already
 had and so drove nothing, a round trip comparing a never-laid-out rect against itself, two gestures
@@ -6915,8 +6943,8 @@ Why not:
   `rect_stale?`, because a diagnostic invites an assertion.
 - **Reporting a framework-entered read too, behind a fourth mode.** Those 554 reports were the
   framework asking its own audited questions mid-handler; a mode to see them measures the marking,
-  and where the marking was wrong the answer was to fix it (`places_child?`), not to watch it.
+  and where the marking was wrong the answer was to fix it, not to watch it.
 - **Opt-in even in specs**, with a documented `spec_helper` line. The reader who needs this is by
   definition not looking for it, and a line you have to know to write reaches the same person a doc
-  does. The default is affordable only because of the three carve-outs — on a predicate that cries
-  wolf 599 times it would have been the wrong trade.
+  does. The default is affordable only because of the carve-outs — on a predicate that cries wolf
+  599 times it would have been the wrong trade.

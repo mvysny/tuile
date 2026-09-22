@@ -55,6 +55,10 @@ The honest default is **nothing at all**, and that is what happened: `FormLayout
 shipped 2026-09-19 hand-rolling its map like `Box` does — an identity-keyed
 `{item => {rows:}}`, ~6 lines. Revisit when `Grid` makes it three.
 
+**Update, 2026-09-22: it is four now.** `D_relayout` made every container keep where each child
+wants to be, so `Layout::Absolute` holds `{child => Rect}` and `ScreenPane` a placement per popup,
+each hand-rolled the same way. That is past this file's own threshold; `Q_map_shape` is open again.
+
 ## Related
 
 `D_form_layout` (the second hand-roll, and the entry that answered
