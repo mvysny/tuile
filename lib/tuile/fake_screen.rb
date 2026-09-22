@@ -28,13 +28,18 @@ module Tuile
   #     assert_includes Screen.instance.prints.join, "hi"
   #   end
   class FakeScreen < Screen
-    def initialize
-      super
+    # The terminal starts at the size given, as if it had always been that big:
+    # nothing is dispatched and nothing repaints. To exercise a change of size,
+    # the SIGWINCH path, call {#resize_terminal} instead.
+    # @param width [Integer] the terminal's columns.
+    # @param height [Integer] the terminal's rows.
+    def initialize(width: 160, height: 50)
+      super()
       # `Tuile.strict_layout` defaults to `:raise` under this screen; this puts
       # the check it answers through into `Component#rect`.
       StrictLayout.install
       @event_queue = FakeEventQueue.new
-      @size = Size.new(160, 50)
+      @size = Size.new(width, height)
       # super sized both to the test runner's TTY.
       @buffer.resize(@size)
       size_pane

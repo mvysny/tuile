@@ -423,6 +423,18 @@ module Tuile
         # #repaint's drain filter would drop all of it (`D_empty_ancestor`).
         assert_equal Rect.new(0, 0, 160, 50), screen.pane.rect
       end
+
+      it "starts a fake at the size asked for, content laid out there" do
+        Screen.close
+        Screen.fake(width: 40, height: 12) # the `after` hook closes this one
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        screen.flush_layout
+
+        assert_equal Size.new(40, 12), screen.size
+        assert_equal Size.new(40, 12), screen.buffer.size
+        assert_equal Rect.new(0, 0, 40, 12), layout.rect
+      end
     end
 
     context "theme" do

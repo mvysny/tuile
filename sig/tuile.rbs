@@ -24,15 +24,16 @@ module Tuile
   # _@param_ `mode` — `:warn`, `:raise`, `false`, or `nil` for the default.
   def self.strict_layout=: ((Symbol | bool)? mode) -> void
 
-  # Runs the block with the diagnostic off, for a read taken pre-settle *on
-  # purpose* — asserting that a rect survived a round trip is a question only
-  # the unsettled value answers:
+  # Runs the block with the diagnostic off, for a *spec's* read taken
+  # pre-settle *on purpose* — asserting that a rect survived a round trip is a
+  # question only the unsettled value answers:
   # 
   #   Tuile.without_strict_layout { assert_equal rect, second.rect }
   # 
-  # Restores whatever was in force, default included, and is not a place to
-  # park work: it silences every read in the block, on this thread and any
-  # other.
+  # A test tool, not app code: the diagnostic is on only under a {FakeScreen}
+  # or after {.strict_layout=}, so an app's stale read wants settling, not
+  # silencing. Restores whatever was in force, default included, and silences
+  # every read in the block, on this thread and any other.
   # 
   # _@return_ — the block's value.
   def self.without_strict_layout: () -> Object
@@ -2809,7 +2810,13 @@ module Tuile
     # redraws, so that test TTY is not painted over. {FakeScreen#initialize}
     # self-installs as the singleton, so subsequent {Screen.instance} calls
     # return the same object.
-    def self.fake: () -> FakeScreen
+    # 
+    #   before { Screen.fake(width: 40, height: 12) }   # a narrow, short terminal
+    # 
+    # _@param_ `width` — the terminal's columns.
+    # 
+    # _@param_ `height` — the terminal's rows.
+    def self.fake: (?width: Integer, ?height: Integer) -> FakeScreen
 
     # Tears the screen down and vacates the singleton slot, moving {#state} to
     # the terminal `:closed`. Unmounts the tree first, so every component gets
@@ -14494,7 +14501,14 @@ module Tuile
   class FakeScreen < Tuile::Screen
     EDITING_KEYS: ::Array[String]
 
-    def initialize: () -> void
+    # The terminal starts at the size given, as if it had always been that big:
+    # nothing is dispatched and nothing repaints. To exercise a change of size,
+    # the SIGWINCH path, call {#resize_terminal} instead.
+    # 
+    # _@param_ `width` — the terminal's columns.
+    # 
+    # _@param_ `height` — the terminal's rows.
+    def initialize: (?width: Integer, ?height: Integer) -> void
 
     def clear: () -> void
 
