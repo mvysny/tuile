@@ -4004,7 +4004,10 @@ Why not:
   `{ active: active_bg_color }` with no `:normal` key is exactly their behaviour — but their accent is
   override-all where the chain is fill-unset, so an app-styled caption span would start surviving the
   highlight; and for `Tabs` / `MenuBar` / `List` the accent covers a *segment or row*, which a
-  per-component hook cannot express at all.
+  per-component hook cannot express at all. Measured on `Checkbox`, it also nets +2 lines (no well,
+  so nothing is deleted) and a widget `bg_color` beats the level, erasing the only focus cue a
+  caret-less widget has. **A surface is not an accent:** a surface is the app's to override, a
+  signal painted over must be unconditional. `button_spec` / `checkbox_spec` pin both behaviours.
 
 The cost we carry:
 

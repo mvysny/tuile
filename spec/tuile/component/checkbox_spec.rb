@@ -194,6 +194,20 @@ module Tuile
         assert_nil buffer.cell(10, 0).style.bg
       end
 
+      # The accent is override-all (`with_bg`), not the chain's fill-unset — see D_bg_surface.
+      it "paints the highlight over a caption span's own background" do
+        cb = checkbox(caption: StyledString.styled("Syslog", bg: Color::BLUE), width: 20, active: true)
+        assert_equal Screen.instance.theme.active_bg_color, Testing.paint(cb).cell(4, 0).style.bg
+      end
+
+      it "keeps the highlight when the checkbox has its own bg_color" do
+        cb = checkbox(caption: "Syslog", width: 20, active: true)
+        cb.bg_color = 52
+        buffer = Testing.paint(cb)
+        assert_equal Screen.instance.theme.active_bg_color, buffer.cell(0, 0).style.bg
+        assert_equal Screen.instance.theme.active_bg_color, buffer.cell(9, 0).style.bg
+      end
+
       it "ellipsizes a caption too wide for the rect" do
         cb = checkbox(caption: "Enable syslog", width: 8)
         assert_equal "[ ] Ena…", Testing.paint(cb).text.join

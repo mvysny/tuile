@@ -228,6 +228,20 @@ module Tuile
         assert_equal Screen.instance.theme.active_bg_color, cell.style.bg
       end
 
+      # The accent is override-all (`with_bg`), not the chain's fill-unset — see D_bg_surface.
+      it "paints the highlight over a caption span's own background" do
+        b = button(caption: StyledString.styled("Ok", bg: Color::BLUE), width: 6, active: true)
+        assert_equal Screen.instance.theme.active_bg_color, Testing.paint(b).cell(2, 0).style.bg
+      end
+
+      it "keeps the highlight when the button has its own bg_color" do
+        b = button(caption: "Ok", width: 6, active: true)
+        b.bg_color = 52
+        painted = Testing.paint(b)
+        assert_equal Screen.instance.theme.active_bg_color, painted.cell(0, 0).style.bg
+        assert_equal Screen.instance.theme.active_bg_color, painted.cell(2, 0).style.bg
+      end
+
       it "inherits an ancestor's bg_color when inactive" do
         parent = Component::Layout::Absolute.new
         Testing.place(parent, Rect.new(0, 0, 6, 1))

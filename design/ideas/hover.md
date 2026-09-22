@@ -37,10 +37,11 @@ only; nothing requests mode 1004 yet.
 | **(B) `MenuBar` only** | behavior, no new ink — below | worth doing |
 | **(C) every component** | `ComponentBackground::STATES` (`%i[normal active]`) grows `:hover`, plus a focused-and-hovered precedence rule | blocked |
 
-(C) is blocked by `focus-accent.md`'s finding: `Tabs`, `MenuBar` and `List` accent a *segment or
+(C) is blocked by `D_bg_surface`'s finding: `Tabs`, `MenuBar` and `List` accent a *segment or
 row*, not the component — and those are the interesting hover targets. A framework accent would
-have to go through that note's option (C), a paint-time `over_bg` layer; hover is its second
-consumer, to be weighed against `D_theme_ref`'s *not a third colour channel*. Not in the way:
+need a paint-time `over_bg` layer (override-all, after the `bg` chain, on a `StyledString`), with
+focus as its first consumer and hover its second, to be weighed against `D_theme_ref`'s *not a
+third colour channel*. Not in the way:
 `List` applies its cursor highlight at paint, not into the memoized row, so a hover accent owes no
 `drop_row_cache`.
 
@@ -84,5 +85,5 @@ consumer, to be weighed against `D_theme_ref`'s *not a third colour channel*. No
 
 `D_mouse_dispatch`, `R_mouse_reporting`, `D_mouse`, `D_menu_bar`, `D_on_blur`, `D_extent`,
 `D_bg_surface`, `D_theme_ref`, `D_inverse` (model the SGR if a non-background hover ink is wanted),
-`D_progress_bar`, `D_status_bar`, `design/ideas/focus-accent.md`, `design/ideas/new-components.md`
+`D_progress_bar`, `D_status_bar`, `design/ideas/new-components.md`
 (Split Layout, Tooltip).
