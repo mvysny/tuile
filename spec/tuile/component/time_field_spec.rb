@@ -535,7 +535,7 @@ module Tuile
       it "consumes PageUp/PageDown, so a scope root binding them never sees them" do
         f = Component::TimeField.new
         seen = []
-        Screen.instance.content = Component::Layout::Absolute.new.tap do |root|
+        Screen.instance.content = Component::Layout.new.tap do |root|
           root.add(f)
           root.define_singleton_method(:handle_key?) { |k| seen << k }
         end

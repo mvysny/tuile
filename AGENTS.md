@@ -377,7 +377,8 @@ One line per directory; `ls` is the file index, and each class's rdoc says what 
   locale, the value types.
 - `lib/tuile/component/` — the widget set, `Tuile::Component::*`: fields, lists, overlays.
   Rules: `lib/tuile/component/AGENTS.md`
-- `lib/tuile/component/layout/` — the box layouts: `Box`, `Vertical`, `Horizontal`.
+- `lib/tuile/component/layout/` — the layouts that take per-child constraints: `Absolute`, and the box
+  layouts `Box`, `Vertical`, `Horizontal`.
 - `spec/` — one spec per source file mirroring `lib/tuile/`, the contract suite, and the PTY-based
   system tests for `examples/`. Rules: `spec/AGENTS.md`
 - `book/` — the guide, read cover to cover: ten chapters plus `book/README.md`.

@@ -36,23 +36,27 @@ module DeferredLayout
   def settle(component) = component.tap(&:flush_layout)
 
   # Mounts `component` at the size the example wants, under a
-  # {Tuile::Component::Layout::Absolute} holder that places nothing — so the
-  # rect sticks. Straight onto `screen.content` it would not: the pane hands
-  # its content the whole screen on every pass of its own, and *any* later mark
-  # (opening a popup, swapping content) replays that.
+  # {Tuile::Component::Layout::Absolute} holder — so the rect sticks. Straight
+  # onto `screen.content` it would not: the pane hands its content the whole
+  # screen on every pass of its own. A second call on the same component moves
+  # it within its holder.
   # @param component [Tuile::Component]
   # @param rect [Tuile::Rect]
   # @return [Tuile::Component] `component`.
   def mount_at(component, rect)
     screen = Tuile::Screen.instance
-    if component.parent.nil?
+    case component.parent
+    when nil
       holder = Tuile::Component::Layout::Absolute.new
+      holder.add(component, rect)
       screen.content = holder
-      holder.add(component)
+    when Tuile::Component::Layout::Absolute
+      component.parent.constrain(component, rect)
+    else
+      raise ArgumentError, "mount_at: #{component} already sits in #{component.parent}, which places it"
     end
     screen.flush_layout
-    component.rect = rect
-    settle(component)
+    component
   end
 end
 

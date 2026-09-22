@@ -39,7 +39,7 @@ module Tuile
     it "is a single tab stop, so Tab lands on it exactly once" do
       s = Component::Select.new(items: default_items)
       button = Component::Button.new("Save")
-      Screen.instance.content = Component::Layout::Absolute.new.tap do |l|
+      Screen.instance.content = Component::Layout.new.tap do |l|
         l.add(s)
         l.add(button)
       end
@@ -61,7 +61,7 @@ module Tuile
       it "does not flood the rows below its extent" do
         s = Component::Select.new
         s.items = %w[one two]
-        panel = Component::Layout::Absolute.new
+        panel = Component::Layout.new
         panel.add(s)
         Screen.instance.content = panel
         panel.bg_color = 52
@@ -218,7 +218,7 @@ module Tuile
       # a Select must let every other printable reach it.
       def ancestor_seeing_keys
         seen = []
-        layout = Class.new(Component::Layout::Absolute) do
+        layout = Class.new(Component::Layout) do
           define_method(:handle_key?) { |k| seen << k and true }
         end.new
         s = Component::Select.new(items: default_items)
@@ -516,7 +516,7 @@ module Tuile
       def click(x, y) = Screen.instance.click(x, y)
 
       it "closes the dropdown when the click lands on inert decoration" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         s = Component::Select.new(items: default_items)
         layout.add(s)

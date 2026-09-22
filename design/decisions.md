@@ -1650,8 +1650,8 @@ Why not:
   arithmetic, and every non-layout parent must ignore it. The constraint belongs to the parent–child
   *relationship*, hence the `add` call; JavaFX ships it and pays (`R_box_layouts`).
 - **A block-valued cross constraint** (`Left { |avail| [avail, 30].min }`) — allowed by the re-grow
-  rule, but `Fixed` already clamps, a block is un-inspectable and awkward to spec, and `Absolute`
-  remains the escape hatch for a genuinely computed width.
+  rule, but `Fixed` already clamps, a block is un-inspectable and awkward to spec, and a `Layout`
+  subclass remains the escape hatch for a genuinely computed width.
 - **`Fill`** — every toolkit modelling both concepts reserves *fill* for cross-axis stretch
   (`R_box_layouts`), so it would name the main-axis constraint after what `Percent[100]` beside it
   actually does; `Expand` also keeps `Fill` permanently free of a near-synonym.
@@ -1684,7 +1684,7 @@ Why not:
   it reads, so `Box` parameterizes it behind two private hooks and the concretes are ~10 lines: a
   cohesive base, not an `AbstractView` junk drawer.
 - **`Min` / `Max` constraints** — the sampler shows the cost: a sidebar capped at `min(16, width / 3)`
-  caps a *proportion*, unsayable in three constraints, so it keeps a rect-callback `Absolute`. That
+  caps a *proportion*, unsayable in three constraints, so it keeps a rect-callback `Layout` subclass. That
   is the intended division of labour; revisit if capped proportions prove common.
 - **`BorderLayout` / `BorderPane` / Textual's `dock:`** — `Vertical(Fixed, Expand, Fixed)` nests to
   it, and `ScreenPane` already *is* one. **Swing glue and struts** are filler components needed only
@@ -3379,7 +3379,7 @@ fixed-arity. A shadow tree at 1/10 scale (`D_final_tree`): `children.size` stops
 says, `walk_tree` visits things that aren't UI, and every generic walk tolerates ghosts forever, all to
 buy index arithmetic. A `Slot` is not a placeholder: it has a rect, clears it, and routes.
 
-**Why not holder sub-containers built from `Layout`.** Wrapping each region in a `Layout::Absolute`
+**Why not holder sub-containers built from `Layout`.** Wrapping each region in a bare `Layout`
 needs no framework change at all, which is exactly the tell — an app can already do it. It costs a
 tree level *and* rect plumbing per region, and it is a placeholder with geometry.
 
@@ -5257,7 +5257,7 @@ answer `nil` for a collapsed field, and so what stops the hardware cursor parkin
 also drops a component with an empty rect anywhere on its ancestor chain. Not new policy —
 `Component#repaint` gates each component on its *own* empty rect, and this is that same gate made to
 see one hop further — so it removes an inconsistency rather than adding a rule. The point is that it
-holds for a container that has **not** been fixed, including an app's own `Absolute` subclass: a
+holds for a container that has **not** been fixed, including an app's own `Layout` subclass: a
 forgetful container now leaves an inert subtree instead of one that paints at stale coordinates. It
 is also a strictly narrower repaint set, so marginally cheaper. The consequence is that the pane must
 be sized in `Screen#initialize`: under the new filter an unsized pane is an empty *ancestor* rect for

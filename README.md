@@ -117,7 +117,7 @@ popups simply overdraw, because overdraw into a buffer is free.
 **Layout is top-down, and that is the whole model.** A parent computes its
 children's rectangles in plain Ruby and assigns them; a component never
 advertises a size it would like. No `min`/`preferred`/`max`, no negotiation
-pass, no shrink-to-fit. Subclass `Layout::Absolute` when the arithmetic is
+pass, no shrink-to-fit. Subclass `Layout` when the arithmetic is
 yours, or use `Layout::Vertical` / `Layout::Horizontal` to declare each
 child's extent as `Fixed` / `Percent` / `Expand`.
 → [chapter 3](book/03-layout.md)
@@ -185,8 +185,9 @@ carries the per-method reference: `bundle exec rake yard`, or
 
 | component | what it is |
 |---|---|
-| `Layout::Absolute` | Positions children by assigning their `rect` in a `relayout` override, and paints nothing itself. The base to subclass when the arithmetic is yours. |
-| `Layout::Vertical`, `Layout::Horizontal` | Stack children along one axis from declared extents — `Fixed[n]`, `Percent[n]`, `Expand[weight]` — with box-global `spacing` and `padding`. Sugar over `Absolute`, not a new sizing model. |
+| `Layout` | Positions children by assigning their `rect` in a `relayout` override, and paints nothing itself. The base to subclass when the arithmetic is yours. |
+| `Layout::Absolute` | Places each child at the fixed `Rect` it was added with; `constrain` moves one. |
+| `Layout::Vertical`, `Layout::Horizontal` | Stack children along one axis from declared extents — `Fixed[n]`, `Percent[n]`, `Expand[weight]` — with box-global `spacing` and `padding`. Sugar over a hand-written `relayout`, not a new sizing model. |
 
 ### Framing and switching — [book ch7](book/07-components.md#framing-content)
 

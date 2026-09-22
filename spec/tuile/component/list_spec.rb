@@ -1129,7 +1129,7 @@ module Tuile
       end
 
       it "inherits an ancestor's bg_color" do
-        parent = Component::Layout::Absolute.new
+        parent = Component::Layout.new
         parent.rect = Rect.new(0, 0, 10, 2)
         l = Component::List.new
         parent.add(l)

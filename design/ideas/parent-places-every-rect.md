@@ -238,7 +238,11 @@ graduate without it. Nothing here depends on the diagnostic.
 
 ### `Q_order_of_work`
 
-1. `Q_absolute_role`, then `mount_at` and the spec fixtures.
+1. `Q_absolute_role`, then `mount_at` and the spec fixtures. **Done (2026-09-22):** `Absolute`
+   takes a `Rect` per child and custom arithmetic subclasses `Layout`. Spec holders that only needed
+   a container placing nothing became a bare `Layout`, which is exactly what the old `Absolute` was;
+   the ones whose children get their `rect` written directly move to `Absolute` rects in step 3,
+   when the guard finds them.
 2. Popup placement into `ScreenPane#relayout`; the `rect=` override goes.
 3. `Q_rect_writer`.
 

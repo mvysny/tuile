@@ -260,7 +260,7 @@ module Tuile
     end
 
     it "inherits an ancestor's bg_color" do
-      layout = Component::Layout::Absolute.new
+      layout = Component::Layout.new
       Screen.instance.content = layout
       cg = Component::CheckboxGroup.new(items: default_items)
       layout.add(cg)

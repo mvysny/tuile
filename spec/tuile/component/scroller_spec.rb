@@ -7,7 +7,7 @@ module Tuile
 
     let(:screen) { Screen.instance }
 
-    let(:content) { Component::Layout::Absolute.new }
+    let(:content) { Component::Layout.new }
 
     # A scroller showing 5 rows of a 40-row content, wide enough for the bar to
     # take its two columns.
@@ -189,7 +189,7 @@ module Tuile
       # The half of the contract an outer scroller depends on: it is told where
       # the rect sits *after* this scroll, not where it sat when asked.
       it "passes the request up with the rect where its own scroll left it" do
-        outer = Class.new(Component::Layout::Absolute) do
+        outer = Class.new(Component::Layout) do
           attr_reader :requests
 
           def initialize
@@ -204,7 +204,7 @@ module Tuile
         end.new
         screen.content = outer
         outer.rect = Rect.new(0, 0, 10, 5)
-        s = Component::Scroller.new(Component::Layout::Absolute.new, content_rows: 40)
+        s = Component::Scroller.new(Component::Layout.new, content_rows: 40)
         outer.add(s)
         s.rect = Rect.new(0, 0, 10, 5)
 
@@ -321,7 +321,7 @@ module Tuile
       end
 
       it "gives the bar's columns back to the content when it is gone" do
-        content = Component::Layout::Absolute.new
+        content = Component::Layout.new
         s = scroller(content)
         s.scrollbar_visibility = :gone
 

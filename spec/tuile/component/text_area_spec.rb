@@ -7,7 +7,7 @@ module Tuile
 
     describe "inherited bg_color" do
       it "keeps its own well on every row, ignoring an ancestor's bg_color" do
-        parent = Component::Layout::Absolute.new
+        parent = Component::Layout.new
         parent.rect = Rect.new(0, 0, 10, 3)
         a = Component::TextArea.new
         parent.add(a)
@@ -852,7 +852,7 @@ module Tuile
 
       it "clears focus when ESC is pressed and the default is in place" do
         screen = Screen.instance
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         a = Component::TextArea.new
         a.rect = Rect.new(0, 0, 10, 3)
@@ -885,7 +885,7 @@ module Tuile
 
       it "consumes ESC and fires only the listener once escape_clears_focus is off" do
         screen = Screen.instance
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         a = Component::TextArea.new
         a.rect = Rect.new(0, 0, 10, 3)

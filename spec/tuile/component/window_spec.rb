@@ -147,7 +147,7 @@ module Tuile
 
       it "content= refocuses to the window when the replaced content held focus" do
         screen = Screen.instance
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         w = Component::Window.new
         old = Component::List.new
@@ -166,7 +166,7 @@ module Tuile
 
       it "content= clears focus to the window when content is set to nil and held focus" do
         screen = Screen.instance
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         w = Component::Window.new
         old = Component::List.new
@@ -248,7 +248,7 @@ module Tuile
       it "rejects components that already have a parent" do
         w = Component::Window.new
         other = Component::List.new
-        Component::Layout::Absolute.new.add(other)
+        Component::Layout.new.add(other)
         assert_raises(ArgumentError) { w.footer = other }
       end
 
@@ -272,7 +272,7 @@ module Tuile
 
       it "repairs focus when a focused footer is removed" do
         screen = Screen.instance
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         w = Component::Window.new
         list = Component::List.new

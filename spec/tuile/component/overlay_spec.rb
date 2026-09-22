@@ -95,7 +95,7 @@ module Tuile
       end
 
       it "does not grab focus or center when opened" do
-        content = Component::Layout::Absolute.new
+        content = Component::Layout.new
         field = Component::TextField.new
         field.rect = Rect.new(0, 0, 10, 1)
         content.add(field)

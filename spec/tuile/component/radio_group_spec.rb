@@ -284,7 +284,7 @@ module Tuile
     end
 
     it "inherits an ancestor's bg_color" do
-      layout = Component::Layout::Absolute.new
+      layout = Component::Layout.new
       Screen.instance.content = layout
       rg = Component::RadioGroup.new(items: default_items)
       layout.add(rg)

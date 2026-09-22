@@ -31,13 +31,13 @@ module SamplerExample
     light: Tuile::Theme::LIGHT.with(custom: { hint: Tuile::Color::GREY62 })
   )
 
-  # Sampler-local container: a {Tuile::Component::Layout::Absolute} that runs a
+  # Sampler-local container: a {Tuile::Component::Layout} that runs a
   # caller-supplied block from `relayout` to position its children. Most demos
   # are plain stacks and use the box layouts instead; this is what's left for
   # the two that aren't — a sidebar whose width is `min(16, width / 3)`, which
   # is a cap on a proportion and so outside {Tuile::Component::Layout::Box}'s
   # Fixed/Percent/Expand vocabulary by design.
-  class Panel < Tuile::Component::Layout::Absolute
+  class Panel < Tuile::Component::Layout
     def initialize(&layout_block)
       super()
       @layout_block = layout_block

@@ -102,7 +102,7 @@ module Tuile
       # the screen, and two TabSheet panes may reuse an id since only one is
       # attached. Testing.get raising on two matches is the whole enforcement.
       it "does not enforce uniqueness" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         2.times { layout.add(Component.new.tap { _1.id = :dupe }) }
         Screen.instance.content = layout
         assert_equal %i[dupe dupe], layout.children.map(&:id)
@@ -125,7 +125,7 @@ module Tuile
       end
 
       it "does not recurse into the tree" do
-        parent = Component::Layout::Absolute.new
+        parent = Component::Layout.new
         parent.add(Component.new)
         Screen.instance.content = parent
         refute_includes parent.inspect, "children"
@@ -257,7 +257,7 @@ module Tuile
       # A viewport showing two rows of a taller child, which is the shape a
       # Scroller has and the one that made the clip mandatory.
       def viewport(outer:, inner:)
-        pane = Component::Layout::Absolute.new
+        pane = Component::Layout.new
         child = yield
         pane.add(child)
         Screen.instance.content = pane
@@ -324,7 +324,7 @@ module Tuile
       end
 
       it "invalidates when rect changes" do
-        c = Component::Layout::Absolute.new
+        c = Component::Layout.new
         Screen.instance.content = c
         Screen.instance.invalidated_clear
         c.rect = Rect.new(0, 0, 10, 5)
@@ -419,7 +419,7 @@ module Tuile
     context "#focus" do
       it "sets screen.focused to self" do
         screen = Screen.instance
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         c = Class.new(Component) { def focusable? = true }.new
         layout.add([c])
@@ -434,7 +434,7 @@ module Tuile
       # container doing what one does — record the request, then pass it on
       # with the rect where its own scroll left it.
       def recorder
-        Class.new(Component::Layout::Absolute) do
+        Class.new(Component::Layout) do
           attr_reader :requests
           attr_accessor :scroll_by
 
@@ -582,7 +582,7 @@ module Tuile
       end
 
       it "reaches them from an ancestor, with the component none the wiser" do
-        root = Component::Layout::Absolute.new
+        root = Component::Layout.new
         leaf = Component::Label.new("hi")
         Screen.instance.content = root
         root.add(leaf)
@@ -679,7 +679,7 @@ module Tuile
       # surrounds it. Without this a one-row Select in a 25-row rect floods the
       # other 24 with its field well.
       it "does not color the dead tail outside the extent" do
-        panel = Component::Layout::Absolute.new
+        panel = Component::Layout.new
         field = Class.new(Component) do
           define_method(:default_bg_color) { Color.new(52) }
           def extent = Size.new(4, 1)
@@ -737,8 +737,8 @@ module Tuile
       # sniffed `parent.is_a?(HasValue)` and broke the moment a container sat
       # between a composed widget and its BG_INHERIT face.
       it "reaches past an intervening container to the surrounding well" do
-        composer = Component::Layout::Absolute.new
-        middle = Component::Layout::Absolute.new
+        composer = Component::Layout.new
+        middle = Component::Layout.new
         field = welled
         composer.add(middle)
         middle.add(field)
@@ -771,7 +771,7 @@ module Tuile
 
       # The dead tail asks the same question, so it must not paint :inherit.
       it "leaves the dead tail to what surrounds the widget" do
-        panel = Component::Layout::Absolute.new
+        panel = Component::Layout.new
         field = Class.new(Component) do
           define_method(:default_bg_color) { Color.new(52) }
           def extent = Size.new(4, 1)
@@ -950,7 +950,7 @@ module Tuile
       # Records its own hook calls, so a spec can assert both that a hook fired
       # and what the tree looked like when it did.
       let(:spy_class) do
-        Class.new(Component::Layout::Absolute) do
+        Class.new(Component::Layout) do
           attr_reader :events
 
           def initialize
@@ -995,7 +995,7 @@ module Tuile
       end
 
       it "reports attached? true in handle_attached and false in handle_detached" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         layout.add(spy)
         Screen.instance.content = layout
 
@@ -1005,8 +1005,8 @@ module Tuile
       end
 
       it "fires detach then attach for a cross-container move" do
-        a = Component::Layout::Absolute.new
-        b = Component::Layout::Absolute.new
+        a = Component::Layout.new
+        b = Component::Layout.new
         pane.add_popup(Component::Popup.new(content: b))
         Screen.instance.content = a
         a.add(spy)
@@ -1019,7 +1019,7 @@ module Tuile
       end
 
       it "fires nothing when attachedness doesn't change" do
-        a = Component::Layout::Absolute.new
+        a = Component::Layout.new
         Screen.instance.content = a
         a.add(spy)
         spy.events.clear
@@ -1064,7 +1064,7 @@ module Tuile
 
       it "runs handle_detached before focus repair, with focus still inside the subtree" do
         spy.define_singleton_method(:focusable?) { true }
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         layout.add(spy)
         Screen.instance.content = layout
         Screen.instance.focused = spy
@@ -1209,7 +1209,7 @@ module Tuile
         window = Component::Window.new("w")
         window.content = Component::List.new
         window.footer = Component::TextField.new
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         layout.add(window)
         layout.add(Component::Label.new)
         Screen.instance.content = layout
@@ -1243,7 +1243,7 @@ module Tuile
 
     context "#attached?" do
       it "is true when root is the screen content" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         child = Class.new(Component) { def focusable? = true }.new
         layout.add(child)
         Screen.instance.content = layout
@@ -1265,7 +1265,7 @@ module Tuile
 
       it "is answerable with no Screen in the process at all" do
         Screen.close # the predicate must not reach for the singleton
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         label = Component::Label.new
 
         layout.add(label) # must not raise "Screen not initialized"
@@ -1274,7 +1274,7 @@ module Tuile
       end
 
       it "is false once detached from the screen content" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         child = Class.new(Component) { def focusable? = true }.new
         layout.add(child)
         Screen.instance.content = layout
@@ -1290,7 +1290,7 @@ module Tuile
 
       it "refocuses to self when the focused component was the removed child" do
         screen = Screen.instance
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         child = focusable
         layout.add(child)
@@ -1302,9 +1302,9 @@ module Tuile
 
       it "refocuses to self when the focused component was a descendant of the removed subtree" do
         screen = Screen.instance
-        outer = Component::Layout::Absolute.new
+        outer = Component::Layout.new
         screen.content = outer
-        inner = Component::Layout::Absolute.new
+        inner = Component::Layout.new
         leaf = focusable
         inner.add(leaf)
         outer.add(inner)
@@ -1316,7 +1316,7 @@ module Tuile
 
       it "leaves focus alone when the focused component is unrelated to the removal" do
         screen = Screen.instance
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         sibling = focusable
         removed = focusable
@@ -1329,13 +1329,13 @@ module Tuile
 
       it "is a no-op in a detached subtree (does not raise nor mutate screen.focused)" do
         screen = Screen.instance
-        attached_layout = Component::Layout::Absolute.new
+        attached_layout = Component::Layout.new
         anchor = focusable
         attached_layout.add(anchor)
         screen.content = attached_layout
         screen.focused = anchor
 
-        detached = Component::Layout::Absolute.new
+        detached = Component::Layout.new
         child = focusable
         detached.add(child)
 
@@ -1541,7 +1541,7 @@ module Tuile
       context "mouse" do
         it "routes no click into a hidden child" do
           screen = Screen.instance
-          layout = Component::Layout::Absolute.new
+          layout = Component::Layout.new
           child = tab_stop
           layout.add(child)
           screen.content = layout
@@ -1630,7 +1630,7 @@ module Tuile
     end
 
     it "invalidate adds component to screen invalidated set when attached" do
-      c = Component::Layout::Absolute.new
+      c = Component::Layout.new
       Screen.instance.content = c
       Screen.instance.invalidated_clear
       c.send(:invalidate)

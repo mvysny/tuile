@@ -71,7 +71,7 @@ RSpec.describe "examples/file_commander.rb" do
   end
 
   # Mouse delivery end to end, which the key-driven tests never touch: a click
-  # descends Layout::Absolute -> Window -> List, and one on a window's border
+  # descends Layout -> Window -> List, and one on a window's border
   # focuses that window. Both assertions are chosen to be *discriminating* —
   # each names a file reachable only if the click landed where it should.
   it "descends the tree on a click, and focuses a pane clicked on its border" do

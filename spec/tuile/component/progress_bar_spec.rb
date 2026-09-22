@@ -14,7 +14,7 @@ module Tuile
     # Attaches the bar, so invalidation and the ticker — both gated on
     # `attached?` — actually do something.
     def attached_bar(**kwargs)
-      layout = Component::Layout::Absolute.new
+      layout = Component::Layout.new
       Screen.instance.content = layout
       bar(**kwargs).tap { layout.add(_1) }
     end
@@ -222,7 +222,7 @@ module Tuile
       end
 
       it "shows an ancestor's bg_color behind the track" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         layout.bg_color = Color::BLUE
         Screen.instance.content = layout
         b = bar.tap { layout.add(_1) }
@@ -250,7 +250,7 @@ module Tuile
 
     context "indeterminate" do
       it "starts no ticker while detached, and starts one on attach" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         b = bar(indeterminate: true)
         assert_empty queue.tickers
@@ -284,7 +284,7 @@ module Tuile
       end
 
       it "cancels the ticker on detach, and starts a fresh one on re-attach" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         b = bar(indeterminate: true).tap { layout.add(_1) }
 

@@ -118,6 +118,7 @@ are `Box`'s rdoc and `D_box_layouts`.
 
 ## Module map
 
-- `layout/` — the box layouts stacking children along one axis; rules in `Box`'s rdoc and `D_box_layouts`
+- `layout/` — `Absolute` (a fixed `Rect` per child) and the box layouts stacking children along one
+  axis; the box rules are `Box`'s rdoc and `D_box_layouts`
 
 Maintenance: the root `AGENTS.md`'s rules; cap 10 KB.

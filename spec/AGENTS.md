@@ -35,9 +35,9 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
 - **Mount with `mount_at(component, rect)`, never `screen.content = c` plus `c.rect =`** — the pane
   hands its content the whole screen on every pass of its own, so the example's size would be undone
   by the next mark (opening a popup, swapping content). `mount_at` puts a
-  {Tuile::Component::Layout::Absolute} in between, which places nothing.
+  {Tuile::Component::Layout::Absolute} in between, holding the example's rect as a constraint.
 - **A spec that writes a child's rect directly is asserting a lie the parent will correct** —
-  collapse through the parent instead (`constrain`, or an `Absolute` holder). The same goes for a
+  collapse through the parent instead (`constrain`, or `mount_at` again). The same goes for a
   popup's position, which {Tuile::ScreenPane}'s `rect=` re-derives.
 - **The contract suite's stray sweep paints through `paint_unclipped`, not `paint`** — through
   `Screen#canvas_for` the strays never reach the buffer, so the sweep becomes a test of `Screen`

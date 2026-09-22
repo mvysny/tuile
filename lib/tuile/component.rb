@@ -758,7 +758,7 @@ module Tuile
     # A property of the parent chain alone — no {Screen} is consulted, so
     # assembling a tree needs no screen in the process at all:
     #
-    #   layout = Component::Layout::Absolute.new
+    #   layout = Component::Layout::Vertical.new
     #   layout.add(label)      # legal with no Screen; neither is attached yet
     #   screen.content = layout # now both are
     #

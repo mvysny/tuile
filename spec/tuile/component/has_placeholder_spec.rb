@@ -56,7 +56,7 @@ module Tuile
     # The reason it is a mixin rather than a per-class accessor: one `is_a?`
     # finds every field that can carry a hint, whatever its class.
     it "is the seam a tree walk finds a hintable field by" do
-      layout = Component::Layout::Absolute.new
+      layout = Component::Layout.new
       field = Component::TextField.new
       integer = Component::IntegerField.new
       layout.add(field)

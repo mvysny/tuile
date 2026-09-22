@@ -106,7 +106,7 @@ module Tuile
     # Deliberately uncatalogued, each with the reason. The completeness guard
     # reads this, so a new component cannot opt out by being forgotten.
     excluded = {
-      Component::Layout => "abstract: a bare Layout is Absolute's superclass and places nothing",
+      Component::Layout => "abstract: the base to subclass with a relayout; a bare one places nothing",
       Component::Layout::Box => "abstract: main_extent / cross_extent / build_rect raise",
       Component::AbstractStringField => "abstract: the base of TextField / TextArea, never instantiated",
       Component::AbstractWrappingField => "abstract: needs an editor, and defines no value",
@@ -117,19 +117,13 @@ module Tuile
       ScreenPane => "the structural root: Screen owns the only instance; see screen_pane_spec"
     }
 
-    # An `Absolute` places nothing itself — the caller assigns each child's rect,
-    # which is what the class is for — so the halves are computed here rather
-    # than by a `rect=` override, which would mean a spec-local subclass the
-    # completeness guard would then see.
     # @return [Component::Layout::Absolute] two children filling {#contract_rect}.
     def populated_absolute
       layout = Component::Layout::Absolute.new
-      layout.add(left = Component::Label.new("left"))
-      layout.add(right = Component::Label.new("right"))
       r = contract_rect
       half = r.width / 2
-      left.rect = Rect.new(r.left, r.top, half, r.height)
-      right.rect = Rect.new(r.left + half, r.top, r.width - half, r.height)
+      layout.add(Component::Label.new("left"), Rect.new(0, 0, half, r.height))
+      layout.add(Component::Label.new("right"), Rect.new(half, 0, r.width - half, r.height))
       layout
     end
 
@@ -155,28 +149,31 @@ module Tuile
     # @return [Buffer] the screen's buffer, painted.
     def paint(component)
       screen = Screen.instance
-      mount(component)
+      place(component, contract_rect)
       screen.buffer.clear(StyledString::Style::DEFAULT)
       screen.buffer.fill(Rect.new(0, 0, screen.size.width, screen.size.height),
                          StyledString::Style::DEFAULT)
       fill_sentinel(screen.buffer)
-      component.rect = contract_rect
       repaint(component)
       screen.buffer
     end
 
-    # Attaches `component` under an {Component::Layout::Absolute}, which places
-    # nothing — so the component keeps the rect this suite assigns it. Straight
-    # onto `screen.content` it would not: the pane hands its content the whole
-    # screen at the next settle, swallowing the margin the stray sweep needs.
+    # Mounts `component` at `rect` under an {Component::Layout::Absolute}, or
+    # moves it there if it is mounted already. Straight onto `screen.content`
+    # it would not keep the rect: the pane hands its content the whole screen
+    # at the next settle, swallowing the margin the stray sweep needs.
     # @param component [Component]
+    # @param rect [Rect]
     # @return [void]
-    def mount(component)
-      return unless component.parent.nil?
-
-      holder = Component::Layout::Absolute.new
-      Screen.instance.content = holder
-      holder.add(component)
+    def place(component, rect)
+      case component.parent
+      when nil
+        holder = Component::Layout::Absolute.new
+        holder.add(component, rect)
+        Screen.instance.content = holder
+      when ScreenPane then component.rect = rect # an open popup places itself
+      else component.parent.constrain(component, rect)
+      end
       Screen.instance.flush_layout
     end
 
@@ -199,7 +196,7 @@ module Tuile
       buffer.height.times { |y| buffer.width.times { |x| buffer.set_char(x, y, sentinel) } }
     end
 
-    # Whether `component` assigns its descendants' rects at all — a bare
+    # Whether `component` assigns its descendants' rects from its own size — an
     # {Component::Layout::Absolute} does not, and owes no propagation.
     #
     # It probes by **resizing**, not by moving: a `rect` is parent-relative, so
@@ -217,8 +214,7 @@ module Tuile
     def places_children?(component)
       before = descendant_rects(component)
       r = contract_rect
-      component.rect = Rect.new(r.left, r.top, r.width - 1, r.height - 1)
-      Screen.instance.flush_layout
+      place(component, Rect.new(r.left, r.top, r.width - 1, r.height - 1))
       before != descendant_rects(component)
     end
 
@@ -334,10 +330,9 @@ module Tuile
           descendants = []
           component.walk_tree { descendants << _1 unless _1.equal?(component) }
           skip "no children to propagate to" if descendants.empty?
-          skip "places no children: an Absolute's caller does the arithmetic" unless places_children?(component)
+          skip "places no children from its own size: an Absolute's are fixed" unless places_children?(component)
 
-          component.rect = Rect.new(contract_rect.left, contract_rect.top, 0, 0)
-          Screen.instance.flush_layout
+          place(component, Rect.new(contract_rect.left, contract_rect.top, 0, 0))
           stale = descendants.reject { _1.rect.empty? }
           assert_empty stale.map { "#{_1.class}#{_1.rect.inspect}" },
                        "#{klass} left descendants at their old rects"

@@ -25,7 +25,6 @@ module Tuile
     # mounted on the screen and laid out 40x5.
     def sheet(count: 2)
       sheet = Component::TabSheet.new
-      Screen.instance.content = sheet
       count.times { |i| sheet.add_tab("Tab#{i}", Component::TextField.new) }
       mount_at(sheet, Rect.new(0, 0, 40, 5))
     end

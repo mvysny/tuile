@@ -524,7 +524,7 @@ module Tuile
         assert rects(layout).first.empty?
       end
 
-      # In a box the children move: Absolute can leave siblings alone, this can't.
+      # In a box the children move: removing one shifts everything after it.
       it "shifts the remaining children up on remove" do
         layout = box
         first = Component.new

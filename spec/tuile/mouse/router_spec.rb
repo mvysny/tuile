@@ -46,7 +46,7 @@ module Tuile
 
     # A layout filling the screen with `child` at (0, 0, 10, 5).
     def content_with(child)
-      layout = Component::Layout::Absolute.new
+      layout = Component::Layout.new
       screen.content = layout
       layout.add(child)
       child.rect = Rect.new(0, 0, 10, 5)
@@ -92,7 +92,7 @@ module Tuile
         field.define_singleton_method(:handle_blur) { log << :blur }
         button = Component::Button.new("Save")
         button.on_click { log << :click }
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         layout.add(field)
         field.rect = Rect.new(0, 0, 10, 1)
@@ -255,7 +255,7 @@ module Tuile
       it "exits the component the pointer left before entering the one it reached" do
         left = recorder
         right = recorder
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         layout.add(left)
         left.rect = Rect.new(0, 0, 5, 5)

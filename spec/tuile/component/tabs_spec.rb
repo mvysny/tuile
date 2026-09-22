@@ -21,7 +21,7 @@ module Tuile
     # Attaches the strip to the screen, so invalidation and click-to-focus —
     # both gated on `attached?` — actually do something.
     def attached_tabs(**kwargs)
-      layout = Component::Layout::Absolute.new
+      layout = Component::Layout.new
       Screen.instance.content = layout
       tabs(**kwargs).tap { layout.add(_1) }
     end

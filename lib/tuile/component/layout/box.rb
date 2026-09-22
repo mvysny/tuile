@@ -37,8 +37,7 @@ module Tuile
       #
       # Every child-list mutation re-runs the whole pass, because in a box the
       # children move: removing one shifts everything after it, and adding one
-      # shrinks every {Expand} share. ({Absolute} can skip this — there, siblings
-      # are independent.)
+      # shrinks every {Expand} share.
       #
       # Main-axis resolution order, against
       # `available = extent - padding - spacing * (children - 1)`:

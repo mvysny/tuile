@@ -28,7 +28,7 @@ module Tuile
       # maintained by add_child's insert position rather than recomputed on
       # every read — so it needs a guard.
       it "is content, then popups in stacking order" do
-        content = Component::Layout::Absolute.new
+        content = Component::Layout.new
         first = Component::Popup.new
         second = Component::Popup.new
 
@@ -42,16 +42,16 @@ module Tuile
       it "keeps content first when it is swapped under open popups" do
         popup = Component::Popup.new
         pane.add_popup(popup)
-        replacement = Component::Layout::Absolute.new
+        replacement = Component::Layout.new
 
-        Screen.instance.content = Component::Layout::Absolute.new
+        Screen.instance.content = Component::Layout.new
         Screen.instance.content = replacement
 
         assert_equal [replacement, popup], pane.children
       end
 
       it "closes a popup out of order without disturbing the rest" do
-        content = Component::Layout::Absolute.new
+        content = Component::Layout.new
         first = Component::Popup.new
         second = Component::Popup.new
         Screen.instance.content = content
@@ -67,14 +67,14 @@ module Tuile
 
     context "rect propagation" do
       it "gives content the whole pane rect when its rect is set" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         pane.rect = Rect.new(0, 0, 80, 24)
         assert_equal Rect.new(0, 0, 80, 24), settle(layout).rect
       end
 
       it "relayouts on a height-only change" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         pane.rect = Rect.new(0, 0, 80, 24)
         pane.rect = Rect.new(0, 0, 80, 30)
@@ -84,7 +84,7 @@ module Tuile
 
     context "parenting" do
       it "parents content when assigned" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         assert_equal pane, layout.parent
       end
@@ -135,7 +135,7 @@ module Tuile
       end
 
       it "rejects content that already has a parent" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Component::Popup.new(content: layout)
         assert_raises(ArgumentError) { Screen.instance.content = layout }
       end
@@ -161,7 +161,7 @@ module Tuile
     context "handle_key? (bubble dispatch)" do
       # Builds `content` = a Layout holding the given children and returns it.
       def content_with(*children)
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         layout.add(children)
         layout
@@ -251,7 +251,7 @@ module Tuile
 
     context "handle_paste (focused component only, no bubble)" do
       def content_with(*children)
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         layout.add(children)
         layout
@@ -339,7 +339,7 @@ module Tuile
 
       it "delivers keys to the focused content while an overlay floats above it" do
         f = field
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         layout.add(f)
         Screen.instance.focused = f
@@ -354,7 +354,7 @@ module Tuile
         beneath = Class.new(Component) { def focusable? = true }.new
         beneath.rect = Rect.new(0, 0, 80, 40)
         beneath.define_singleton_method(:handle_mouse_down?) { |e| clicks << e.point }
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         layout.add(beneath)
 
@@ -371,7 +371,7 @@ module Tuile
         beneath = Class.new(Component) { def focusable? = true }.new
         beneath.rect = Rect.new(0, 0, 80, 40)
         beneath.define_singleton_method(:handle_mouse_down?) { |_| clicks << :beneath }
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         layout.add(beneath)
 
@@ -421,7 +421,7 @@ module Tuile
         beneath = Class.new(Component) { def focusable? = true }.new
         beneath.rect = Rect.new(0, 0, 80, 40)
         beneath.define_singleton_method(:handle_mouse_down?) { |_| clicks << :beneath }
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         layout.add(beneath)
 
@@ -465,7 +465,7 @@ module Tuile
           end
         end.new
         opener.rect = Rect.new(0, 0, 80, 40)
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         layout.add(opener)
         opener.popup = Component::Overlay.new(content: list_of("a"))
@@ -488,7 +488,7 @@ module Tuile
           end
         end.new
         toggler.rect = Rect.new(0, 0, 80, 40)
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         layout.add(toggler)
         toggler.popup = Component::Overlay.new(content: list_of("a"))

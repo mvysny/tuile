@@ -15,7 +15,7 @@ module Tuile
     # Attaches the checkbox to the screen so invalidation and click-to-focus,
     # both gated on `attached?`, actually do something.
     def attached_checkbox(**kwargs)
-      layout = Component::Layout::Absolute.new
+      layout = Component::Layout.new
       Screen.instance.content = layout
       checkbox(**kwargs).tap { layout.add(_1) }
     end
@@ -217,7 +217,7 @@ module Tuile
       end
 
       it "shows an inherited bg_color on the row's blank tail" do
-        parent = Component::Layout::Absolute.new
+        parent = Component::Layout.new
         parent.rect = Rect.new(0, 0, 20, 1)
         cb = Component::Checkbox.new("Syslog")
         parent.add(cb)
@@ -233,7 +233,7 @@ module Tuile
     context "integration: Tab cycling and Space activation" do
       it "Tab moves through checkboxes and Space toggles the focused one" do
         screen = Screen.instance
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         a = Component::Checkbox.new("A")
         b = Component::Checkbox.new("B")

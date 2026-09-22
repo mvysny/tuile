@@ -381,9 +381,9 @@ module Tuile
       # "outside click" on the dialog and dismisses it.
       def dialog_with_combo
         combo = Component::ComboBox.new(items: %w[alpha beta gamma])
-        # The window would hand its content the whole inner rect; an Absolute
-        # between them is what lets the combo sit on one chosen row.
-        body = Component::Layout::Absolute.new
+        # The window would hand its content the whole inner rect; a bare Layout
+        # between them, which places nothing, lets the combo sit on one chosen row.
+        body = Component::Layout.new
         body.add(combo)
         window = Component::Window.new("Edit")
         window.content = body

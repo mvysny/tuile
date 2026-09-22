@@ -11,7 +11,7 @@ The unmerged `strict-layout-diagnostic` branch (commits `26a1deb`, `bbf0e32`, `6
 itself, raising by default under a `FakeScreen`. Its predicate is a guess (a dirty ancestor means
 everything below it is stale), and it needed three special cases to stop reporting false alarms:
 `relayout_assigns_rects?`, `StrictLayout::PLUMBING` and `ScreenPane#places_child?`. The branch's
-`D_strict_layout` entry has the measurements.
+strict-layout decision entry (only on that branch) has the measurements.
 
 `parent-places-every-rect.md` overturns `places_child?`: the pane places its popups in `relayout`,
 so opening one marks the pane honestly. That brings back the reports that special case suppressed,
@@ -77,5 +77,5 @@ and keep only its public surface and specs?
 
 ## Related
 
-`D_deferred_layout` (the residue this answers), `D_relayout`, the parked branch's `D_strict_layout`,
+`D_deferred_layout` (the residue this answers), `D_relayout`, the parked branch's strict-layout decision entry,
 `design/ideas/parent-places-every-rect.md`.

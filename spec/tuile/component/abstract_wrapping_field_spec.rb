@@ -219,7 +219,7 @@ module Tuile
       it "runs when the field leaves the focus chain" do
         f = field(attach: false)
         other = Component::Button.new("x")
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         layout.add(f)
         layout.add(other)

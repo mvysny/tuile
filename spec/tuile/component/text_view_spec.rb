@@ -7,7 +7,7 @@ module Tuile
 
     describe "inherited bg_color" do
       it "fills content and blank rows from an ancestor's bg_color" do
-        parent = Component::Layout::Absolute.new
+        parent = Component::Layout.new
         parent.rect = Rect.new(0, 0, 10, 3)
         tv = Component::TextView.new
         parent.add(tv)

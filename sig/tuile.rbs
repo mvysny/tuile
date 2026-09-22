@@ -3935,7 +3935,7 @@ module Tuile
     # A property of the parent chain alone — no {Screen} is consulted, so
     # assembling a tree needs no screen in the process at all:
     # 
-    #   layout = Component::Layout::Absolute.new
+    #   layout = Component::Layout::Vertical.new
     #   layout.add(label)      # legal with no Screen; neither is attached yet
     #   screen.content = layout # now both are
     # 
@@ -5597,15 +5597,35 @@ module Tuile
     end
 
     # A layout doesn't paint anything by itself: its job is to position child
-    # components. Two families, both top-down (see book ch3):
+    # components. Three ways to use one, all top-down (see book ch3):
     # 
-    # - {Absolute} — you compute every child's rectangle yourself in a
+    # - Subclass {Layout} and compute every child's rectangle yourself in a
     #   {Component#relayout} override. Total control, and the base for anything
-    #   unusual.
+    #   unusual:
+    # 
+    #     class SplitPane < Component::Layout
+    #       def initialize
+    #         super
+    #         add(@sidebar = Component::List.new)
+    #         add(@main = Component::Window.new("Main"))
+    #       end
+    # 
+    #       protected
+    # 
+    #       def relayout
+    #         left = width * 4 / 10
+    #         @sidebar.rect = Rect.new(0, 0, left, height)
+    #         @main.rect = Rect.new(left, 0, width - left, height)
+    #       end
+    #     end
+    # 
+    #   The framework runs it after a resize, an `add` or `remove`, and a
+    #   child's {Component#visible=}.
+    # - {Absolute} — you give each child a fixed {Rect} and the layout assigns
+    #   exactly that.
     # - {Box} / {Vertical} / {Horizontal} — you declare each child's extent as
     #   a {Fixed}, {Percent} or {Expand} constraint and the layout does the
-    #   arithmetic. Sugar over the same child-`rect` assignment, for the common
-    #   case.
+    #   arithmetic.
     # 
     # Children that fully tile the layout's rect repaint themselves and
     # cover everything; children that leave gaps (e.g. a form with widgets
@@ -5765,32 +5785,6 @@ module Tuile
         attr_reader left: Integer
       end
 
-      # Absolute layout: the base to subclass when the arithmetic is yours.
-      # Extend it, `add` the children, and divide {Component#local_rect}
-      # between them in a {Component#relayout} override:
-      # 
-      #   class SplitPane < Component::Layout::Absolute
-      #     def initialize
-      #       super
-      #       add(@sidebar = Component::List.new)
-      #       add(@main = Component::Window.new("Main"))
-      #     end
-      # 
-      #     protected
-      # 
-      #     def relayout
-      #       left = width * 4 / 10
-      #       @sidebar.rect = Rect.new(0, 0, left, height)
-      #       @main.rect = Rect.new(left, 0, width - left, height)
-      #     end
-      #   end
-      # 
-      # The framework runs it after a resize, an `add` or `remove`, and a
-      # child's {Component#visible=} — so `add` and `visible=` come free, where
-      # the `rect=` override this replaced only ever saw the resize.
-      class Absolute < Layout
-      end
-
       # Abstract base of the one-dimensional box layouts. Children are stacked
       # along a *main* axis in the order they were added, each getting the extent
       # its constraint asks for; across the *cross* axis they are sized one at a
@@ -5825,8 +5819,7 @@ module Tuile
       # 
       # Every child-list mutation re-runs the whole pass, because in a box the
       # children move: removing one shifts everything after it, and adding one
-      # shrinks every {Expand} share. ({Absolute} can skip this — there, siblings
-      # are independent.)
+      # shrinks every {Expand} share.
       # 
       # Main-axis resolution order, against
       # `available = extent - padding - spacing * (children - 1)`:
@@ -6024,6 +6017,48 @@ module Tuile
 
         # _@return_ — inset from this layout's own rect.
         attr_accessor padding: (Insets | Integer)
+      end
+
+      # Places each child at the {Rect} it was added with, in this layout's own
+      # coordinates, and does no arithmetic of its own:
+      # 
+      #   layout = Component::Layout::Absolute.new
+      #   layout.add(title, Rect.new(0, 0, 40, 1))
+      #   layout.add(body, Rect.new(0, 2, 40, 10))
+      #   layout.constrain(body, Rect.new(0, 2, 40, 20))   # moves it on the next settle
+      # 
+      # The rect is where the child wants to be, and this layout's
+      # {Component#relayout} is what assigns it, so moving a child means
+      # {#constrain}ing it rather than writing its `rect`. A rect that sticks out
+      # of this layout is clipped at paint time, and this layout's own size
+      # doesn't matter: a detached `Absolute` with no rect still places its
+      # children, which is how a spec measures a tree that has no screen.
+      # 
+      # When the rects depend on this layout's size, subclass {Layout} and write
+      # the `relayout` instead.
+      class Absolute < Layout
+        def initialize: () -> void
+
+        # _@param_ `child`
+        # 
+        # _@param_ `rect` — where the child sits, in this layout's coordinates.
+        def add: (Component child, Rect rect) -> void
+
+        # Moves a child already in the layout; it takes the new rect on the next
+        # settle.
+        # 
+        # _@param_ `child` — a child of this layout.
+        # 
+        # _@param_ `rect`
+        def constrain: (Component child, Rect rect) -> void
+
+        # _@param_ `child`
+        def remove: (Component child) -> void
+
+        def relayout: () -> void
+
+        # _@param_ `rect`
+        def validate_rect: (Object rect) -> void
       end
 
       # Stacks children top to bottom. The main axis is vertical, so a child's

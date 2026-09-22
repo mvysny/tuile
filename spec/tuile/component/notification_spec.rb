@@ -32,7 +32,7 @@ module Tuile
 
     # A focusable widget in the tiled content, so focus has somewhere real to be.
     def focused_field
-      layout = Component::Layout::Absolute.new
+      layout = Component::Layout.new
       screen.content = layout
       Component::TextField.new.tap do |f|
         layout.add(f)
