@@ -994,6 +994,86 @@ module Tuile
       end
     end
 
+    describe "#ljust" do
+      it "pads on the right to a display width, counting a CJK glyph as two" do
+        padded = StyledString.plain("日本").ljust(6)
+        assert_equal "日本  ", padded.to_s
+        assert_equal 6, padded.display_width
+      end
+
+      it "measures an emoji ZWJ sequence as one cluster" do
+        padded = StyledString.plain("👨‍👩‍👧").ljust(4)
+        assert_equal 4, padded.display_width
+      end
+
+      it "returns self when already at least that wide, a negative gap included" do
+        ss = StyledString.plain("hello")
+        assert_same ss, ss.ljust(5)
+        assert_same ss, ss.ljust(2)
+        assert_same ss, ss.ljust(-1)
+      end
+
+      it "leaves the fill unstyled and the content's style intact" do
+        padded = StyledString.styled("ab", fg: Color::RED).ljust(4)
+        assert_equal Color::RED, padded.spans.first.style.fg
+        assert_predicate padded.spans.last.style, :default?
+      end
+
+      it "fills with a custom one-column pad" do
+        assert_equal "ab··", StyledString.plain("ab").ljust(4, "·").to_s
+      end
+
+      it "raises on a pad that is not one cluster one column wide" do
+        assert_raises(ArgumentError) { StyledString.plain("ab").ljust(6, "中") }
+        assert_raises(ArgumentError) { StyledString.plain("ab").ljust(6, "--") }
+        assert_raises(ArgumentError) { StyledString.plain("ab").ljust(6, "") }
+      end
+
+      it "validates the pad before the already-wide early return" do
+        assert_raises(ArgumentError) { StyledString.plain("hello").ljust(2, "--") }
+      end
+
+      it "composes with #ellipsize into exactly the width" do
+        assert_equal "hel…", StyledString.plain("hello").ellipsize(4).ljust(4).to_s
+        assert_equal "hi  ", StyledString.plain("hi").ellipsize(4).ljust(4).to_s
+      end
+    end
+
+    describe "#rjust" do
+      it "pads on the left to a display width" do
+        assert_equal "  日本", StyledString.plain("日本").rjust(6).to_s
+      end
+
+      it "returns self when already at least that wide" do
+        ss = StyledString.plain("hello")
+        assert_same ss, ss.rjust(3)
+      end
+
+      it "fills with a custom pad" do
+        assert_equal "007", StyledString.plain("7").rjust(3, "0").to_s
+      end
+    end
+
+    describe "#center" do
+      it "splits an even gap evenly" do
+        assert_equal "  ab  ", StyledString.plain("ab").center(6).to_s
+      end
+
+      it "puts the extra column of an odd gap on the right, as String#center does" do
+        assert_equal "·ab··", StyledString.plain("ab").center(5, "·").to_s
+        assert_equal "ab".center(5, "·"), StyledString.plain("ab").center(5, "·").to_s
+      end
+
+      it "measures in columns, not characters" do
+        assert_equal " 中  ", StyledString.plain("中").center(5).to_s
+      end
+
+      it "returns self when already at least that wide" do
+        ss = StyledString.plain("hello")
+        assert_same ss, ss.center(4)
+      end
+    end
+
     describe "#lines" do
       it "returns [empty] for an empty StyledString" do
         result = StyledString.new.lines

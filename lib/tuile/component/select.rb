@@ -187,8 +187,7 @@ module Tuile
       # @return [StyledString]
       def face_row
         width = [rect.width - 1, 0].max
-        label = label_for(value).ellipsize(width)
-        label + StyledString.plain("#{" " * (width - label.display_width)}▾")
+        label_for(value).ellipsize(width).ljust(width) + StyledString.plain("▾")
       end
 
       # Rebuilds the dropdown's rows, highlight and geometry, opening it if

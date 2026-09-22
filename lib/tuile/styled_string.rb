@@ -567,6 +567,54 @@ module Tuile
       slice(0, keep) + ellipsis
     end
 
+    # Pads on the right out to `width` display columns — {String#ljust}
+    # counted in columns, so a CJK glyph or an emoji measures what it paints.
+    #
+    #   StyledString.plain("日本").ljust(6).to_s   # => "日本  "
+    #   row.ellipsize(w).ljust(w)                  # exactly w columns
+    #
+    # Never truncates: `self` comes back when already at least `width` wide,
+    # a negative gap included. The fill is unstyled, so it shows whatever
+    # background is painted under it.
+    # @param width [Integer] target display width.
+    # @param pad [String] the fill, one grapheme cluster one column wide.
+    # @return [StyledString]
+    # @raise [ArgumentError] when `pad` is not one cluster one column wide.
+    def ljust(width, pad = " ")
+      gap = gap_to(width, pad)
+      gap.zero? ? self : self + self.class.plain(pad * gap)
+    end
+
+    # Pads on the left out to `width` display columns; see {#ljust}.
+    #
+    #   StyledString.plain("42").rjust(5).to_s   # => "   42"
+    #
+    # @param width [Integer] target display width.
+    # @param pad [String] the fill, one grapheme cluster one column wide.
+    # @return [StyledString]
+    # @raise [ArgumentError] when `pad` is not one cluster one column wide.
+    def rjust(width, pad = " ")
+      gap = gap_to(width, pad)
+      gap.zero? ? self : self.class.plain(pad * gap) + self
+    end
+
+    # Pads both sides out to `width` display columns; see {#ljust}. An odd gap
+    # puts the extra column on the right, as {String#center} does.
+    #
+    #   StyledString.plain("ab").center(5, "·").to_s   # => "·ab··"
+    #
+    # @param width [Integer] target display width.
+    # @param pad [String] the fill, one grapheme cluster one column wide.
+    # @return [StyledString]
+    # @raise [ArgumentError] when `pad` is not one cluster one column wide.
+    def center(width, pad = " ")
+      gap = gap_to(width, pad)
+      return self if gap.zero?
+
+      left = gap / 2
+      self.class.plain(pad * left) + self + self.class.plain(pad * (gap - left))
+    end
+
     # Splits on `"\n"`, preserving spans on each side. A trailing newline
     # produces a trailing empty {StyledString} (matches `split("\n", -1)`).
     # An empty {StyledString} returns a single empty entry, like `"".split`.
@@ -782,6 +830,16 @@ module Tuile
         end
       end
       result
+    end
+
+    # @param width [Integer]
+    # @param pad [String]
+    # @return [Integer] columns {#ljust} and friends must fill, never negative.
+    # @raise [ArgumentError] when `pad` is not one cluster one column wide.
+    def gap_to(width, pad)
+      # The default skips validation: the fill runs once per painted row.
+      self.class.validate_glyph(pad, :pad) unless pad == " "
+      (width - display_width).clamp(0, nil)
     end
 
     # @param start_or_range [Integer, Range]

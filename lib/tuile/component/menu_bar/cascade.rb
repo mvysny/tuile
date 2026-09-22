@@ -297,8 +297,7 @@ module Tuile
           label_width = label_width_of(items)
           arrows = items.any?(&:submenu?)
           lambda do |item, _text_width|
-            row = item.cued_caption.ellipsize(label_width)
-            row += StyledString.plain(" " * (label_width - row.display_width))
+            row = item.cued_caption.ellipsize(label_width).ljust(label_width)
             next row unless arrows
 
             row + StyledString.plain(item.submenu? ? " #{SUBMENU_ARROW}" : " " * ARROW_WIDTH)

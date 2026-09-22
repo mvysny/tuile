@@ -904,9 +904,7 @@ module Tuile
         return StyledString::EMPTY if cw <= 0
         return StyledString.plain(" " * cw) if cw < 2
 
-        body = row.ellipsize(text_width)
-        fill = text_width - body.display_width
-        StyledString.plain(" ") + body + StyledString.plain(" " * (fill + 1))
+        StyledString.plain(" ") + row.ellipsize(text_width).ljust(cw - 1)
       end
 
       # @param index [Integer] 0-based index into {#items}.

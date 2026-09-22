@@ -263,8 +263,7 @@ module Tuile
       # @return [StyledString] the hint, ellipsized to `rect.width` and padded
       #   back out to it.
       def placeholder_row
-        hint = StyledString.styled(placeholder, fg: screen.theme.placeholder_color).ellipsize(rect.width)
-        hint + StyledString.plain(" " * [rect.width - hint.display_width, 0].max)
+        StyledString.styled(placeholder, fg: screen.theme.placeholder_color).ellipsize(rect.width).ljust(rect.width)
       end
 
       # @return [Integer] total display width of {#text}.

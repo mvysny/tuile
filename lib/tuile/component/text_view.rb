@@ -688,7 +688,7 @@ module Tuile
       # @return [void]
       def rewrap
         width = wrap_width
-        @blank_row = pad_to(StyledString::EMPTY, width)
+        @blank_row = StyledString::EMPTY.ljust(width)
         @rows = []
         @line_wrap_counts = []
         @lines.each do |line|
@@ -702,7 +702,7 @@ module Tuile
       # Wraps `line` at `width` and returns the padded rows alongside the
       # row count. Empty lines (e.g. from a `"\n\n"`
       # run) and degenerate `width <= 0` both emit a single {@blank_row}
-      # row, matching what `@text.wrap(width).map { |l| pad_to(l, width) }`
+      # row, matching what `@text.wrap(width).map { |l| l.ljust(width) }`
       # would have produced.
       # @param line [StyledString]
       # @param width [Integer]
@@ -711,7 +711,7 @@ module Tuile
         return [[@blank_row], 1] if line.empty? || width <= 0
 
         wrapped = line.wrap(width)
-        [wrapped.map { |row| pad_to(row, width) }, wrapped.size]
+        [wrapped.map { |row| row.ljust(width) }, wrapped.size]
       end
 
       # Appends `line` to the tail of {@lines}, updating the
@@ -869,23 +869,6 @@ module Tuile
         return false if rect.empty?
 
         @scrollbar_visibility == :visible
-      end
-
-      # Pads `line` with trailing default-styled spaces out to `width` display
-      # columns. Callers rely on {StyledString#wrap} having already
-      # constrained the line to `<= width`, so no truncation is performed.
-      # `width <= 0` returns {StyledString::EMPTY} to handle the degenerate
-      # `wrap_width == 0` case (rect.width == 1 with scrollbar).
-      # @param row [StyledString]
-      # @param width [Integer]
-      # @return [StyledString]
-      def pad_to(row, width)
-        return StyledString::EMPTY if width <= 0
-
-        diff = width - row.display_width
-        return row if diff <= 0
-
-        row + StyledString.plain(" " * diff)
       end
 
       # @param index [Integer] 0-based index into `@rows`.

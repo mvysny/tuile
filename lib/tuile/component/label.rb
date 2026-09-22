@@ -76,17 +76,7 @@ module Tuile
       def update_rows
         width = rect.width.clamp(0, nil)
         @blank_row = StyledString.plain(" " * width)
-        @rows = @text.lines.map { |line| pad_to(line.ellipsize(width), width) }
-      end
-
-      # @param line [StyledString]
-      # @param width [Integer]
-      # @return [StyledString]
-      def pad_to(line, width)
-        diff = width - line.display_width
-        return line if diff <= 0
-
-        line + StyledString.plain(" " * diff)
+        @rows = @text.lines.map { |line| line.ellipsize(width).ljust(width) }
       end
     end
   end
