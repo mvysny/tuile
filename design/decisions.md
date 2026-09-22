@@ -1650,8 +1650,8 @@ Why not:
   arithmetic, and every non-layout parent must ignore it. The constraint belongs to the parent–child
   *relationship*, hence the `add` call; JavaFX ships it and pays (`R_box_layouts`).
 - **A block-valued cross constraint** (`Left { |avail| [avail, 30].min }`) — allowed by the re-grow
-  rule, but `Fixed` already clamps, a block is un-inspectable and awkward to spec, and a `Layout`
-  subclass remains the escape hatch for a genuinely computed width.
+  rule, but `Fixed` already clamps, `clamp(range)` bounds a proportion, a block is un-inspectable and
+  awkward to spec, and a `Layout` subclass remains the escape hatch for a genuinely computed width.
 - **`Fill`** — every toolkit modelling both concepts reserves *fill* for cross-axis stretch
   (`R_box_layouts`), so it would name the main-axis constraint after what `Percent[100]` beside it
   actually does; `Expand` also keeps `Fill` permanently free of a near-synonym.
@@ -1683,9 +1683,16 @@ Why not:
   *shallow* commonality, and this pass is substantial and identical but for which pair of coordinates
   it reads, so `Box` parameterizes it behind two private hooks and the concretes are ~10 lines: a
   cohesive base, not an `AbstractView` junk drawer.
-- **`Min` / `Max` constraints** — the sampler shows the cost: a sidebar capped at `min(16, width / 3)`
-  caps a *proportion*, unsayable in three constraints, so it keeps a rect-callback `Layout` subclass. That
-  is the intended division of labour; revisit if capped proportions prove common.
+- **`Min` / `Max` constraint classes, or a `max:` keyword on `Percent`** — the capped proportion
+  (`min(16, width / 3)`) did prove common: twice in the sampler, once in virtui (issue #57). It is
+  `Percent[33].clamp(..16)`: each constraint *resolves* itself against the available extent, so the
+  box dispatches on no class and a `Clamp` decorator bounds a `Fixed` or `Percent` with Ruby's own
+  `Integer#clamp(range)` — one class for floor and cap, still one constraint per child, legal across
+  the axis for free. **An `Expand` can't be clamped**: its share depends on its siblings, so a cap
+  must hand cells back to them — flexbox's freeze-and-loop, a pass over the group no per-child
+  decorator can do; build that when a capped `Expand` is asked for. The floor is best-effort, since
+  the box still clamps to what is unassigned. The protocol stays closed — `add` accepts the four
+  classes only, so a constraint never becomes a block in disguise.
 - **`BorderLayout` / `BorderPane` / Textual's `dock:`** — `Vertical(Fixed, Expand, Fixed)` nests to
   it, and `ScreenPane` already *is* one. **Swing glue and struts** are filler components needed only
   because `BoxLayout` lacks per-child weight (`R_box_layouts`); **baseline alignment** is meaningless

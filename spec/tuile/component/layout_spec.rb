@@ -280,6 +280,42 @@ module Tuile
       end
     end
 
+    context "Clamp" do
+      def percent(share) = Component::Layout::Percent[share]
+
+      it "is what Constraint#clamp builds" do
+        assert_equal Component::Layout::Clamp[percent(50), ..60], percent(50).clamp(..60)
+      end
+
+      it "rejects an Expand, whose share depends on its siblings" do
+        assert_raises(ArgumentError) { Component::Layout::Expand[1].clamp(..60) }
+      end
+
+      it "rejects an exclusive range" do
+        assert_raises(ArgumentError) { percent(50).clamp(10...60) }
+      end
+
+      it "rejects a descending range" do
+        assert_raises(ArgumentError) { percent(50).clamp(60..10) }
+      end
+
+      it "rejects a negative bound" do
+        assert_raises(ArgumentError) { percent(50).clamp(-1..10) }
+      end
+
+      it "rejects a non-Integer bound" do
+        assert_raises(ArgumentError) { percent(50).clamp(..6.5) }
+      end
+
+      it "rejects a range unbounded on both ends" do
+        assert_raises(ArgumentError) { percent(50).clamp(nil..nil) }
+      end
+
+      it "rejects something other than a Range" do
+        assert_raises(ArgumentError) { percent(50).clamp(60) }
+      end
+    end
+
     context "Insets" do
       it "defaults every unnamed edge to zero" do
         insets = Component::Layout::Insets[top: 1]

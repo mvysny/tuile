@@ -136,6 +136,54 @@ module Tuile
       end
     end
 
+    context "Clamp" do
+      it "caps a Percent child, handing what it gives up to the Expand beside it" do
+        layout = box
+        layout.add(Component.new, percent(50).clamp(..6))
+        layout.add(Component.new, expand(1))
+        Testing.place(layout, Rect.new(0, 0, 10, 20))
+        assert_equal [6, 14], heights(layout)
+      end
+
+      it "leaves a Percent under its cap alone" do
+        layout = box
+        layout.add(Component.new, percent(50).clamp(..60))
+        Testing.place(layout, Rect.new(0, 0, 10, 20))
+        assert_equal [10], heights(layout)
+      end
+
+      it "raises a Percent to its floor" do
+        layout = box
+        layout.add(Component.new, percent(10).clamp(5..))
+        Testing.place(layout, Rect.new(0, 0, 10, 20))
+        assert_equal [5], heights(layout)
+      end
+
+      # The floor is best-effort: over-subscription still starves in
+      # declaration order, and a clamp is no exception.
+      it "still yields to what is unassigned" do
+        layout = box
+        layout.add(Component.new, fixed(15))
+        layout.add(Component.new, percent(10).clamp(8..))
+        Testing.place(layout, Rect.new(0, 0, 10, 20))
+        assert_equal [15, 5], heights(layout)
+      end
+
+      it "bounds each nested clamp by the one outside it" do
+        layout = box
+        layout.add(Component.new, percent(50).clamp(..6).clamp(8..))
+        Testing.place(layout, Rect.new(0, 0, 10, 20))
+        assert_equal [8], heights(layout)
+      end
+
+      it "works across the axis" do
+        layout = box
+        layout.add(Component.new, fixed(1), cross: percent(50).clamp(..30))
+        Testing.place(layout, Rect.new(0, 0, 100, 10))
+        assert_equal 30, rects(layout).first.width
+      end
+    end
+
     context "over-subscription" do
       it "starves in declaration order, giving the loser an empty rect" do
         layout = box

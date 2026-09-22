@@ -187,7 +187,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 |---|---|
 | `Layout` | Positions children by assigning their `rect` in a `relayout` override, and paints nothing itself. The base to subclass when the arithmetic is yours. |
 | `Layout::Absolute` | Places each child at the fixed `Rect` it was added with; `constrain` moves one. |
-| `Layout::Vertical`, `Layout::Horizontal` | Stack children along one axis from declared extents — `Fixed[n]`, `Percent[n]`, `Expand[weight]` — with box-global `spacing` and `padding`. Sugar over a hand-written `relayout`, not a new sizing model. |
+| `Layout::Vertical`, `Layout::Horizontal` | Stack children along one axis from declared extents — `Fixed[n]`, `Percent[n]`, `Expand[weight]`, bounded with `.clamp(range)` — with box-global `spacing` and `padding`. Sugar over a hand-written `relayout`, not a new sizing model. |
 
 ### Framing and switching — [book ch7](book/07-components.md#framing-content)
 

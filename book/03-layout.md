@@ -377,23 +377,32 @@ form.add(pair,   Fixed[2])                              # blank row around the p
 That *states* the grouping instead of faking it with a per-child gap — boxes
 within boxes, which is how the rest of Tuile composes anyway.
 
-### When to keep your own `relayout`
+### Capping a proportion
 
-The boxes are sugar, not a replacement, and they can't say everything. A **cap
-on a proportion** is the case to recognise:
+"A third of the width, but never more than 16 columns" is a proportion with a
+bound, and any constraint takes one with `clamp` — the same `Range` that
+`Integer#clamp` takes:
 
 ```ruby
-group_width = [16, rect.width / 3].min        # a third, but never more than 16
-list_width  = (rect.width / 3).clamp(20, 40)  # a third, but never <20 or >40
+row.add(sidebar, Percent[33].clamp(..16))    # a third, but never more than 16
+row.add(list,    Percent[33].clamp(20..40))  # a third, but never <20 or >40
+row.add(log,     Expand[1])                  # takes what the cap gave up
 ```
 
-The first is in `examples/sampler.rb` twice — the sidebar in its CheckboxGroup
-pane and the one in its List pane — and both keep a `relayout` override. That's
-the intended division of labour rather than a gap to work around: use a box for
-the stack, drop to a `Layout` subclass for the region that genuinely needs
-arithmetic — usually nesting one inside the other, so only the awkward part carries any. The
-sampler does exactly that, and porting it to these layouts took it from 59
-hand-written rectangles down to a handful (5 today).
+The cells a cap gives up are simply unassigned, so an `Expand` beside it picks
+them up. A floor is best-effort: when the box runs out, it still starves
+children in declaration order, clamped or not. `Expand` is the one constraint
+you can't clamp. Its share depends on its siblings, so a cap would have to hand
+cells back to them, and that is a whole-group calculation rather than a bound on
+one child.
+
+### When to keep your own `relayout`
+
+The boxes are sugar, not a replacement. Anything that isn't a stack — a child
+overlapping another, a position computed from something other than the space
+available — belongs in a `Layout` subclass. Nest it inside a box so only the
+awkward region carries any arithmetic. `examples/sampler.rb` started with 59
+hand-written rectangles; ported to boxes and clamps, it has none left.
 
 ## Geometry: `Point`, `Size`, `Rect`
 

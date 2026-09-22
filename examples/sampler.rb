@@ -31,28 +31,6 @@ module SamplerExample
     light: Tuile::Theme::LIGHT.with(custom: { hint: Tuile::Color::GREY62 })
   )
 
-  # Sampler-local container: a {Tuile::Component::Layout} that runs a
-  # caller-supplied block from `relayout` to position its children. Most demos
-  # are plain stacks and use the box layouts instead; this is what's left for
-  # the two that aren't — a sidebar whose width is `min(16, width / 3)`, which
-  # is a cap on a proportion and so outside {Tuile::Component::Layout::Box}'s
-  # Fixed/Percent/Expand vocabulary by design.
-  class Panel < Tuile::Component::Layout
-    def initialize(&layout_block)
-      super()
-      @layout_block = layout_block
-    end
-
-    protected
-
-    # The block is handed {Tuile::Component#local_rect}, never `rect`: a child
-    # is placed inside this panel, so nothing the block writes may name where
-    # the panel itself sits. No `unless rect.empty?` guard either — an empty
-    # panel still assigns its children, or they strand at their old
-    # coordinates (`D_empty_ancestor`).
-    def relayout = @layout_block&.call(local_rect)
-  end
-
   # A {Tuile::Component::Layout::Vertical} that runs {#on_tick} on every frame
   # while it is on screen. The ticker is started on attach and cancelled on
   # detach, so selecting another demo — which detaches this pane — cannot leave
@@ -1355,14 +1333,11 @@ module SamplerExample
       refresh.call
       group.on_value_change { refresh.call }
 
-      # The body keeps a rect-callback {Panel}: its sidebar is `min(16, width/3)`
-      # — a cap on a proportion, which Fixed/Percent/Expand can't say. The stack
-      # around it is a box, so only the part that needs arithmetic has any.
-      body = panel(group, log) do |r|
-        group_width = [16, r.width / 3].min
-        group.rect = Tuile::Rect.new(0, 0, group_width, [LOG_LEVELS.size, r.height].min)
-        log.rect = Tuile::Rect.new(group_width + 2, 0,
-                                   [r.width - group_width - 2, 4].max, r.height)
+      # The sidebar is a third of the row but never over 16 columns — a capped
+      # proportion, which is a Percent with a clamp.
+      body = row do |r|
+        r.add(group, Percent[33].clamp(..16), cross: Fixed[LOG_LEVELS.size])
+        r.add(log, Expand[1])
       end
       form do |f|
         f.add(prompt, Fixed[4])
@@ -1442,15 +1417,12 @@ module SamplerExample
       # Watching it is what makes the chrome/value split visible above.
       group.list.on_cursor_changed { update_status.call }
 
-      # Side-by-side body on a rect-callback {Panel}, as in the CheckboxGroup
-      # demo — the sidebar width is a capped proportion, not a constraint.
-      body = panel(group, files) do |r|
-        # List pads a column either side of a row, so a label needs
-        # `width - 2`; the file rows lose one more to their scrollbar.
-        group_width = [14, r.width / 3].min
-        group.rect = Tuile::Rect.new(0, 0, group_width, [SORT_ORDERS.size, r.height].min)
-        files.rect = Tuile::Rect.new(group_width + 2, 0,
-                                     [r.width - group_width - 2, 4].max, r.height)
+      # Side-by-side body with a capped sidebar, as in the CheckboxGroup demo.
+      # List pads a column either side of a row, so a label needs `width - 2`;
+      # the file rows lose one more to their scrollbar.
+      body = row do |r|
+        r.add(group, Percent[33].clamp(..14), cross: Fixed[SORT_ORDERS.size])
+        r.add(files, Expand[1])
       end
       form do |f|
         f.add(prompt, Fixed[4])
@@ -2046,12 +2018,6 @@ module SamplerExample
     end
 
     # --- Helpers -----------------------------------------------------------
-
-    def panel(*children, &layout_block)
-      p = Panel.new(&layout_block)
-      p.add(children)
-      p
-    end
 
     # The standard demo shell: children stacked with a blank row between them,
     # inset from the window border. Every constraint below reads unqualified —

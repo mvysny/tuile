@@ -42,9 +42,10 @@ module Tuile
       # Main-axis resolution order, against
       # `available = extent - padding - spacing * (children - 1)`:
       #
-      # 1. {Fixed} takes its cells, clamped to what is still unassigned.
-      # 2. {Percent} takes its share *of `available`*, likewise clamped.
-      # 3. {Expand} children split the residue by weight; the integer remainder
+      # 1. In declaration order, each {Fixed}, {Percent} or {Clamp} takes the
+      #    cells it resolves to — a {Percent} its share *of `available`* —
+      #    clamped to what is still unassigned.
+      # 2. {Expand} children split the residue by weight; the integer remainder
       #    goes to the earliest of them, one cell each.
       #
       # So over-subscription starves in declaration order rather than raising:
@@ -107,8 +108,8 @@ module Tuile
         #   add(sidebar, Expand[1], at: 0)   # back where it was, after a #remove
         #
         # @param child [Component, Enumerable<Component>]
-        # @param main [Fixed, Percent, Expand] extent along the main axis.
-        # @param cross [Fixed, Percent] extent across it.
+        # @param main [Constraint] extent along the main axis.
+        # @param cross [Constraint] extent across it; not an {Expand}.
         # @param align [Symbol] one of {ALIGNMENTS} — where a child narrower than
         #   the cross extent sits. {Vertical} / {Horizontal} say which edge
         #   `:start` is.
@@ -142,8 +143,8 @@ module Tuile
         # hiding, and the class doc for what is.
         #
         # @param child [Component] a child of this layout.
-        # @param main [Fixed, Percent, Expand, nil] extent along the main axis.
-        # @param cross [Fixed, Percent, nil] extent across it.
+        # @param main [Constraint, nil] extent along the main axis.
+        # @param cross [Constraint, nil] extent across it; not an {Expand}.
         # @param align [Symbol, nil] one of {ALIGNMENTS}.
         # @raise [ArgumentError] if `child` is not a child of this layout, or on
         #   an unknown constraint or alignment.
@@ -244,10 +245,11 @@ module Tuile
           unassigned = available
 
           kids.each_with_index do |child, i|
-            case (constraint = placement(child)[:main])
-            when Expand then expanding << i
-            when Fixed then unassigned -= (sizes[i] = constraint.cells.clamp(0, unassigned))
-            else unassigned -= (sizes[i] = percent_of(available, constraint).clamp(0, unassigned))
+            cells = placement(child)[:main].resolve(available)
+            if cells.nil?
+              expanding << i
+            else
+              unassigned -= (sizes[i] = cells.clamp(0, unassigned))
             end
           end
 
@@ -279,10 +281,7 @@ module Tuile
         #   extent, along the cross axis.
         def cross_placement(child, available)
           spec = placement(child)
-          size = case (constraint = spec[:cross])
-                 when Fixed then constraint.cells.clamp(0, available)
-                 else percent_of(available, constraint).clamp(0, available)
-                 end
+          size = spec[:cross].resolve(available).clamp(0, available)
           [align_offset(spec[:align], available - size), size]
         end
 
@@ -296,11 +295,6 @@ module Tuile
           else 0
           end
         end
-
-        # @param extent [Integer]
-        # @param constraint [Percent]
-        # @return [Integer]
-        def percent_of(extent, constraint) = (extent * constraint.percent / 100.0).round
 
         # @param child [Component]
         # @return [Hash{Symbol => Object}] the child's `main`/`cross`/`align`.
@@ -336,25 +330,25 @@ module Tuile
         end
 
         # @param constraint [Object]
-        # @raise [ArgumentError] unless it is a {Fixed}, {Percent} or {Expand}.
+        # @raise [ArgumentError] unless it is a {Constraint}.
         # @return [void]
         def validate_main(constraint)
-          return if [Fixed, Percent, Expand].any? { constraint.is_a?(_1) }
+          return if constraint.is_a?(Constraint)
 
-          raise ArgumentError, "expected Fixed, Percent or Expand, got #{constraint.inspect}"
+          raise ArgumentError, "expected Fixed, Percent, Expand or Clamp, got #{constraint.inspect}"
         end
 
         # @param constraint [Object]
-        # @raise [ArgumentError] unless it is a {Fixed} or {Percent}.
+        # @raise [ArgumentError] unless it is a {Constraint} other than {Expand}.
         # @return [void]
         def validate_cross(constraint)
           if constraint.is_a? Expand
             raise ArgumentError, "Expand is main-axis only — a child has no siblings competing " \
                                  "across the axis; use Fixed or Percent for cross:"
           end
-          return if constraint.is_a?(Fixed) || constraint.is_a?(Percent)
+          return if constraint.is_a?(Constraint)
 
-          raise ArgumentError, "expected Fixed or Percent for cross:, got #{constraint.inspect}"
+          raise ArgumentError, "expected Fixed, Percent or Clamp for cross:, got #{constraint.inspect}"
         end
 
         # @param align [Object]
