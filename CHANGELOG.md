@@ -11,6 +11,7 @@
 - Add `Tuile.without_strict_layout` — runs a block with the diagnostic off, for a read that is pre-settle on purpose, and restores whatever was in force, default included.
 - Add `Testing.place(component, rect)` — moves a component within the parent it already has, through whatever places it there, since `rect=` raises outside the parent's `relayout`: a parentless root in a throwaway holder, an `Absolute` child by its constraint, an open overlay by `At[rect]`; it never attaches or re-parents.
 - Add `Testing.paint(component)` — paints a component and its subtree, attached or not, into a `Buffer` of its own whose `(0, 0)` is the component's top-left; ancestors don't clip it and popups over it don't show.
+- Add `Buffer#text` — every row's plain text, `region_text` over the whole buffer, so `Testing.paint(window).text` is the whole paint.
 - Add `Screen#canvas_for(component, backend:, root:)` and `Screen#clip_for(component, root:)` — a canvas onto another backend, positioned and bounded within an ancestor rather than the screen.
 - Fix `Component#invalidate_layout` to drop a mark made during the container's own `relayout` before it places a child, so hiding or adding a child there first no longer costs a second pass or raises a false stale-rect error on a freshly built tree. See `design/decisions.md` `D_deferred_layout`.
 - Fix `Screen#flush_layout` running a container twice when it was marked while already waiting in the current drain round.

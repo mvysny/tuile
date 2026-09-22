@@ -519,5 +519,13 @@ module Tuile
         assert_equal ["\e[31mhi\e[0m   "], b.region_ansi(Rect.new(0, 0, 5, 1))
       end
     end
+
+    describe "#text" do
+      it "is every row's plain text, full width" do
+        b = buf(4, 2)
+        b.set_text(0, 1, StyledString.styled("hi", fg: :red))
+        assert_equal ["    ", "hi  "], b.text
+      end
+    end
   end
 end

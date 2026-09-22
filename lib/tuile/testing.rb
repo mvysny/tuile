@@ -284,8 +284,8 @@ module Tuile
       #
       #   Testing.place(window, Rect.new(0, 0, 14, 4))
       #   buffer = Testing.paint(window)
-      #   buffer.region_text(Rect.new(0, 0, 14, 4))   # => ["┌Caption─────┐", "│ alpha      │", …]
-      #   buffer.cell(1, 1).style                     # component coordinates, no absolute_rect
+      #   buffer.text                  # => ["┌Caption─────┐", "│ alpha      │", …]
+      #   buffer.cell(1, 1).style      # component coordinates, no absolute_rect
       #
       # What the component paints, not what the user sees: popups over it don't
       # show, and ancestors don't clip it — only their background shows through.

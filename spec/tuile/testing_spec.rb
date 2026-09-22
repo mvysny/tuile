@@ -434,8 +434,6 @@ module Tuile
     describe ".paint" do
       def list(*lines) = Component::List.new.tap { _1.lines = lines }
 
-      def text(buffer) = buffer.region_text(Rect.new(0, 0, buffer.size.width, buffer.size.height))
-
       # A repaint paints only its own ink and queues its children, so a painter
       # handing the root one canvas would leave the window empty.
       it "paints a detached component's whole subtree" do
@@ -444,7 +442,7 @@ module Tuile
         refute w.attached?
 
         assert_equal ["┌Caption─────┐", "│ alpha      │", "│ beta       │", "└────────────┘"],
-                     text(Testing.paint(w))
+                     Testing.paint(w).text
       end
 
       it "puts the component's own top-left at (0, 0), and leaves the screen's buffer alone" do
@@ -454,7 +452,7 @@ module Tuile
         buffer = Testing.paint(inner)
 
         assert_equal Size.new(12, 1), buffer.size
-        assert_equal [" alpha      "], text(buffer)
+        assert_equal [" alpha      "], buffer.text
         assert_equal [" " * 12], Screen.instance.buffer.region_text(inner.absolute_rect)
       end
 
@@ -466,7 +464,7 @@ module Tuile
         Testing.place(parent, Rect.new(0, 0, 6, 1))
         buffer = Testing.paint(child)
 
-        assert_equal [" a    ", " b    ", " c    "], text(buffer)
+        assert_equal [" a    ", " b    ", " c    "], buffer.text
         assert_equal Color.new(52), buffer.cell(5, 0).style.bg
       end
 
@@ -475,7 +473,7 @@ module Tuile
         mount_at(w, Rect.new(0, 0, 14, 3))
         Component::Popup.new(content: Component::Label.new("POPUP")).open(Component::Overlay::At[Rect.new(0, 0, 14, 3)])
 
-        assert_equal ["┌Caption─────┐", "│ alpha      │", "└────────────┘"], text(Testing.paint(w))
+        assert_equal ["┌Caption─────┐", "│ alpha      │", "└────────────┘"], Testing.paint(w).text
       end
 
       # An Absolute keeps a hidden child's rect, so only the visibility test
@@ -488,7 +486,7 @@ module Tuile
         hidden.visible = false
         Testing.place(holder, Rect.new(0, 0, 6, 2))
 
-        assert_equal ["      ", "shown "], text(Testing.paint(holder))
+        assert_equal ["      ", "shown "], Testing.paint(holder).text
       end
 
       it "refuses a component never placed" do

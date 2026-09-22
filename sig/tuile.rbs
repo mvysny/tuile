@@ -1388,6 +1388,13 @@ module Tuile
     # what a component painted into its own rect. Intended for tests.
     def region_text: (Rect rect) -> ::Array[String]
 
+    # {#region_text} over the whole buffer, for one {Testing.paint} returned:
+    # 
+    #   Testing.paint(window).text   # => ["┌Caption─────┐", "│ alpha      │", …]
+    # 
+    # _@return_ — the plain text of every row, top to bottom.
+    def text: () -> ::Array[String]
+
     # _@param_ `rect`
     # 
     # _@return_ — each row within `rect` rendered to ANSI, top to
@@ -3398,8 +3405,8 @@ module Tuile
     # 
     #   Testing.place(window, Rect.new(0, 0, 14, 4))
     #   buffer = Testing.paint(window)
-    #   buffer.region_text(Rect.new(0, 0, 14, 4))   # => ["┌Caption─────┐", "│ alpha      │", …]
-    #   buffer.cell(1, 1).style                     # component coordinates, no absolute_rect
+    #   buffer.text                  # => ["┌Caption─────┐", "│ alpha      │", …]
+    #   buffer.cell(1, 1).style      # component coordinates, no absolute_rect
     # 
     # What the component paints, not what the user sees: popups over it don't
     # show, and ancestors don't clip it — only their background shows through.

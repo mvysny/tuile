@@ -321,6 +321,13 @@ module Tuile
       region_cells(rect).map { |row| row.map(&:grapheme).join }
     end
 
+    # {#region_text} over the whole buffer, for one {Testing.paint} returned:
+    #
+    #   Testing.paint(window).text   # => ["┌Caption─────┐", "│ alpha      │", …]
+    #
+    # @return [Array<String>] the plain text of every row, top to bottom.
+    def text = region_text(Rect.new(0, 0, @width, @height))
+
     # @param rect [Rect]
     # @return [Array<String>] each row within `rect` rendered to ANSI, top to
     #   bottom — byte-identical to what a component's per-row `set_text` over
