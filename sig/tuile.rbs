@@ -4497,11 +4497,6 @@ module Tuile
     # question.
     def stale_layout_ancestor: () -> Component?
 
-    # What may assign this component's rect: its parent, whose {#relayout}
-    # does. {ScreenPane} answers its {Screen}. An override point with no caller
-    # here — {LayoutPass.check} is its only reader.
-    def placer: () -> (Component | Screen)?
-
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the
     # removal repair instead of growing a second one.
@@ -14919,6 +14914,24 @@ module Tuile
     # _@return_ — the block's value.
     def self.run: ((Component | Screen) placer) -> Object
 
+    # What may assign `component`'s rect: its parent, whose
+    # {Component#relayout} does. The exception is the {ScreenPane}, which has
+    # no parent whose pass could place it, so the {Screen} does (`D_tree_first`
+    # keeps the screen out of the tree). Those are the only two cases — this is
+    # a closed rule rather than a hook a component may answer for itself.
+    # 
+    # _@param_ `component`
+    def placer: (Component component) -> (Component | Screen)?
+
+    # What may assign `component`'s rect: its parent, whose
+    # {Component#relayout} does. The exception is the {ScreenPane}, which has
+    # no parent whose pass could place it, so the {Screen} does (`D_tree_first`
+    # keeps the screen out of the tree). Those are the only two cases — this is
+    # a closed rule rather than a hook a component may answer for itself.
+    # 
+    # _@param_ `component`
+    def self.placer: (Component component) -> (Component | Screen)?
+
     # _@param_ `component` — the one whose rect is being assigned.
     def check: (Component component) -> void
 
@@ -15142,9 +15155,6 @@ module Tuile
     # 
     # _@param_ `child`
     def handle_child_removed: (Component child) -> void
-
-    # The pane's rect is the screen's to assign, since no parent's pass could.
-    def placer: () -> Screen
 
     # Rejects a non-placement where the app named it, rather than mid-pass: the
     # layout is deferred, so the `NoMethodError` from a missing `rect_for` would

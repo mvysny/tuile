@@ -320,10 +320,6 @@ module Tuile
 
     private
 
-    # The pane's rect is the screen's to assign, since no parent's pass could.
-    # @return [Screen]
-    def placer = screen
-
     # Rejects a non-placement where the app named it, rather than mid-pass: the
     # layout is deferred, so the `NoMethodError` from a missing `rect_for` would
     # otherwise surface a turn later, under this file's backtrace.

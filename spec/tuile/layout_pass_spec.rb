@@ -10,6 +10,24 @@ module Tuile
       [parent, child]
     end
 
+    describe "#placer" do
+      it "is the parent for an ordinary component" do
+        parent, child = parent_and_child
+        assert_same parent, LayoutPass.placer(child)
+      end
+
+      it "is nil for a parentless component" do
+        assert_nil LayoutPass.placer(Component::Label.new("x"))
+      end
+
+      it "is the Screen for the pane, whose rect no parent's pass could assign" do
+        Screen.fake
+        assert_same Screen.instance, LayoutPass.placer(Screen.instance.pane)
+      ensure
+        Screen.close
+      end
+    end
+
     describe "#check" do
       it "passes while the child's own placer is the one running" do
         parent, child = parent_and_child

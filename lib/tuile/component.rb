@@ -1364,12 +1364,6 @@ module Tuile
       node
     end
 
-    # What may assign this component's rect: its parent, whose {#relayout}
-    # does. {ScreenPane} answers its {Screen}. An override point with no caller
-    # here — {LayoutPass.check} is its only reader.
-    # @return [Component, Screen, nil]
-    def placer = parent
-
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the
     # removal repair instead of growing a second one.

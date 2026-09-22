@@ -48,12 +48,23 @@ module Tuile
       Thread.current[PLACED] = outer_placed
     end
 
+    # What may assign `component`'s rect: its parent, whose
+    # {Component#relayout} does. The exception is the {ScreenPane}, which has
+    # no parent whose pass could place it, so the {Screen} does (`D_tree_first`
+    # keeps the screen out of the tree). Those are the only two cases — this is
+    # a closed rule rather than a hook a component may answer for itself.
+    # @param component [Component]
+    # @return [Component, Screen, nil]
+    def placer(component)
+      component.is_a?(ScreenPane) ? component.screen : component.parent
+    end
+
     # @param component [Component] the one whose rect is being assigned.
-    # @raise [Tuile::Error] unless {Component#placer} is what is placing now.
+    # @raise [Tuile::Error] unless {.placer} is what is placing now.
     # @return [void]
     def check(component)
       current = Thread.current[PLACING]
-      return if !current.nil? && current.equal?(component.__send__(:placer))
+      return if !current.nil? && current.equal?(placer(component))
 
       if component.parent.nil?
         raise Tuile::Error, "#{component} has no parent to place it; to size a detached tree, " \
