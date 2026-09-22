@@ -264,6 +264,7 @@ module Tuile
       raise TypeError, "expected Rect, got #{new_rect.inspect}" unless new_rect.is_a? Rect
 
       check_placer
+      Thread.current[PLACED] = true
       return if @rect == new_rect
 
       old_rect = @rect
@@ -363,7 +364,9 @@ module Tuile
     #   {#handle_child_removed}), and does not hand it back on the way in.
     #
     # For "invisible but still occupying its space", use a
-    # {Component::Slot} with no content (`D_slots`).
+    # {Component::Slot} with no content (`D_slots`). The parent's own
+    # {#relayout} may flip it — before placing any child, or it runs twice
+    # ({#invalidate_layout}).
     # @param value [Boolean]
     # @raise [Tuile::Error] when the UI is locked, or always from
     #   {Component::Overlay#visible=}.
@@ -1166,8 +1169,22 @@ module Tuile
     # Unlike {#invalidate}, a detached mark is *remembered* rather than
     # dropped: attaching hands it to the {Screen}, so a tree assembled with no
     # screen lays out as soon as it is mounted.
+    #
+    # **A mark made during this container's own {#relayout}, before it places
+    # its first child, is dropped** — the pass that would answer it is the one
+    # running. So hide or add a child, or set your own `spacing`, *first*:
+    #
+    #   def relayout
+    #     @sidebar.visible = width >= 60   # before `super`: one pass
+    #     super
+    #   end
+    #
+    # Once a child is placed, the division may already be stale, so a later
+    # mark is kept and costs a second pass.
     # @return [void]
     def invalidate_layout
+      return if Thread.current[PLACING].equal?(self) && !Thread.current[PLACED]
+
       @layout_dirty = true
       screen.invalidate_layout(self) if attached?
     end
@@ -1325,8 +1342,7 @@ module Tuile
     private
 
     # Clears the mark and runs {#relayout} — the sole invocation site of
-    # `relayout`, shared by the screen's drain and {#flush_layout}. Clearing
-    # first, so a pass that marks itself again is honoured rather than lost.
+    # `relayout`, shared by the screen's drain and {#flush_layout}.
     # @return [void]
     def perform_relayout
       @layout_dirty = false
@@ -1372,6 +1388,13 @@ module Tuile
     PLACING = :tuile_placing
     private_constant :PLACING
 
+    # The thread-local saying whether the current placer has assigned a child
+    # rect yet — past that point, a mark on the placer is kept
+    # ({#invalidate_layout}).
+    # @return [Symbol]
+    PLACED = :tuile_placed
+    private_constant :PLACED
+
     # Runs the block as `placer`, the one thing whose children's rects may be
     # assigned inside it. A thread-local, because a tree with no screen places
     # children too.
@@ -1379,10 +1402,13 @@ module Tuile
     # @return [Object] the block's value.
     def self.placing(placer)
       outer = Thread.current[PLACING]
+      outer_placed = Thread.current[PLACED]
       Thread.current[PLACING] = placer
+      Thread.current[PLACED] = false
       yield
     ensure
       Thread.current[PLACING] = outer
+      Thread.current[PLACED] = outer_placed
     end
     private_class_method :placing
 

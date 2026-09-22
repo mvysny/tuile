@@ -446,6 +446,118 @@ module Tuile
         assert !inner.layout_dirty?
       end
 
+      # Issue #50: a freshly built column shares its parent's drain round, so a
+      # parent re-marked by its own `visible=` made the column's height read
+      # raise under strict layout.
+      context "a mark made during the container's own relayout" do
+        let(:column_class) do
+          Class.new(Component::Layout) do
+            def initialize
+              super
+              add(Component.new)
+            end
+
+            protected
+
+            def relayout = height
+          end
+        end
+
+        let(:two_column_class) do
+          column = column_class
+          Class.new(Component::Layout) do
+            attr_reader :side, :passes
+
+            define_method(:initialize) do
+              super()
+              @passes = 0
+              @main = Component.new
+              @side = column.new
+              add(@main)
+              add(@side)
+            end
+
+            protected
+
+            def relayout
+              @passes += 1
+              side_w = width >= 60 ? 20 : 0
+              @side.visible = side_w.positive?
+              @main.rect = Rect.new(0, 0, width - side_w, height)
+              @side.rect = Rect.new(width - side_w, 0, side_w, height)
+            end
+          end
+        end
+
+        it "is dropped, so hiding a freshly built child settles in one pass" do
+          layout = mount_at(two_column_class.new, Rect.new(0, 0, 40, 20))
+          assert !layout.side.visible?
+          assert !layout.layout_dirty?
+          assert_equal 1, layout.passes
+        end
+
+        it "is dropped when the pass adds a child, which it then places" do
+          klass = Class.new(Component::Layout) do
+            attr_reader :passes
+
+            def initialize
+              super
+              @passes = 0
+            end
+
+            protected
+
+            def relayout
+              @passes += 1
+              add(Component.new) if children.empty?
+              children.first.rect = local_rect
+            end
+          end
+          layout = mount_at(klass.new, Rect.new(0, 0, 10, 3))
+          assert_equal Rect.new(0, 0, 10, 3), layout.children.first.rect
+          assert !layout.layout_dirty?
+          assert_equal 1, layout.passes
+        end
+
+        # The natural spelling for a box subclass: let the box divide, then
+        # adjust. That division counted the child as shown, so the mark must
+        # survive or the vacated row is never handed back.
+        it "is kept once the pass has placed a child, so hiding after super still settles right" do
+          klass = Class.new(Component::Layout::Vertical) do
+            attr_reader :top, :bottom, :passes
+
+            def initialize
+              super
+              @passes = 0
+              @top = Component.new
+              @bottom = Component.new
+              add(@top, Component::Layout::Expand[1])
+              add(@bottom, Component::Layout::Fixed[3])
+            end
+
+            protected
+
+            def relayout
+              @passes += 1
+              super
+              @bottom.visible = height >= 10
+            end
+          end
+          layout = mount_at(klass.new, Rect.new(0, 0, 10, 5))
+          assert !layout.bottom.visible?
+          assert_equal Rect.new(0, 0, 10, 5), layout.top.rect
+          assert_equal 2, layout.passes
+        end
+
+        it "still honours a mark on the parent from a child's own pass" do
+          layout = mount_at(two_column_class.new, Rect.new(0, 0, 80, 20))
+          layout.side.define_singleton_method(:relayout) { parent.invalidate_layout }
+          layout.side.__send__(:invalidate_layout)
+          Screen.instance.flush_layout
+          assert_equal 2, layout.passes
+        end
+      end
+
       it "reports a detached tree's own mark, and drops it on flush" do
         layout = Component::Layout::Absolute.new
         layout.add(Component.new)
