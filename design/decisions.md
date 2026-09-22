@@ -203,9 +203,8 @@ give each input a value of its **natural type** behind a uniform seam.
 
 A uniform, typed value seam: `Component::HasValue`, a thin mixin
 of `value` / `value=` / `empty?` / `clear` + an `on_value_change` listener
-(new value only). `value` holds whatever the component holds — `String` for a
-text field (its value *is* its text; `value`/`value=` are aliases over the
-`text` buffer, and `text=` fires both `on_change` and `on_value_change`), a
+(the new value and its origin, `D_from_user`). `value` holds whatever the component holds — `String` for a
+text field (its value *is* its text, read back as `text`), a
 domain object for a `ComboBox`. Model-mapping (presentation ⟷ domain) is left
 to a future forms/binder layer *above* the field, never baked into field
 state.
@@ -226,10 +225,11 @@ Why not:
 - *String-only value on every input:* fails "pick a domain object, get the
   object," and bakes a `String` assumption a future `IntegerField`/`DateField`
   would fight. Kept only as a theoretical fallback.
-- *A full Vaadin-shaped `HasValue`* (read-only, required-indicator,
-  old-value/`isFromClient` event payload, converters/validators): every one of
-  those answers a forms/binder problem Tuile doesn't have yet. Deferred, not
-  adopted — re-grow deliberately when a Forms layer lands.
+- *A full Vaadin-shaped `HasValue`* (read-only, required-indicator, an
+  old-value event payload, converters): every one of those answers a
+  forms/binder problem Tuile doesn't have yet. Deferred, not adopted — re-grow
+  deliberately when a Forms layer lands. `isFromClient` is the one that grew
+  back early, as `from_user?`, because two guards already needed it (`D_from_user`).
 - *Naming — `Field` / `Valued` / `Bindable` / `Input` / `HoldsValue` /
   `Editable`:* each names an *adjacent* capability (focus/editing, esteem,
   a nonexistent binder, a role, a wrapper class, the deferred read-only axis)
@@ -245,7 +245,7 @@ The cost we carry:
   (on the field vs. purely in the binder), `read_only`, a required flag *on the
   field* (the marker beside the caption ships on the wrapper, and the field never
   learns of it — `D_form_item`),
-  and whether the listener ever needs an old-value/from-client payload. The
+  and whether the listener ever needs an old-value payload. The
   survey's verdict — model-mapping is a layer *above* the field — is the
   standing guidance for that work.
 
@@ -6126,6 +6126,56 @@ Roads not taken:
 - **`include Enumerable` on the list.** Representing itself as a collection is
   no part of a slot's job, and sord emits a mixin as a bare path, so it would
   generate an unparametrized `include Enumerable` that `rbs validate` rejects.
+
+## D_from_user — Why does a value change carry a `from_user?` flag the writer declares, rather than one derived from dispatch?
+
+Tracks [issue #61](https://github.com/mvysny/tuile/issues/61). Builds on `D_listeners`, `D_has_value`.
+
+Two listeners needed to tell a user's edit from the app's own write, and both
+did it with state kept outside the event: `ComboBox` raised a
+`@suppressing_filter` around its `sync_field` so a `value=` would not spring
+the dropdown, and pikuri-tui's prompt raised `@recalling` so Up-arrow history
+did not open the slash palette. That is easy to forget on the next write, and
+a missed `ensure` switches the listener off for good.
+
+**Decision — `ValueChangeEvent#from_user?`, stated by the writer.**
+`HasValue#set_value(v, from_user:)` is public, the keyword required, and holds
+the implementation. `value=` is defined once, as `set_value(v, from_user:
+false)`, and never overridden — Ruby has no call syntax for a setter keyword
+(`f.value = "x", from_user: true` is a `SyntaxError`), so the override point
+must be the method. The gem's gestures pass `true`: `insert_text` and the
+deleting keys, a step, a commit, Space, a click, a pick. So does
+`Testing.set_value`, whose reachability checks keep the claim honest. The
+wrapping fields relay the editor event's flag. A forgotten `true` makes a real
+edit look programmatic, which is the side that fails safe; the opposite
+mistake is a binder's write-back loop.
+
+Why not:
+- *Derive it from dispatch state* (a "within input dispatch" window). About
+  350 spec sites call a component's `handle_key?` directly, about 380 go
+  through helpers `send`ing the private `Screen#handle_key?`, 3 post a
+  `KeyEvent`; a window opened by the loop answers `false` for all of them, and
+  one opened in `Screen#handle_key?` still misses the ~350. It would also
+  answer `true` for pikuri's recall, a keystroke whose write is not the
+  user's edit.
+- *A quiet writer that fires nothing* (#61). It also silences validation and
+  dirty-flag listeners, which want every change.
+- *A second `on_user_change` slot* (#61). One bit should not cost a slot per field.
+- *The flag on every slot, or on the `Event` marker.* A member goes where
+  something reads it (`D_bad_input`); only `on_value_change` has readers, and
+  adding it elsewhere later is additive. Same for `old_value`, the other half
+  of Vaadin's payload: no reader yet, so it waits for the binder.
+
+The cost we carry:
+- An includer's override moves from `value=` to `set_value`; the contract
+  suite fails a `value=` override, which every gesture would silently bypass.
+- A commit announces as the user's even when a programmatic `screen.focused =`
+  caused it.
+- `DateTimeField` relays a half's `on_bad_input_change` as a report only,
+  never a value notice: that event has no origin to announce with, and a
+  half's value change reaches its `on_value_change` anyway.
+- `Screen#focused=` has the same shape (Tab or a click, versus code), and
+  stays without a flag until something reads one.
 
 ## D_escape_opt_out — Why is a field's ESC blur a named flag rather than a listener the app removes?
 

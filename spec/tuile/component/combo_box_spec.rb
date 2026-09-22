@@ -435,5 +435,19 @@ module Tuile
         assert_equal ["type to fi\u2026"], Screen.instance.buffer.region_text(field(c).absolute_rect)
       end
     end
+
+    describe "from_user? on on_value_change" do
+      it "is true for a commit from the menu, false for value=" do
+        c = combo
+        seen = []
+        c.on_value_change { |e| seen << [e.value, e.from_user?] }
+        c.value = "apple"
+        Screen.instance.focused = c
+        key(Keys::DOWN_ARROW) # opens on the current item
+        key(Keys::DOWN_ARROW)
+        key(Keys::ENTER)
+        assert_equal [["apple", false], ["apricot", true]], seen
+      end
+    end
   end
 end

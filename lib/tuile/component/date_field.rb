@@ -144,13 +144,14 @@ module Tuile
       #   field.value = Time.now   # shows today; reads back a Date, time dropped
       #
       # @param new_value [Date, nil] `nil` empties the field.
+      # @param from_user [Boolean] see {HasValue#set_value}.
       # @return [void]
-      def value=(new_value)
-        editor.value = new_value.nil? ? "" : new_value.strftime(formats.first)
+      def set_value(new_value, from_user:)
+        editor.set_value(new_value.nil? ? "" : new_value.strftime(formats.first), from_user:)
         editor.caret = editor.text.length
         # The edit above announced nothing ({#notify_on_edit?}); a date written
         # rather than typed has no prefix to be mistaken for a value.
-        fire_if_changed
+        fire_if_changed(from_user:)
       end
 
       # `nil`, not `""`: a date field with no parseable date is empty.
@@ -189,7 +190,7 @@ module Tuile
       def formats=(list)
         @formats = list.nil? ? nil : Locale::DateFormats.validate(list)
         sync_placeholder
-        fire_if_changed
+        fire_if_changed(from_user: false)
       end
 
       # When the Gregorian calendar takes over from the Julian one, as a Julian
@@ -222,7 +223,7 @@ module Tuile
         end
 
         @calendar_start = start
-        fire_if_changed
+        fire_if_changed(from_user: false)
       end
 
       # Overrides the hint derived from the primary format.
@@ -264,7 +265,8 @@ module Tuile
       # @return [void]
       def commit
         date = value
-        self.value = date unless date.nil? # …which unsettles, hence the order
+        # The user's: a commit gesture, and a held notice announces here.
+        set_value(date, from_user: true) unless date.nil? # …which unsettles, hence the order
         settle(true)
       end
 
@@ -295,7 +297,7 @@ module Tuile
         sync_placeholder
         date = value
         self.value = date unless date.nil?
-        fire_if_changed # for the buffer that just *stopped* parsing: nothing above touched it
+        fire_if_changed(from_user: false) # for the buffer that just *stopped* parsing: nothing above touched it
       end
 
       private
@@ -335,7 +337,7 @@ module Tuile
       # @return [void]
       def step(delta)
         date = value
-        self.value = date.nil? ? Date.today : date + delta
+        set_value(date.nil? ? Date.today : date + delta, from_user: true)
       end
 
       # @return [void]

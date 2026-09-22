@@ -19,6 +19,10 @@ are `Box`'s rdoc and `D_box_layouts`.
 - **A value is typed, and the field is named after its value's Ruby class** — `Integer` →
   `IntegerField`. Model-mapping is a layer above; *empty* is per-component, declared in
   `empty_value`. See `D_float_field`.
+- **The override point is `set_value(v, from_user:)`, never `value=`** — a gesture writes through
+  `set_value`, so a `value=` override is silently bypassed (the contract suite fails one). A write a
+  key, click or pick caused passes `from_user: true`, every other one `false`; a composer relays its
+  child event's flag and never re-derives it. See `D_from_user`.
 - **A field whose parse can fail includes {Component::HasBadInput}, and empty input is never bad
   input** — derived on read, never cached, and a form asks `bad_input?` *before* `empty?`. See `D_bad_input`.
 - **A rule's verdict is a different channel with a different writer** — the field never writes
@@ -36,7 +40,7 @@ are `Box`'s rdoc and `D_box_layouts`.
   happened. See `D_date_time_field`.
 - **One not prefix-closed settles its *value* notice on those gestures too** — `notify_on_edit? = false`,
   since a prefix that *parses* (`1.1.2` for `1.1.2024`) is a value no `bad_input?` can flag; fire
-  from your own `value=` as well. Gate the **push**, never the pull. See `D_date_field`.
+  from your own `set_value` as well. Gate the **push**, never the pull. See `D_date_field`.
 - **A field paints no caption and no message**, so it must not include {Component::HasCaption} —
   the container owning those cells owns both ({Component::FormItem}), and the message notice is
   load-bearing because the field never invalidates them. See `D_caption_ownership`.
@@ -46,7 +50,7 @@ are `Box`'s rdoc and `D_box_layouts`.
 ### Composition
 
 - **A typed field subclasses {Component::AbstractWrappingField}** and defines only `value` /
-  `value=`; the base owns the editor, focus forwarding, the one well and the commit. An
+  `set_value`; the base owns the editor, focus forwarding, the one well and the commit. An
   *editor-shaped* knob is not forwarded. See `D_wrapping_field`.
 - **{Component::HasContent} means "a *primary* child you populate"**, not "one child" — private
   machinery is owned outright, or exposed read-only (`CheckboxGroup#list`). See `D_has_content`.

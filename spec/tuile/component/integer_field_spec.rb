@@ -351,5 +351,19 @@ module Tuile
         assert_equal ["0-65535     "], Screen.instance.buffer.region_text(f.absolute_rect)
       end
     end
+
+    describe "from_user? on on_value_change" do
+      it "relays the editor's flag for typing, and a step is the user's" do
+        f = Component::IntegerField.new
+        mount_at(f, Rect.new(0, 0, 10, 1))
+        Screen.instance.focused = f
+        seen = []
+        f.on_value_change { |e| seen << [e.value, e.from_user?] }
+        f.value = 4
+        Screen.instance.send(:handle_key?, "2")
+        Screen.instance.send(:handle_key?, Keys::UP_ARROW)
+        assert_equal [[4, false], [42, true], [43, true]], seen
+      end
+    end
   end
 end

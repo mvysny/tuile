@@ -60,9 +60,10 @@ module Tuile
       # whatever a caller assigns — and `cb.value = nil` on a fresh checkbox is
       # the no-op it looks like rather than a spurious change event.
       # @param new_value [Object] anything; truthiness decides.
+      # @param from_user [Boolean] see {HasValue#set_value}.
       # @return [void]
-      def value=(new_value)
-        super(new_value ? true : false)
+      def set_value(new_value, from_user:)
+        super(new_value ? true : false, from_user:)
       end
 
       # @return [Boolean] {#value} under its domain word — `license.checked?`
@@ -70,15 +71,15 @@ module Tuile
       def checked? = value
 
       # {#value=} under its domain word. A delegator rather than an `alias`, so it
-      # keeps routing through the one write path even if a subclass overrides
-      # {#value=} (an `alias` would freeze this onto the body defined here).
+      # keeps routing through the one write path, {#set_value}.
       # @param new_value [Object] anything; truthiness decides.
       # @return [void]
       def checked=(new_value)
         self.value = new_value
       end
 
-      # Flips {#value}.
+      # Flips {#value} — programmatically; Space, Enter and a click flip it as
+      # the user's ({HasValue::ValueChangeEvent#from_user?}).
       # @return [void]
       def toggle = (self.value = !value)
 
@@ -105,7 +106,7 @@ module Tuile
       def handle_key?(key)
         return false unless [" ", Keys::ENTER].include?(key)
 
-        toggle
+        set_value(!value, from_user: true)
         true
       end
 
@@ -116,7 +117,7 @@ module Tuile
       def handle_mouse_down?(event)
         return false unless event.button == :left
 
-        toggle
+        set_value(!value, from_user: true)
         true
       end
 

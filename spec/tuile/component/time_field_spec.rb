@@ -700,5 +700,19 @@ module Tuile
         assert_equal [nil], seen
       end
     end
+
+    describe "from_user? on on_value_change" do
+      it "is false for set_to and value=, true for a step — from empty too" do
+        f = field
+        Screen.instance.focused = f
+        seen = []
+        f.on_value_change { |e| seen << e.from_user? }
+        key(Keys::UP_ARROW) # empty: steps to now
+        f.set_to(13, 45)
+        key(Keys::UP_ARROW)
+        f.value = nil
+        assert_equal [true, false, true, false], seen
+      end
+    end
   end
 end

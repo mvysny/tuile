@@ -118,9 +118,10 @@ module Tuile
       #   decimal you wrote, which is the whole reason to use this field), a
       #   non-numeric `String`, a NaN or an infinity.
       # @raise [TypeError] on a value `BigDecimal()` won't take at all.
+      # @param from_user [Boolean] see {HasValue#set_value}.
       # @return [void]
-      def value=(new_value)
-        editor.value = new_value.nil? ? "" : coerce(new_value).to_s("F")
+      def set_value(new_value, from_user:)
+        editor.set_value(new_value.nil? ? "" : coerce(new_value).to_s("F"), from_user:)
         editor.caret = editor.text.length
       end
 
@@ -166,7 +167,7 @@ module Tuile
       # zero.
       # @param delta [Integer]
       # @return [void]
-      def step(delta) = (self.value = (value || BigDecimal(0)) + delta)
+      def step(delta) = set_value((value || BigDecimal(0)) + delta, from_user: true)
     end
   end
 end

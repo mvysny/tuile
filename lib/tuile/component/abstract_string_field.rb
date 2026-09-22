@@ -28,7 +28,7 @@ module Tuile
     #   f.text                   # => "x": the whole glyph went, not its accent
     #
     # Insertion stays character-native, so `String#insert` merges a typed
-    # combining mark into its base; {#value=}'s snap covers the case where that
+    # combining mark into its base; {#set_value}'s snap covers the case where that
     # re-segments the text around the caret.
     #
     # Subclasses implement the layout-specific pieces ({#cursor_position},
@@ -66,13 +66,15 @@ module Tuile
     # share one slot, and a filter written on a *key* callback let the same
     # characters in through a paste (`D_input_filters`, book ch7).
     #
-    # The mutation pipeline is a template method: {#value=} and {#caret=}
+    # The mutation pipeline is a template method: {#set_value} and {#caret=}
     # detect no-ops, mutate state, fire {HasValue#on_value_change}, and invalidate.
+    # Typing, a paste and the deleting keys write with `from_user: true`, every
+    # other write with `false` ({HasValue::ValueChangeEvent#from_user?}).
     # Subclasses inject their own behavior via four protected hooks:
     #
     # - {#insert_text} — **the one filter seam**: every insertion runs through
     #   it, typed or pasted, so what the buffer may hold is decided here.
-    # - {#preprocess_text} — filter for a whole assignment to {#value=},
+    # - {#preprocess_text} — filter for a whole assignment to {#set_value},
     #   which insertion does *not* pass through.
     # - {#preprocess_paste} — sanitizer for {#handle_paste}, run before the
     #   clipboard reaches {#insert_text} ({TextField} keeps its first line).
@@ -98,7 +100,7 @@ module Tuile
       attr_reader :text
 
       # A text component's value *is* its text: {#value} reads the same buffer
-      # as {#text}, and {#value=} is its one writer.
+      # as {#text}, and {#set_value} is its one writer.
       # @return [String]
       def value = text
 
@@ -110,8 +112,9 @@ module Tuile
       #   field.caret = field.text.length   # the caret is clamped, never moved to the end
       #
       # @param new_value [String, #to_s]
+      # @param from_user [Boolean] see {HasValue#set_value}.
       # @return [void]
-      def value=(new_value)
+      def set_value(new_value, from_user:)
         new_value = preprocess_text(new_value)
         return if @text == new_value
 
@@ -119,7 +122,7 @@ module Tuile
         @caret = snap_to_cluster(@caret.clamp(0, @text.length))
         handle_text_mutated
         invalidate
-        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: @text))
+        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: @text, from_user:))
       end
 
       # `""` (not `nil`): a text field is empty when its buffer is blank.
@@ -225,8 +228,10 @@ module Tuile
       # (a date — `"2020-13-45"` is well-formed at every character) reports bad
       # input rather than filtering it (`D_input_filters`, book ch7).
       #
-      # {#value=} does *not* pass through here: only user input is filtered, so a
-      # programmatic write may still hold what no key types.
+      # {#set_value} does *not* pass through here: only user input is filtered,
+      # so a programmatic write may still hold what no key types. The same line
+      # decides the origin: an insertion is the user's, so it writes with
+      # `from_user: true`.
       # @param str [String]
       # @return [Boolean] true if the text changed.
       def insert_text(str)
@@ -234,11 +239,11 @@ module Tuile
 
         new_text = @text.dup.insert(@caret, str)
         @caret += str.length
-        self.value = new_text
+        set_value(new_text, from_user: true)
         true
       end
 
-      # Input filter for a whole assignment to {#value=}. Nothing overrides it
+      # Input filter for a whole assignment to {#set_value}. Nothing overrides it
       # today; a subclass that does is filtering the *programmatic* setter, not
       # user input — that is {#insert_text}.
       # @param new_text [String]
@@ -301,7 +306,8 @@ module Tuile
       def delete_before_caret = delete_back_to(cluster_boundary_before(@caret))
 
       # Removes the text between `index` and the caret, leaving the caret at
-      # `index` — one mutation, so {HasValue#on_value_change} fires once.
+      # `index` — one mutation, so {HasValue#on_value_change} fires once, as the
+      # user's: every caller is a deleting key.
       #
       # `index` is snapped forward onto a grapheme-cluster boundary, so a
       # caller may compute it by counting characters.
@@ -314,7 +320,7 @@ module Tuile
         new_text = @text.dup
         new_text.slice!(start...@caret)
         @caret = start
-        self.value = new_text
+        set_value(new_text, from_user: true)
       end
 
       # Removes the whole grapheme cluster at the caret.
@@ -324,7 +330,7 @@ module Tuile
 
         new_text = @text.dup
         new_text.slice!(@caret...cluster_boundary_after(@caret))
-        self.value = new_text
+        set_value(new_text, from_user: true)
       end
 
       private

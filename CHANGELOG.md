@@ -91,6 +91,8 @@
 - **Breaking:** `Tuile::VerticalScrollBar`, the geometry-only painter, is gone — the name now belongs to `Component::VerticalScrollBar`, the draggable bar in the tree, which also owns the two app-global glyphs. Move the knob: `Tuile::Component::VerticalScrollBar.handle_char = "▐"`.
 - **Breaking:** `Component::AbstractStringField#text=` is removed — `value=` was the same write, and `text` stays as the reader. Replace `field.text = s` with `field.value = s` on a `TextField`, `PasswordField` or `TextArea`; `Label#text=` and `TextView#text=` are unaffected. See `design/decisions.md` `D_has_value`.
 - **Breaking:** `Component::AbstractStringField#on_change` and its `ChangeEvent` are removed — `on_value_change` fired alongside it for every change. Subscribe with `field.on_value_change { |e| … e.value … }` in place of `field.on_change { |e| … e.text … }`. See `design/decisions.md` `D_has_value`.
+- Add `HasValue::ValueChangeEvent#from_user?` and `HasValue#set_value(value, from_user:)` — every value change says whether the user made it (typing, a paste, a key, a click, a pick, `Testing.set_value`) or code did (`value=`), and an app writing on the user's behalf declares `true`. See [#61](https://github.com/mvysny/tuile/issues/61), `design/decisions.md` `D_from_user`.
+- **Breaking:** a `HasValue` includer's override point is `set_value(new_value, from_user:)`, never `value=`, which the contract suite now fails. Rename `def value=(v)` to `def set_value(v, from_user:)` and pass `from_user:` on to `super` or the editor's `set_value`.
 
 ## [0.16.0] - 2026-09-18
 

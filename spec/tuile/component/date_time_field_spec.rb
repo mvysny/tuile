@@ -380,5 +380,31 @@ module Tuile
         assert_equal DateTime.new(2026, 9, 14, 13, 45, 30), f.value
       end
     end
+
+    describe "from_user? on on_value_change" do
+      it "relays each half's flag, and a programmatic write into a half stays programmatic" do
+        f = field
+        seen = []
+        f.on_value_change { |e| seen << e.from_user? }
+        f.value = DateTime.new(2026, 9, 14, 13, 45)
+        f.date_field.value = Date.new(2026, 9, 15)
+        focus(f.date_field)
+        key(Keys::UP_ARROW)
+        assert_equal [false, false, true], seen
+      end
+
+      it "stays programmatic when writing into a half moves its bad-input report" do
+        f = field
+        f.value = DateTime.new(2026, 9, 14, 13, 45)
+        focus(f.date_field)
+        key(Keys::CTRL_U)
+        type("garbage")
+        key(Keys::ENTER) # settles the half on bad input
+        seen = []
+        f.on_value_change { |e| seen << e.from_user? }
+        f.date_field.value = Date.new(2026, 9, 16)
+        assert_equal [false], seen
+      end
+    end
   end
 end

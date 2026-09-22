@@ -82,9 +82,10 @@ module Tuile
       # Writes `new_value` into the buffer and parks the caret at its end; fires
       # {#on_value_change} only if the value actually changed.
       # @param new_value [Integer, nil] `nil` empties the field.
+      # @param from_user [Boolean] see {HasValue#set_value}.
       # @return [void]
-      def value=(new_value)
-        editor.value = new_value.nil? ? "" : new_value.to_s
+      def set_value(new_value, from_user:)
+        editor.set_value(new_value.nil? ? "" : new_value.to_s, from_user:)
         editor.caret = editor.text.length
       end
 
@@ -102,7 +103,7 @@ module Tuile
       # Nudges {#value} by `delta`, treating an empty/un-parseable field as `0`.
       # @param delta [Integer]
       # @return [void]
-      def step(delta) = (self.value = (value || 0) + delta)
+      def step(delta) = set_value((value || 0) + delta, from_user: true)
     end
   end
 end

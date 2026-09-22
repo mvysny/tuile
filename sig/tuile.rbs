@@ -3461,13 +3461,16 @@ module Tuile
     # 
     #   Testing.set_value(Testing.get(Component::IntegerField, id: :age), 25)
     # 
-    # **Moves no focus** — no keystroke is involved — and assigns through
-    # `value=`, so it is the value-level shortcut rather than a simulation of
-    # typing: the editor's `insert_text` and its input filters never run.
+    # **Moves no focus** — no keystroke is involved — and writes through
+    # {Component::HasValue#set_value} with `from_user: true`, so it is the
+    # value-level shortcut rather than a simulation of typing: the editor's
+    # `insert_text` and its input filters never run, yet a listener reading
+    # {Component::HasValue::ValueChangeEvent#from_user?} sees the user's edit.
+    # The reachability checks below are what keep that claim honest.
     # 
     # _@param_ `component`
     # 
-    # _@param_ `value` — whatever the field's {Component::HasValue#value=} takes.
+    # _@param_ `value` — whatever the field's {Component::HasValue#set_value} takes.
     def self.set_value: (Component component, Object value) -> void
 
     # Moves `component` to `rect` within the parent it already has, through
@@ -4866,9 +4869,9 @@ module Tuile
       # it and {#items} stayed the same, e.g. one prefixing a marker read from
       # a selection it closes over:
       # 
-      #   def value=(new_value)   # RadioGroup: the marked row moved
+      #   def set_value(new_value, from_user:)   # RadioGroup: the marked row moved
       #     super
-      #     content.refresh_rows
+      #     list.refresh_rows
       #   end
       def refresh_rows: () -> void
 
@@ -6696,10 +6699,30 @@ module Tuile
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
-      # No-op (no repaint, no listener) when equal to the current value.
+      # A programmatic write: {#set_value} with `from_user: false`. Defined
+      # here once and never overridden — override {#set_value} instead, since a
+      # setter has no call syntax for the keyword.
       # 
       # _@param_ `new_value`
       def value=: (Object new_value) -> void
+
+      # Writes the value and fires {#on_value_change} carrying `from_user`.
+      # No-op (no repaint, no listener) when equal to the current value.
+      # 
+      #   field.set_value(Date.today, from_user: true)   # a "Today" button's click
+      # 
+      # The flag is the writer's claim, never derived from key dispatch and
+      # never checked: pass `true` when the write *is* a user's gesture — the
+      # gem's own key and mouse handlers do, as does {Testing.set_value} — and
+      # `false` for what the app decides alone. A wrong flag is silent, and
+      # `false` is the side that fails safe (`D_from_user`).
+      # 
+      # The override point for an includer: call `super` with `from_user:`.
+      # 
+      # _@param_ `new_value`
+      # 
+      # _@param_ `from_user`
+      def set_value: (Object new_value, from_user: bool) -> void
 
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
@@ -6712,8 +6735,9 @@ module Tuile
       # 
       # An includer whose input can outrun its value ({HasBadInput}) must clear
       # the *input*: a field holding bad input already reads `empty_value`, so
-      # inheriting this default — over a {#value=} that returns early on a no-op
-      # set — is a `clear` that leaves the garbage on screen.
+      # inheriting this default — over a {#set_value} that returns early on a
+      # no-op set — is a `clear` that leaves the garbage on screen. A `clear` is
+      # programmatic: its event says `from_user? == false`.
       def clear: () -> void
 
       # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
@@ -7296,20 +7320,22 @@ module Tuile
       # the no-op it looks like rather than a spurious change event.
       # 
       # _@param_ `new_value` — anything; truthiness decides.
-      def value=: (Object new_value) -> void
+      # 
+      # _@param_ `from_user` — see {HasValue#set_value}.
+      def set_value: (Object new_value, from_user: bool) -> void
 
       # _@return_ — {#value} under its domain word — `license.checked?`
       # reads better than `license.value`. Not a second piece of state.
       def checked?: () -> bool
 
       # {#value=} under its domain word. A delegator rather than an `alias`, so it
-      # keeps routing through the one write path even if a subclass overrides
-      # {#value=} (an `alias` would freeze this onto the body defined here).
+      # keeps routing through the one write path, {#set_value}.
       # 
       # _@param_ `new_value` — anything; truthiness decides.
       def checked=: (Object new_value) -> void
 
-      # Flips {#value}.
+      # Flips {#value} — programmatically; Space, Enter and a click flip it as
+      # the user's ({HasValue::ValueChangeEvent#from_user?}).
       def toggle: () -> void
 
       # The cells the widget actually paints: one row, `caption.display_width + 4`
@@ -7365,6 +7391,13 @@ module Tuile
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
+      # A programmatic write: {#set_value} with `from_user: false`. Defined
+      # here once and never overridden — override {#set_value} instead, since a
+      # setter has no call syntax for the keyword.
+      # 
+      # _@param_ `new_value`
+      def value=: (Object new_value) -> void
+
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
       # {HasBadInput#bad_input?} first.
@@ -7376,8 +7409,9 @@ module Tuile
       # 
       # An includer whose input can outrun its value ({HasBadInput}) must clear
       # the *input*: a field holding bad input already reads `empty_value`, so
-      # inheriting this default — over a {#value=} that returns early on a no-op
-      # set — is a `clear` that leaves the garbage on screen.
+      # inheriting this default — over a {#set_value} that returns early on a
+      # no-op set — is a `clear` that leaves the garbage on screen. A `clear` is
+      # programmatic: its event says `from_user? == false`.
       def clear: () -> void
 
       # Input fields are focusable by default (overrides {Component#focusable?});
@@ -8219,7 +8253,9 @@ module Tuile
       # clears the selection (blank field). The value need not be in {#items}.
       # 
       # _@param_ `new_value`
-      def value=: (Object new_value) -> void
+      # 
+      # _@param_ `from_user` — see {HasValue#set_value}.
+      def set_value: (Object new_value, from_user: bool) -> void
 
       # _@return_ — the field's caret position (the combo delegates the
       # hardware cursor to its field).
@@ -8314,10 +8350,8 @@ module Tuile
 
       # Sets the field's text without triggering a refilter — for programmatic
       # value changes and query reverts, which must not spring the dropdown.
-      # Every programmatic write to the field goes through here; a direct
-      # `field.value =` reaches the field's `on_value_change` and pops the dropdown
-      # open on a {#value=} the user never asked to browse.
-      # Parks the caret at the end: `value=` only *clamps* the caret, so a
+      # The write is `from_user: false`, which is all the field's listener
+      # checks. Parks the caret at the end: `value=` only *clamps* the caret, so a
       # shorter query replaced by a longer label would otherwise strand it
       # mid-word (commit "Go", then pick "Kotlin" → caret after "Ko").
       # 
@@ -8345,6 +8379,13 @@ module Tuile
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
+      # A programmatic write: {#set_value} with `from_user: false`. Defined
+      # here once and never overridden — override {#set_value} instead, since a
+      # setter has no call syntax for the keyword.
+      # 
+      # _@param_ `new_value`
+      def value=: (Object new_value) -> void
+
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
       # {HasBadInput#bad_input?} first.
@@ -8356,8 +8397,9 @@ module Tuile
       # 
       # An includer whose input can outrun its value ({HasBadInput}) must clear
       # the *input*: a field holding bad input already reads `empty_value`, so
-      # inheriting this default — over a {#value=} that returns early on a no-op
-      # set — is a `clear` that leaves the garbage on screen.
+      # inheriting this default — over a {#set_value} that returns early on a
+      # no-op set — is a `clear` that leaves the garbage on screen. A `clear` is
+      # programmatic: its event says `from_user? == false`.
       def clear: () -> void
 
       # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
@@ -8593,22 +8635,34 @@ module Tuile
     # is a domain object.
     # 
     #   field.on_value_change { |e| puts "now: #{e.value.inspect}" }
-    #   field.value = "hello"   # fires the listener
+    #   field.value = "hello"   # fires the listener, e.from_user? false
     #   field.clear             # value = empty_value, fires again
     # 
-    # The default {#value=}/{#value} keep the value in `@value` and are enough
-    # for a component with nothing more natural — you get a repaint and the
-    # listener for free. An includer whose value lives elsewhere overrides both
-    # ({AbstractStringField} backs them with its text buffer). Override {#empty_value}
-    # when the empty sentinel isn't `nil` (a text field's is `""`).
+    # == Who made the change
+    # Every event tells typing from a programmatic write, so a listener keeps
+    # no guard flag of its own:
+    # 
+    #   field.on_value_change { |e| open_palette if e.from_user? }
+    #   field.value = "x"                        # e.from_user? is false
+    #   field.set_value("x", from_user: true)    # an app writing for the user
+    # 
+    # The default {#set_value}/{#value} keep the value in `@value` and are
+    # enough for a component with nothing more natural — you get a repaint and
+    # the listener for free. An includer whose value lives elsewhere overrides
+    # both ({AbstractStringField} backs them with its text buffer); **the
+    # override point is {#set_value}, never {#value=}**, which is only its
+    # `from_user: false` spelling. Override {#empty_value} when the empty
+    # sentinel isn't `nil` (a text field's is `""`).
     # 
     # {HasValidation} comes with it, so every field carries the
     # `error_message` a validator writes and paints its own error ink.
     # 
     # == Implementation details
     # Deliberately smaller than Vaadin's `HasValue`: read-only,
-    # required-indicator, the from-client/old-value event payload, and
-    # converters all belong to the not-yet-built form layer, not here.
+    # required-indicator and converters belong to the not-yet-built form layer,
+    # not here. Of Vaadin's event payload, `isFromClient` is carried (as
+    # {ValueChangeEvent#from_user?}) and `getOldValue` is not, until something
+    # reads it (`D_from_user`).
     module HasValue
       include Tuile::Component::HasValidation
       extend Tuile::Listeners::Declare
@@ -8620,10 +8674,30 @@ module Tuile
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
-      # No-op (no repaint, no listener) when equal to the current value.
+      # A programmatic write: {#set_value} with `from_user: false`. Defined
+      # here once and never overridden — override {#set_value} instead, since a
+      # setter has no call syntax for the keyword.
       # 
       # _@param_ `new_value`
       def value=: (Object new_value) -> void
+
+      # Writes the value and fires {#on_value_change} carrying `from_user`.
+      # No-op (no repaint, no listener) when equal to the current value.
+      # 
+      #   field.set_value(Date.today, from_user: true)   # a "Today" button's click
+      # 
+      # The flag is the writer's claim, never derived from key dispatch and
+      # never checked: pass `true` when the write *is* a user's gesture — the
+      # gem's own key and mouse handlers do, as does {Testing.set_value} — and
+      # `false` for what the app decides alone. A wrong flag is silent, and
+      # `false` is the side that fails safe (`D_from_user`).
+      # 
+      # The override point for an includer: call `super` with `from_user:`.
+      # 
+      # _@param_ `new_value`
+      # 
+      # _@param_ `from_user`
+      def set_value: (Object new_value, from_user: bool) -> void
 
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
@@ -8636,8 +8710,9 @@ module Tuile
       # 
       # An includer whose input can outrun its value ({HasBadInput}) must clear
       # the *input*: a field holding bad input already reads `empty_value`, so
-      # inheriting this default — over a {#value=} that returns early on a no-op
-      # set — is a `clear` that leaves the garbage on screen.
+      # inheriting this default — over a {#set_value} that returns early on a
+      # no-op set — is a `clear` that leaves the garbage on screen. A `clear` is
+      # programmatic: its event says `from_user? == false`.
       def clear: () -> void
 
       # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
@@ -8725,14 +8800,24 @@ module Tuile
       #   @return [Component] the field whose value changed.
       # @!attribute [r] value
       #   @return [Object] the new value.
+      # @!attribute [r] from_user
+      #   @return [Boolean] what the writer declared; read it as {#from_user?}.
       class ValueChangeEvent < Data
         include Tuile::Event
+
+        # _@return_ — whether the change came from the user — typing, a
+        # paste, a click, a key — or from an app writing on the user's
+        # behalf through {HasValue#set_value}; `false` for every {HasValue#value=}.
+        def from_user?: () -> bool
 
         # _@return_ — the field whose value changed.
         attr_reader source: Component
 
         # _@return_ — the new value.
         attr_reader value: Object
+
+        # _@return_ — what the writer declared; read it as {#from_user?}.
+        attr_reader from_user: bool
       end
     end
 
@@ -9868,7 +9953,9 @@ module Tuile
       #   field.value = Time.now   # shows today; reads back a Date, time dropped
       # 
       # _@param_ `new_value` — `nil` empties the field.
-      def value=: (Date? new_value) -> void
+      # 
+      # _@param_ `from_user` — see {HasValue#set_value}.
+      def set_value: (Date? new_value, from_user: bool) -> void
 
       # `nil`, not `""`: a date field with no parseable date is empty.
       def empty_value: () -> void
@@ -10423,7 +10510,9 @@ module Tuile
       # they carried is dropped.
       # 
       # _@param_ `new_value` — `nil` empties the field.
-      def value=: ((Time | DateTime)? new_value) -> void
+      # 
+      # _@param_ `from_user` — see {HasValue#set_value}.
+      def set_value: ((Time | DateTime)? new_value, from_user: bool) -> void
 
       # Sets the value from its parts, so nothing assembles a `Time` on the
       # epoch only to hand it straight back.
@@ -10539,7 +10628,7 @@ module Tuile
       def coerce: (Object new_value) -> Time
 
       # Steps {#value} by `delta` seconds; an empty or unparseable field steps
-      # to *now* ({#set_to_now}) instead, and `delta` is ignored.
+      # to *now* (as {#set_to_now} would) instead, and `delta` is ignored.
       # 
       # _@param_ `delta` — seconds, either sign.
       def step_by: (Integer delta) -> void
@@ -10683,7 +10772,9 @@ module Tuile
       # {#on_value_change} only if the value actually changed.
       # 
       # _@param_ `new_value` — `nil` empties the field; anything else is coerced with `Float()`, so an `Integer` `3` shows as `"3.0"`.
-      def value=: (Numeric? new_value) -> void
+      # 
+      # _@param_ `from_user` — see {HasValue#set_value}.
+      def set_value: (Numeric? new_value, from_user: bool) -> void
 
       # `nil`, not `""`: a numeric field with no parseable number is empty.
       def empty_value: () -> void
@@ -11157,7 +11248,9 @@ module Tuile
       # changed. The cursor stays where it is.
       # 
       # _@param_ `new_value` — `nil` selects nothing; an item outside {#items} is kept but renders no marked row.
-      def value=: (Object? new_value) -> void
+      # 
+      # _@param_ `from_user` — see {HasValue#set_value}.
+      def set_value: (Object? new_value, from_user: bool) -> void
 
       # Selects the cursor row on Space. Nothing else is claimed: the composed
       # {List} — being the focused component — has already had its chance at the
@@ -11203,6 +11296,13 @@ module Tuile
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
+      # A programmatic write: {#set_value} with `from_user: false`. Defined
+      # here once and never overridden — override {#set_value} instead, since a
+      # setter has no call syntax for the keyword.
+      # 
+      # _@param_ `new_value`
+      def value=: (Object new_value) -> void
+
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
       # {HasBadInput#bad_input?} first.
@@ -11214,8 +11314,9 @@ module Tuile
       # 
       # An includer whose input can outrun its value ({HasBadInput}) must clear
       # the *input*: a field holding bad input already reads `empty_value`, so
-      # inheriting this default — over a {#value=} that returns early on a no-op
-      # set — is a `clear` that leaves the garbage on screen.
+      # inheriting this default — over a {#set_value} that returns early on a
+      # no-op set — is a `clear` that leaves the garbage on screen. A `clear` is
+      # programmatic: its event says `from_user? == false`.
       def clear: () -> void
 
       # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
@@ -11850,7 +11951,9 @@ module Tuile
       # {#on_value_change} only if the value actually changed.
       # 
       # _@param_ `new_value` — `nil` empties the field.
-      def value=: (Integer? new_value) -> void
+      # 
+      # _@param_ `from_user` — see {HasValue#set_value}.
+      def set_value: (Integer? new_value, from_user: bool) -> void
 
       # `nil`, not `""`: an integer field with no parseable number is empty.
       def empty_value: () -> void
@@ -12437,7 +12540,9 @@ module Tuile
       # mutating can't reach in.
       # 
       # _@param_ `new_value` — `nil` selects nothing.
-      def value=: (::Enumerable[untyped]? new_value) -> void
+      # 
+      # _@param_ `from_user` — see {HasValue#set_value}.
+      def set_value: (::Enumerable[untyped]? new_value, from_user: bool) -> void
 
       # Toggles the cursor row on Space. Nothing else is claimed: the composed
       # {List} — being the focused component — has already had its chance at the
@@ -12486,6 +12591,13 @@ module Tuile
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
+      # A programmatic write: {#set_value} with `from_user: false`. Defined
+      # here once and never overridden — override {#set_value} instead, since a
+      # setter has no call syntax for the keyword.
+      # 
+      # _@param_ `new_value`
+      def value=: (Object new_value) -> void
+
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
       # {HasBadInput#bad_input?} first.
@@ -12497,8 +12609,9 @@ module Tuile
       # 
       # An includer whose input can outrun its value ({HasBadInput}) must clear
       # the *input*: a field holding bad input already reads `empty_value`, so
-      # inheriting this default — over a {#value=} that returns early on a no-op
-      # set — is a `clear` that leaves the garbage on screen.
+      # inheriting this default — over a {#set_value} that returns early on a
+      # no-op set — is a `clear` that leaves the garbage on screen. A `clear` is
+      # programmatic: its event says `from_user? == false`.
       def clear: () -> void
 
       # Input fields are focusable by default (overrides {Component#focusable?});
@@ -13136,10 +13249,18 @@ module Tuile
       def value: () -> DateTime?
 
       # Writes the date into one half and the time of day into the other, firing
-      # {HasValue#on_value_change} once if the value actually changed.
+      # {HasValue#on_value_change} once if the value actually changed. The
+      # halves are written programmatically whatever `from_user` says — their
+      # notices are muted — and this field's own event carries it.
+      # 
+      # An app never needs this with `from_user: true` to reach a half: each
+      # half is a {DateField} / {TimeField} with its own {#set_value}, and a
+      # user's edit there already arrives here as the user's.
       # 
       # _@param_ `new_value` — anything carrying both a civil date and a time of day; `nil` empties both halves.
-      def value=: ((DateTime | Time)? new_value) -> void
+      # 
+      # _@param_ `from_user` — see {HasValue#set_value}.
+      def set_value: ((DateTime | Time)? new_value, from_user: bool) -> void
 
       # `nil`, not a pair of nils: a field with no parseable date *and* time is
       # empty.
@@ -13195,13 +13316,17 @@ module Tuile
       # with their wells gone.
       def sync_half_wells: () -> void
 
-      def handle_half_change: () -> void
+      # _@param_ `from_user` — what the half's write declared.
+      def handle_half_change: (from_user: bool) -> void
+
+      def handle_half_report_change: () -> void
 
       # Runs `block` with the halves' notices suppressed, so a value written
       # into both is announced once rather than half-assembled.
       def applying: () -> void
 
-      def fire_if_changed: () -> void
+      # _@param_ `from_user`
+      def fire_if_changed: (from_user: bool) -> void
 
       # Fired with a {BadInputChangeEvent} whenever the **showable** report
       # changes — see the class doc for what that is and why it is not
@@ -13261,6 +13386,13 @@ module Tuile
       # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
       # never on a no-op set.
       def on_value_change: () -> Listeners
+
+      # A programmatic write: {#set_value} with `from_user: false`. Defined
+      # here once and never overridden — override {#set_value} instead, since a
+      # setter has no call syntax for the keyword.
+      # 
+      # _@param_ `new_value`
+      def value=: (Object new_value) -> void
 
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
@@ -13384,7 +13516,9 @@ module Tuile
       # changed.
       # 
       # _@param_ `new_value` — `nil` empties the field. A `Float` is refused, not converted — see the raise.
-      def value=: ((::BigDecimal | Integer | String)? new_value) -> void
+      # 
+      # _@param_ `from_user` — see {HasValue#set_value}.
+      def set_value: ((::BigDecimal | Integer | String)? new_value, from_user: bool) -> void
 
       # `nil`, not `""`: a numeric field with no parseable number is empty.
       def empty_value: () -> void
@@ -13697,7 +13831,7 @@ module Tuile
     #   f.text                   # => "x": the whole glyph went, not its accent
     # 
     # Insertion stays character-native, so `String#insert` merges a typed
-    # combining mark into its base; {#value=}'s snap covers the case where that
+    # combining mark into its base; {#set_value}'s snap covers the case where that
     # re-segments the text around the caret.
     # 
     # Subclasses implement the layout-specific pieces ({#cursor_position},
@@ -13735,13 +13869,15 @@ module Tuile
     # share one slot, and a filter written on a *key* callback let the same
     # characters in through a paste (`D_input_filters`, book ch7).
     # 
-    # The mutation pipeline is a template method: {#value=} and {#caret=}
+    # The mutation pipeline is a template method: {#set_value} and {#caret=}
     # detect no-ops, mutate state, fire {HasValue#on_value_change}, and invalidate.
+    # Typing, a paste and the deleting keys write with `from_user: true`, every
+    # other write with `false` ({HasValue::ValueChangeEvent#from_user?}).
     # Subclasses inject their own behavior via four protected hooks:
     # 
     # - {#insert_text} — **the one filter seam**: every insertion runs through
     #   it, typed or pasted, so what the buffer may hold is decided here.
-    # - {#preprocess_text} — filter for a whole assignment to {#value=},
+    # - {#preprocess_text} — filter for a whole assignment to {#set_value},
     #   which insertion does *not* pass through.
     # - {#preprocess_paste} — sanitizer for {#handle_paste}, run before the
     #   clipboard reaches {#insert_text} ({TextField} keeps its first line).
@@ -13754,7 +13890,7 @@ module Tuile
       def initialize: () -> void
 
       # A text component's value *is* its text: {#value} reads the same buffer
-      # as {#text}, and {#value=} is its one writer.
+      # as {#text}, and {#set_value} is its one writer.
       def value: () -> String
 
       # sord duck - #to_s looks like a duck type with an equivalent RBS interface, replacing with _ToS
@@ -13766,7 +13902,9 @@ module Tuile
       #   field.caret = field.text.length   # the caret is clamped, never moved to the end
       # 
       # _@param_ `new_value`
-      def value=: ((String | _ToS) new_value) -> void
+      # 
+      # _@param_ `from_user` — see {HasValue#set_value}.
+      def set_value: ((String | _ToS) new_value, from_user: bool) -> void
 
       # `""` (not `nil`): a text field is empty when its buffer is blank.
       def empty_value: () -> String
@@ -13832,15 +13970,17 @@ module Tuile
       # (a date — `"2020-13-45"` is well-formed at every character) reports bad
       # input rather than filtering it (`D_input_filters`, book ch7).
       # 
-      # {#value=} does *not* pass through here: only user input is filtered, so a
-      # programmatic write may still hold what no key types.
+      # {#set_value} does *not* pass through here: only user input is filtered,
+      # so a programmatic write may still hold what no key types. The same line
+      # decides the origin: an insertion is the user's, so it writes with
+      # `from_user: true`.
       # 
       # _@param_ `str`
       # 
       # _@return_ — true if the text changed.
       def insert_text: (String str) -> bool
 
-      # Input filter for a whole assignment to {#value=}. Nothing overrides it
+      # Input filter for a whole assignment to {#set_value}. Nothing overrides it
       # today; a subclass that does is filtering the *programmatic* setter, not
       # user input — that is {#insert_text}.
       # 
@@ -13890,7 +14030,8 @@ module Tuile
       def delete_before_caret: () -> void
 
       # Removes the text between `index` and the caret, leaving the caret at
-      # `index` — one mutation, so {HasValue#on_value_change} fires once.
+      # `index` — one mutation, so {HasValue#on_value_change} fires once, as the
+      # user's: every caller is a deleting key.
       # 
       # `index` is snapped forward onto a grapheme-cluster boundary, so a
       # caller may compute it by counting characters.
@@ -13932,6 +14073,13 @@ module Tuile
       # never on a no-op set.
       def on_value_change: () -> Listeners
 
+      # A programmatic write: {#set_value} with `from_user: false`. Defined
+      # here once and never overridden — override {#set_value} instead, since a
+      # setter has no call syntax for the keyword.
+      # 
+      # _@param_ `new_value`
+      def value=: (Object new_value) -> void
+
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
       # {HasBadInput#bad_input?} first.
@@ -13943,8 +14091,9 @@ module Tuile
       # 
       # An includer whose input can outrun its value ({HasBadInput}) must clear
       # the *input*: a field holding bad input already reads `empty_value`, so
-      # inheriting this default — over a {#value=} that returns early on a no-op
-      # set — is a `clear` that leaves the garbage on screen.
+      # inheriting this default — over a {#set_value} that returns early on a
+      # no-op set — is a `clear` that leaves the garbage on screen. A `clear` is
+      # programmatic: its event says `from_user? == false`.
       def clear: () -> void
 
       # Input fields are focusable by default (overrides {Component#focusable?});
@@ -14038,8 +14187,8 @@ module Tuile
     # 
     #     def value = Integer(editor.text, 10) rescue nil
     # 
-    #     def value=(new_value)
-    #       editor.value = new_value.nil? ? "" : new_value.to_s
+    #     def set_value(new_value, from_user:)
+    #       editor.set_value(new_value.nil? ? "" : new_value.to_s, from_user:)
     #       editor.caret = editor.text.length
     #     end
     # 
@@ -14081,7 +14230,7 @@ module Tuile
     # by ENTER never moves focus at all. Override it to canonicalize a buffer
     # the user typed loosely:
     # 
-    #   def commit = (self.value = value unless value.nil?)   # rewrite in the canonical form
+    #   def commit = (set_value(value, from_user: true) unless value.nil?)   # rewrite canonically
     # 
     # ENTER is committed and then **left to keep bubbling**, so a scope's
     # default button still sees it; only an {#on_enter} of this field's own
@@ -14093,8 +14242,16 @@ module Tuile
     # two gestures, so a form is never handed a half-typed date that happens to
     # parse ({DateField}, {TimeField}).
     # 
+    # == Who made the change
+    # The editor's own event says whether the user moved the buffer, and this
+    # field's notice passes that on: a subclass writes the editor through
+    # {AbstractStringField#set_value} with the `from_user:` it was handed, and
+    # the edit route relays it. The commit gestures announce as the user's —
+    # an approximation for the one commit code can cause, a programmatic
+    # `screen.focused =` moving focus off this field.
+    # 
     # == Implementation details
-    # - **{HasValue#value} and {#value=} raise until overridden.** The inherited
+    # - **{HasValue#value} and {#set_value} raise until overridden.** The inherited
     #   pair stores into `@value` and never touches the editor, so a subclass
     #   that defined only one would silently half-work.
     # - **{HasValue#empty_value} is called during construction**, to seed the
@@ -14104,7 +14261,7 @@ module Tuile
     #   listeners** — for that guard, and to commit before an app's ENTER handler
     #   runs. They are lists, so nothing an app adds displaces them; a subclass
     #   reacting to buffer edits still overrides {#handle_editor_change} (every
-    #   edit), {#value=} or {#commit}, which run in a defined order.
+    #   edit), {#set_value} or {#commit}, which run in a defined order.
     # - **Not for a field whose editor is a *filter*.** This base assumes the
     #   buffer is a rendering of the value, so an edit may change the value.
     #   {ComboBox} breaks both halves — its text is a transient query and only a
@@ -14121,10 +14278,13 @@ module Tuile
       # _@return_ — the typed value, parsed from the editor's buffer.
       def value: () -> Object
 
-      # Writes `new_value` into the editor's buffer.
+      # Writes `new_value` into the editor's buffer, passing `from_user` on to
+      # {AbstractStringField#set_value}.
       # 
       # _@param_ `new_value`
-      def value=: (Object new_value) -> void
+      # 
+      # _@param_ `from_user` — see {HasValue#set_value}.
+      def set_value: (Object new_value, from_user: bool) -> void
 
       # Empties the *input*, not just the value — a field holding bad input
       # already reads {HasValue#empty_value}, so clearing through {#value=} could
@@ -14187,13 +14347,13 @@ module Tuile
       # 
       # Only the *push* settles: {HasValue#value} stays a live parse of the
       # buffer either way. And overriding this is half the job — {#commit} is
-      # covered here, but the field must fire from its own `value=` too, or a
+      # covered here, but the field must fire from its own `set_value` too, or a
       # programmatic write and an Up/Down step go unannounced until the next
       # commit.
       def notify_on_edit?: () -> bool
 
       # Called whenever the editor's buffer changes, however the characters
-      # arrived — a typed key, a paste, or a {#value=} of this field's own. It
+      # arrived — a typed key, a paste, or a {#set_value} of this field's own. It
       # is named for the *editor*, not for the user, because those last two are
       # not input. No-op by default; override it to drop state that describes
       # the *previous* buffer, as a field latching whether its input has settled
@@ -14212,7 +14372,9 @@ module Tuile
       # Re-emits {HasValue#on_value_change}, but only when {#value} differs from
       # the last one fired — so a buffer edit that leaves the value alone
       # (`"7"`→`"07"`) stays silent.
-      def fire_if_changed: () -> void
+      # 
+      # _@param_ `from_user` — what the write that moved the buffer declared.
+      def fire_if_changed: (from_user: bool) -> void
 
       # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
       def inspect_details: () -> ::Array[String]
@@ -14220,6 +14382,13 @@ module Tuile
       # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
       # never on a no-op set.
       def on_value_change: () -> Listeners
+
+      # A programmatic write: {#set_value} with `from_user: false`. Defined
+      # here once and never overridden — override {#set_value} instead, since a
+      # setter has no call syntax for the keyword.
+      # 
+      # _@param_ `new_value`
+      def value=: (Object new_value) -> void
 
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask

@@ -299,5 +299,16 @@ module Tuile
       assert_equal 1, rg.list.scroll_top_row
       assert_equal 2, rg.list.cursor.position
     end
+
+    describe "from_user? on on_value_change" do
+      it "is true for Space, false for value=" do
+        rg = group
+        seen = []
+        rg.on_value_change { |e| seen << e.from_user? }
+        key(rg, " ")
+        rg.value = "Unsorted"
+        assert_equal [true, false], seen
+      end
+    end
   end
 end

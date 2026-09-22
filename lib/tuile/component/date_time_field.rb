@@ -133,10 +133,12 @@ module Tuile
         add(@date_field, Expand[DATE_WEIGHT], cross: Fixed[1])
         add(@time_field, Expand[TIME_WEIGHT], cross: Fixed[1])
         [@date_field, @time_field].each do |half|
-          half.on_value_change { handle_half_change }
+          half.on_value_change { |e| handle_half_change(from_user: e.from_user?) }
           # A half's report moves without its value — garbage and an empty
-          # buffer both read `nil` — and this field relays it.
-          half.on_bad_input_change { handle_half_change }
+          # buffer both read `nil` — and this field relays it. The report
+          # only: that event carries no origin to announce a value with, and
+          # every change of a half's value reaches the slot above anyway.
+          half.on_bad_input_change { handle_half_report_change }
         end
       end
 
@@ -157,7 +159,13 @@ module Tuile
       end
 
       # Writes the date into one half and the time of day into the other, firing
-      # {HasValue#on_value_change} once if the value actually changed.
+      # {HasValue#on_value_change} once if the value actually changed. The
+      # halves are written programmatically whatever `from_user` says — their
+      # notices are muted — and this field's own event carries it.
+      #
+      # An app never needs this with `from_user: true` to reach a half: each
+      # half is a {DateField} / {TimeField} with its own {#set_value}, and a
+      # user's edit there already arrives here as the user's.
       #
       # @param new_value [DateTime, Time, nil] anything carrying both a civil
       #   date and a time of day; `nil` empties both halves.
@@ -165,7 +173,8 @@ module Tuile
       # @raise [TypeError] on a `Date` (it has no hour, and midnight would be
       #   invented) or anything else missing one of the two — checked before
       #   either half is written, so a rejected value leaves the field as it was.
-      def value=(new_value)
+      # @param from_user [Boolean] see {HasValue#set_value}.
+      def set_value(new_value, from_user:)
         unless new_value.nil? || CIVIL_PARTS.all? { new_value.respond_to?(_1) }
           raise TypeError,
                 "expected a date and time of day answering #{CIVIL_PARTS.join("/")}, got #{new_value.inspect}"
@@ -176,7 +185,7 @@ module Tuile
           time_field.value = new_value
         end
         sync_bad_input
-        fire_if_changed
+        fire_if_changed(from_user:)
       end
 
       # `nil`, not a pair of nils: a field with no parseable date *and* time is
@@ -192,7 +201,7 @@ module Tuile
         # Announced even though the halves hold their own notice: emptying is
         # not a half-typed prefix.
         sync_bad_input
-        fire_if_changed
+        fire_if_changed(from_user: false)
       end
 
       # The guilty half's own report, the date's first when both are bad; else
@@ -270,13 +279,20 @@ module Tuile
         [date_field, time_field].each { _1.bg_color = ink ? ComponentBackground::INHERIT : nil }
       end
 
+      # @param from_user [Boolean] what the half's write declared.
       # @return [void]
-      def handle_half_change
+      def handle_half_change(from_user:)
         sync_half_wells
         return if @applying
 
         sync_bad_input
-        fire_if_changed
+        fire_if_changed(from_user:)
+      end
+
+      # @return [void]
+      def handle_half_report_change
+        sync_half_wells
+        sync_bad_input unless @applying
       end
 
       # Runs `block` with the halves' notices suppressed, so a value written
@@ -289,13 +305,14 @@ module Tuile
         @applying = false
       end
 
+      # @param from_user [Boolean]
       # @return [void]
-      def fire_if_changed
+      def fire_if_changed(from_user:)
         v = value
         return if v == @last_value
 
         @last_value = v
-        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: v))
+        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: v, from_user:))
       end
     end
   end

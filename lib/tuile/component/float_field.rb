@@ -96,9 +96,10 @@ module Tuile
       #   is coerced with `Float()`, so an `Integer` `3` shows as `"3.0"`.
       # @raise [ArgumentError] on a non-numeric `String`, a NaN or an infinity.
       # @raise [TypeError] on a value `Float()` won't take at all (an `Array`).
+      # @param from_user [Boolean] see {HasValue#set_value}.
       # @return [void]
-      def value=(new_value)
-        editor.value = new_value.nil? ? "" : coerce(new_value).to_s
+      def set_value(new_value, from_user:)
+        editor.set_value(new_value.nil? ? "" : coerce(new_value).to_s, from_user:)
         editor.caret = editor.text.length
       end
 
@@ -130,7 +131,7 @@ module Tuile
       # `0.0`.
       # @param delta [Float]
       # @return [void]
-      def step(delta) = (self.value = (value || 0.0) + delta)
+      def step(delta) = set_value((value || 0.0) + delta, from_user: true)
     end
   end
 end

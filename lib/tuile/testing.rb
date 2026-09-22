@@ -212,11 +212,14 @@ module Tuile
       #
       #   Testing.set_value(Testing.get(Component::IntegerField, id: :age), 25)
       #
-      # **Moves no focus** — no keystroke is involved — and assigns through
-      # `value=`, so it is the value-level shortcut rather than a simulation of
-      # typing: the editor's `insert_text` and its input filters never run.
+      # **Moves no focus** — no keystroke is involved — and writes through
+      # {Component::HasValue#set_value} with `from_user: true`, so it is the
+      # value-level shortcut rather than a simulation of typing: the editor's
+      # `insert_text` and its input filters never run, yet a listener reading
+      # {Component::HasValue::ValueChangeEvent#from_user?} sees the user's edit.
+      # The reachability checks below are what keep that claim honest.
       # @param component [Component]
-      # @param value [Object] whatever the field's {Component::HasValue#value=} takes.
+      # @param value [Object] whatever the field's {Component::HasValue#set_value} takes.
       # @raise [AssertionError] unless `component` is a {Component::HasValue}
       #   the keyboard can reach: shown with every ancestor shown, and inside
       #   {ScreenPane#key_scope}, so a field behind a modal popup refuses.
@@ -236,7 +239,7 @@ module Tuile
                                 "searched:\n#{dump(Screen.instance.pane, [component])}"
         end
 
-        component.value = value
+        component.set_value(value, from_user: true)
       end
 
       # Moves `component` to `rect` within the parent it already has, through

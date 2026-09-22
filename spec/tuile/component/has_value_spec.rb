@@ -96,5 +96,31 @@ module Tuile
         assert_equal [""], valued
       end
     end
+
+    describe "from_user?" do
+      it "is what the writer declared: false through value=, as passed through set_value" do
+        c = default_holder
+        seen = []
+        c.on_value_change { |e| seen << e.from_user? }
+        c.value = 1
+        c.set_value(2, from_user: true)
+        c.set_value(3, from_user: false)
+        c.clear
+        assert_equal [false, true, false, false], seen
+      end
+
+      it "requires the keyword on set_value" do
+        assert_raises(ArgumentError) { default_holder.set_value(1) }
+      end
+
+      it "is true through Testing.set_value, which simulates the user" do
+        f = Component::TextField.new
+        mount_at(f, Rect.new(0, 0, 20, 1))
+        seen = []
+        f.on_value_change { |e| seen << e.from_user? }
+        Testing.set_value(f, "Zaphod")
+        assert_equal [true], seen
+      end
+    end
   end
 end

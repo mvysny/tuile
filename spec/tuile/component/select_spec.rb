@@ -534,5 +534,19 @@ module Tuile
         assert overlay(s).open?, "the freshly-opened dropdown must not dismiss itself"
       end
     end
+
+    describe "from_user? on on_value_change" do
+      it "is true for a commit from the menu, false for value=" do
+        s = select
+        seen = []
+        s.on_value_change { |e| seen << e.from_user? }
+        s.focus
+        key(Keys::ENTER)
+        key(Keys::DOWN_ARROW)
+        key(Keys::ENTER)
+        s.value = "warn"
+        assert_equal [true, false], seen
+      end
+    end
   end
 end

@@ -215,7 +215,7 @@ module Tuile
       # @return [void]
       def commit(item)
         close_menu
-        self.value = item
+        set_value(item, from_user: true)
       end
 
       # @return [void]

@@ -13,8 +13,8 @@ module Tuile
 
         def value = editor.text.empty? ? nil : editor.text.upcase
 
-        def value=(new_value)
-          editor.value = new_value.nil? ? "" : new_value.to_s
+        def set_value(new_value, from_user:)
+          editor.set_value(new_value.nil? ? "" : new_value.to_s, from_user:)
         end
 
         def empty_value = nil

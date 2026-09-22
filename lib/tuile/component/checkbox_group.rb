@@ -130,15 +130,16 @@ module Tuile
       # changed. Stores a frozen `Set` *copy*, so a set the caller goes on
       # mutating can't reach in.
       # @param new_value [Enumerable, nil] `nil` selects nothing.
+      # @param from_user [Boolean] see {HasValue#set_value}.
       # @raise [TypeError] unless `new_value` is an `Enumerable` or `nil`.
       # @return [void]
-      def value=(new_value)
+      def set_value(new_value, from_user:)
         selected = coerce(new_value)
-        # HasValue#value= no-ops on an unchanged value; this guard is what also
+        # HasValue#set_value no-ops on an unchanged value; this guard is what also
         # skips the row rebuild.
         return if value == selected
 
-        super(selected)
+        super(selected, from_user:)
         list.refresh_rows
       end
 
@@ -172,7 +173,7 @@ module Tuile
       # @param item [Object]
       # @return [void]
       def toggle(item)
-        self.value = value.include?(item) ? value - [item] : value + [item]
+        set_value(value.include?(item) ? value - [item] : value + [item], from_user: true)
       end
 
       # @param item [Object]

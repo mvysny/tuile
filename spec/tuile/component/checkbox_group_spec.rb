@@ -275,5 +275,16 @@ module Tuile
       assert_equal 1, cg.list.scroll_top_row
       assert_equal 2, cg.list.cursor.position
     end
+
+    describe "from_user? on on_value_change" do
+      it "is true for Space, false for value=" do
+        cbg = group
+        seen = []
+        cbg.on_value_change { |e| seen << e.from_user? }
+        key(cbg, " ")
+        cbg.value = []
+        assert_equal [true, false], seen
+      end
+    end
   end
 end

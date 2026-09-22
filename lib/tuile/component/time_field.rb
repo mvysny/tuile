@@ -192,12 +192,13 @@ module Tuile
       # @return [void]
       # @raise [TypeError] on a `Date` (it has no hour, and midnight would be
       #   invented) or a `String` (that is what the buffer is for).
-      def value=(new_value)
-        editor.value = new_value.nil? ? "" : coerce(new_value).strftime(formats.first)
+      # @param from_user [Boolean] see {HasValue#set_value}.
+      def set_value(new_value, from_user:)
+        editor.set_value(new_value.nil? ? "" : coerce(new_value).strftime(formats.first), from_user:)
         editor.caret = editor.text.length
         # The edit above announced nothing ({#notify_on_edit?}); a time written
         # rather than typed has no prefix to be mistaken for a value.
-        fire_if_changed
+        fire_if_changed(from_user:)
       end
 
       # Sets the value from its parts, so nothing assembles a `Time` on the
@@ -350,7 +351,8 @@ module Tuile
       # @return [void]
       def commit
         time = value
-        self.value = time unless time.nil? # …which unsettles, hence the order
+        # The user's: a commit gesture, and a held notice announces here.
+        set_value(time, from_user: true) unless time.nil? # …which unsettles, hence the order
         settle(true)
       end
 
@@ -389,7 +391,7 @@ module Tuile
         sync_placeholder
         time = value || losslessly(carried)
         self.value = time unless time.nil?
-        fire_if_changed # for the buffer that just *stopped* parsing: nothing above touched it
+        fire_if_changed(from_user: false) # for the buffer that just *stopped* parsing: nothing above touched it
       end
 
       # A narrowing {#step=} must not discard seconds the user typed — but
@@ -434,14 +436,12 @@ module Tuile
       end
 
       # Steps {#value} by `delta` seconds; an empty or unparseable field steps
-      # to *now* ({#set_to_now}) instead, and `delta` is ignored.
+      # to *now* (as {#set_to_now} would) instead, and `delta` is ignored.
       # @param delta [Integer] seconds, either sign.
       # @return [void]
       def step_by(delta)
         time = value
-        return set_to_now if time.nil?
-
-        self.value = advance(time, delta)
+        set_value(time.nil? ? now : advance(time, delta), from_user: true)
       end
 
       # @param time [Time]

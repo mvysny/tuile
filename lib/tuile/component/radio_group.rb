@@ -77,7 +77,7 @@ module Tuile
         # A List has no cursor at all by default (Cursor::None, position -1).
         list.cursor = List::Cursor.new
         list.renderer = method(:render_row)
-        list.on_item_chosen { |e| self.value = e.item }
+        list.on_item_chosen { |e| set_value(e.item, from_user: true) }
         list.items = items.to_a
         @list = list
         add_child(list, at: 0)
@@ -135,9 +135,10 @@ module Tuile
       # changed. The cursor stays where it is.
       # @param new_value [Object, nil] `nil` selects nothing; an item outside
       #   {#items} is kept but renders no marked row.
+      # @param from_user [Boolean] see {HasValue#set_value}.
       # @return [void]
-      def value=(new_value)
-        # HasValue#value= no-ops on an unchanged value; this guard is what also
+      def set_value(new_value, from_user:)
+        # HasValue#set_value no-ops on an unchanged value; this guard is what also
         # skips the row rebuild.
         return if value == new_value
 
@@ -167,7 +168,7 @@ module Tuile
       def select_at(index)
         return unless index.between?(0, items.size - 1)
 
-        self.value = items[index]
+        set_value(items[index], from_user: true)
       end
 
       # @param item [Object]

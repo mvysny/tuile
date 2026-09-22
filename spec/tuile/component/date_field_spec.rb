@@ -678,5 +678,21 @@ module Tuile
         assert_equal ["not a valid date", nil, "not a valid date"], seen
       end
     end
+
+    describe "from_user? on on_value_change" do
+      it "is false for value=, true for a commit gesture and a step" do
+        f = field
+        Screen.instance.focused = f
+        seen = []
+        f.on_value_change { |e| seen << [e.value&.iso8601, e.from_user?] }
+        f.value = Date.new(2026, 1, 1)
+        key(Keys::CTRL_U)
+        type("2026-09-14")
+        key(Keys::ENTER)
+        key(Keys::UP_ARROW)
+        f.formats = "%d.%m.%Y" # the buffer stops parsing under the new grammar
+        assert_equal [["2026-01-01", false], ["2026-09-14", true], ["2026-09-15", true], [nil, false]], seen
+      end
+    end
   end
 end

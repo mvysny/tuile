@@ -51,7 +51,6 @@ module Tuile
         @items = items.to_a
         @item_label = :to_s.to_proc
         @filtered = []
-        @suppressing_filter = false
 
         @field = TextField.new
         # One widget, one surface: the inner field paints no well of its own, so
@@ -59,7 +58,9 @@ module Tuile
         # bg_color reaches the cells the field paints.
         @field.bg_color = ComponentBackground::INHERIT
         bg.default_color = ComponentBackground::INPUT_WELL
-        @field.on_value_change { refill unless @suppressing_filter }
+        # Only the user's typing filters: a programmatic write to the field
+        # ({#sync_field}) must not spring the dropdown open.
+        @field.on_value_change { |e| refill if e.from_user? }
         # ESC is the one key this combo wants that the field consumes itself, so
         # it cannot arrive by bubbling the way {#handle_key?}'s do. With no menu
         # open it keeps the field's own meaning: cancel text entry.
@@ -104,8 +105,9 @@ module Tuile
       # *without* opening the dropdown, then fires {#on_value_change}. `nil`
       # clears the selection (blank field). The value need not be in {#items}.
       # @param new_value [Object]
+      # @param from_user [Boolean] see {HasValue#set_value}.
       # @return [void]
-      def value=(new_value)
+      def set_value(new_value, from_user:)
         return if value == new_value
 
         sync_field(display_for(new_value))
@@ -266,7 +268,7 @@ module Tuile
       # @return [void]
       def commit(item)
         close_menu
-        self.value = item
+        set_value(item, from_user: true)
       end
 
       # @return [void]
@@ -280,20 +282,15 @@ module Tuile
 
       # Sets the field's text without triggering a refilter — for programmatic
       # value changes and query reverts, which must not spring the dropdown.
-      # Every programmatic write to the field goes through here; a direct
-      # `field.value =` reaches the field's `on_value_change` and pops the dropdown
-      # open on a {#value=} the user never asked to browse.
-      # Parks the caret at the end: `value=` only *clamps* the caret, so a
+      # The write is `from_user: false`, which is all the field's listener
+      # checks. Parks the caret at the end: `value=` only *clamps* the caret, so a
       # shorter query replaced by a longer label would otherwise strand it
       # mid-word (commit "Go", then pick "Kotlin" → caret after "Ko").
       # @param text [String]
       # @return [void]
       def sync_field(text)
-        @suppressing_filter = true
         field.value = text
         field.caret = field.text.length
-      ensure
-        @suppressing_filter = false
       end
 
       # @param item [Object]

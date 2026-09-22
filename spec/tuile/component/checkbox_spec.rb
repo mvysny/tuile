@@ -242,5 +242,18 @@ module Tuile
         assert_equal true, b.value
       end
     end
+
+    describe "from_user? on on_value_change" do
+      it "is true for Space and a click, false for toggle and value=" do
+        cb = checkbox
+        seen = []
+        cb.on_value_change { |e| seen << e.from_user? }
+        cb.handle_key?(" ")
+        cb.handle_mouse_down?(Mouse::DownEvent.new(:left, 0, 0))
+        cb.toggle
+        cb.value = false
+        assert_equal [true, true, false, false], seen
+      end
+    end
   end
 end

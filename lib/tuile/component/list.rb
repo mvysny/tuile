@@ -269,9 +269,9 @@ module Tuile
       # it and {#items} stayed the same, e.g. one prefixing a marker read from
       # a selection it closes over:
       #
-      #   def value=(new_value)   # RadioGroup: the marked row moved
+      #   def set_value(new_value, from_user:)   # RadioGroup: the marked row moved
       #     super
-      #     content.refresh_rows
+      #     list.refresh_rows
       #   end
       #
       # @return [void]

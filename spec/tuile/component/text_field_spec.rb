@@ -1392,5 +1392,22 @@ module Tuile
         assert_equal 0, enters
       end
     end
+
+    describe "from_user? on on_value_change" do
+      it "is true for typing, a paste and a deleting key; false for value= and clear" do
+        f = Component::TextField.new
+        mount_at(f, Rect.new(0, 0, 20, 1))
+        Screen.instance.focused = f
+        seen = []
+        f.on_value_change { |e| seen << e.from_user? }
+        f.value = "ab"
+        Screen.instance.send(:handle_key?, "c")
+        f.handle_paste("de")
+        Screen.instance.send(:handle_key?, Keys::CTRL_U)
+        f.value = "x"
+        f.clear
+        assert_equal [false, true, true, true, false, false], seen
+      end
+    end
   end
 end

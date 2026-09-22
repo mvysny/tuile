@@ -297,6 +297,19 @@ module Tuile
       end
     end
 
+    # HasValue's rdoc: the override point is `set_value`, never `value=`. An
+    # override of `value=` still works when called and so passes the widget's
+    # own spec, but every gesture (typing, a click, `Testing.set_value`) writes
+    # through `set_value` and bypasses it without a trace (`D_from_user`).
+    context "leaves value= to HasValue" do
+      catalog.each_key.select { _1 <= Component::HasValue }.each do |klass|
+        it klass.name do
+          assert_equal Component::HasValue, klass.instance_method(:value=).owner,
+                       "#{klass} overrides value=; override set_value(new_value, from_user:) instead"
+        end
+      end
+    end
+
     # AGENTS.md, Repaint: "Never blank a cell you are about to
     # paint over — that is what makes the minimal diff minimal." A component
     # that clears and then repaints the same glyph marks the cell dirty anyway,
