@@ -51,10 +51,7 @@ module Tuile
       #   one-glyph-per-character contract {TextField#display_text} rests on,
       #   a wide one the column axis.
       def mask_char=(char)
-        raise TypeError, "expected String, got #{char.inspect}" unless char.is_a?(String)
-        raise ArgumentError, "expected one grapheme cluster, got #{char.inspect}" unless single_cluster?(char)
-        raise ArgumentError, "expected a 1-column glyph, got #{char.inspect}" unless Buffer.display_width(char) == 1
-
+        char = StyledString.validate_glyph(char, :mask_char)
         return if @mask_char == char
 
         @mask_char = char
@@ -90,10 +87,6 @@ module Tuile
       def display_text = revealed? ? super : @mask_char * @text.length
 
       private
-
-      # @param char [String]
-      # @return [Boolean]
-      def single_cluster?(char) = char.each_grapheme_cluster.take(2).size == 1
 
       # @return [Integer] caret target for CTRL+LEFT: the start, while masked.
       def word_left = revealed? ? super : 0

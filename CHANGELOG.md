@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+- Add `Component::Fill` — paints one glyph into every cell of its rect in a `color` slot taking a live `Theme.ref`, so a one-column `Fill.new("│")` is a vertical rule between borderless panes, sized by its parent and following theme changes on its own. See `design/decisions.md` `D_color_slots`.
+- Add `StyledString.validate_glyph(char, name)` — the check every glyph knob runs at assignment, raising unless `char` is one grapheme cluster one column wide.
 - Add `Color#rgb` — the `[r, g, b]` behind an RGB color or a palette index 16..255, for app color math such as a contrast check; `nil` for the 16 named colors, in either spelling, whose look the terminal's scheme decides.
 - Add `Component::Layout::Percent#clamp(range)` — bounds a `Box` child's share with an inclusive `Range` of cells, so `Percent[50].clamp(..60)` says "half the width, but never more than 60 columns", on either axis. See `design/decisions.md` `D_box_layouts`.
 - Add `Tuile::ComponentBackground` — a component's background chain, reached through the protected `Component#bg`: `bg.default_color=` states a widget's own well, `ComponentBackground::INPUT_WELL` being the input one, and `bg.effective` / `bg.ambient` answer what to paint. See `design/decisions.md` `D_bg_surface`.

@@ -4643,6 +4643,44 @@ module Tuile
       attr_reader source: Component
     end
 
+    # Fills every cell of its {#rect} with one glyph. Give it a one-column rect
+    # and `│` for a vertical rule between two borderless panes, a one-row rect
+    # and `─` for a horizontal one — the glyph decides the direction, the parent
+    # decides the length:
+    # 
+    #   rule = Component::Fill.new("│", color: Theme.ref(:pane_frame))
+    #   bottom = Component::Layout::Horizontal.new
+    #   bottom.add(system_pane, Layout::Percent[40])
+    #   bottom.add(rule, Layout::Fixed[1])
+    #   bottom.add(log_pane, Layout::Expand[1])
+    # 
+    # Display-only — not focusable, no keys, no mouse. The background behind
+    # the glyph is its own {Component#bg_color}, else inherited, as for any
+    # component.
+    class Fill < Component
+      # _@param_ `char` — initial {#char=}.
+      # 
+      # _@param_ `color` — initial {#color=}.
+      def initialize: (String char, ?color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?) -> void
+
+      # Paints {#char} into every cell. Not `super`: the default's clear would
+      # dirty every cell just before it is painted over.
+      # 
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (Canvas canvas) -> void
+
+      def resolved_color: () -> Color?
+
+      # _@return_ — the glyph painted into every cell; one grapheme
+      # cluster, one column wide.
+      attr_accessor char: String
+
+      # _@return_ — the value as set, so a {Theme::Ref}
+      # comes back unresolved; `nil` (the default) is the terminal's default
+      # foreground.
+      attr_accessor color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?
+    end
+
     # A scrollable list of typed items, one row each, with cursor support.
     # 
     #   list = Component::List.new
@@ -12885,9 +12923,6 @@ module Tuile
       # _@return_ — the mask, one glyph per character, unless {#revealed}.
       def display_text: () -> String
 
-      # _@param_ `char`
-      def single_cluster?: (String char) -> bool
-
       # _@return_ — caret target for CTRL+LEFT: the start, while masked.
       def word_left: () -> Integer
 
@@ -13413,17 +13448,6 @@ module Tuile
     # handlers on the owner, and why the handle sits where it does, are
     # `D_draggable_scrollbar`.
     class VerticalScrollBar < Component
-      # One cell, exactly: the bar's {#extent} is one column and it paints a
-      # glyph per row, so a two-column one spills onto the content beside it
-      # — silently, with nothing in the frame to point at.
-      # 
-      # _@param_ `char`
-      # 
-      # _@param_ `name` — the accessor, for the message.
-      # 
-      # _@return_ — frozen.
-      def self.validate_glyph: (String char, Symbol name) -> String
-
       # Fired with a {ScrollRequestEvent} when a drag or a track press asks
       # for a row other than the current one — never from {#scroll_top_row=},
       # so an owner assigning the row it was just handed loops nothing.
@@ -15423,6 +15447,26 @@ module Tuile
     # 
     # _@param_ `lenient` — when true, unmodeled SGR codes and non-SGR escapes are discarded instead of raising — see {StyledString} "## Parser". Lossy: the result no longer round-trips to `input`.
     def self.parse: ((String | StyledString)? input, ?lenient: bool) -> StyledString
+
+    # Checks a glyph knob's value at assignment: exactly one grapheme
+    # cluster, one column wide. A component painting one glyph per cell
+    # spills a wider one onto its neighbour — silently, with nothing in the
+    # frame to point at — so every glyph knob asks here rather than at paint.
+    # 
+    #   def track_char=(char)
+    #     @track_char = StyledString.validate_glyph(char, :track_char)
+    #   end
+    # 
+    # East-Asian-Ambiguous glyphs pass: Tuile measures them one column by
+    # construction (`D_ambiguous_width`), so no check can catch a terminal
+    # drawing them two.
+    # 
+    # _@param_ `char`
+    # 
+    # _@param_ `name` — the knob, for the message.
+    # 
+    # _@return_ — `char`, frozen.
+    def self.validate_glyph: (String char, (Symbol | String) name) -> String
 
     # _@param_ `spans`
     def initialize: (?::Array[Span] spans) -> void

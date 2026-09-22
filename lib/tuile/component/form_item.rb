@@ -79,18 +79,7 @@ module Tuile
         # @raise [TypeError] when `glyph` is not a String.
         # @raise [ArgumentError] when it is not exactly one cluster one column wide.
         def required_marker=(glyph)
-          raise TypeError, "required_marker must be a String, got #{glyph.inspect}" unless glyph.is_a?(String)
-
-          unless glyph.grapheme_clusters.size == 1
-            raise ArgumentError, "required_marker must be exactly one grapheme cluster, got #{glyph.inspect}"
-          end
-
-          width = StyledString.plain(glyph).display_width
-          unless width == 1
-            raise ArgumentError, "required_marker must be one column wide, got #{glyph.inspect} (#{width})"
-          end
-
-          @required_marker = -glyph
+          @required_marker = StyledString.validate_glyph(glyph, :required_marker)
         end
       end
 

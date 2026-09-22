@@ -403,6 +403,37 @@ module Tuile
           raise TypeError, "cannot parse #{input.class}"
         end
       end
+
+      # Checks a glyph knob's value at assignment: exactly one grapheme
+      # cluster, one column wide. A component painting one glyph per cell
+      # spills a wider one onto its neighbour — silently, with nothing in the
+      # frame to point at — so every glyph knob asks here rather than at paint.
+      #
+      #   def track_char=(char)
+      #     @track_char = StyledString.validate_glyph(char, :track_char)
+      #   end
+      #
+      # East-Asian-Ambiguous glyphs pass: Tuile measures them one column by
+      # construction (`D_ambiguous_width`), so no check can catch a terminal
+      # drawing them two.
+      # @param char [String]
+      # @param name [Symbol, String] the knob, for the message.
+      # @return [String] `char`, frozen.
+      # @raise [TypeError] when `char` is not a String.
+      # @raise [ArgumentError] when `char` is not exactly one grapheme cluster
+      #   one column wide.
+      def validate_glyph(char, name)
+        raise TypeError, "#{name} must be a String, got #{char.inspect}" unless char.is_a?(String)
+
+        unless char.each_grapheme_cluster.take(2).size == 1
+          raise ArgumentError, "#{name} must be exactly one grapheme cluster, got #{char.inspect}"
+        end
+
+        width = plain(char).display_width
+        raise ArgumentError, "#{name} must be one column wide, got #{char.inspect} (#{width})" unless width == 1
+
+        -char
+      end
     end
 
     # The framework's single emoji-width policy, passed to every

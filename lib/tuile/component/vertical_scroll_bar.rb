@@ -55,34 +55,13 @@ module Tuile
         # @raise [ArgumentError] when `char` is not exactly one grapheme
         #   cluster one column wide.
         def handle_char=(char)
-          @handle_char = validate_glyph(char, :handle_char)
+          @handle_char = StyledString.validate_glyph(char, :handle_char)
         end
 
         # @param char [String] see {handle_char=}.
         # @return [String]
         def track_char=(char)
-          @track_char = validate_glyph(char, :track_char)
-        end
-
-        private
-
-        # One cell, exactly: the bar's {#extent} is one column and it paints a
-        # glyph per row, so a two-column one spills onto the content beside it
-        # — silently, with nothing in the frame to point at.
-        # @param char [String]
-        # @param name [Symbol] the accessor, for the message.
-        # @return [String] frozen.
-        def validate_glyph(char, name)
-          raise TypeError, "#{name} must be a String, got #{char.inspect}" unless char.is_a?(String)
-
-          unless char.grapheme_clusters.size == 1
-            raise ArgumentError, "#{name} must be exactly one grapheme cluster, got #{char.inspect}"
-          end
-
-          width = StyledString.plain(char).display_width
-          raise ArgumentError, "#{name} must be one column wide, got #{char.inspect} (#{width})" unless width == 1
-
-          -char
+          @track_char = StyledString.validate_glyph(char, :track_char)
         end
       end
 
