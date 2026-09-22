@@ -263,8 +263,8 @@ module Tuile
     def rect=(new_rect)
       raise TypeError, "expected Rect, got #{new_rect.inspect}" unless new_rect.is_a? Rect
 
-      check_placer
-      Thread.current[PLACED] = true
+      LayoutPass.check(self)
+      LayoutPass.note_placement
       return if @rect == new_rect
 
       old_rect = @rect
@@ -1183,7 +1183,7 @@ module Tuile
     # mark is kept and costs a second pass.
     # @return [void]
     def invalidate_layout
-      return if Thread.current[PLACING].equal?(self) && !Thread.current[PLACED]
+      return if LayoutPass.before_first_placement?(self)
 
       @layout_dirty = true
       screen.invalidate_layout(self) if attached?
@@ -1346,7 +1346,7 @@ module Tuile
     # @return [void]
     def perform_relayout
       @layout_dirty = false
-      Component.__send__(:placing, self) { relayout }
+      LayoutPass.run(self) { relayout }
     end
 
     # The nearest ancestor whose pending {#relayout} would rewrite this
@@ -1365,52 +1365,10 @@ module Tuile
     end
 
     # What may assign this component's rect: its parent, whose {#relayout}
-    # does. {ScreenPane} answers its {Screen}.
+    # does. {ScreenPane} answers its {Screen}. An override point with no caller
+    # here — {LayoutPass.check} is its only reader.
     # @return [Component, Screen, nil]
     def placer = parent
-
-    # @raise [Tuile::Error] unless {#placer} is the one placing right now.
-    # @return [void]
-    def check_placer
-      current = Thread.current[PLACING]
-      return if !current.nil? && current.equal?(placer)
-
-      if parent.nil?
-        raise Tuile::Error, "#{self} has no parent to place it; to size a detached tree, " \
-                            "hold it in a Layout::Absolute (add(tree, rect), then flush_layout)"
-      end
-      raise Tuile::Error, "#{self}'s rect assigned outside #{parent}'s relayout; change what the parent " \
-                          "places it by instead (Absolute#constrain, Box#constrain, Overlay#placement=)"
-    end
-
-    # The thread-local naming what is placing children right now.
-    # @return [Symbol]
-    PLACING = :tuile_placing
-    private_constant :PLACING
-
-    # The thread-local saying whether the current placer has assigned a child
-    # rect yet — past that point, a mark on the placer is kept
-    # ({#invalidate_layout}).
-    # @return [Symbol]
-    PLACED = :tuile_placed
-    private_constant :PLACED
-
-    # Runs the block as `placer`, the one thing whose children's rects may be
-    # assigned inside it. A thread-local, because a tree with no screen places
-    # children too.
-    # @param placer [Component, Screen]
-    # @return [Object] the block's value.
-    def self.placing(placer)
-      outer = Thread.current[PLACING]
-      outer_placed = Thread.current[PLACED]
-      Thread.current[PLACING] = placer
-      Thread.current[PLACED] = false
-      yield
-    ensure
-      Thread.current[PLACING] = outer
-      Thread.current[PLACED] = outer_placed
-    end
-    private_class_method :placing
 
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the

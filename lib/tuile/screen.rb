@@ -1017,7 +1017,7 @@ module Tuile
     # so the screen places it itself.
     # @return [void]
     def size_pane
-      Component.__send__(:placing, self) { @pane.__send__(:rect=, Rect.new(0, 0, @size.width, @size.height)) }
+      LayoutPass.run(self) { @pane.__send__(:rect=, Rect.new(0, 0, @size.width, @size.height)) }
     end
 
     # Whether anything on `component`'s ancestor chain actually cuts it — the

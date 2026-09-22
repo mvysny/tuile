@@ -3619,8 +3619,6 @@ module Tuile
     extend Tuile::Listeners::Declare
     BG_STATES: ::Array[Symbol]
     BG_INHERIT: Symbol
-    PLACING: Symbol
-    PLACED: Symbol
 
     def initialize: () -> void
 
@@ -4500,19 +4498,9 @@ module Tuile
     def stale_layout_ancestor: () -> Component?
 
     # What may assign this component's rect: its parent, whose {#relayout}
-    # does. {ScreenPane} answers its {Screen}.
+    # does. {ScreenPane} answers its {Screen}. An override point with no caller
+    # here — {LayoutPass.check} is its only reader.
     def placer: () -> (Component | Screen)?
-
-    def check_placer: () -> void
-
-    # Runs the block as `placer`, the one thing whose children's rects may be
-    # assigned inside it. A thread-local, because a tree with no screen places
-    # children too.
-    # 
-    # _@param_ `placer`
-    # 
-    # _@return_ — the block's value.
-    def self.placing: ((Component | Screen) placer) -> Object
 
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the
@@ -14893,6 +14881,71 @@ module Tuile
     attr_reader prints: ::Array[String]
   end
 
+  # Who may assign a rect right now. {Component#rect=} is refused outside the
+  # parent's {Component#relayout}, and this is the bracket that says when one
+  # is running:
+  # 
+  #   LayoutPass.run(container) { relayout }    # inside the container
+  # 
+  # A pass also records whether it has placed a child *yet*, which is what lets
+  # {Component#invalidate_layout} drop a mark a container makes on itself
+  # before its first placement: the pass that would answer it is the one
+  # running.
+  # 
+  # **Thread-local rather than an ivar**, because a tree with no {Screen}
+  # places children too, so there is no one object to hang the state on.
+  # 
+  # Tuile-internal: a member may change or vanish with no migration note. The
+  # rule it enforces is {Component#rect=}'s and is documented there.
+  # 
+  # @api private
+  module LayoutPass
+    PLACING: Symbol
+    PLACED: Symbol
+
+    # Runs the block with `placer` as the one thing whose children's rects may
+    # be assigned. Nests: the enclosing pass is restored on the way out.
+    # 
+    # _@param_ `placer`
+    # 
+    # _@return_ — the block's value.
+    def run: ((Component | Screen) placer) -> Object
+
+    # Runs the block with `placer` as the one thing whose children's rects may
+    # be assigned. Nests: the enclosing pass is restored on the way out.
+    # 
+    # _@param_ `placer`
+    # 
+    # _@return_ — the block's value.
+    def self.run: ((Component | Screen) placer) -> Object
+
+    # _@param_ `component` — the one whose rect is being assigned.
+    def check: (Component component) -> void
+
+    # _@param_ `component` — the one whose rect is being assigned.
+    def self.check: (Component component) -> void
+
+    # Records that the running pass has assigned a child rect, past which a
+    # mark on the placer is kept rather than dropped.
+    def note_placement: () -> void
+
+    # Records that the running pass has assigned a child rect, past which a
+    # mark on the placer is kept rather than dropped.
+    def self.note_placement: () -> void
+
+    # Whether `component` is the running placer and has placed no child yet —
+    # the window in which a mark it makes on itself is redundant.
+    # 
+    # _@param_ `component`
+    def before_first_placement?: (Component component) -> bool
+
+    # Whether `component` is the running placer and has placed no child yet —
+    # the window in which a mark it makes on itself is redundant.
+    # 
+    # _@param_ `component`
+    def self.before_first_placement?: (Component component) -> bool
+  end
+
   # The structural root of the {Screen}'s component tree.
   # 
   # {Screen} is a singleton runtime owner (event loop, lock, terminal IO,
@@ -14913,8 +14966,6 @@ module Tuile
   class ScreenPane < Tuile::Component
     BG_STATES: ::Array[Symbol]
     BG_INHERIT: Symbol
-    PLACING: Symbol
-    PLACED: Symbol
 
     def initialize: () -> void
 
