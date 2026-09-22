@@ -336,6 +336,7 @@ module Tuile
     COLOR_SYMBOLS: ::Array[Symbol]
     CUBE_LEVELS: ::Array[Integer]
     CUBE_INDEX: ::Array[Integer]
+    PALETTE_RGB: ::Array[::Array[Integer]?]
     ANSI16_RGB: ::Array[::Array[Integer]]
     ANSI16_COLORS: ::Array[Color]
     PALETTE_COLORS: ::Array[Color]
@@ -379,6 +380,22 @@ module Tuile
 
     # _@param_ `value` — see class-level docs for the three accepted forms.
     def initialize: ((Symbol | Integer | ::Array[Integer]) value) -> void
+
+    # This color's red, green and blue, for an app doing color math — a
+    # contrast check, a tint derived from {Screen#background_color}:
+    # 
+    #   Color.hex("#ff6400").rgb   # => [255, 100, 0]
+    #   Color::DEEP_SKY_BLUE1.rgb  # => [0, 175, 255], palette cell 39
+    #   Color::MAGENTA.rgb         # => nil, the terminal's scheme decides
+    #   Color.palette(5).rgb       # => nil, likewise
+    # 
+    # `nil` for the 16 named colors, in either spelling, because the scheme
+    # remaps them and any answer would be a guess. Indices 16..255 answer
+    # xterm's cube and grey ramp: a terminal *may* redefine those too (OSC 4),
+    # but in practice none does.
+    # 
+    # _@return_ — frozen, each channel 0..255.
+    def rgb: () -> ::Array[Integer]?
 
     # SGR parameter codes for emitting this color as either a foreground
     # (`target: :fg`) or background (`target: :bg`). Returned as an array so
@@ -431,9 +448,9 @@ module Tuile
 
     def inspect: () -> String
 
-    # This color's RGB — the palette cell's own coordinates when the value is
-    # an index. Only ever asked of a non-Symbol value; a named color has no
-    # RGB of its own, since the terminal's scheme decides what it looks like.
+    # {#rgb}, except an index 0..15 answers xterm's default for it — the guess
+    # `:ansi16` quantization needs something to match against, and {#rgb}
+    # must not hand out. Only ever asked of a non-Symbol value.
     # 
     # _@return_ — red, green and blue, each 0..255.
     def rgb_triple: () -> ::Array[Integer]

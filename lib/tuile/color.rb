@@ -122,6 +122,27 @@ module Tuile
     # @return [Symbol, Integer, Array<Integer>]
     attr_reader :value
 
+    # This color's red, green and blue, for an app doing color math — a
+    # contrast check, a tint derived from {Screen#background_color}:
+    #
+    #   Color.hex("#ff6400").rgb   # => [255, 100, 0]
+    #   Color::DEEP_SKY_BLUE1.rgb  # => [0, 175, 255], palette cell 39
+    #   Color::MAGENTA.rgb         # => nil, the terminal's scheme decides
+    #   Color.palette(5).rgb       # => nil, likewise
+    #
+    # `nil` for the 16 named colors, in either spelling, because the scheme
+    # remaps them and any answer would be a guess. Indices 16..255 answer
+    # xterm's cube and grey ramp: a terminal *may* redefine those too (OSC 4),
+    # but in practice none does.
+    #
+    # @return [Array<Integer>, nil] frozen, each channel 0..255.
+    def rgb
+      case @value
+      when Array then @value
+      when Integer then PALETTE_RGB[@value]
+      end
+    end
+
     # SGR parameter codes for emitting this color as either a foreground
     # (`target: :fg`) or background (`target: :bg`). Returned as an array so
     # callers can splice them into a multi-attribute SGR (e.g. bold + color).
@@ -214,17 +235,12 @@ module Tuile
 
     private
 
-    # This color's RGB — the palette cell's own coordinates when the value is
-    # an index. Only ever asked of a non-Symbol value; a named color has no
-    # RGB of its own, since the terminal's scheme decides what it looks like.
+    # {#rgb}, except an index 0..15 answers xterm's default for it — the guess
+    # `:ansi16` quantization needs something to match against, and {#rgb}
+    # must not hand out. Only ever asked of a non-Symbol value.
     # @return [Array<Integer>] red, green and blue, each 0..255.
     def rgb_triple
-      return @value if @value.is_a?(Array)
-      return ANSI16_RGB[@value] if @value < 16
-      return [8 + (10 * (@value - 232))] * 3 if @value >= 232
-
-      cube = @value - 16
-      [CUBE_LEVELS[cube / 36], CUBE_LEVELS[(cube / 6) % 6], CUBE_LEVELS[cube % 6]]
+      rgb || ANSI16_RGB[@value]
     end
 
     # Written flat — destructured rather than splatted, `x * x` rather than
@@ -292,6 +308,19 @@ module Tuile
     # @return [Array<Integer>]
     CUBE_INDEX = Array.new(256) { |c| (0...6).min_by { |i| (CUBE_LEVELS[i] - c).abs } }.freeze
     private_constant :CUBE_INDEX
+
+    # Palette index 0..255 → its RGB, frozen, or nil for 0..15 — what {#rgb}
+    # answers for an index, precomputed so it allocates nothing.
+    # @return [Array<Array<Integer>, nil>]
+    PALETTE_RGB = Array.new(256) do |index|
+      if index < 16 then nil
+      elsif index >= 232 then ([8 + (10 * (index - 232))] * 3).freeze
+      else
+        cube = index - 16
+        [CUBE_LEVELS[cube / 36], CUBE_LEVELS[(cube / 6) % 6], CUBE_LEVELS[cube % 6]].freeze
+      end
+    end.freeze
+    private_constant :PALETTE_RGB
 
     # xterm's default RGB for each of the 16 named colors, in {COLOR_SYMBOLS}
     # order — what `:ansi16` quantization matches against. A terminal scheme

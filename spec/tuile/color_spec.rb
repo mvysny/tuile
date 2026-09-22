@@ -273,6 +273,36 @@ module Tuile
       end
     end
 
+    describe "#rgb" do
+      it "answers an RGB color's own channels" do
+        assert_equal [255, 100, 0], Color.hex("#ff6400").rgb
+      end
+
+      it "answers a cube cell's coordinates" do
+        assert_equal [0, 175, 255], Color::DEEP_SKY_BLUE1.rgb
+        assert_equal [0, 0, 0], Color.palette(16).rgb
+        assert_equal [255, 255, 255], Color.palette(231).rgb
+      end
+
+      it "answers a grey-ramp step" do
+        assert_equal [8, 8, 8], Color.palette(232).rgb
+        assert_equal [238, 238, 238], Color.palette(255).rgb
+      end
+
+      it "answers nil for a named color, whose look the terminal's scheme decides" do
+        Color::COLOR_SYMBOLS.each { assert_nil Color.new(_1).rgb }
+      end
+
+      it "answers nil for the palette indices the scheme remaps too" do
+        (0..15).each { assert_nil Color.palette(_1).rgb }
+      end
+
+      it "hands out a frozen triple" do
+        assert_predicate Color.palette(67).rgb, :frozen?
+        assert_predicate Color.rgb(1, 2, 3).rgb, :frozen?
+      end
+    end
+
     describe "#quantize" do
       context "returns the receiver when the depth can show it as-is" do
         it "keeps a named color at every depth" do
@@ -334,6 +364,7 @@ module Tuile
         it "maps a palette cell onto the named color it matches" do
           assert_equal Color::BRIGHT_RED, Color.palette(196).quantize(:ansi16)
           assert_equal Color::BLACK, Color.palette(16).quantize(:ansi16)
+          assert_equal Color::WHITE, Color.palette(250).quantize(:ansi16)
         end
 
         it "maps a low palette index onto its own name, which 38;5 would not reach" do
