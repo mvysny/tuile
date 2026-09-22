@@ -500,27 +500,40 @@ module Tuile
       slice_spans(start, len)
     end
 
-    # Truncates to a target column width, appending an ellipsis when
-    # characters were dropped. The ellipsis counts toward the target — the
-    # returned {StyledString}'s `display_width` never exceeds
-    # `display_width`. When `self` already fits, `self` is returned. When
-    # `display_width` is smaller than the ellipsis's own width, the ellipsis
-    # is sliced down to fit and no original content is included.
+    # Truncates to a target column width, marking the cut end with an ellipsis.
+    # The ellipsis counts toward the target — the returned {StyledString}'s
+    # `display_width` never exceeds `display_width`, and comes out a column
+    # short when the cut lands mid-cluster, since a wide glyph straddling the
+    # boundary is dropped rather than halved. When `self` already fits, `self`
+    # is returned. When `display_width` is smaller than the ellipsis's own
+    # width, the ellipsis is sliced down to fit and no original content is
+    # included.
+    #
+    # `at: :start` keeps the *tail* instead, for text whose end identifies it
+    # and whose head is context — a path (`…/shared/markdown/`), a log line's
+    # message after its prefix.
     #
     # @param display_width [Integer] target column width.
-    # @param ellipsis [String, StyledString] appended when truncation
+    # @param ellipsis [String, StyledString] added when truncation
     #   occurs. Defaults to the Unicode horizontal-ellipsis `…` (one
     #   column). A `String` is parsed via {.parse}, so ANSI in it is
     #   preserved.
+    # @param at [Symbol] which end is cut: `:end` (the default) keeps the head
+    #   and appends, `:start` keeps the tail and prepends.
+    # @raise [ArgumentError] unless `at` is `:start` or `:end`.
     # @return [StyledString]
-    def ellipsize(display_width, ellipsis = "…")
+    def ellipsize(display_width, ellipsis = "…", at: :end)
+      raise ArgumentError, "expected :start or :end, got #{at.inspect}" unless %i[start end].include?(at)
       return self.class.new if display_width <= 0
       return self if self.display_width <= display_width
 
       ellipsis = self.class.parse(ellipsis)
       return ellipsis.slice(0, display_width) if ellipsis.display_width >= display_width
 
-      slice(0, display_width - ellipsis.display_width) + ellipsis
+      keep = display_width - ellipsis.display_width
+      return ellipsis + slice(self.display_width - keep, keep) if at == :start
+
+      slice(0, keep) + ellipsis
     end
 
     # Splits on `"\n"`, preserving spans on each side. A trailing newline

@@ -53,7 +53,7 @@ module FileCommanderExample
     def initialize(start_dir)
       super()
       self.cursor = Tuile::Component::List::Cursor.new
-      self.renderer = ->(entry) { Rainbow(entry[:display]).color(TYPE_COLORS[entry[:type]]) }
+      self.renderer = ->(entry, _w) { Rainbow(entry[:display]).color(TYPE_COLORS[entry[:type]]) }
       @cwd = File.expand_path(start_dir)
       load_entries
       on_item_chosen << method(:descend)

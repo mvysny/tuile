@@ -290,11 +290,13 @@ module Tuile
         # @param items [Array<Item>]
         # @return [Proc] item -> row: the label padded to the level's widest, plus
         #   an arrow column when any sibling has a submenu — so every arrow lands
-        #   in the same column without asking the {List} how wide it ended up.
+        #   in the same column. The width {List} offers a renderer is no use
+        #   here: {#width_for} derives the panel's width from these same labels,
+        #   so laying out against it would be circular.
         def renderer_for(items)
           label_width = label_width_of(items)
           arrows = items.any?(&:submenu?)
-          lambda do |item|
+          lambda do |item, _text_width|
             row = item.cued_caption.ellipsize(label_width)
             row += StyledString.plain(" " * (label_width - row.display_width))
             next row unless arrows

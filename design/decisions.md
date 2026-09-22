@@ -1952,6 +1952,41 @@ The cost we carry: **one item is one row.** A multi-line rendering keeps its fir
 reaching the buffer corrupts the frame, and any other rule (raise, split into several rows) breaks
 the index-is-the-item identity the whole change rests on.
 
+**The renderer is handed the width as well** ([issue #54](https://github.com/mvysny/tuile/issues/54)):
+`(item, text_width) -> row`, the columns the row body gets, gutters and scrollbar column already
+deducted. A row whose *shape* depends on the space it has — a right-hand column aligned down the
+pane, a path elided from the left so its tail survives — is not expressible by the trailing
+ellipsis, and the app's remaining move was to lay its own text out at a settled width and hand
+`List` finished strings: the pre-renderer design, back one pane at a time. Free at a seam that
+already existed — the row cache is dropped by every width change and scrollbar toggle, so a
+width-dependent row is already re-rendered exactly when it must be, and re-rendering is
+viewport-bounded. The one price is the renderer's: a measurement over the whole snapshot (the widest
+counts column) is computed where `items=` is assigned, or it is an O(items²) pass on every resize.
+
+The direction is what keeps this out of `D_declared_size`'s way: the renderer is *told* its budget
+and never reports one, so no bottom-up channel reopens.
+
+Why not:
+
+- **Sniffing the arity**, so a one-argument renderer keeps working. The rule would span four
+  callable flavours that disagree — `:itself.to_proc` answers `-2`, a `Method` answers `1`, a `proc`
+  swallows a surplus argument where a lambda raises — making it a mode inferred at run time from an
+  object the app supplies, ungreppable and unpinnable. And it fails *open*: hand a one-argument
+  lambda the width it never declared and nothing happens, which is the silent failure the argument
+  exists to delete. An explicit `width_aware:` flag is the same wart with a name. Pre-1.0 the break
+  cost six in-gem call sites and a `_w` in every renderer that does not care.
+- **A public `List#text_width` a renderer closes over.** No break and no unused parameter, but the
+  row's dependence on the width stays invisible to the cache contract that makes it safe, and a
+  render helper shared by two lists reads whichever one it captured.
+- **A segmented row type** (`Row[fixed, flex, fixed]`), the honest shape for aligned columns. It is a
+  layout engine living inside a renderer, in the one component whose bargain is that the *app*
+  renders; both known cases are one `rjust` each.
+- **`ellipsis: :start` on `List`, or a per-row marker** — the issue's second half. A renderer holding
+  the exact budget elides its own row in one call, so the option buys no capability while the cache
+  grows a row-plus-mode pair and `pad_to_row` a branch. What was genuinely missing was the cut
+  itself: `StyledString#ellipsize(width, at: :start)`, which lands where cluster-boundary slicing
+  already lives, serves any renderer or caller, and touches no component.
+
 ## D_scroll_nomenclature — Why is `row` the grid unit, `line` what `String#lines` returns, and `items` domain objects?
 
 Three scrolling components had grown three vocabularies for the same four concepts — a content

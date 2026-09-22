@@ -171,10 +171,12 @@ module Tuile
       end
 
       # @param item [Object]
+      # @param _text_width [Integer] unused: a marker plus a label is as wide as
+      #   it is, and {List} ellipsizes what will not fit.
       # @return [StyledString] the item's row: its label behind a selection
       #   marker. The {List} calls this at paint time, so the marker tracks
       #   {#value} without re-rendering anything but the visible rows.
-      def render_row(item)
+      def render_row(item, _text_width)
         StyledString.plain(item == value ? "(*) " : "( ) ") + label_for(item)
       end
 

@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+- Add `StyledString#ellipsize`'s `at:` — `:start` keeps the *tail* and prepends the ellipsis, for text whose end identifies it and whose head is context (`…/shared/markdown/`); `:end` stays the default.
+- **Breaking:** `Component::List#renderer` is now called as `(item, text_width) -> row` — the columns the row body gets, so a row can align a right-hand column down the pane or elide a path from the left, re-rendered whenever that width changes. Give every renderer a second parameter (`->(u) { … }` becomes `->(u, _w) { … }`); a one-argument callable raises when a row is rendered. See `design/decisions.md` `D_list_items`.
 - Add `Tuile.strict_layout` — the stale-rect diagnostic: under `:raise` or `:warn`, a `Component#rect` read the app makes while an ancestor owes a `relayout` names that ancestor and the read site instead of answering the previous pass's rectangle; off by default outside a `FakeScreen`. See `design/decisions.md` `D_strict_layout`.
 - Add `Tuile.without_strict_layout` — runs a block with the diagnostic off, for a read that is pre-settle on purpose, and restores whatever was in force, default included.
 - Add `Testing.place(component, rect)` — moves a component within the parent it already has, through whatever places it there, since `rect=` raises outside the parent's `relayout`: a parentless root in a throwaway holder, an `Absolute` child by its constraint, an open overlay by `At[rect]`; it never attaches or re-parents.

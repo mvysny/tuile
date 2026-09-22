@@ -6,14 +6,26 @@ module Tuile
     #
     #   list = Component::List.new
     #   list.items    = people
-    #   list.renderer = ->(p) { StyledString.plain(p.name) + screen.theme.fg(:muted, " #{p.email}") }
+    #   list.renderer = ->(p, _w) { StyledString.plain(p.name) + screen.theme.fg(:muted, " #{p.email}") }
     #   list.cursor   = List::Cursor.new                  # a bare list has none
     #   list.on_item_chosen { |e| open(e.item) }
     #
-    # The {#renderer} turns an item into one row; the default renders an item
-    # as itself, so a list of `String`s or {StyledString}s needs none — which
-    # is what {#lines=} and {#build_lines} are, items that are their own
-    # rendering (split on `\n`, one row per line).
+    # The {#renderer} turns an item and the columns it gets into one row; the
+    # default renders an item as itself and ignores the width, so a list of
+    # `String`s or {StyledString}s needs none — which is what {#lines=} and
+    # {#build_lines} are, items that are their own rendering (split on `\n`,
+    # one row per line).
+    #
+    # A renderer that *uses* the width lays out against it — an aligned
+    # right-hand column, a path elided from the left — neither of which a
+    # trailing ellipsis can express:
+    #
+    #   counts_w = files.map { _1.counts.length }.max   # per snapshot, not per row
+    #   list.renderer = lambda do |file, w|
+    #     name = StyledString.plain(file.path).ellipsize(w - counts_w - 1, at: :start)
+    #     gap  = " " * (w - counts_w - name.display_width)
+    #     name + StyledString.plain(gap + file.counts)
+    #   end
     #
     # There are no appenders. The items are always assigned whole — an app that
     # grows a list keeps its own array and re-assigns it (`list.items = mine`) —
@@ -38,15 +50,17 @@ module Tuile
     # memoized until {#items=}, {#renderer=} or a width change drops the cache.
     # So a renderer runs *at paint time*, on any frame — keep it pure and
     # cheap; work that reaches a service belongs in the item, not in the
-    # renderer. {#select_next} deliberately renders without memoizing: one
-    # failed scan would otherwise cache a row per item.
+    # renderer, and a measurement over the whole snapshot (the example's widest
+    # counts column) is computed where {#items=} is assigned, or it is an
+    # O(items²) pass on every resize. {#select_next} deliberately renders
+    # without memoizing: one failed scan would otherwise cache a row per item.
     class List < Component
-      # The default {#renderer}: an item renders as itself. Every renderer's
-      # output is coerced the same way — a {StyledString} passes through, a
-      # `String` is parsed (so embedded ANSI is honored), anything else is
-      # `#to_s`'d first.
+      # The default {#renderer}: an item renders as itself, whatever the width.
+      # Every renderer's output is coerced the same way — a {StyledString}
+      # passes through, a `String` is parsed (so embedded ANSI is honored),
+      # anything else is `#to_s`'d first.
       # @return [Proc]
-      DEFAULT_RENDERER = :itself.to_proc
+      DEFAULT_RENDERER = ->(item, _text_width) { item }
 
       def initialize
         super
@@ -190,9 +204,15 @@ module Tuile
       # @return [Array] the items, one row each.
       attr_reader :items
 
-      # @return [Proc, Method] item -> row: a {StyledString}, a `String` (parsed,
-      #   so embedded ANSI is honored), or anything with `#to_s`. Only the first
-      #   line of a multi-line rendering is kept — one item is one row.
+      # The width is passed whether or not a renderer wants it, so a
+      # one-argument callable raises when a row is rendered.
+      # @return [Proc, Method] `(item, text_width) -> row`: a {StyledString}, a
+      #   `String` (parsed, so embedded ANSI is honored), or anything with
+      #   `#to_s`. Only the first line of a multi-line rendering is kept — one
+      #   item is one row. `text_width` is the display columns the row body
+      #   gets, gutters and scrollbar column already deducted; it is `0` before
+      #   the list has a rect, and every change to it drops the row cache, so a
+      #   width-dependent row is never left over from the old width.
       attr_reader :renderer
 
       # Replaces the items, leaving the cursor where it is — a cursor left past
@@ -213,7 +233,7 @@ module Tuile
         invalidate_layout # the bar's row_count follows @items.size
       end
 
-      # @param proc [Proc, Method] item -> row; see {#renderer}.
+      # @param proc [Proc, Method] `(item, text_width) -> row`; see {#renderer}.
       # @return [void]
       def renderer=(proc)
         @renderer = proc
@@ -826,6 +846,15 @@ module Tuile
         rect.width - (scrollbar_visible? ? 1 : 0)
       end
 
+      # The budget handed to {#renderer} and the width {#pad_to_row} fits a row
+      # into: {#content_width} less the gutter either side. Clamped at `0` — a
+      # list with no rect still renders when {#search_and_go} scans it, and a
+      # renderer subtracting from a negative width would blow up at paint time.
+      # @return [Integer] display columns available to the row body.
+      def text_width
+        [content_width - 2, 0].max
+      end
+
       # Discards every rendered row, so the next paint re-renders the viewport
       # against the current items, renderer and width.
       # @return [void]
@@ -854,7 +883,7 @@ module Tuile
       #   {StyledString}, cut to its first line since a `\n` reaching the buffer
       #   would corrupt the frame.
       def render(item)
-        rendered = @renderer.call(item)
+        rendered = @renderer.call(item, text_width)
         rendered = StyledString.parse(rendered.to_s) unless rendered.is_a?(StyledString)
         return rendered unless rendered.spans.any? { _1.text.include?("\n") }
 
@@ -875,9 +904,8 @@ module Tuile
         return StyledString::EMPTY if cw <= 0
         return StyledString.plain(" " * cw) if cw < 2
 
-        text_width = cw - 2
         body = row.ellipsize(text_width)
-        fill = cw - 2 - body.display_width
+        fill = text_width - body.display_width
         StyledString.plain(" ") + body + StyledString.plain(" " * (fill + 1))
       end
 

@@ -74,7 +74,7 @@ module Tuile
         # Outside-click dismissal spans the owner chain, so a click on this
         # select's dropdown must not dismiss a dialog the select sits in.
         @overlay.owner = self
-        @overlay.renderer = method(:label_for)
+        @overlay.renderer = ->(item, _text_width) { label_for(item) }
         @overlay.list.on_item_chosen { |e| commit(e.item) }
       end
 
