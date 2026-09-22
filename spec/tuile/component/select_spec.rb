@@ -65,8 +65,8 @@ module Tuile
         panel.add(s)
         Screen.instance.content = panel
         panel.bg_color = 52
-        panel.rect = Rect.new(0, 0, 20, 5)
-        s.rect = Rect.new(0, 0, 20, 5)
+        place(panel, Rect.new(0, 0, 20, 5))
+        place(s, Rect.new(0, 0, 20, 5))
         repaint(s)
 
         assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
@@ -77,7 +77,7 @@ module Tuile
         s = Component::Select.new
         s.items = %w[one two]
         Screen.instance.content = s
-        s.rect = Rect.new(0, 0, 20, 1)
+        place(s, Rect.new(0, 0, 20, 1))
         s.bg_color = 52
         repaint(s)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
@@ -224,7 +224,7 @@ module Tuile
         s = Component::Select.new(items: default_items)
         layout.add(s)
         Screen.instance.content = layout
-        s.rect = Rect.new(0, 0, 20, 1)
+        place(s, Rect.new(0, 0, 20, 1))
         s.focus
         [s, seen]
       end
@@ -370,14 +370,14 @@ module Tuile
       # the dropdown either — the same rule Checkbox follows on the width axis.
       it "ignores a click in the tail below its one painted row" do
         s = select
-        s.rect = Rect.new(0, 0, 20, 25) # as a Popup content slot would assign
+        place(s, Rect.new(0, 0, 20, 25)) # as a Popup content slot would assign
         click(5, 12)
         refute overlay(s).open?
       end
 
       it "still opens from a click on the painted row of a tall rect" do
         s = select
-        s.rect = Rect.new(0, 0, 20, 25)
+        place(s, Rect.new(0, 0, 20, 25))
         click(5, 0)
         assert overlay(s).open?
       end
@@ -501,7 +501,7 @@ module Tuile
         s = select
         s.focus
         key(Keys::ENTER)
-        s.rect = Rect.new(6, 10, 20, 1)
+        place(s, Rect.new(6, 10, 20, 1))
         assert_equal Rect.new(6, 11, 20, 4), settle(overlay(s)).rect
       end
 
@@ -520,9 +520,9 @@ module Tuile
         Screen.instance.content = layout
         s = Component::Select.new(items: default_items)
         layout.add(s)
-        s.rect = Rect.new(0, 0, 20, 1)
-        layout.add(Component::Label.new("inert").tap { _1.rect = Rect.new(0, 10, 20, 1) })
-        layout.rect = Rect.new(0, 0, 60, 20)
+        place(s, Rect.new(0, 0, 20, 1))
+        layout.add(Component::Label.new("inert"), Rect.new(0, 10, 20, 1))
+        place(layout, Rect.new(0, 0, 60, 20))
         s.focus
         key(Keys::ENTER)
         assert overlay(s).open?

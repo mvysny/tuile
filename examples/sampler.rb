@@ -31,13 +31,13 @@ module SamplerExample
     light: Tuile::Theme::LIGHT.with(custom: { hint: Tuile::Color::GREY62 })
   )
 
-  # Sampler-local container: a {Tuile::Component::Layout::Absolute} that runs a
+  # Sampler-local container: a {Tuile::Component::Layout} that runs a
   # caller-supplied block from `relayout` to position its children. Most demos
   # are plain stacks and use the box layouts instead; this is what's left for
   # the two that aren't — a sidebar whose width is `min(16, width / 3)`, which
   # is a cap on a proportion and so outside {Tuile::Component::Layout::Box}'s
   # Fixed/Percent/Expand vocabulary by design.
-  class Panel < Tuile::Component::Layout::Absolute
+  class Panel < Tuile::Component::Layout
     def initialize(&layout_block)
       super()
       @layout_block = layout_block
@@ -285,11 +285,11 @@ module SamplerExample
 
     # Clamps the caret into the new rect, so a shrink cannot strand it — and
     # with it the hardware cursor — outside what this widget paints.
-    # @param new_rect [Tuile::Rect]
-    def rect=(new_rect)
+    # @param old_rect [Tuile::Rect]
+    def handle_rect_changed(old_rect)
       super
-      @caret = Tuile::Point.new(@caret.x.clamp(0, [new_rect.width - 1, 0].max),
-                                @caret.y.clamp(0, [new_rect.height - 1, 0].max))
+      @caret = Tuile::Point.new(@caret.x.clamp(0, [rect.width - 1, 0].max),
+                                @caret.y.clamp(0, [rect.height - 1, 0].max))
     end
 
     # @return [void]
@@ -1115,10 +1115,9 @@ module SamplerExample
           overlay.close if overlay.open?
         else
           overlay.items = matches
-          overlay.open unless overlay.open?
           # Width is the driver's call, never the dropdown's: measure the
           # commands rather than inherit the full-width TextArea's columns.
-          overlay.anchor_to(area.absolute_rect, rows: matches.size, width: slash_menu_width(matches))
+          overlay.anchor_to(area, width: slash_menu_width(matches))
         end
       end
 
@@ -2131,7 +2130,7 @@ module SamplerExample
     end
 
     # The slash menu's width: the widest command plus List's two row gutters,
-    # clamped to the screen. ListDropdown places itself but never measures — the
+    # clamped to the screen. ListDropdown hangs off its anchor but never measures — the
     # width policy stays with the driver, exactly as it does for Select.
     # @return [Integer]
     def slash_menu_width(matches)

@@ -17,14 +17,14 @@ module Tuile
     it "maps the main axis to height and the cross axis to width" do
       layout = Component::Layout::Vertical.new
       layout.add(Component.new, fixed(3), cross: fixed(8))
-      layout.rect = Rect.new(0, 0, 20, 10)
+      place(layout, Rect.new(0, 0, 20, 10))
       assert_equal Rect.new(0, 0, 8, 3), rects(layout).first
     end
 
     it "stacks children downward" do
       layout = Component::Layout::Vertical.new
       layout.add([Component.new, Component.new, Component.new], fixed(2))
-      layout.rect = Rect.new(5, 7, 20, 10)
+      place(layout, Rect.new(5, 7, 20, 10))
       # The box's own coordinates: the children stack from its top edge, and
       # its position on screen is nowhere in their rects.
       assert_equal [0, 2, 4], tops(layout)
@@ -37,7 +37,7 @@ module Tuile
       layout = Component::Layout::Vertical.new
       layout.add(Component.new, fixed(1), cross: fixed(4), align: :start)
       layout.add(Component.new, fixed(1), cross: fixed(4), align: :end)
-      layout.rect = Rect.new(0, 0, 20, 10)
+      place(layout, Rect.new(0, 0, 20, 10))
       assert_equal [0, 16], lefts(layout)
     end
 
@@ -45,9 +45,9 @@ module Tuile
       layout = Component::Layout::Vertical.new
       layout.add(Component.new, fixed(2))
       layout.add(Component.new, expand(1))
-      layout.rect = Rect.new(0, 0, 20, 10)
+      place(layout, Rect.new(0, 0, 20, 10))
       assert_equal [2, 8], heights(layout)
-      layout.rect = Rect.new(0, 0, 20, 20)
+      place(layout, Rect.new(0, 0, 20, 20))
       assert_equal [2, 18], heights(layout)
     end
 
@@ -59,7 +59,7 @@ module Tuile
       second.text = "second"
       layout.add([first, second], fixed(1))
       Screen.instance.content = layout
-      layout.rect = Rect.new(0, 0, 10, 5)
+      place(layout, Rect.new(0, 0, 10, 5))
       Screen.instance.repaint
       assert_equal ["first     ", "          ", "second    "],
                    Screen.instance.buffer.region_text(Rect.new(0, 0, 10, 3))

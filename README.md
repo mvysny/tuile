@@ -117,7 +117,7 @@ popups simply overdraw, because overdraw into a buffer is free.
 **Layout is top-down, and that is the whole model.** A parent computes its
 children's rectangles in plain Ruby and assigns them; a component never
 advertises a size it would like. No `min`/`preferred`/`max`, no negotiation
-pass, no shrink-to-fit. Subclass `Layout::Absolute` when the arithmetic is
+pass, no shrink-to-fit. Subclass `Layout` when the arithmetic is
 yours, or use `Layout::Vertical` / `Layout::Horizontal` to declare each
 child's extent as `Fixed` / `Percent` / `Expand`.
 → [chapter 3](book/03-layout.md)
@@ -185,8 +185,9 @@ carries the per-method reference: `bundle exec rake yard`, or
 
 | component | what it is |
 |---|---|
-| `Layout::Absolute` | Positions children by assigning their `rect` in a `relayout` override, and paints nothing itself. The base to subclass when the arithmetic is yours. |
-| `Layout::Vertical`, `Layout::Horizontal` | Stack children along one axis from declared extents — `Fixed[n]`, `Percent[n]`, `Expand[weight]` — with box-global `spacing` and `padding`. Sugar over `Absolute`, not a new sizing model. |
+| `Layout` | Positions children by assigning their `rect` in a `relayout` override, and paints nothing itself. The base to subclass when the arithmetic is yours. |
+| `Layout::Absolute` | Places each child at the fixed `Rect` it was added with; `constrain` moves one. |
+| `Layout::Vertical`, `Layout::Horizontal` | Stack children along one axis from declared extents — `Fixed[n]`, `Percent[n]`, `Expand[weight]` — with box-global `spacing` and `padding`. Sugar over a hand-written `relayout`, not a new sizing model. |
 
 ### Framing and switching — [book ch7](book/07-components.md#framing-content)
 
@@ -239,7 +240,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | `CheckboxGroup` | Multi-select over the same shape; its `value` is a frozen `Set` of the checked items. |
 | `Select` | The enum field: a one-row face plus a `▾`, dropping open a list of options. Claims no printable key but Space, so your app's own keys keep working while it has focus. |
 | `ComboBox` | A text field with a filtering dropdown — type to narrow, arrow to highlight, Enter to accept. Its `value` is the selected *item*, never the typed text. |
-| `ListDropdown` | The floating, non-focusable list that `Select` and `ComboBox` drop open, and the `Menu` variant an app can drive itself. You rarely instantiate it directly. |
+| `ListDropdown` | The floating, non-focusable list that `Select` and `ComboBox` drop open with `anchor_to(self)`, following the field as it moves, and the `Menu` variant an app can drive itself. You rarely instantiate it directly. |
 
 ### Taking an action — [book ch7](book/07-components.md#taking-an-action)
 
@@ -251,8 +252,8 @@ carries the per-method reference: `bundle exec rake yard`, or
 
 | component | what it is |
 |---|---|
-| `Overlay` | The bare floating layer: it wraps any component, paints nothing itself, and sits at the rect you assign it. Takes no focus and no keys — the building block for anchored panels and toasts. |
-| `Popup` | The modal dialog: an `Overlay` that centers itself, grabs focus, scopes keys to its own subtree and blocks clicks beneath it. Sized by `declared_size=` (a `Size` or a `Fraction` of the screen) rather than by its content; ESC or `q` dismisses. |
+| `Overlay` | The bare floating layer: it wraps any component, paints nothing itself, and sits where its placement says — `open(Overlay::At[rect])`; the pane assigns the rect, again on every resize. Takes no focus and no keys — the building block for anchored panels and toasts. |
+| `Popup` | The modal dialog: an `Overlay` placed centered by default, which grabs focus, scopes keys to its own subtree and blocks clicks beneath it. Sized by `declared_size=` (a `Size` or a `Fraction` of the screen) rather than by its content; ESC or `q` dismisses. |
 | `Notification` | A transient corner toast — `Notification.show("Saved")` — stacking messages in one box that a single ticker drains. Non-modal, it never takes focus, and its inner `View` refuses the wheel so queued messages wait for the ticker. |
 | `ConfirmWindow` | The confirm dialog: a message and a row of buttons in a popup sized to fit. `alert` / `confirm` / `yes_no` cover the common shapes; `#button` builds any other. Every button closes; ESC, `q` or an outside click fire `on_dismiss`. See [The confirm dialog](book/07-components.md#the-confirm-dialog). |
 | `InfoWindow` | A `Window` with a read-only body, tiled or popped up: prose that wraps (`message=`), or rows that don't (`lines=`). |
@@ -311,10 +312,12 @@ module Tuile
 
     it "renders text into its rect" do
       label = Component::Label.new
-      label.rect = Rect.new(0, 0, 5, 1)
       label.text = "hi"
-      label.repaint
-      assert_equal ["hi   "], Screen.instance.buffer.region_text(label.rect)
+      holder = Component::Layout::Absolute.new
+      holder.add(label, Rect.new(0, 0, 5, 1))   # a parent places it; nothing else may
+      Screen.instance.content = holder
+      Screen.instance.repaint
+      assert_equal ["hi   "], Screen.instance.buffer.region_text(label.absolute_rect)
     end
   end
 end

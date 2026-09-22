@@ -8,10 +8,10 @@ module Tuile
     describe "inherited bg_color" do
       it "keeps its own well, ignoring an ancestor's bg_color" do
         parent = Component::Layout::Absolute.new
-        parent.rect = Rect.new(0, 0, 10, 1)
+        place(parent, Rect.new(0, 0, 10, 1))
         f = Component::TextField.new
         parent.add(f)
-        f.rect = Rect.new(0, 0, 10, 1)
+        place(f, Rect.new(0, 0, 10, 1))
         f.text = "hi"
         parent.bg_color = 52
         repaint(f)
@@ -24,7 +24,7 @@ module Tuile
       it "honors its own bg_color over the well" do
         f = Component::TextField.new
         Screen.instance.content = f
-        f.rect = Rect.new(0, 0, 10, 1)
+        place(f, Rect.new(0, 0, 10, 1))
         f.text = "hi"
         f.bg_color = 52
         repaint(f)
@@ -37,7 +37,7 @@ module Tuile
       it "a flat bg_color is flat whether focused or not" do
         f = Component::TextField.new
         Screen.instance.content = f
-        f.rect = Rect.new(0, 0, 10, 1)
+        place(f, Rect.new(0, 0, 10, 1))
         f.bg_color = 52
         f.active = true
         repaint(f)
@@ -47,7 +47,7 @@ module Tuile
       it "a state map keeps a focus shade of the app's choosing" do
         f = Component::TextField.new
         Screen.instance.content = f
-        f.rect = Rect.new(0, 0, 10, 1)
+        place(f, Rect.new(0, 0, 10, 1))
         f.bg_color = { normal: 52, active: 33 }
         repaint(f)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
@@ -59,7 +59,7 @@ module Tuile
 
     def field(width: 10, text: "", active: true)
       f = Component::TextField.new
-      f.rect = Rect.new(0, 0, width, 1)
+      place(f, Rect.new(0, 0, width, 1))
       f.text = text
       f.active = active if active
       f
@@ -172,7 +172,7 @@ module Tuile
       # what converts, so the field's position is nowhere in this answer.
       it "sits at its own top-left when text empty" do
         f = Component::TextField.new
-        f.rect = Rect.new(5, 2, 10, 1)
+        place(f, Rect.new(5, 2, 10, 1))
         assert_equal Point.new(0, 0), f.cursor_position
       end
 
@@ -187,7 +187,7 @@ module Tuile
 
       it "is nil when width is zero" do
         f = Component::TextField.new
-        f.rect = Rect.new(0, 0, 0, 1)
+        place(f, Rect.new(0, 0, 0, 1))
         assert_nil f.cursor_position
       end
     end
@@ -199,7 +199,7 @@ module Tuile
         layout.define_singleton_method(:handle_key?) { |_key| flunk "field should have consumed it" }
         screen.content = layout
         tf = Component::TextField.new
-        tf.rect = Rect.new(0, 0, 10, 1)
+        place(tf, Rect.new(0, 0, 10, 1))
         layout.add(tf)
         screen.focused = tf
 
@@ -556,7 +556,7 @@ module Tuile
       it "positions caret at clicked column" do
         f = field(width: 20, text: "hello")
         Screen.instance.content = f
-        f.rect = Rect.new(2, 3, 20, 1)
+        place(f, Rect.new(2, 3, 20, 1))
         Screen.instance.click(4, 3) # col 4 - rect.left 2 = 2
         assert_equal 2, f.caret
       end
@@ -564,7 +564,7 @@ module Tuile
       it "clamps caret to text length when clicking past last char" do
         f = field(width: 20, text: "hi")
         Screen.instance.content = f
-        f.rect = Rect.new(0, 0, 20, 1)
+        place(f, Rect.new(0, 0, 20, 1))
         Screen.instance.click(10, 0) # col 10, past 'hi'
         assert_equal 2, f.caret
       end
@@ -572,7 +572,7 @@ module Tuile
       it "ignores clicks outside the rect" do
         f = field(width: 10, text: "hello")
         Screen.instance.content = f
-        f.rect = Rect.new(0, 0, 10, 1)
+        place(f, Rect.new(0, 0, 10, 1))
         f.caret = 3
         Screen.instance.click(100, 100)
         assert_equal 3, f.caret
@@ -732,7 +732,7 @@ module Tuile
       it "resolves a click on a glyph's left half before it, right half after" do
         f = field(width: 20, text: "日本語")
         Screen.instance.content = f
-        f.rect = Rect.new(0, 0, 20, 1)
+        place(f, Rect.new(0, 0, 20, 1))
         { 0 => 0, 1 => 1, 2 => 1, 3 => 2, 4 => 2, 5 => 3 }.each do |column, expected|
           f.caret = 0
           Screen.instance.click(column, 0)
@@ -921,7 +921,7 @@ module Tuile
         it "resolves a click to a cluster boundary" do
           f = field(width: 20, text: "#{acute}x")
           Screen.instance.content = f
-          f.rect = Rect.new(0, 0, 20, 1)
+          place(f, Rect.new(0, 0, 20, 1))
           Screen.instance.click(1, 0)
           assert_equal 2, f.caret
         end
@@ -1063,7 +1063,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         f = Component::TextField.new
-        f.rect = Rect.new(0, 0, 10, 1)
+        place(f, Rect.new(0, 0, 10, 1))
         layout.add(f)
         screen.focused = f
 
@@ -1096,7 +1096,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         f = Component::TextField.new
-        f.rect = Rect.new(0, 0, 10, 1)
+        place(f, Rect.new(0, 0, 10, 1))
         layout.add(f)
         screen.focused = f
         f.escape_clears_focus = false
@@ -1330,7 +1330,7 @@ module Tuile
         f = field(width: 10, text: "hello")
         called = false
         f.on_change { called = true }
-        f.rect = Rect.new(0, 0, 4, 1)
+        place(f, Rect.new(0, 0, 4, 1))
         assert !called
       end
     end
@@ -1339,7 +1339,7 @@ module Tuile
       it "keeps text when width shrinks, scrolling to hold the caret" do
         f = field(width: 10, text: "hello")
         f.caret = 5
-        f.rect = Rect.new(0, 0, 4, 1)
+        place(f, Rect.new(0, 0, 4, 1))
         assert_equal "hello", f.text
         assert_equal 5, f.caret
         assert_equal 2, f.send(:left_column)
@@ -1349,19 +1349,19 @@ module Tuile
         f = field(width: 4, text: "hello")
         f.caret = 5
         assert_equal 2, f.send(:left_column)
-        f.rect = Rect.new(0, 0, 20, 1)
+        place(f, Rect.new(0, 0, 20, 1))
         assert_equal 0, f.send(:left_column)
       end
 
       it "does not modify text when growing" do
         f = field(width: 5, text: "four")
-        f.rect = Rect.new(0, 0, 20, 1)
+        place(f, Rect.new(0, 0, 20, 1))
         assert_equal "four", f.text
       end
 
       it "shrinking to width 0 leaves text intact" do
         f = field(width: 10, text: "hello")
-        f.rect = Rect.new(0, 0, 0, 1)
+        place(f, Rect.new(0, 0, 0, 1))
         assert_equal "hello", f.text
       end
     end

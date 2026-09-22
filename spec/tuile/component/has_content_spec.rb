@@ -40,7 +40,7 @@ module Tuile
 
     let(:child) do
       c = Component.new
-      c.rect = Rect.new(0, 0, 5, 3)
+      place(c, Rect.new(0, 0, 5, 3))
       c
     end
 
@@ -129,14 +129,14 @@ module Tuile
       it "re-runs the pass when content is non-nil" do
         host.content = child
         settle(host).layout_calls.clear
-        host.rect = Rect.new(0, 0, 30, 20)
+        place(host, Rect.new(0, 0, 30, 20))
         assert_equal [child], settle(host).layout_calls
       end
 
       # Unconditional: a container assigns every child on every pass, and one
       # with nothing to place simply places nothing.
       it "runs the pass even when content is nil" do
-        host.rect = Rect.new(0, 0, 30, 20)
+        place(host, Rect.new(0, 0, 30, 20))
         assert_equal [nil], settle(host).layout_calls
       end
     end
@@ -170,7 +170,7 @@ module Tuile
     describe "#handle_focus" do
       it "cascades focus to focusable content" do
         focusable = Class.new(Component) { def focusable? = true }.new
-        focusable.rect = Rect.new(0, 0, 1, 1)
+        place(focusable, Rect.new(0, 0, 1, 1))
         host.content = focusable
         host.focus
         assert_same focusable, Screen.instance.focused

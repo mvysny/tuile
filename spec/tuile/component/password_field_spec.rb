@@ -7,7 +7,7 @@ module Tuile
 
     def field(width: 10, text: "", active: false)
       f = Component::PasswordField.new
-      f.rect = Rect.new(0, 0, width, 1)
+      place(f, Rect.new(0, 0, width, 1))
       f.text = text
       f.active = active if active
       f
@@ -165,7 +165,7 @@ module Tuile
       it "resolves a click to the mask glyph clicked" do
         f = field(width: 20, text: "日本語")
         Screen.instance.content = f
-        f.rect = Rect.new(0, 0, 20, 1)
+        place(f, Rect.new(0, 0, 20, 1))
         Screen.instance.click(2, 0)
         assert_equal 2, f.caret
       end
@@ -245,7 +245,7 @@ module Tuile
       # buffer content, and a field showing its hint has none.
       it "paints the hint unmasked while empty, then masks the typed value" do
         f = Component::PasswordField.new
-        f.rect = Rect.new(0, 0, 12, 1)
+        place(f, Rect.new(0, 0, 12, 1))
         f.placeholder = "password"
         repaint(f)
         assert_equal ["password    "], Screen.instance.buffer.region_text(f.absolute_rect)

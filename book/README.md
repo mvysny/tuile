@@ -53,7 +53,7 @@ one, not to fill an outline.
    the design. Top-down, parent-relative, integer coordinates; a parent
    assigns its children's `rect` and components never negotiate a size.
    The C64 argument for *why simple layouting is enough* on a character
-   grid, `Layout::Absolute` and the `relayout` override, the `Vertical` /
+   grid, the `relayout` override, `Layout::Absolute`, the `Vertical` /
    `Horizontal` box layouts and their three constraints (`Fixed` /
    `Percent` / `Expand`) as sugar over that same rule, `Fraction` for
    sizing a popup against the screen, and resize as a discrete

@@ -3,17 +3,24 @@
 module Tuile
   class Component
     # A component mounted on the {Screen}'s overlay stack rather than in the
-    # tiled tree: it floats above the content at a rect the caller assigns, and
-    # has an open/close lifecycle instead of a parent that lays it out.
+    # tiled tree: it floats above the content, and has an open/close lifecycle.
+    # It opens with a *placement* — where it wants to be — and the
+    # {ScreenPane}'s layout pass turns that into its rect, again on every
+    # resize:
     #
     #   overlay = Component::Overlay.new(content: Component::Label.new("saved"))
-    #   overlay.rect = Rect.new(10, 4, 20, 1)   # you place it — nothing else does
-    #   overlay.open                            # mounts it on the Screen
+    #   overlay.open(Overlay::At[Rect.new(10, 4, 20, 1)])   # mounts it on the Screen
+    #   overlay.placement = Overlay::At[Rect.new(10, 6, 20, 1)]   # moves it
     #   overlay.close
     #
     # That is the whole of it — floating, plus the lifecycle, {#on_close},
     # outside-click dismissal and {#owner}. {Component::Popup} is the subclass
-    # that adds a declared size, self-centering, focus and key handling.
+    # that adds a declared size, centering, focus and key handling.
+    #
+    # A placement is any object answering `rect_for(overlay, screen_size)`:
+    # {At} a fixed rect, {Centered} and {TopRight} an overlay that declares its
+    # size ({#declared_size_in}), {ListDropdown::Anchored} a dropdown hanging off
+    # a field.
     #
     # The wrapped content fills the overlay's whole {#rect}; for a frame and a
     # caption, wrap a {Component::Window} and let it draw its own border.
@@ -30,17 +37,51 @@ module Tuile
     # non-modal overlay is therefore driven from its owner's key handler
     # ({Component::Select} forwarding to its dropdown) instead of claiming focus.
     #
-    # **A derived position needs a {#reposition} override.** The default is a
-    # no-op: the rect is whatever the caller last assigned. An overlay whose
-    # position is computed — from the screen, or from an anchor — must recompute
-    # it there, or it keeps a stale rect after a SIGWINCH and sits off-screen
-    # entirely if the terminal narrowed. Closing on resize is equally legal
-    # ({Component::MenuBar} drops its cascade from `rect=` rather than walking
-    # every level to re-anchor it).
+    # **An overlay whose size changes calls {#reposition}**, which asks the pane
+    # to place it again; the placement itself stays put. That is how a growing
+    # {Component::Notification} or a re-measured {Component::ConfirmWindow}
+    # gets its new rect.
     #
     # UI-thread-confined, like every component (see {Screen}).
     class Overlay < Component
       include Component::HasContent
+
+      # Places the overlay at exactly `rect`, in screen coordinates.
+      #
+      #   overlay.open(Overlay::At[Rect.new(10, 4, 20, 1)])
+      #
+      # @!attribute [r] rect
+      #   @return [Rect]
+      At = Data.define(:rect) do
+        # @param _overlay [Overlay]
+        # @param _screen_size [Size]
+        # @return [Rect]
+        def rect_for(_overlay, _screen_size) = rect
+      end
+
+      # Centers the overlay on the screen at the size it declares
+      # ({Overlay#declared_size_in}) — {Popup}'s default.
+      Centered = Data.define do
+        # @param overlay [Overlay]
+        # @param screen_size [Size]
+        # @return [Rect]
+        def rect_for(overlay, screen_size)
+          size = overlay.declared_size_in(screen_size)
+          Rect.new(0, 0, size.width, size.height).centered(screen_size)
+        end
+      end
+
+      # Puts the overlay in the screen's top-right corner at the size it
+      # declares ({Overlay#declared_size_in}) — {Notification}'s default.
+      TopRight = Data.define do
+        # @param overlay [Overlay]
+        # @param screen_size [Size]
+        # @return [Rect]
+        def rect_for(overlay, screen_size)
+          size = overlay.declared_size_in(screen_size)
+          Rect.new([screen_size.width - size.width, 0].max, 0, size.width, size.height)
+        end
+      end
 
       # @param content [Component, nil] initial content; can be set later via
       #   {#content=}. It fills the overlay's {#rect} and does not determine it.
@@ -147,32 +188,52 @@ module Tuile
       #   @return [Listeners]
       listener :on_close
 
-      # Reassigns the overlay's rect, escalating to a full scene repaint when an
-      # open overlay shrinks or moves so its new rect no longer covers the cells
-      # it previously painted. An overlay overdraws the scene without clipping
-      # and nothing clears underneath it, so {Screen#repaint}'s overlay-only fast
-      # path would repaint into the new rect and leave the vacated cells showing
-      # stale content. When the new rect fully covers the old one (the overlay
-      # only grew), the fast path is correct and the full repaint is skipped.
-      # @param new_rect [Rect]
-      # @return [void]
-      def rect=(new_rect)
-        old_rect = rect
-        super
-        screen.needs_full_repaint if open? && !new_rect.contains_rect?(old_rect)
+      # The box this overlay asks for on a screen of `screen_size` — what
+      # {Centered} and {TopRight} place. A bare overlay declares none.
+      # @param _screen_size [Size]
+      # @raise [Tuile::Error] always, here; {Popup} and {Notification} answer.
+      # @return [Size]
+      def declared_size_in(_screen_size)
+        raise Tuile::Error, "#{self.class} declares no size — place it with Overlay::At[rect]"
       end
 
-      # Mounts this overlay on the {Screen}.
+      # The placement a bare {#open} uses. A bare overlay has none, because
+      # nothing about it says where it goes.
+      # @raise [ArgumentError] always, here; {Popup} and {Notification} answer.
+      # @return [Object] a placement.
+      def default_placement
+        raise ArgumentError, "#{self.class} has no default placement — open(Overlay::At[rect])"
+      end
+
+      # Escalates to a full scene repaint when an open overlay shrinks or moves
+      # so its new rect no longer covers the cells it previously painted. An
+      # overlay overdraws the scene without clipping and nothing clears
+      # underneath it, so {Screen#repaint}'s overlay-only fast path would repaint
+      # into the new rect and leave the vacated cells showing stale content.
+      # When the new rect fully covers the old one (the overlay only grew), the
+      # fast path is correct and the full repaint is skipped.
+      # @param old_rect [Rect]
+      # @return [void]
+      def handle_rect_changed(old_rect)
+        super
+        screen.needs_full_repaint if open? && !rect.contains_rect?(old_rect)
+      end
+
+      # Mounts this overlay on the {Screen} at `placement`; the pane assigns the
+      # rect on the next settle.
       #
-      #   overlay = Component::Overlay.new(content: label).open   # construct and mount
+      #   Component::Popup.new(content: window).open   # its default: centered
+      #   overlay.open(Overlay::At[Rect.new(10, 4, 20, 1)])
       #
       # There is deliberately no class-level `Overlay.open` factory — see
       # `design/decisions.md` `D_popup_open`; returning `self` is what keeps the
       # one-liner above available without one.
+      # @param placement [Object] where it wants to be; see the class docs.
+      # @raise [ArgumentError] with no placement, for an overlay that has no
+      #   {#default_placement}.
       # @return [self]
-      def open
-        reposition
-        screen.add_popup(self)
+      def open(placement = default_placement)
+        screen.add_popup(self, placement)
         self
       end
 
@@ -187,12 +248,28 @@ module Tuile
         screen.has_popup?(self)
       end
 
-      # Recomputes this overlay's own rect (not its content's layout). A no-op
-      # here — the rect is whatever the caller assigned — and the hook a subclass
-      # with a *derived* position overrides; see the class docs. Called on
-      # {#open} and by the screen's layout pass, so an override tracks SIGWINCH.
+      # Where this overlay wants to be, or `nil` while closed.
+      # @return [Object, nil] the placement it was opened or moved with.
+      def placement = open? ? screen.pane.placement(self) : nil
+
+      # Moves the open overlay; it takes the new rect on the next settle.
+      # @param placement [Object] see the class docs.
+      # @raise [Tuile::Error] unless open — a closed overlay takes its
+      #   placement from {#open}.
       # @return [void]
-      def reposition; end
+      def placement=(placement)
+        raise Tuile::Error, "#{self} is not open — pass the placement to #open" unless open?
+
+        screen.pane.constrain(self, placement)
+      end
+
+      # Asks the pane to place this overlay again, because something its
+      # placement reads — its declared size, its row count — changed. A no-op
+      # while closed: {#open} places it anyway.
+      # @return [void]
+      def reposition
+        parent&.invalidate_layout
+      end
 
       # Fires {#on_close}. A subclass overriding this **must** call `super`, or
       # the overlay's driver never hears that it closed.

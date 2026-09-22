@@ -12,7 +12,7 @@ module Tuile
     def field(width: 20)
       f = Component::DateField.new
       Screen.instance.content = f
-      f.rect = Rect.new(0, 0, width, 1)
+      place(f, Rect.new(0, 0, width, 1))
       Screen.instance.focused = f
       f
     end

@@ -159,7 +159,7 @@ module Tuile
           return unless item.submenu?
 
           @browsing = true
-          push(item, highlight: highlight) { |drop, rows, width| drop.anchor_to(anchor, rows: rows, width: width) }
+          push(item, highlight: highlight) { |drop, width| drop.anchor_to(anchor, width: width) }
         end
 
         # Moves into a panel opened with no highlighted row — Down, Enter and
@@ -219,15 +219,15 @@ module Tuile
           anchor = @levels[level][1].cursor_row_rect
           return if anchor.nil?
 
-          push(item) { |drop, rows, width| drop.anchor_beside(anchor, rows: rows, width: width) }
+          push(item) { |drop, width| drop.anchor_beside(anchor, width: width) }
         end
 
-        # Mounts a panel for `item`'s children and yields it for geometry.
+        # Builds a panel for `item`'s children and yields it to be anchored,
+        # which is what opens it.
         # @param item [Item]
         # @param highlight [Boolean] `false` parks the cursor off content, so
         #   nothing is highlighted.
         # @yieldparam drop [ListDropdown]
-        # @yieldparam rows [Integer]
         # @yieldparam width [Integer]
         # @return [void]
         def push(item, highlight: true)
@@ -261,8 +261,7 @@ module Tuile
           # the bar *should* close the whole menu and keep the dialog.
           drop.owner = @levels.last&.last
           @levels << [item, drop]
-          drop.open
-          yield(drop, children.size, width_for(children))
+          yield(drop, width_for(children))
         end
 
         # Closes the deepest panel; at depth 1 that closes the cascade.

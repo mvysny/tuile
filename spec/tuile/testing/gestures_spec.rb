@@ -12,7 +12,7 @@ module Tuile
         column.add(save)
         column.add(field)
         Screen.instance.content = w
-        w.rect = Rect.new(0, 0, 40, 10)
+        place(w, Rect.new(0, 0, 40, 10))
       end
     end
 

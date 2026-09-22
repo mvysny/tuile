@@ -164,10 +164,10 @@ So staying simple isn't a compromise you're tolerating. On this medium
 it is the *correct* fit, and the elaborate alternative would degrade the
 common case, debuggability, and auditability all at once.
 
-## Placing children: `Layout::Absolute`
+## Placing children: subclass `Layout`
 
 The place you actually write layout code is a `relayout` override. The
-base class for this is `Tuile::Component::Layout::Absolute`: it inherits
+base class for this is `Tuile::Component::Layout`: it inherits
 all the focus, key-dispatch and mouse-routing wiring, paints nothing
 itself, and asks only that you position your children. The framework
 calls `relayout` whenever anything that feeds your arithmetic changed —
@@ -175,7 +175,7 @@ your own rectangle, a child added, removed or hidden — which covers
 startup, every resize, and every mutation in between.
 
 ```ruby
-class SplitPane < Tuile::Component::Layout::Absolute
+class SplitPane < Tuile::Component::Layout
   def initialize
     super
     @sidebar = Tuile::Component::List.new
@@ -242,11 +242,23 @@ That's the whole "responsive" story: plain Ruby, recomputed on a
 discrete resize event. No breakpoint DSL, no media queries — just the
 arithmetic you'd write anyway.
 
+When the rectangles don't depend on the container's size at all, there
+is nothing to compute, and `Layout::Absolute` holds a fixed `Rect` per
+child instead. Moving a child is `constrain`, not a write to its `rect`,
+because the layout's `relayout` is still what assigns it:
+
+```ruby
+board = Tuile::Component::Layout::Absolute.new
+board.add(title, Tuile::Rect.new(0, 0, 40, 1))
+board.add(body,  Tuile::Rect.new(0, 2, 40, 10))
+board.constrain(body, Tuile::Rect.new(0, 2, 40, 20))
+```
+
 ## Stacks without the arithmetic: `Vertical` and `Horizontal`
 
-`Absolute` is the right tool for genuinely two-dimensional geometry, and
-tedious for the most common shape in any app: a stack. So Tuile ships two
-*box* layouts that do that arithmetic for you. You declare what extent each
+A hand-written `relayout` is the right tool for genuinely two-dimensional
+geometry, and tedious for the most common shape in any app: a stack. So
+Tuile ships two *box* layouts that do that arithmetic for you. You declare what extent each
 child should get, and the box hands down rectangles through the very same
 `rect=`:
 
@@ -339,7 +351,7 @@ equal `Expand`s in 12 rows get `3, 3, 2, 2, 2` — never `2, 2, 2, 2, 4`, which
 is what "give the leftover to the last one" produces. On a character grid a
 doubled pane is plainly visible, so spare cells are spread rather than dumped.
 One wrinkle, since this chapter showed you the hand-written version first: the
-two-pane `Absolute` example above gives the odd column to the *right* pane,
+two-pane `SplitPane` example above gives the odd column to the *right* pane,
 while two `Expand[1]` children give it to the *left*. Both are deterministic;
 they're just different code.
 
@@ -365,7 +377,7 @@ form.add(pair,   Fixed[2])                              # blank row around the p
 That *states* the grouping instead of faking it with a per-child gap — boxes
 within boxes, which is how the rest of Tuile composes anyway.
 
-### When to stay with `Absolute`
+### When to keep your own `relayout`
 
 The boxes are sugar, not a replacement, and they can't say everything. A **cap
 on a proportion** is the case to recognise:
@@ -378,8 +390,8 @@ list_width  = (rect.width / 3).clamp(20, 40)  # a third, but never <20 or >40
 The first is in `examples/sampler.rb` twice — the sidebar in its CheckboxGroup
 pane and the one in its List pane — and both keep a `relayout` override. That's
 the intended division of labour rather than a gap to work around: use a box for
-the stack, drop to `Absolute` for the region that genuinely needs arithmetic —
-usually nesting one inside the other, so only the awkward part carries any. The
+the stack, drop to a `Layout` subclass for the region that genuinely needs
+arithmetic — usually nesting one inside the other, so only the awkward part carries any. The
 sampler does exactly that, and porting it to these layouts took it from 59
 hand-written rectangles down to a handful (5 today).
 

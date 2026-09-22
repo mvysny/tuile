@@ -381,17 +381,15 @@ module Tuile
       # "outside click" on the dialog and dismisses it.
       def dialog_with_combo
         combo = Component::ComboBox.new(items: %w[alpha beta gamma])
-        # The window would hand its content the whole inner rect; an Absolute
-        # between them is what lets the combo sit on one chosen row.
+        # The window would hand its content the whole inner rect; a bare Layout
+        # between them, which places nothing, lets the combo sit on one chosen row.
         body = Component::Layout::Absolute.new
         body.add(combo)
         window = Component::Window.new("Edit")
         window.content = body
         dialog = Component::Popup.new(content: window)
-        dialog.open
-        dialog.rect = Rect.new(10, 10, 40, 5)
-        settle(dialog)
-        combo.rect = Rect.new(1, body.height - 1, 20, 1) # the dialog's last inner row, (12, 13) on screen
+        settle(dialog.open(Component::Overlay::At[Rect.new(10, 10, 40, 5)]))
+        place(combo, Rect.new(1, body.height - 1, 20, 1)) # the dialog's last inner row, (12, 13) on screen
         combo.focus
         face = settle(combo).absolute_extent_rect
         Screen.instance.click(face.left + face.width - 1, face.top) # the ▾ cell opens it
@@ -423,7 +421,7 @@ module Tuile
       it "shows while nothing is selected, and gives way to a commit" do
         c = Component::ComboBox.new(items: %w[apple banana])
         Screen.instance.content = c
-        c.rect = Rect.new(0, 0, 12, 1)
+        place(c, Rect.new(0, 0, 12, 1))
         c.placeholder = "type to filter"
         assert_equal "type to filter", field(c).placeholder
         Screen.instance.repaint

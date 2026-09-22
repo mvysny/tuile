@@ -262,6 +262,10 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **{Tuile::Component#relayout} is the sole place a container assigns its children's rects** —
   *`relayout` : geometry :: `repaint` : ink*: framework-invoked, idempotent, never called directly.
   Every other input to it ends in `invalidate_layout`. See `D_relayout`.
+- **`rect=` enforces that: it is protected and raises outside the parent's pass, a parentless
+  component included** — the screen places the pane, a spec holds a tree in a `Layout::Absolute`,
+  and a subclass reacts in `handle_rect_changed`, since a protected override is uncallable from the
+  parent. A child moves by its constraint: `constrain`, or an overlay's `placement=`.
 - **A mutation marks; nothing lays out inline** — `Screen#dispatch` settles after every event, so no
   pass sees a container mid-configuration. A rect read in the *same* turn that dirtied it is stale;
   `Component#flush_layout` is the force-now. See `D_deferred_layout`.
@@ -377,7 +381,8 @@ One line per directory; `ls` is the file index, and each class's rdoc says what 
   locale, the value types.
 - `lib/tuile/component/` — the widget set, `Tuile::Component::*`: fields, lists, overlays.
   Rules: `lib/tuile/component/AGENTS.md`
-- `lib/tuile/component/layout/` — the box layouts: `Box`, `Vertical`, `Horizontal`.
+- `lib/tuile/component/layout/` — the layouts that take per-child constraints: `Absolute`, and the box
+  layouts `Box`, `Vertical`, `Horizontal`.
 - `spec/` — one spec per source file mirroring `lib/tuile/`, the contract suite, and the PTY-based
   system tests for `examples/`. Rules: `spec/AGENTS.md`
 - `book/` — the guide, read cover to cover: ten chapters plus `book/README.md`.

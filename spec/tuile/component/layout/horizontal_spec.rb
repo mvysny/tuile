@@ -16,14 +16,14 @@ module Tuile
     it "maps the main axis to width and the cross axis to height" do
       layout = Component::Layout::Horizontal.new
       layout.add(Component.new, fixed(3), cross: fixed(8))
-      layout.rect = Rect.new(0, 0, 20, 10)
+      place(layout, Rect.new(0, 0, 20, 10))
       assert_equal Rect.new(0, 0, 3, 8), rects(layout).first
     end
 
     it "lays children out rightward" do
       layout = Component::Layout::Horizontal.new
       layout.add([Component.new, Component.new, Component.new], fixed(2))
-      layout.rect = Rect.new(5, 7, 20, 10)
+      place(layout, Rect.new(5, 7, 20, 10))
       # The box's own coordinates: the children stack from its left edge, and
       # its position on screen is nowhere in their rects.
       assert_equal [0, 2, 4], lefts(layout)
@@ -36,7 +36,7 @@ module Tuile
       layout = Component::Layout::Horizontal.new
       layout.add(Component.new, fixed(1), cross: fixed(4), align: :start)
       layout.add(Component.new, fixed(1), cross: fixed(4), align: :end)
-      layout.rect = Rect.new(0, 0, 20, 10)
+      place(layout, Rect.new(0, 0, 20, 10))
       assert_equal [0, 6], tops(layout)
     end
 
@@ -47,7 +47,7 @@ module Tuile
       main = Component.new
       layout.add(sidebar, fixed(30))
       layout.add(main, expand(1))
-      layout.rect = Rect.new(0, 0, 100, 24)
+      place(layout, Rect.new(0, 0, 100, 24))
       assert_equal [Rect.new(0, 0, 30, 24), Rect.new(30, 0, 70, 24)], rects(layout)
     end
   end

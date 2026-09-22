@@ -174,7 +174,7 @@ module Tuile
 
       it "flips a submenu to the left when the right edge has no room" do
         c, = open_cascade
-        panel(c).rect = Rect.new(Screen.instance.size.width - 10, 0, 10, 4)
+        place(panel(c), Rect.new(Screen.instance.size.width - 10, 0, 10, 4))
         c.handle_key?(Keys::DOWN_ARROW)
         c.handle_key?(Keys::ENTER)
         assert_operator panel(c).rect.left, :<, Screen.instance.size.width - 10

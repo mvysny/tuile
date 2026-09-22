@@ -29,7 +29,7 @@ module Tuile
       @size = Size.new(160, 50)
       # super sized both to the test runner's TTY.
       @buffer.resize(@size)
-      @pane.rect = Rect.new(0, 0, @size.width, @size.height)
+      size_pane
       @prints = []
     end
 
@@ -113,6 +113,13 @@ module Tuile
       press(x, y, button: button)
       release(x, y)
     end
+
+    # The terminal reporting a new size, routed as its own report would be: the
+    # pane takes the whole screen, and every popup is placed again.
+    # @param width [Integer]
+    # @param height [Integer]
+    # @return [void]
+    def resize_terminal(width, height) = dispatch(EventQueue::TTYSizeEvent.new(width, height))
 
     # Half a {#click}, for a spec about the grab — what is claimed, what the
     # drag does, what the release lands on.

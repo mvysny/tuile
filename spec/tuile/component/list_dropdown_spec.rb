@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "stringio"
+
 module Tuile
   describe Component::ListDropdown do
     before { Screen.fake }
@@ -11,8 +13,7 @@ module Tuile
       d = Component::ListDropdown.new
       Screen.instance.content = Component::Label.new # something for focus to rest on
       d.items = (1..count).map { |n| "item#{n}" }
-      d.open
-      d.rect = Rect.new(0, 0, 20, 10)
+      d.open(Component::Overlay::At[Rect.new(0, 0, 20, 10)])
       settle(d)
     end
 
@@ -143,7 +144,7 @@ module Tuile
         d = Component::ListDropdown.new
         Screen.instance.content = Component::Label.new
         d.items = (1..rows).map { |n| "item#{n}" }
-        d.anchor_to(Rect.new(left, top, anchor_width, 1), rows: rows, **kwargs)
+        d.anchor_to(Rect.new(left, top, anchor_width, 1), **kwargs)
         d
       end
 
@@ -193,6 +194,56 @@ module Tuile
       end
     end
 
+    describe "#anchor_to a component" do
+      # A field on row `top` of a column, and a dropdown hanging off it.
+      def field_and_drop(top: 2)
+        column = Component::Layout::Vertical.new
+        spacer = Component::Label.new
+        field = Component::TextField.new
+        column.add(spacer, Component::Layout::Fixed[top])
+        column.add(field, Component::Layout::Fixed[1], cross: Component::Layout::Fixed[20])
+        mount_at(column, Rect.new(0, 0, 40, 20))
+        drop = Component::ListDropdown.new
+        drop.items = %w[a b c]
+        drop.anchor_to(field)
+        [column, spacer, field, drop]
+      end
+
+      it "hangs below the field, at its width" do
+        _column, _spacer, _field, drop = field_and_drop(top: 2)
+        assert_equal Rect.new(0, 3, 20, 3), drop.rect
+      end
+
+      # The pane places popups before the content settles, so the anchor it
+      # read was the old one; the re-check after the drain catches it.
+      it "follows the field when the content around it moves" do
+        column, spacer, _field, drop = field_and_drop(top: 2)
+        column.constrain(spacer, Component::Layout::Fixed[6])
+        assert_equal Rect.new(0, 7, 20, 3), settle(drop).rect
+      end
+
+      it "grows and shrinks with its items" do
+        _column, _spacer, _field, drop = field_and_drop
+        drop.items = %w[a b c d e]
+        assert_equal 5, settle(drop).rect.height
+      end
+
+      it "stays put, and warns once, when its field goes away" do
+        column, _spacer, field, drop = field_and_drop(top: 2)
+        log = StringIO.new
+        previous = Tuile.logger
+        Tuile.logger = Logger.new(log)
+        column.remove(field)
+        settle(drop)
+        column.add(Component::Label.new, Component::Layout::Fixed[1])
+        settle(drop)
+        assert_equal Rect.new(0, 3, 20, 3), drop.rect
+        assert_equal 1, log.string.scan("lost its anchor").size
+      ensure
+        Tuile.logger = previous
+      end
+    end
+
     describe "#anchor_beside" do
       # A dropdown filled with `rows` rows, anchored beside a one-row parent row
       # sitting at `left`/`top` and `anchor_width` wide.
@@ -200,7 +251,7 @@ module Tuile
         d = Component::ListDropdown.new
         Screen.instance.content = Component::Label.new
         d.items = (1..rows).map { |n| "item#{n}" }
-        d.anchor_beside(Rect.new(left, top, anchor_width, 1), rows: rows, width: width, **kwargs)
+        d.anchor_beside(Rect.new(left, top, anchor_width, 1), width: width, **kwargs)
         d
       end
 
@@ -269,7 +320,7 @@ module Tuile
 
       it "is nil before the panel has a rect" do
         d = dropdown(count: 5)
-        d.rect = Rect.new(0, 0, 0, 0)
+        d.placement = Component::Overlay::At[Rect.new(0, 0, 0, 0)]
         assert_nil settle(d).cursor_row_rect
       end
     end
@@ -279,7 +330,6 @@ module Tuile
       def painted(count, **kwargs)
         d = Component::ListDropdown.new
         Screen.instance.content = Component::Label.new
-        d.open
         refill(d, count, **kwargs)
         Screen.instance.repaint
         Screen.instance.buffer.region_text(d.absolute_rect)
@@ -287,7 +337,7 @@ module Tuile
 
       def refill(drop, count, top: 0, **kwargs)
         drop.items = (1..count).map { |n| "item#{n}" }
-        drop.anchor_to(Rect.new(0, top, 20, 1), rows: count, **kwargs)
+        drop.anchor_to(Rect.new(0, top, 20, 1), **kwargs)
       end
 
       it "paints a scrollbar column when the rows overflow the height" do
@@ -312,7 +362,6 @@ module Tuile
       it "re-pads the rows when a refill drops below the threshold" do
         d = Component::ListDropdown.new
         Screen.instance.content = Component::Label.new
-        d.open
         refill(d, 11)
         Screen.instance.repaint
         assert_equal " item1#{" " * 13}█", Screen.instance.buffer.region_text(d.absolute_rect).first
@@ -325,7 +374,6 @@ module Tuile
       it "re-pads them when a refill crosses back up" do
         d = Component::ListDropdown.new
         Screen.instance.content = Component::Label.new
-        d.open
         refill(d, 3)
         Screen.instance.repaint
         refill(d, 11)

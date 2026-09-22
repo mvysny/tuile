@@ -32,7 +32,7 @@ module Tuile
       end
 
       it "is re-placed when the scroller moves" do
-        scroller.rect = Rect.new(0, 0, 20, 8)
+        place(scroller, Rect.new(0, 0, 20, 8))
         assert_equal Rect.new(0, 0, 18, 40), settle(content).rect
       end
 
@@ -203,10 +203,10 @@ module Tuile
           end
         end.new
         screen.content = outer
-        outer.rect = Rect.new(0, 0, 10, 5)
+        place(outer, Rect.new(0, 0, 10, 5))
         s = Component::Scroller.new(Component::Layout::Absolute.new, content_rows: 40)
         outer.add(s)
-        s.rect = Rect.new(0, 0, 10, 5)
+        place(s, Rect.new(0, 0, 10, 5))
 
         s.scroll_to_visible(Rect.new(0, 6, 8, 2))
 
@@ -351,7 +351,7 @@ module Tuile
 
       it "follows the scroller's resize" do
         s = scroller
-        s.rect = Rect.new(0, 0, 20, 8)
+        place(s, Rect.new(0, 0, 20, 8))
         assert_equal Rect.new(19, 0, 1, 8), settle(Testing.get(Component::VerticalScrollBar, in: s)).rect
       end
 

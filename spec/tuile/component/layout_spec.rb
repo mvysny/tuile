@@ -6,12 +6,12 @@ module Tuile
     after { Screen.close }
 
     it "starts with no children" do
-      assert_equal [], Component::Layout::Absolute.new.children
+      assert_equal [], Component::Layout.new.children
     end
 
     it "walk_tree recurses through nested layouts" do
-      outer = Component::Layout::Absolute.new
-      inner = Component::Layout::Absolute.new
+      outer = Component::Layout.new
+      inner = Component::Layout.new
       label = Component::Label.new
       inner.add(label)
       outer.add(inner)
@@ -22,21 +22,21 @@ module Tuile
 
     context "#add" do
       it "adds a single child" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         child = Component.new
         layout.add(child)
         assert_equal [child], layout.children
       end
 
       it "sets parent on the child" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         child = Component.new
         layout.add(child)
         assert_equal layout, child.parent
       end
 
       it "adds multiple children from an array" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         c1 = Component.new
         c2 = Component.new
         layout.add([c1, c2])
@@ -44,14 +44,14 @@ module Tuile
       end
 
       it "raises when adding a non-component" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         assert_raises(TypeError) { layout.add("not a component") }
       end
     end
 
     context "#remove" do
       it "removes the child" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         child = Component.new
         layout.add(child)
         layout.remove(child)
@@ -59,7 +59,7 @@ module Tuile
       end
 
       it "clears the parent reference on the removed child" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         child = Component.new
         layout.add(child)
         layout.remove(child)
@@ -67,7 +67,7 @@ module Tuile
       end
 
       it "invalidates the layout when the last child is removed" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         child = Component.new
         layout.add(child)
         Screen.instance.content = layout
@@ -77,7 +77,7 @@ module Tuile
       end
 
       it "does not invalidate the layout when children remain after remove" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         c1 = Component.new
         c2 = Component.new
         layout.add(c1)
@@ -88,13 +88,13 @@ module Tuile
       end
 
       it "raises when removing a non-component" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         assert_raises(TypeError) { layout.remove("not a component") }
       end
 
       it "raises when child's parent is a different layout" do
-        layout = Component::Layout::Absolute.new
-        other = Component::Layout::Absolute.new
+        layout = Component::Layout.new
+        other = Component::Layout.new
         child = Component.new
         other.add(child)
         assert_raises(ArgumentError) { layout.remove(child) }
@@ -103,17 +103,17 @@ module Tuile
 
     context "#repaint" do
       it "clears background when there are no children" do
-        layout = Component::Layout::Absolute.new
-        layout.rect = Rect.new(0, 0, 5, 2)
+        layout = Component::Layout.new
+        place(layout, Rect.new(0, 0, 5, 2))
         repaint(layout)
         assert_equal ["     ", "     "], Screen.instance.buffer.region_text(layout.absolute_rect)
       end
 
       it "does not clear background when children fully tile the rect" do
-        layout = Component::Layout::Absolute.new
-        layout.rect = Rect.new(0, 0, 5, 2)
+        layout = Component::Layout.new
+        place(layout, Rect.new(0, 0, 5, 2))
         tiling_child = Component.new
-        tiling_child.send(:rect=, Rect.new(0, 0, 5, 2))
+        place(tiling_child, Rect.new(0, 0, 5, 2))
         layout.add(tiling_child)
         Screen.instance.prints.clear
         repaint(layout)
@@ -121,11 +121,11 @@ module Tuile
       end
 
       it "clears background and invalidates children when children leave gaps" do
-        layout = Component::Layout::Absolute.new
-        layout.rect = Rect.new(0, 0, 5, 2)
+        layout = Component::Layout.new
+        place(layout, Rect.new(0, 0, 5, 2))
         # Child covers only top-left 2x1 — leaves the other 8 cells uncovered.
         gappy = Component.new
-        gappy.send(:rect=, Rect.new(0, 0, 2, 1))
+        place(gappy, Rect.new(0, 0, 2, 1))
         layout.add(gappy)
         Screen.instance.invalidated_clear
         repaint(layout)
@@ -157,10 +157,10 @@ module Tuile
       end
 
       it "reaches a child whose rect contains the press position" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         child = child_class.new
-        child.rect = Rect.new(5, 5, 10, 10)
+        place(child, Rect.new(5, 5, 10, 10))
         layout.add(child)
         # (5, 5) is the top-left of child's rect — which reaches the child as
         # (0, 0), its own coordinates, the same ones it paints in.
@@ -169,23 +169,23 @@ module Tuile
       end
 
       it "leaves a child the press position misses alone" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         child = child_class.new
-        child.rect = Rect.new(5, 5, 10, 10)
+        place(child, Rect.new(5, 5, 10, 10))
         layout.add(child)
         Screen.instance.click(0, 0)
         assert_equal [], child.received_events
       end
 
       it "bubbles to the ancestor when the child declines, and stops at the claimant" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         Screen.instance.content = layout
         outer = child_class.new
-        outer.rect = Rect.new(0, 0, 20, 20)
+        place(outer, Rect.new(0, 0, 20, 20))
         layout.add(outer)
         inner = child_class.new
-        inner.rect = Rect.new(5, 5, 10, 10)
+        place(inner, Rect.new(5, 5, 10, 10))
         outer.send(:add_child, inner) # add_child is final, and protected
 
         Screen.instance.click(5, 5)
@@ -202,7 +202,7 @@ module Tuile
     context "#handle_focus" do
       it "forwards focus to the first tab_stop descendant in pre-order" do
         screen = Screen.instance
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         # First child: Window wrapping a Label (non-tab_stop). Second child: a
         # TextField (tab_stop). The first tab_stop in pre-order is the
@@ -218,7 +218,7 @@ module Tuile
 
       it "forwards focus to a tab_stop nested inside a non-tab_stop window" do
         screen = Screen.instance
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         window = Component::Window.new
         list = Component::List.new
@@ -230,7 +230,7 @@ module Tuile
 
       it "falls back to first focusable child when subtree has no tab stops" do
         screen = Screen.instance
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         screen.content = layout
         # Window is focusable but not a tab_stop; its content (Label) is
         # neither. No tab_stop in the subtree → fall back to first focusable
@@ -324,17 +324,17 @@ module Tuile
 
     context "#handle_key?" do
       it "returns false when there are no children" do
-        assert_equal false, Component::Layout::Absolute.new.handle_key?("a")
+        assert_equal false, Component::Layout.new.handle_key?("a")
       end
 
       it "returns false when no child handles the key" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         layout.add(Component.new)
         assert_equal false, layout.handle_key?("a")
       end
 
       it "returns false when only an inactive child" do
-        layout = Component::Layout::Absolute.new
+        layout = Component::Layout.new
         handler = Class.new(Component) { define_method(:handle_key?) { |_| true } }
         layout.add(handler.new)
         assert_equal false, layout.handle_key?("a")

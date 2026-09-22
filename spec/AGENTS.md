@@ -32,13 +32,14 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   `settle(component)`, the suite-wide helper. `repaint(component)` and every {Tuile::Testing} helper
   already do it, as does a {Tuile::FakeScreen} gesture, which settles on the way *in* as well as out.
   See `D_deferred_layout`.
-- **Mount with `mount_at(component, rect)`, never `screen.content = c` plus `c.rect =`** — the pane
-  hands its content the whole screen on every pass of its own, so the example's size would be undone
-  by the next mark (opening a popup, swapping content). `mount_at` puts a
-  {Tuile::Component::Layout::Absolute} in between, which places nothing.
-- **A spec that writes a child's rect directly is asserting a lie the parent will correct** —
-  collapse through the parent instead (`constrain`, or an `Absolute` holder). The same goes for a
-  popup's position, which {Tuile::ScreenPane}'s `rect=` re-derives.
+- **Mount with `mount_at(component, rect)`, never `screen.content = c` and a size** — the pane
+  hands its content the whole screen, so `mount_at` puts a {Tuile::Component::Layout::Absolute} in
+  between, holding the example's rect as a constraint.
+- **Size or move anything else with `place(component, rect)`** — `rect=` raises outside the parent's
+  `relayout`, so `place` goes through whatever places the component: an `Absolute` parent is
+  constrained, an open overlay gets `At[rect]`, a parentless root is sized in a throwaway holder, and
+  the pane means a terminal resize. A child of any other container raises: move it by its
+  constraint there.
 - **The contract suite's stray sweep paints through `paint_unclipped`, not `paint`** — through
   `Screen#canvas_for` the strays never reach the buffer, so the sweep becomes a test of `Screen`
   and cannot fail. See `D_clip`.

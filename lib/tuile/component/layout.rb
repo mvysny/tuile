@@ -3,15 +3,35 @@
 module Tuile
   class Component
     # A layout doesn't paint anything by itself: its job is to position child
-    # components. Two families, both top-down (see book ch3):
+    # components. Three ways to use one, all top-down (see book ch3):
     #
-    # - {Absolute} — you compute every child's rectangle yourself in a
+    # - Subclass {Layout} and compute every child's rectangle yourself in a
     #   {Component#relayout} override. Total control, and the base for anything
-    #   unusual.
+    #   unusual:
+    #
+    #     class SplitPane < Component::Layout
+    #       def initialize
+    #         super
+    #         add(@sidebar = Component::List.new)
+    #         add(@main = Component::Window.new("Main"))
+    #       end
+    #
+    #       protected
+    #
+    #       def relayout
+    #         left = width * 4 / 10
+    #         @sidebar.rect = Rect.new(0, 0, left, height)
+    #         @main.rect = Rect.new(left, 0, width - left, height)
+    #       end
+    #     end
+    #
+    #   The framework runs it after a resize, an `add` or `remove`, and a
+    #   child's {Component#visible=}.
+    # - {Absolute} — you give each child a fixed {Rect} and the layout assigns
+    #   exactly that.
     # - {Box} / {Vertical} / {Horizontal} — you declare each child's extent as
     #   a {Fixed}, {Percent} or {Expand} constraint and the layout does the
-    #   arithmetic. Sugar over the same child-`rect` assignment, for the common
-    #   case.
+    #   arithmetic.
     #
     # Children that fully tile the layout's rect repaint themselves and
     # cover everything; children that leave gaps (e.g. a form with widgets
@@ -219,32 +239,6 @@ module Tuile
           first_focusable = @children.find { _1.visible? && _1.focusable? }
           screen.focused = first_focusable unless first_focusable.nil?
         end
-      end
-
-      # Absolute layout: the base to subclass when the arithmetic is yours.
-      # Extend it, `add` the children, and divide {Component#local_rect}
-      # between them in a {Component#relayout} override:
-      #
-      #   class SplitPane < Component::Layout::Absolute
-      #     def initialize
-      #       super
-      #       add(@sidebar = Component::List.new)
-      #       add(@main = Component::Window.new("Main"))
-      #     end
-      #
-      #     protected
-      #
-      #     def relayout
-      #       left = width * 4 / 10
-      #       @sidebar.rect = Rect.new(0, 0, left, height)
-      #       @main.rect = Rect.new(left, 0, width - left, height)
-      #     end
-      #   end
-      #
-      # The framework runs it after a resize, an `add` or `remove`, and a
-      # child's {Component#visible=} — so `add` and `visible=` come free, where
-      # the `rect=` override this replaced only ever saw the resize.
-      class Absolute < Layout
       end
     end
   end
