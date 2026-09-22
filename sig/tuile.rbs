@@ -3540,6 +3540,7 @@ module Tuile
     BG_STATES: ::Array[Symbol]
     BG_INHERIT: Symbol
     PLACING: Symbol
+    PLACED: Symbol
 
     def initialize: () -> void
 
@@ -3723,8 +3724,9 @@ module Tuile
     #   {#handle_child_removed}), and does not hand it back on the way in.
     # 
     # For "invisible but still occupying its space", use a
-    # {Component::Slot} with no content (`D_slots`). Flipping it from the
-    # parent's own {#relayout} is fine — see {#invalidate_layout}.
+    # {Component::Slot} with no content (`D_slots`). The parent's own
+    # {#relayout} may flip it — before placing any child, or it runs twice
+    # ({#invalidate_layout}).
     # 
     # _@param_ `value`
     def visible=: (bool value) -> void
@@ -4269,11 +4271,17 @@ module Tuile
     # dropped: attaching hands it to the {Screen}, so a tree assembled with no
     # screen lays out as soon as it is mounted.
     # 
-    # **A mark made during this container's own {#relayout} is dropped** — the
-    # pass that would answer it is the one running. So a `relayout` may hide or
-    # add a child, or set its own `spacing`, before dividing:
+    # **A mark made during this container's own {#relayout}, before it places
+    # its first child, is dropped** — the pass that would answer it is the one
+    # running. So hide or add a child, or set your own `spacing`, *first*:
     # 
-    #   @sidebar.visible = width >= 60     # no second pass; this one places it
+    #   def relayout
+    #     @sidebar.visible = width >= 60   # before `super`: one pass
+    #     super
+    #   end
+    # 
+    # Once a child is placed, the division may already be stale, so a later
+    # mark is kept and costs a second pass.
     def invalidate_layout: () -> void
 
     # Assigns every child's rect, and is the only place a container may.
@@ -14700,6 +14708,7 @@ module Tuile
     BG_STATES: ::Array[Symbol]
     BG_INHERIT: Symbol
     PLACING: Symbol
+    PLACED: Symbol
 
     def initialize: () -> void
 

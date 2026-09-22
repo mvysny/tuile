@@ -519,6 +519,36 @@ module Tuile
           assert_equal 1, layout.passes
         end
 
+        # The natural spelling for a box subclass: let the box divide, then
+        # adjust. That division counted the child as shown, so the mark must
+        # survive or the vacated row is never handed back.
+        it "is kept once the pass has placed a child, so hiding after super still settles right" do
+          klass = Class.new(Component::Layout::Vertical) do
+            attr_reader :top, :bottom, :passes
+
+            def initialize
+              super
+              @passes = 0
+              @top = Component.new
+              @bottom = Component.new
+              add(@top, Component::Layout::Expand[1])
+              add(@bottom, Component::Layout::Fixed[3])
+            end
+
+            protected
+
+            def relayout
+              @passes += 1
+              super
+              @bottom.visible = height >= 10
+            end
+          end
+          layout = mount_at(klass.new, Rect.new(0, 0, 10, 5))
+          assert !layout.bottom.visible?
+          assert_equal Rect.new(0, 0, 10, 5), layout.top.rect
+          assert_equal 2, layout.passes
+        end
+
         it "still honours a mark on the parent from a child's own pass" do
           layout = mount_at(two_column_class.new, Rect.new(0, 0, 80, 20))
           layout.side.define_singleton_method(:relayout) { parent.invalidate_layout }

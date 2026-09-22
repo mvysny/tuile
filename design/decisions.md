@@ -6840,13 +6840,17 @@ boundary (`R_layout_pass`), the mark never climbs, and a pass cannot dirty the p
 Re-opening the bottom-up channel `D_declared_size` closed is what would change that, and it owes
 this loop a cap. The contract suite's `relayout is idempotent` check is the cheap half of the guard.
 
-**Nor can a pass dirty itself:** `invalidate_layout` drops a mark on the container whose `relayout`
-is running. Otherwise a `relayout` that hides a child (`visible=` marks the parent) or adds one
-re-queues itself, buying an identical second pass during which every rect below reads as stale —
-and `D_strict_layout` raised on correct code whenever a child shared the round, i.e. a freshly
-built tree ([issue #50](https://github.com/mvysny/tuile/issues/50)). Dropping loses nothing: a
-write before the reads it feeds is seen by this pass, and one after them makes the `relayout`
-non-idempotent, which the contract check catches. For the same reason the drain skips a container
+**Nor can a pass dirty itself before it places anything:** `invalidate_layout` drops a mark on the
+container whose `relayout` is running, until that pass assigns its first child rect. Otherwise a
+`relayout` that hides a child (`visible=` marks the parent) or adds one re-queues itself, buying an
+identical second pass during which every rect below reads as stale — and `D_strict_layout` raised
+on correct code whenever a child shared the round, i.e. a freshly built tree
+([issue #50](https://github.com/mvysny/tuile/issues/50)). Up to the first placement nothing has
+been derived from the old state, so dropping loses nothing. After it, the division may already be
+stale — a `Box` subclass hiding a child *after* `super` is the natural spelling — so the mark is
+kept: dropping it too left the hidden child's rect and its siblings' share unrepaired, silently,
+and the contract suite's idempotency check never sees an app subclass. Keeping it costs a pass, and
+a stale-rect report in that window is a true one. For the same reason the drain skips a container
 whose flag is already clear — one marked by an ancestor's pass while still waiting in this round
 is also in the next.
 
