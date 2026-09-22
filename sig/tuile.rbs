@@ -4122,21 +4122,6 @@ module Tuile
     # So release resources here and don't inspect the tree around you.
     def handle_detached: () -> void
 
-    # Refuses a parent this component cannot live under, `check_locked`-style —
-    # raise, or return and be adopted. The base accepts every one;
-    # {Component::Overlay} is the single override, since its whole contract
-    # (its placement, `open?`, `visible=`, outside-click dismissal) is the
-    # pane's popup stack and nowhere else.
-    # 
-    # {#add_child} asks **before** it touches anything, alongside the type and
-    # the already-parented check — a refusal after the push would leave the
-    # child listed with a `nil` parent, which is the disagreement those three
-    # mutators exist to make impossible. Detaching asks nothing: every
-    # component accepts `nil`, and one that refused it could not be unmounted.
-    # 
-    # _@param_ `_new_parent` — the would-be parent.
-    def check_parent: (Component _new_parent) -> void
-
     # Walks self-then-children calling one lifecycle hook, delivering at most one
     # call per component per transition however the hooks mutate the tree. Two
     # guards, because a hook runs *before* its own children are visited:
@@ -6781,19 +6766,6 @@ module Tuile
       # Content fills the overlay's full rect — an Overlay has no border to
       # subtract.
       def relayout: () -> void
-
-      # The popup stack or nothing: {#open} is the door, and anything else that
-      # adopted an overlay would get a component it cannot place (only the pane
-      # reads a {#placement}), cannot hide ({#visible=} raises), that never
-      # reports {#open?} true and that no outside click dismisses — because
-      # every one of those answers comes from the pane's popup list.
-      # 
-      # So the test is membership of that list, not the pane's identity, which
-      # would let the `content` slot through. {ScreenPane#add_popup} enlists
-      # before it adopts, which is what lets this answer during the adoption.
-      # 
-      # _@param_ `new_parent` — see {Component#check_parent}.
-      def check_parent: (Component new_parent) -> void
 
       def handle_focus: () -> void
 

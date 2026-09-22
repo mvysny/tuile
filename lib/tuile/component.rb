@@ -892,6 +892,8 @@ module Tuile
     # @param at [Integer, nil] index to insert at; appends when nil.
     # @raise [TypeError] if `child` is not a {Component}.
     # @raise [ArgumentError] if `child` already has a parent.
+    # @raise [Tuile::Error] if `child` is a {Component::Overlay} not being
+    #   adopted as one of {ScreenPane#popups}.
     # @return [void]
     #
     # Final: one of the three mutators that write {#children} and the parent
@@ -900,7 +902,15 @@ module Tuile
       raise TypeError, "expected Component, got #{child.inspect}" unless child.is_a? Component
       raise ArgumentError, "#{child} already has a parent #{child.parent}" unless child.parent.nil?
 
-      child.__send__(:check_parent, self)
+      # An overlay's placement, `open?`, `visible=` and outside-click dismissal
+      # all come from the pane's popup list, so anywhere else it would be
+      # unplaceable and undismissable. Membership, not the pane's identity,
+      # which would let the `content` slot through; checked before the push, so
+      # a refusal leaves the tree untouched.
+      if child.is_a?(Component::Overlay) && !(is_a?(ScreenPane) && has_popup?(child))
+        raise Tuile::Error, "#{child.class} belongs on the popup stack — open it (#{child.class}#open) " \
+                            "rather than adding it to #{self.class}"
+      end
       at.nil? ? @children.push(child) : @children.insert(at, child)
       child.parent = self
       invalidate_layout
@@ -996,22 +1006,6 @@ module Tuile
 
       fire_lifecycle(attached?)
     end
-
-    # Refuses a parent this component cannot live under, `check_locked`-style —
-    # raise, or return and be adopted. The base accepts every one;
-    # {Component::Overlay} is the single override, since its whole contract
-    # (its placement, `open?`, `visible=`, outside-click dismissal) is the
-    # pane's popup stack and nowhere else.
-    #
-    # {#add_child} asks **before** it touches anything, alongside the type and
-    # the already-parented check — a refusal after the push would leave the
-    # child listed with a `nil` parent, which is the disagreement those three
-    # mutators exist to make impossible. Detaching asks nothing: every
-    # component accepts `nil`, and one that refused it could not be unmounted.
-    # @param _new_parent [Component] the would-be parent.
-    # @raise [Error] if this component may not hang there.
-    # @return [void]
-    def check_parent(_new_parent); end
 
     # Walks self-then-children calling one lifecycle hook, delivering at most one
     # call per component per transition however the hooks mutate the tree. Two

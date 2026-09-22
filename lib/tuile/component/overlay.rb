@@ -287,26 +287,6 @@ module Tuile
       def relayout
         content&.rect = local_rect
       end
-
-      # The popup stack or nothing: {#open} is the door, and anything else that
-      # adopted an overlay would get a component it cannot place (only the pane
-      # reads a {#placement}), cannot hide ({#visible=} raises), that never
-      # reports {#open?} true and that no outside click dismisses — because
-      # every one of those answers comes from the pane's popup list.
-      #
-      # So the test is membership of that list, not the pane's identity, which
-      # would let the `content` slot through. {ScreenPane#add_popup} enlists
-      # before it adopts, which is what lets this answer during the adoption.
-      # @param new_parent [Component] see {Component#check_parent}.
-      # @raise [Tuile::Error] unless this is being adopted as one of
-      #   {ScreenPane#popups}.
-      # @return [void]
-      def check_parent(new_parent)
-        return if new_parent.is_a?(ScreenPane) && new_parent.has_popup?(self)
-
-        raise Tuile::Error, "#{self.class} belongs on the popup stack — open it (#{self.class}#open) " \
-                            "rather than adding it to #{new_parent.class}"
-      end
     end
   end
 end

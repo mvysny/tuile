@@ -164,7 +164,7 @@ module Tuile
     # at the next settle, swallowing the margin the stray sweep needs.
     #
     # An {Component::Overlay} opens at `rect` instead: the popup stack is the
-    # only parent one accepts ({Component#check_parent}).
+    # only parent one accepts ({Component#add_child}).
     # @param component [Component]
     # @param rect [Rect]
     # @return [void]

@@ -108,8 +108,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   which every later component misses the hook. See `D_hook_visibility`, `D_on_blur`.
 - **`Screen#close` unmounts the tree, so teardown fires `handle_detached`; a process exiting without it
   fires nothing** — these are lifecycle hooks, not destructors, and there is no `at_exit`. See `D_attach_hooks`.
-- **An {Tuile::Component::Overlay} lives on the popup stack and nowhere else** — `add_child` asks
-  `check_parent` first, and anything but a `ScreenPane#popups` adoption raises: a layout could not
+- **An {Tuile::Component::Overlay} lives on the popup stack and nowhere else** — `add_child` checks
+  before adopting, and anything but a `ScreenPane#popups` adoption raises: a layout could not
   place it, hide it, or have it dismissed, and the pane's `content` slot is refused too.
 - **Named slots are readers over the array, never a second copy** — `ScreenPane#popups` is the one
   exception. See `D_tree_api`.
