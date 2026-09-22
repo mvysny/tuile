@@ -363,7 +363,8 @@ module Tuile
     #   {#handle_child_removed}), and does not hand it back on the way in.
     #
     # For "invisible but still occupying its space", use a
-    # {Component::Slot} with no content (`D_slots`).
+    # {Component::Slot} with no content (`D_slots`). Flipping it from the
+    # parent's own {#relayout} is fine — see {#invalidate_layout}.
     # @param value [Boolean]
     # @raise [Tuile::Error] when the UI is locked, or always from
     #   {Component::Overlay#visible=}.
@@ -1166,8 +1167,16 @@ module Tuile
     # Unlike {#invalidate}, a detached mark is *remembered* rather than
     # dropped: attaching hands it to the {Screen}, so a tree assembled with no
     # screen lays out as soon as it is mounted.
+    #
+    # **A mark made during this container's own {#relayout} is dropped** — the
+    # pass that would answer it is the one running. So a `relayout` may hide or
+    # add a child, or set its own `spacing`, before dividing:
+    #
+    #   @sidebar.visible = width >= 60     # no second pass; this one places it
     # @return [void]
     def invalidate_layout
+      return if Thread.current[PLACING].equal?(self)
+
       @layout_dirty = true
       screen.invalidate_layout(self) if attached?
     end
@@ -1325,8 +1334,7 @@ module Tuile
     private
 
     # Clears the mark and runs {#relayout} — the sole invocation site of
-    # `relayout`, shared by the screen's drain and {#flush_layout}. Clearing
-    # first, so a pass that marks itself again is honoured rather than lost.
+    # `relayout`, shared by the screen's drain and {#flush_layout}.
     # @return [void]
     def perform_relayout
       @layout_dirty = false

@@ -6840,6 +6840,16 @@ boundary (`R_layout_pass`), the mark never climbs, and a pass cannot dirty the p
 Re-opening the bottom-up channel `D_declared_size` closed is what would change that, and it owes
 this loop a cap. The contract suite's `relayout is idempotent` check is the cheap half of the guard.
 
+**Nor can a pass dirty itself:** `invalidate_layout` drops a mark on the container whose `relayout`
+is running. Otherwise a `relayout` that hides a child (`visible=` marks the parent) or adds one
+re-queues itself, buying an identical second pass during which every rect below reads as stale —
+and `D_strict_layout` raised on correct code whenever a child shared the round, i.e. a freshly
+built tree ([issue #50](https://github.com/mvysny/tuile/issues/50)). Dropping loses nothing: a
+write before the reads it feeds is seen by this pass, and one after them makes the `relayout`
+non-idempotent, which the contract check catches. For the same reason the drain skips a container
+whose flag is already clear — one marked by an ancestor's pass while still waiting in this round
+is also in the next.
+
 Why not:
 
 - **Deferred, but any rect read forces the pass.** That is the DOM, and getting it wrong has an

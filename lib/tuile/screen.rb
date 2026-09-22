@@ -484,8 +484,10 @@ module Tuile
           pending = @layout_invalidated
           @layout_invalidated = Set.new
           pending.delete_if { !_1.attached? }
-          # `__send__`: `perform_relayout` is private, and clears the mark.
-          @pane.walk_tree { _1.__send__(:perform_relayout) if pending.include?(_1) }
+          # `__send__`: `perform_relayout` is private, and clears the mark. The
+          # flag check: one marked while waiting in `pending` is in the next
+          # round too, and this round's pass already answered it.
+          @pane.walk_tree { _1.__send__(:perform_relayout) if pending.include?(_1) && _1.layout_dirty? }
         end
         # The pane places anchored popups before the content they hang from
         # settles, so it re-checks once everything has; placing a popup never
