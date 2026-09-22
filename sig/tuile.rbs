@@ -2591,12 +2591,21 @@ module Tuile
     # 
     #   label.repaint(screen.canvas_for(label))   # paint one component, as a spec does
     # 
+    # With `root:` it is positioned and bounded within that ancestor instead of
+    # the screen, so a subtree paints into a buffer of its own:
+    # 
+    #   screen.canvas_for(list, backend: Buffer.new(window.rect.size), root: window)
+    # 
     # The **sole converter** into backend coordinates: {#clip_for} answers in
     # the component's own space and the one `moved_by` here puts it where
     # {Canvas} keeps it, beside the origin (`D_clip`).
     # 
     # _@param_ `component`
-    def canvas_for: (Component component) -> Canvas
+    # 
+    # _@param_ `backend` — where the cells land; the screen's {#buffer} unless given.
+    # 
+    # _@param_ `root` — `component` itself or one of its ancestors; `nil` is the screen.
+    def canvas_for: (Component component, ?backend: Canvas::Backend, ?root: Component?) -> Canvas
 
     # The cells `component` may write, in **its own** coordinates: its
     # {Component#local_rect} intersected with every ancestor's, each folded in
@@ -2614,11 +2623,13 @@ module Tuile
     # 
     # _@param_ `component`
     # 
+    # _@param_ `root` — the last ancestor folded in — `component` itself or one of its ancestors; `nil` folds in every one.
+    # 
     # _@return_ — never `nil`; {Rect#empty? empty} exactly when the component
     # can show nothing — scrolled clean out of its viewport, collapsed, or
     # under an ancestor allowing no cell. The own rect being folded in, that
     # one predicate answers *is any of this visible*.
-    def clip_for: (Component component) -> Rect
+    def clip_for: (Component component, ?root: Component?) -> Rect
 
     # Fired with an {EventQueue::ErrorEvent} when a {StandardError} escapes an
     # event handler inside the event loop (e.g. a {Component::TextField}'s
@@ -2916,7 +2927,9 @@ module Tuile
     # reads better and measures as no gain at all (`D_clip`).
     # 
     # _@param_ `component`
-    def clipped?: (Component component) -> bool
+    # 
+    # _@param_ `root` — see {#clip_for}.
+    def clipped?: (Component component, Component? root) -> bool
 
     # Whether `component` is out of the user's reach because it or an ancestor
     # is {Component#visible? hidden}.
@@ -3274,10 +3287,15 @@ module Tuile
   #   Testing.get(Component::TextField, id: :name)._value = "Zaphod"
   #   Testing.get(Component::Button, id: :save)._click
   # 
-  # For *what a component shows*, assert on {Screen#buffer} instead — this
-  # locates and drives, it does not replace that channel. See book ch8 for the
-  # worked usage, and `design/decisions.md` `D_component_lookup` / `D_test_gestures`
-  # for the design.
+  # == Painting
+  # 
+  # {.paint} returns what one component paints, in a {Buffer} of its own whose
+  # `(0, 0)` is the component's top-left. For what the *user* sees, popups
+  # included, call {Screen#repaint} and read {Screen#buffer} at the component's
+  # {Component#absolute_rect}.
+  # 
+  # See book ch8 for the worked usage, and `design/decisions.md`
+  # `D_component_lookup` / `D_test_gestures` for the design.
   module Testing
     # Every component in the searched tree matching the spec, in pre-order.
     # 
@@ -3375,6 +3393,29 @@ module Tuile
     # _@return_ — `component`, settled.
     def self.place: (Component component, Rect rect) -> Component
 
+    # Paints `component` and its subtree, attached or not, into a {Buffer} of
+    # its own size whose `(0, 0)` is the component's top-left:
+    # 
+    #   Testing.place(window, Rect.new(0, 0, 14, 4))
+    #   buffer = Testing.paint(window)
+    #   buffer.region_text(Rect.new(0, 0, 14, 4))   # => ["┌Caption─────┐", "│ alpha      │", …]
+    #   buffer.cell(1, 1).style                     # component coordinates, no absolute_rect
+    # 
+    # What the component paints, not what the user sees: popups over it don't
+    # show, and ancestors don't clip it — only their background shows through.
+    # {Screen#buffer} is left untouched.
+    # 
+    # == Implementation details
+    # 
+    # A {Component#repaint} paints only its own ink and queues its children,
+    # so this walks the subtree in {Screen#repaint}'s order: pre-order, shown
+    # components only, nothing under an empty rect. The queued children stay
+    # on the screen's queue, harmlessly: a detached one is dropped, an
+    # attached one repaints unchanged.
+    # 
+    # _@param_ `component`
+    def self.paint: (Component component) -> Buffer
+
     # The shown components under `point`, outermost first — the descent
     # {Mouse::Router} makes when the terminal reports a press there.
     # 
@@ -3400,6 +3441,13 @@ module Tuile
     # helpers run straight from spec code, with no event dispatched to settle
     # the layout the way the loop's would. A no-op with nothing pending.
     def self.settle_layout: () -> void
+
+    # _@param_ `component` — the node to paint, with its subtree.
+    # 
+    # _@param_ `root` — the component {.paint} was asked for.
+    # 
+    # _@param_ `buffer`
+    def self.paint_subtree: (Component component, Component root, Buffer buffer) -> void
 
     # Whether `component` is shown, ancestors included, *and* inside `scope`.
     # One walk answers both: `walk_shown_tree` skips a hidden subtree whole.

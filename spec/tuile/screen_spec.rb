@@ -819,6 +819,20 @@ module Tuile
         assert_equal Rect.new(3, 4, 8, 1), screen.canvas_for(inner).clip
       end
 
+      it "canvas_for(root:) positions and bounds within that ancestor, onto the backend given" do
+        pane = Component::Layout::Absolute.new
+        inner = Component::Label.new("hello")
+        pane.add(inner)
+        mount_at(pane, Rect.new(2, 3, 20, 5))
+        Testing.place(inner, Rect.new(1, -1, 8, 3)) # one row above the pane
+        backend = Buffer.new(Size.new(20, 5))
+        canvas = screen.canvas_for(inner, backend:, root: pane)
+
+        assert_same backend, canvas.backend
+        assert_equal Point.new(1, -1), canvas.origin
+        assert_equal Rect.new(1, 0, 8, 2), canvas.clip
+      end
+
       it "canvas_for is how a spec repaints one component in isolation" do
         label.repaint(screen.canvas_for(label))
 

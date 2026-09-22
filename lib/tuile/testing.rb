@@ -75,10 +75,15 @@ module Tuile
   #   Testing.get(Component::TextField, id: :name)._value = "Zaphod"
   #   Testing.get(Component::Button, id: :save)._click
   #
-  # For *what a component shows*, assert on {Screen#buffer} instead — this
-  # locates and drives, it does not replace that channel. See book ch8 for the
-  # worked usage, and `design/decisions.md` `D_component_lookup` / `D_test_gestures`
-  # for the design.
+  # == Painting
+  #
+  # {.paint} returns what one component paints, in a {Buffer} of its own whose
+  # `(0, 0)` is the component's top-left. For what the *user* sees, popups
+  # included, call {Screen#repaint} and read {Screen#buffer} at the component's
+  # {Component#absolute_rect}.
+  #
+  # See book ch8 for the worked usage, and `design/decisions.md`
+  # `D_component_lookup` / `D_test_gestures` for the design.
   module Testing
     # Raised by every lookup and every gesture that does not hold: the match
     # count is not the one asked for, or a gesture was handed a component no
@@ -274,6 +279,42 @@ module Tuile
         component.tap(&:flush_layout)
       end
 
+      # Paints `component` and its subtree, attached or not, into a {Buffer} of
+      # its own size whose `(0, 0)` is the component's top-left:
+      #
+      #   Testing.place(window, Rect.new(0, 0, 14, 4))
+      #   buffer = Testing.paint(window)
+      #   buffer.region_text(Rect.new(0, 0, 14, 4))   # => ["┌Caption─────┐", "│ alpha      │", …]
+      #   buffer.cell(1, 1).style                     # component coordinates, no absolute_rect
+      #
+      # What the component paints, not what the user sees: popups over it don't
+      # show, and ancestors don't clip it — only their background shows through.
+      # {Screen#buffer} is left untouched.
+      #
+      # == Implementation details
+      #
+      # A {Component#repaint} paints only its own ink and queues its children,
+      # so this walks the subtree in {Screen#repaint}'s order: pre-order, shown
+      # components only, nothing under an empty rect. The queued children stay
+      # on the screen's queue, harmlessly: a detached one is dropped, an
+      # attached one repaints unchanged.
+      # @param component [Component]
+      # @raise [AssertionError] if `component` is hidden, or has no cell to
+      #   paint — {.place} it first.
+      # @return [Buffer]
+      def paint(component)
+        component.flush_layout
+        raise AssertionError, "#{brief(component)} is hidden, so it paints nothing" unless component.visible?
+        if component.rect.empty?
+          raise AssertionError, "#{brief(component)} has no cell to paint: place it first, " \
+                                "or it is deliberately collapsed"
+        end
+
+        buffer = Buffer.new(component.rect.size)
+        paint_subtree(component, component, buffer)
+        buffer
+      end
+
       # The shown components under `point`, outermost first — the descent
       # {Mouse::Router} makes when the terminal reports a press there.
       #
@@ -331,6 +372,17 @@ module Tuile
       # @return [void]
       def settle_layout
         Screen.instance.flush_layout if Screen.instance?
+      end
+
+      # @param component [Component] the node to paint, with its subtree.
+      # @param root [Component] the component {.paint} was asked for.
+      # @param buffer [Buffer]
+      # @return [void]
+      def paint_subtree(component, root, buffer)
+        return if !component.visible? || component.rect.empty?
+
+        component.repaint(Screen.instance.canvas_for(component, backend: buffer, root:))
+        component.children.each { paint_subtree(_1, root, buffer) }
       end
 
       # Whether `component` is shown, ancestors included, *and* inside `scope`.

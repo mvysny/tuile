@@ -170,19 +170,32 @@ module Tuile
     #
     #   label.repaint(screen.canvas_for(label))   # paint one component, as a spec does
     #
+    # With `root:` it is positioned and bounded within that ancestor instead of
+    # the screen, so a subtree paints into a buffer of its own:
+    #
+    #   screen.canvas_for(list, backend: Buffer.new(window.rect.size), root: window)
+    #
     # The **sole converter** into backend coordinates: {#clip_for} answers in
     # the component's own space and the one `moved_by` here puts it where
     # {Canvas} keeps it, beside the origin (`D_clip`).
     # @param component [Component]
+    # @param backend [Canvas::Backend] where the cells land; the screen's
+    #   {#buffer} unless given.
+    # @param root [Component, nil] `component` itself or one of its ancestors;
+    #   `nil` is the screen.
     # @return [Canvas]
-    def canvas_for(component)
+    def canvas_for(component, backend: @buffer, root: nil)
       # Built rather than derived from #canvas, since {Canvas#with} is
       # block-only. __send__ because effective_bg_color is protected: the
       # framework paints with it, an app never asks (`D_bg_surface`).
       origin = component.to_screen(Point::ZERO)
-      Canvas.new(@buffer, bg_color: component.__send__(:effective_bg_color),
+      unless root.nil?
+        base = root.to_screen(Point::ZERO)
+        origin = Point.new(origin.x - base.x, origin.y - base.y)
+      end
+      Canvas.new(backend, bg_color: component.__send__(:effective_bg_color),
                           origin:,
-                          clip: clip_for(component).moved_by(origin))
+                          clip: clip_for(component, root:).moved_by(origin))
     end
 
     # The cells `component` may write, in **its own** coordinates: its
@@ -199,18 +212,20 @@ module Tuile
     # ancestor may scroll between two frames. {#clipped?} skips the fold
     # entirely in the common case, which is what keeps that affordable.
     # @param component [Component]
+    # @param root [Component, nil] the last ancestor folded in — `component`
+    #   itself or one of its ancestors; `nil` folds in every one.
     # @return [Rect] never `nil`; {Rect#empty? empty} exactly when the component
     #   can show nothing — scrolled clean out of its viewport, collapsed, or
     #   under an ancestor allowing no cell. The own rect being folded in, that
     #   one predicate answers *is any of this visible*.
-    def clip_for(component)
-      return component.local_rect unless clipped?(component)
+    def clip_for(component, root: nil)
+      return component.local_rect unless clipped?(component, root)
 
       clip = component.local_rect
       x = 0
       y = 0
       node = component
-      while (up = node.parent)
+      while !node.equal?(root) && (up = node.parent)
         # Intersection only ever shrinks, so the rest of the chain cannot change
         # an empty answer. Worth the test: a scroller's off-screen children land
         # here on every scroll, one per row it is not showing (`D_clip`).
@@ -1017,10 +1032,11 @@ module Tuile
     # Spelled the obvious way, `up.local_rect.contains_rect?(node.rect)`, it
     # reads better and measures as no gain at all (`D_clip`).
     # @param component [Component]
+    # @param root [Component, nil] see {#clip_for}.
     # @return [Boolean]
-    def clipped?(component)
+    def clipped?(component, root)
       node = component
-      while (up = node.parent)
+      while !node.equal?(root) && (up = node.parent)
         r = node.rect
         # An empty rect covers no cells, so it is trivially inside — matching
         # {Rect#contains_rect?}, whose place this takes.

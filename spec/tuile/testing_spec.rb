@@ -430,5 +430,78 @@ module Tuile
         end
       end
     end
+
+    describe ".paint" do
+      def list(*lines) = Component::List.new.tap { _1.lines = lines }
+
+      def text(buffer) = buffer.region_text(Rect.new(0, 0, buffer.size.width, buffer.size.height))
+
+      # A repaint paints only its own ink and queues its children, so a painter
+      # handing the root one canvas would leave the window empty.
+      it "paints a detached component's whole subtree" do
+        w = Component::Window.new("Caption").tap { _1.content = list("alpha", "beta") }
+        Testing.place(w, Rect.new(0, 0, 14, 4))
+        refute w.attached?
+
+        assert_equal ["┌Caption─────┐", "│ alpha      │", "│ beta       │", "└────────────┘"],
+                     text(Testing.paint(w))
+      end
+
+      it "puts the component's own top-left at (0, 0), and leaves the screen's buffer alone" do
+        inner = list("alpha")
+        w = Component::Window.new("Caption").tap { _1.content = inner }
+        mount_at(w, Rect.new(5, 5, 14, 3))
+        buffer = Testing.paint(inner)
+
+        assert_equal Size.new(12, 1), buffer.size
+        assert_equal [" alpha      "], text(buffer)
+        assert_equal [" " * 12], Screen.instance.buffer.region_text(inner.absolute_rect)
+      end
+
+      it "is not clipped by an ancestor, whose background still shows through" do
+        parent = Component::Layout::Absolute.new
+        parent.bg_color = 52
+        child = list("a", "b", "c")
+        parent.add(child, Rect.new(0, -1, 6, 3)) # one row above the parent, one below
+        Testing.place(parent, Rect.new(0, 0, 6, 1))
+        buffer = Testing.paint(child)
+
+        assert_equal [" a    ", " b    ", " c    "], text(buffer)
+        assert_equal Color.new(52), buffer.cell(5, 0).style.bg
+      end
+
+      it "leaves out a popup open over the component" do
+        w = Component::Window.new("Caption").tap { _1.content = list("alpha") }
+        mount_at(w, Rect.new(0, 0, 14, 3))
+        Component::Popup.new(content: Component::Label.new("POPUP")).open(Component::Overlay::At[Rect.new(0, 0, 14, 3)])
+
+        assert_equal ["┌Caption─────┐", "│ alpha      │", "└────────────┘"], text(Testing.paint(w))
+      end
+
+      # An Absolute keeps a hidden child's rect, so only the visibility test
+      # keeps it off the buffer.
+      it "skips a hidden child" do
+        holder = Component::Layout::Absolute.new
+        hidden = Component::Label.new("hidden")
+        holder.add(hidden, Rect.new(0, 0, 6, 1))
+        holder.add(Component::Label.new("shown"), Rect.new(0, 1, 6, 1))
+        hidden.visible = false
+        Testing.place(holder, Rect.new(0, 0, 6, 2))
+
+        assert_equal ["      ", "shown "], text(Testing.paint(holder))
+      end
+
+      it "refuses a component never placed" do
+        e = assert_raises(Testing::AssertionError) { Testing.paint(Component::Label.new("hi")) }
+        assert_match(/place it first/, e.message)
+      end
+
+      it "refuses a hidden component" do
+        label = Component::Label.new("hi")
+        Testing.place(label, Rect.new(0, 0, 2, 1))
+        label.visible = false
+        assert_raises(Testing::AssertionError) { Testing.paint(label) }
+      end
+    end
   end
 end
