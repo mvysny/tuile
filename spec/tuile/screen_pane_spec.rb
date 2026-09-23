@@ -84,6 +84,22 @@ module Tuile
         layout.flush_layout
         assert_equal Rect.new(0, 0, 80, 30), layout.rect
       end
+
+      # D_empty_ancestor: a pass that skipped an empty pane stranded both at
+      # their last rects, and an `At` popup would keep its rect in a pane with
+      # no cells.
+      it "collapses content and popups when the terminal shrinks to nothing, and restores them" do
+        layout = Component::Layout::Absolute.new
+        Screen.instance.content = layout
+        popup = Component::Overlay.new
+        popup.open(at(Rect.new(1, 1, 5, 2)))
+        Screen.instance.resize_terminal(0, 0)
+        layout.flush_layout
+        assert_equal [Rect.new(0, 0, 0, 0)] * 2, [layout.rect, popup.rect]
+        Screen.instance.resize_terminal(40, 10)
+        layout.flush_layout
+        assert_equal [Rect.new(0, 0, 40, 10), Rect.new(1, 1, 5, 2)], [layout.rect, popup.rect]
+      end
     end
 
     context "parenting" do

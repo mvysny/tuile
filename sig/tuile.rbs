@@ -15444,6 +15444,11 @@ module Tuile
     # 
     # Re-running it moves nothing that stood still: a placement is a rule, so
     # a second popup opening re-derives the first one's rect unchanged.
+    # 
+    # An empty pane collapses every popup rather than placing it — an `At` rect
+    # would otherwise stand in a pane with no cells — and has no `return if
+    # rect.empty?` guard, which would strand the content at its last rect
+    # (`D_empty_ancestor`).
     def relayout: () -> void
 
     # Pane paints nothing itself; its children paint over the entire rect.

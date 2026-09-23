@@ -180,12 +180,19 @@ module Tuile
     #
     # Re-running it moves nothing that stood still: a placement is a rule, so
     # a second popup opening re-derives the first one's rect unchanged.
+    #
+    # An empty pane collapses every popup rather than placing it — an `At` rect
+    # would otherwise stand in a pane with no cells — and has no `return if
+    # rect.empty?` guard, which would strand the content at its last rect
+    # (`D_empty_ancestor`).
     # @return [void]
     def relayout
-      return if rect.empty?
-
       @content&.rect = local_rect
-      @popups.each { place(_1) }
+      if rect.empty?
+        @popups.each { _1.rect = Rect.new(0, 0, 0, 0) }
+      else
+        @popups.each { place(_1) }
+      end
     end
 
     # Pane paints nothing itself; its children paint over the entire rect.
@@ -376,7 +383,7 @@ module Tuile
     # settle that moved the content handed the pass a stale anchor.
     # @return [Boolean]
     def anchors_moved?
-      return false if rect.empty? # #relayout places nothing then, so nothing would record
+      return false if rect.empty? # #relayout collapses rather than places then, so nothing records
 
       @popups.any? do |popup|
         anchor = @placements[popup].anchor
