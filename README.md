@@ -146,8 +146,8 @@ then bubbles outward through `handle_mouse_down?` until someone answers
 `true` — and that claimant is *grabbed*, so the drags and the release reach
 it wherever the pointer goes. The wheel bubbles the same way, so a list
 already at its top hands the notch up to whatever scrolls around it. `capture_mouse:` picks how
-much the terminal reports: `:clicks`, `:drag`, or `:hover` with enter/exit
-hooks.
+much the terminal reports: `:clicks`, `:drag` (the default), or `:hover` with
+enter/exit hooks.
 → [chapter 5](book/05-focus.md)
 
 **Theming is accents-only, and follows the OS.** A `Theme` carries semantic
@@ -196,7 +196,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | `Window` | A frame with a `caption`, one content slot, and a border that lights up while the window is on the focus chain. `footer_text=` decorates the bottom border; `footer=` mounts a real component in it; `scrollbar=` reclaims the right border column. |
 | `Slot` | A one-child region for content that may be absent, arrive late, or be swapped. Give a multi-region container one per region and the tree stays honest — the occupant fills the slot's rect, and an empty slot holds its place rather than collapsing. |
 | `Scroller` | A viewport onto a taller pile of components: one content child, a scrollbar column, and `content_rows` — you say how tall the content is, since nothing measures. The wheel scrolls it, the bar drags, and so does focus: Tab into a field below the fold and it comes into view. |
-| `VerticalScrollBar` | A one-column bar the user can drag, and press the track of to page. It moves nothing itself: it asks through `on_scroll_request` and the container that owns the column assigns `scroll_top_row`. Dragging wants `run_event_loop(capture_mouse: :drag)`. |
+| `VerticalScrollBar` | A one-column bar the user can drag, and press the track of to page. It moves nothing itself: it asks through `on_scroll_request` and the container that owns the column assigns `scroll_top_row`. Dragging is dead under `run_event_loop(capture_mouse: :clicks)`. |
 | `FormItem` | One row of a form: a `caption` above a field, an optional required marker beside it, and the message the field reports against itself — a validator's verdict, or input it cannot parse — mirrored into the row below. Three rows that never reflow — the message row doubles as the gap. Hide the item, not the field. |
 | `FormLayout` | A column of `FormItem`s: `add(field, caption:, required:, rows:)` wraps the field, returns the item and stacks it below the last. No `spacing` — the message row is the gap — nothing measures, and items past the bottom edge are clipped rather than scrolled. |
 | `MenuBar` | A one-row strip of menu captions, each dropping a cascade of submenus that nests without limit. Items are handles from `#add_item`, each with its own `on_click`. See [Menus](book/07-components.md#menus). |

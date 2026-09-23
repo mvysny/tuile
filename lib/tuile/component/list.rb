@@ -40,8 +40,8 @@ module Tuile
     # preserving each span's foreground color.
     #
     # {#scrollbar_visibility} turns on a {VerticalScrollBar} in the rightmost
-    # column: a child component, so its handle drags (wanting
-    # `run_event_loop(capture_mouse: :drag)`) and a press on its track pages.
+    # column: a child component, so its handle drags (except under
+    # `run_event_loop(capture_mouse: :clicks)`) and a press on its track pages.
     # Under `:visible` the column stays reserved whether anything scrolls or
     # not, so a growing list re-flows nothing; under `:auto` the bar shows only
     # while the items outnumber the rows, and hands its column back to the

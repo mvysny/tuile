@@ -2286,6 +2286,13 @@ module Tuile
         assert_includes out, Keys::BRACKETED_PASTE_ON
         refute_includes out, Mouse.start_tracking(:clicks)
       end
+
+      it "tracks drags by default, and stops tracking on exit" do
+        out = loop_output
+        assert_includes out, Mouse.start_tracking(:drag)
+        assert_includes out, Mouse.stop_tracking(:drag)
+        assert_operator out.index(Mouse.start_tracking(:drag)), :<, out.index(Mouse.stop_tracking(:drag))
+      end
     end
 
     context "#paste (FakeScreen's door onto #handle_paste)" do

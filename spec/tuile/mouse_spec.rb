@@ -119,7 +119,7 @@ module Tuile
     describe ".level" do
       it "maps the Boolean shorthands" do
         assert_nil Mouse.level(false)
-        assert_equal :clicks, Mouse.level(true)
+        assert_equal :drag, Mouse.level(true)
       end
 
       it "passes a named level through" do
@@ -133,11 +133,19 @@ module Tuile
     end
 
     describe ".start_tracking" do
-      it "sets the DEC mode the level needs, SGR encoding alongside" do
+      it "sets the level's DEC mode last, above every rung beneath it, SGR encoding alongside" do
         assert_equal "\e[?1006h\e[?1000h", Mouse.start_tracking(:clicks)
-        assert_equal "\e[?1006h\e[?1002h", Mouse.start_tracking(:drag)
-        assert_equal "\e[?1006h\e[?1003h", Mouse.start_tracking(:hover)
-        assert_equal "\e[?1003l\e[?1006l", Mouse.stop_tracking(:hover)
+        assert_equal "\e[?1006h\e[?1000h\e[?1002h", Mouse.start_tracking(:drag)
+        assert_equal "\e[?1006h\e[?1000h\e[?1002h\e[?1003h", Mouse.start_tracking(:hover)
+      end
+
+      it "resets every rung it set, reporting before the encoding" do
+        assert_equal "\e[?1000l\e[?1006l", Mouse.stop_tracking(:clicks)
+        assert_equal "\e[?1003l\e[?1002l\e[?1000l\e[?1006l", Mouse.stop_tracking(:hover)
+      end
+
+      it "refuses an unknown level" do
+        assert_raises(KeyError) { Mouse.start_tracking(:hoover) }
       end
     end
 

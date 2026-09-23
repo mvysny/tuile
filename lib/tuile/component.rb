@@ -618,7 +618,7 @@ module Tuile
 
     # Called on the component that claimed a press whenever the pointer moves
     # while the button is held, wherever the pointer is. Needs
-    # `capture_mouse: :drag` or `:hover`.
+    # `capture_mouse: :drag` (the default) or `:hover`.
     # @param _event [Mouse::DragEvent] its point may lie outside {#rect}.
     # @return [void]
     def handle_mouse_drag(_event); end

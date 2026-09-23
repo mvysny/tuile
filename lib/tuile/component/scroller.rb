@@ -15,9 +15,9 @@ module Tuile
     # whichever is more — a rect taller than this component's, whose `top` goes
     # negative as you scroll. Keep it current as the content grows.
     #
-    # Four things scroll it: the wheel, the bar's handle (dragging it wants
-    # `run_event_loop(capture_mouse: :drag)`; pressing the track pages either
-    # way), {#scroll_half_page_up} /
+    # Four things scroll it: the wheel, the bar's handle (dragging it is
+    # dead under `run_event_loop(capture_mouse: :clicks)`; pressing the track
+    # pages either way), {#scroll_half_page_up} /
     # {#scroll_half_page_down} from app code, and {Component#scroll_to_visible},
     # which {Screen#focused=} makes on every focus change — so Tab into a field
     # below the fold brings that field into view. It claims **no keys**:

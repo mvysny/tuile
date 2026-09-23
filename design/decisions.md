@@ -4142,10 +4142,13 @@ an absolute drag jerks the content on a press that never moved. The press snapsh
 
 Why not:
 - *A `capture_mouse:` level the component demands* — there is no such channel, and inventing one
-  would make a widget able to reconfigure the terminal from inside the tree. The default `:clicks`
-  reports no motion, so the drag is silently inert until an app passes `:drag`; pressing the track
-  pages at every level, which is the consolation. Whether the default should flip is open
-  (`design/ideas/capture-mouse-default.md`).
+  would make a widget able to reconfigure the terminal from inside the tree. So the app-wide default
+  is `:drag` instead: under `:clicks` the handle is silently inert, which reads as a bug in the
+  widget, and a `List` or `TextView` with a bar is far commoner than an app that minds the traffic.
+  The price is bounded — 1002 is silent with no button down and never outpaces 1003's measured rate
+  (`R_mouse_reporting`), and the repaint it drives is the wheel's, already the default. Each level
+  also requests the rungs beneath it, so a terminal without 1002 keeps its clicks. Pressing the
+  track pages at every level.
 
 ## D_paste_newlines — Why does a one-line field keep the paste's first line rather than flatten it to spaces?
 

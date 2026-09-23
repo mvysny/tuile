@@ -657,9 +657,11 @@ module Tuile
     #
     #   - `false` — none. The terminal keeps its native click handling, which is
     #     what you want if the app benefits more from select-to-copy.
-    #   - `true` (default), `:clicks` — presses, releases and the wheel.
-    #   - `:drag` — plus motion while a button is held, as
-    #     {Component#handle_mouse_drag}.
+    #   - `:clicks` — presses, releases and the wheel. A scrollbar's handle
+    #     then doesn't drag; its track still pages.
+    #   - `true` (default), `:drag` — plus motion while a button is held, as
+    #     {Component#handle_mouse_drag}. Silent until a button goes down, and
+    #     no faster than `:hover` while one is.
     #   - `:hover` — plus motion with no button, as
     #     {Component#handle_mouse_move?} and the enter/exit hooks. ~84 reports a
     #     second (`R_mouse_reporting`), so ask for it only if something uses it.

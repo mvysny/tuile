@@ -6,6 +6,8 @@
 ## [Unreleased]
 
 - Add `Component::Layout#constraints` — a protected, lazily built `Layout::ConstraintMap` of where each child wants to be: a changed write marks the layout, a non-child raises, and `Layout#remove` prunes it, so a custom layout keeps per-child settings as `Box`, `FormLayout` and `Absolute` now do.
+- Fix `run_event_loop(capture_mouse: :drag)` and `:hover` leaving no mouse at all on a terminal without mode 1002 or 1003: each level now also requests the rungs beneath it, so such a terminal falls back to the highest one it knows. See `design/research.md` `R_mouse_reporting`.
+- **Breaking:** `Screen#run_event_loop`'s default, `capture_mouse: true`, now means `:drag` instead of `:clicks`, so a scrollbar's handle drags without the app asking. Pass `capture_mouse: :clicks` to keep the old reporting. See `design/decisions.md` `D_draggable_scrollbar`.
 
 ## [0.17.0] - 2026-09-23
 

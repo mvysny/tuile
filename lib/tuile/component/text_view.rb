@@ -22,8 +22,8 @@ module Tuile
     #
     # {#scrollbar_visibility} turns on a {VerticalScrollBar} in the rightmost
     # column — a real child component, so the user can drag its handle
-    # (wanting `run_event_loop(capture_mouse: :drag)`) and press its track to
-    # page. Its column and the blank one beside it are reserved whenever it is
+    # (not under `run_event_loop(capture_mouse: :clicks)`) and press its track
+    # to page. Its column and the blank one beside it are reserved whenever it is
     # `:visible`, whether anything scrolls or not, so the text never rewraps
     # behind a growing buffer (`D_scrollbar_reserve`, `D_scrollbar_ink`).
     # Under `:auto` the bar shows only while the text, wrapped at the full

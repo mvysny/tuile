@@ -326,10 +326,14 @@ rung a superset of the one before:
 
 ```ruby
 screen.run_event_loop(capture_mouse: false)     # nothing; native select-to-copy
-screen.run_event_loop                           # == :clicks — presses, releases, the wheel
-screen.run_event_loop(capture_mouse: :drag)     # + motion while a button is held
+screen.run_event_loop(capture_mouse: :clicks)   # presses, releases, the wheel
+screen.run_event_loop                           # == :drag — + motion while a button is held
 screen.run_event_loop(capture_mouse: :hover)    # + motion with none, and enter/exit
 ```
+
+The default stops at `:drag` because it costs nothing at rest: the terminal
+says nothing until a button goes down, and that is what lets a scrollbar's
+handle follow the pointer.
 
 `:hover` adds `handle_mouse_move?` and the argument-less
 `handle_mouse_enter` / `handle_mouse_exit` pair, along with

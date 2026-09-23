@@ -580,14 +580,20 @@ module Tuile
 
     # Normalizes a `capture_mouse:` argument to a level.
     # 
-    # _@param_ `capture_mouse` — `false`, `true` (== `:clicks`), or one of {LEVELS}.
+    # _@param_ `capture_mouse` — `false`, `true` (== `:drag`), or one of {LEVELS}.
     # 
     # _@return_ — the level; nil when tracking is off.
     def self.level: ((bool | Symbol) capture_mouse) -> Symbol?
 
-    # The escape asking for that level, SGR encoding included:
+    # The escape asking for that level, SGR encoding included — and every
+    # rung beneath it, lowest first:
     # 
-    #   Mouse.start_tracking(:clicks)   # => "\e[?1006h\e[?1000h"
+    #   Mouse.start_tracking(:drag)   # => "\e[?1006h\e[?1000h\e[?1002h"
+    # 
+    # The rungs are mutually exclusive and the last one set wins, so a
+    # terminal lacking the top rung ignores it and stays on the highest it
+    # knows, rather than losing the mouse outright; nothing can ask which
+    # one it took (`R_mouse_reporting`).
     # 
     # _@param_ `level` — one of {LEVELS}.
     # 
@@ -596,7 +602,8 @@ module Tuile
 
     # _@param_ `level` — one of {LEVELS}.
     # 
-    # _@return_ — the escape disabling that level, reporting first.
+    # _@return_ — the escape disabling that level, every rung
+    # {.start_tracking} set, reporting first.
     def self.stop_tracking: (Symbol level) -> String
 
     # Whether `key` is a mouse report — the X10 `\e[M` prefix or the SGR
@@ -655,6 +662,11 @@ module Tuile
 
     # _@param_ `low` — the code's two low bits.
     def self.button: (Integer low) -> Symbol?
+
+    # _@param_ `level` — one of {LEVELS}.
+    # 
+    # _@return_ — the DEC modes up to and including the level's.
+    def self.rungs: (Symbol level) -> ::Array[Integer]
 
     # Included by every mouse event class: a marker for `case`/`is_a?`, plus the
     # {#point} they share.
@@ -2840,7 +2852,7 @@ module Tuile
     # For the duration this thread owns the UI ({#state} is `:running`);
     # ownership reverts to the creating thread once it returns.
     # 
-    # _@param_ `capture_mouse` — how much mouse tracking to ask the terminal for — each level unlocking one tier of {Mouse}'s events, and costing what that tier reports:  - `false` — none. The terminal keeps its native click handling, which is   what you want if the app benefits more from select-to-copy. - `true` (default), `:clicks` — presses, releases and the wheel. - `:drag` — plus motion while a button is held, as   {Component#handle_mouse_drag}. - `:hover` — plus motion with no button, as   {Component#handle_mouse_move?} and the enter/exit hooks. ~84 reports a   second (`R_mouse_reporting`), so ask for it only if something uses it.
+    # _@param_ `capture_mouse` — how much mouse tracking to ask the terminal for — each level unlocking one tier of {Mouse}'s events, and costing what that tier reports:  - `false` — none. The terminal keeps its native click handling, which is   what you want if the app benefits more from select-to-copy. - `:clicks` — presses, releases and the wheel. A scrollbar's handle   then doesn't drag; its track still pages. - `true` (default), `:drag` — plus motion while a button is held, as   {Component#handle_mouse_drag}. Silent until a button goes down, and   no faster than `:hover` while one is. - `:hover` — plus motion with no button, as   {Component#handle_mouse_move?} and the enter/exit hooks. ~84 reports a   second (`R_mouse_reporting`), so ask for it only if something uses it.
     # 
     # _@param_ `bracketed_paste` — when true (default), enables DEC private mode 2004 so pasted text arrives whole, as {Component#handle_paste}, instead of as one keystroke per character — which is the only way a pasted line break can be told from a typed Enter. When false, a paste streams in as keys again and a component that gives ENTER a meaning fires it once per pasted line. Turn it off only for a terminal that mishandles the mode.
     def run_event_loop: (?capture_mouse: (bool | Symbol), ?bracketed_paste: bool) -> void
@@ -4131,7 +4143,7 @@ module Tuile
 
     # Called on the component that claimed a press whenever the pointer moves
     # while the button is held, wherever the pointer is. Needs
-    # `capture_mouse: :drag` or `:hover`.
+    # `capture_mouse: :drag` (the default) or `:hover`.
     # 
     # _@param_ `_event` — its point may lie outside {#rect}.
     def handle_mouse_drag: (Mouse::DragEvent _event) -> void
@@ -4840,8 +4852,8 @@ module Tuile
     # preserving each span's foreground color.
     # 
     # {#scrollbar_visibility} turns on a {VerticalScrollBar} in the rightmost
-    # column: a child component, so its handle drags (wanting
-    # `run_event_loop(capture_mouse: :drag)`) and a press on its track pages.
+    # column: a child component, so its handle drags (except under
+    # `run_event_loop(capture_mouse: :clicks)`) and a press on its track pages.
     # Under `:visible` the column stays reserved whether anything scrolls or
     # not, so a growing list re-flows nothing; under `:auto` the bar shows only
     # while the items outnumber the rows, and hands its column back to the
@@ -8164,9 +8176,9 @@ module Tuile
     # whichever is more — a rect taller than this component's, whose `top` goes
     # negative as you scroll. Keep it current as the content grows.
     # 
-    # Four things scroll it: the wheel, the bar's handle (dragging it wants
-    # `run_event_loop(capture_mouse: :drag)`; pressing the track pages either
-    # way), {#scroll_half_page_up} /
+    # Four things scroll it: the wheel, the bar's handle (dragging it is
+    # dead under `run_event_loop(capture_mouse: :clicks)`; pressing the track
+    # pages either way), {#scroll_half_page_up} /
     # {#scroll_half_page_down} from app code, and {Component#scroll_to_visible},
     # which {Screen#focused=} makes on every focus change — so Tab into a field
     # below the fold brings that field into view. It claims **no keys**:
@@ -9400,8 +9412,8 @@ module Tuile
     # 
     # {#scrollbar_visibility} turns on a {VerticalScrollBar} in the rightmost
     # column — a real child component, so the user can drag its handle
-    # (wanting `run_event_loop(capture_mouse: :drag)`) and press its track to
-    # page. Its column and the blank one beside it are reserved whenever it is
+    # (not under `run_event_loop(capture_mouse: :clicks)`) and press its track
+    # to page. Its column and the blank one beside it are reserved whenever it is
     # `:visible`, whether anything scrolls or not, so the text never rewraps
     # behind a growing buffer (`D_scrollbar_reserve`, `D_scrollbar_ink`).
     # Under `:auto` the bar shows only while the text, wrapped at the full
@@ -13761,8 +13773,8 @@ module Tuile
     # {#scroll_top_row=}. So an unwired bar is inert — the honest picture,
     # nothing behind it having scrolled either.
     # 
-    # **Dragging needs `run_event_loop(capture_mouse: :drag)`**: the `:clicks`
-    # default asks the terminal for no motion reports, so
+    # **Dragging needs motion reports**, which the default
+    # `run_event_loop(capture_mouse: :drag)` asks for; under `:clicks`
     # {Component#handle_mouse_drag} never fires and the handle sits still.
     # Pressing the track works at every level.
     # 

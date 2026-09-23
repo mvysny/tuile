@@ -19,8 +19,8 @@ module Tuile
     # {#scroll_top_row=}. So an unwired bar is inert — the honest picture,
     # nothing behind it having scrolled either.
     #
-    # **Dragging needs `run_event_loop(capture_mouse: :drag)`**: the `:clicks`
-    # default asks the terminal for no motion reports, so
+    # **Dragging needs motion reports**, which the default
+    # `run_event_loop(capture_mouse: :drag)` asks for; under `:clicks`
     # {Component#handle_mouse_drag} never fires and the handle sits still.
     # Pressing the track works at every level.
     #

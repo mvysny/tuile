@@ -90,7 +90,8 @@ module Tuile
     # @return [Array<Symbol>]
     LEVELS = %i[clicks drag hover].freeze
 
-    # @return [Hash{Symbol => Integer}] the DEC private mode each level sets.
+    # @return [Hash{Symbol => Integer}] the DEC private mode each level sets,
+    #   ascending — {.start_tracking} requests every rung up to the level's.
     MODES = { clicks: 1000, drag: 1002, hover: 1003 }.freeze
     private_constant :MODES
 
@@ -124,14 +125,14 @@ module Tuile
 
     class << self
       # Normalizes a `capture_mouse:` argument to a level.
-      # @param capture_mouse [Boolean, Symbol] `false`, `true` (== `:clicks`),
+      # @param capture_mouse [Boolean, Symbol] `false`, `true` (== `:drag`),
       #   or one of {LEVELS}.
       # @return [Symbol, nil] the level; nil when tracking is off.
       # @raise [ArgumentError] on anything else.
       def level(capture_mouse)
         case capture_mouse
         when false, nil then nil
-        when true then :clicks
+        when true then :drag
         when *LEVELS then capture_mouse
         else
           raise ArgumentError,
@@ -139,17 +140,23 @@ module Tuile
         end
       end
 
-      # The escape asking for that level, SGR encoding included:
+      # The escape asking for that level, SGR encoding included — and every
+      # rung beneath it, lowest first:
       #
-      #   Mouse.start_tracking(:clicks)   # => "\e[?1006h\e[?1000h"
+      #   Mouse.start_tracking(:drag)   # => "\e[?1006h\e[?1000h\e[?1002h"
       #
+      # The rungs are mutually exclusive and the last one set wins, so a
+      # terminal lacking the top rung ignores it and stays on the highest it
+      # knows, rather than losing the mouse outright; nothing can ask which
+      # one it took (`R_mouse_reporting`).
       # @param level [Symbol] one of {LEVELS}.
       # @return [String] the escape enabling that level.
-      def start_tracking(level) = "\e[?#{SGR_MODE}h\e[?#{MODES.fetch(level)}h"
+      def start_tracking(level) = "\e[?#{SGR_MODE}h#{rungs(level).map { "\e[?#{_1}h" }.join}"
 
       # @param level [Symbol] one of {LEVELS}.
-      # @return [String] the escape disabling that level, reporting first.
-      def stop_tracking(level) = "\e[?#{MODES.fetch(level)}l\e[?#{SGR_MODE}l"
+      # @return [String] the escape disabling that level, every rung
+      #   {.start_tracking} set, reporting first.
+      def stop_tracking(level) = "#{rungs(level).reverse.map { "\e[?#{_1}l" }.join}\e[?#{SGR_MODE}l"
 
       # Whether `key` is a mouse report — the X10 `\e[M` prefix or the SGR
       # `\e[<` one, regardless of length. {.parse} is the place that validates
@@ -239,6 +246,14 @@ module Tuile
       # @param low [Integer] the code's two low bits.
       # @return [Symbol, nil]
       def button(low) = %i[left middle right][low]
+
+      # @param level [Symbol] one of {LEVELS}.
+      # @return [Array<Integer>] the DEC modes up to and including the level's.
+      # @raise [KeyError] on an unknown level.
+      def rungs(level)
+        top = MODES.fetch(level)
+        MODES.values.select { _1 <= top }
+      end
     end
   end
 end

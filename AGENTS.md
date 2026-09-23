@@ -221,7 +221,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   key that already does the job. See `D_mouse`.
 - **Chrome the pointer grabs is a child component, never a column test in its owner** — the child
   inherits the router's hit test, the grab and the drag, and holds no authority: it asks through a
-  listener and is told. A drag also needs `capture_mouse: :drag`. See `D_draggable_scrollbar`.
+  listener and is told. A drag needs motion, which `capture_mouse: :clicks` withholds. See `D_draggable_scrollbar`.
 - **Both wire encodings are requested and parsed, and nothing above {Tuile::Mouse.parse} can tell
   which arrived** — so a release carries no button, and `Keys.getkey` drains `\e[<` a byte at a
   time. See `R_mouse_reporting`.

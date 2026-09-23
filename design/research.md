@@ -105,6 +105,12 @@ the index. The first entry is the ruler: every later one trims to its length.
 - **1002 really is drag-only**: moving with no button held produced *nothing*; the phase's 275
   motion events were all `code=32` (left held), with zero `code=35`. **[verified 2026-09-03, tmux
   3.6]**
+- **The rungs are one setting, not three flags**: each DECSET replaces whichever rung was set, a
+  mode the terminal does not know leaves the previous one standing, and resetting *any* rung turns
+  tracking off. So `1000h 1002h` lands on 1002 where it exists and on 1000 where it does not.
+  **[verified 2026-09-23, tmux 3.6, read back through the pane's `mouse_*_flag` formats]**
+- **The Linux console knows only 9 and 1000** — a lone `1002h` there leaves no mouse at all.
+  **[unverified]**
 - **Mode 9** is the true press-only mode (X10 compatibility, no release); "X10" more usually names
   the *encoding*, which is a different thing. **Mode 1001** is "highlight tracking" — the terminal
   waits for the *application* to reply, and a non-participating app can hang it. **Mode 1004** is
@@ -132,6 +138,8 @@ the index. The first entry is the ruler: every later one trims to its length.
 - **Mode 1003 motion arrives, at ~84 reports/s** — 837 events over ten seconds of ordinary
   movement, all `code=35`; ~12 B/event ≈ 1 KB/s of payload over ~40 reads/s. **[verified 2026-09-03,
   tmux 3.6 over ssh, Alacritty, `TERM=tmux-256color`, 141×34]**
+- **So 1002 is capped by that figure** — the same samples with the unheld ones dropped: at most
+  ~84 reports/s while a button is held, nothing otherwise. **[docs]**
 - **A pointer leaving the window sends nothing** — motion simply stops, and the last report sits at
   whatever cell it was last sampled in. Mode 1004 does fire (four FocusOut/FocusIn pairs per run),
   on a genuine pointer exit *and* on an alt-tab with the pointer still inside. **[verified
