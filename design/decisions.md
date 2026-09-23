@@ -3645,7 +3645,8 @@ Skipping keeps an inverted chip looking identical on a plain and a tinted
 panel, which is what "terminal-theme-proof" has to mean. `with_bg` is
 untouched: it is override-all by contract, and a caller explicitly
 assigning a bg to an inverse span gets exactly that (the swap then applies
-to the explicit pair).
+to the explicit pair). `under_fg` skips inverse spans on the mirror-image
+ground: a filled fg would become the chip's background.
 
 Why not:
 - *The theme-token workaround* (a `fg`+`bg` pair per variant) — see above;

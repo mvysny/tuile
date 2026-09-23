@@ -15881,6 +15881,21 @@ module Tuile
     # _@param_ `fg` — foreground color, coerced via {Color.coerce}. `nil` clears fg back to the terminal default.
     def with_fg: ((Color | Symbol | Integer | ::Array[Integer])? fg) -> StyledString
 
+    # Returns a copy with `fg` set **only on spans that have none**; a span with
+    # an explicit fg is left untouched. The foreground counterpart of
+    # {#under_bg} — it gives a caption a default tone while keeping the parts
+    # the app colored itself:
+    # 
+    #   caption = StyledString.plain("Queue ") + StyledString.styled("3", fg: theme[:notice])
+    #   caption.under_fg(theme[:hint])   # "Queue " in :hint, "3" stays :notice
+    # 
+    # An `inverse` span is skipped even when its `fg` member is nil, as
+    # {#under_bg} skips it: SGR 7 swaps the pair, so a filled fg would become
+    # the span's *background*.
+    # 
+    # _@param_ `fg` — foreground color, coerced via {Color.coerce}. `nil` returns `self` unchanged.
+    def under_fg: ((Color | Symbol | Integer | ::Array[Integer])? fg) -> StyledString
+
     # Returns a new {StyledString} with `bold` applied to every span, preserving
     # each span's text and other style attributes (`fg`, `bg`, `italic`,
     # `underline`, `strikethrough`). The bold-attribute counterpart of

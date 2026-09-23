@@ -738,6 +738,34 @@ module Tuile
       self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(fg: fg)) })
     end
 
+    # Returns a copy with `fg` set **only on spans that have none**; a span with
+    # an explicit fg is left untouched. The foreground counterpart of
+    # {#under_bg} — it gives a caption a default tone while keeping the parts
+    # the app colored itself:
+    #
+    #   caption = StyledString.plain("Queue ") + StyledString.styled("3", fg: theme[:notice])
+    #   caption.under_fg(theme[:hint])   # "Queue " in :hint, "3" stays :notice
+    #
+    # An `inverse` span is skipped even when its `fg` member is nil, as
+    # {#under_bg} skips it: SGR 7 swaps the pair, so a filled fg would become
+    # the span's *background*.
+    #
+    # @param fg [Color, Symbol, Integer, Array<Integer>, nil] foreground color,
+    #   coerced via {Color.coerce}. `nil` returns `self` unchanged.
+    # @return [StyledString]
+    def under_fg(fg)
+      return self if fg.nil?
+
+      fg = Color.coerce(fg)
+      self.class.new(@spans.map do |span|
+        if span.style.fg.nil? && !span.style.inverse
+          Span.new(text: span.text, style: span.style.merge(fg: fg))
+        else
+          span
+        end
+      end)
+    end
+
     # Returns a new {StyledString} with `bold` applied to every span, preserving
     # each span's text and other style attributes (`fg`, `bg`, `italic`,
     # `underline`, `strikethrough`). The bold-attribute counterpart of

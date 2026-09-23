@@ -1489,6 +1489,54 @@ module Tuile
       end
     end
 
+    describe "#under_fg" do
+      it "fills fg on a span that has none, preserving bg" do
+        ss = StyledString.styled("hi", bg: :blue).under_fg(:red)
+        assert_equal Color::RED, ss.spans.first.style.fg
+        assert_equal Color::BLUE, ss.spans.first.style.bg
+      end
+
+      it "leaves a span's explicit fg untouched" do
+        ss = StyledString.styled("hi", fg: :red).under_fg(:blue)
+        assert_equal Color::RED, ss.spans.first.style.fg
+      end
+
+      it "fills only the unset spans, per span" do
+        ss = StyledString.parse("\e[31mfoo\e[0mbar").under_fg(59)
+        assert_equal Color::RED, ss.spans[0].style.fg # explicit fg kept
+        assert_equal Color.new(59), ss.spans[1].style.fg # unset span filled
+      end
+
+      it "returns self unchanged when color is nil" do
+        original = StyledString.styled("hi", bg: :red)
+        assert_same original, original.under_fg(nil)
+      end
+
+      it "accepts 256-color integers and RGB triples" do
+        assert_equal Color.new(59), StyledString.plain("hi").under_fg(59).spans.first.style.fg
+        assert_equal Color.new([10, 20, 30]), StyledString.plain("hi").under_fg([10, 20, 30]).spans.first.style.fg
+      end
+
+      it "raises on invalid fg" do
+        assert_raises(ArgumentError) { StyledString.plain("hi").under_fg(:not_a_color) }
+      end
+
+      it "does not mutate the receiver" do
+        original = StyledString.plain("hi")
+        original.under_fg(:red)
+        assert_nil original.spans.first.style.fg
+      end
+
+      # SGR 7 swaps the pair in effect, so an fg filled under an inverse span
+      # would become its background — an inverted chip must keep its look.
+      it "leaves an inverse span alone even though its fg member is nil" do
+        ss = (StyledString.plain("a").with_inverse + StyledString.plain("b")).under_fg(:blue)
+        assert_nil ss.spans[0].style.fg
+        assert ss.spans[0].style.inverse
+        assert_equal Color::BLUE, ss.spans[1].style.fg
+      end
+    end
+
     describe "#with_bold" do
       it "bolds a single span, preserving fg and bg" do
         ss = StyledString.styled("hi", fg: :red, bg: :blue).with_bold
