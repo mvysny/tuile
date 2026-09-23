@@ -1,12 +1,11 @@
 # frozen_string_literal: true
 
 module Tuile
-  module Binder
-    # What {Buffered} and {Unbuffered} share, held by each rather
-    # than inherited: the bindings, the rules, the verdict map, the
-    # write-validate-revert, and which fields show their verdicts. The two
-    # binders differ only in *when* they call {#run} and with what — each
-    # passes a block the engine calls on every field edit.
+  class Binder
+    # The machinery every {Binder} holds: the bindings, the rules, the verdict
+    # map, the write-validate-revert, and which fields show their verdicts.
+    # The two modes differ only in *when* they call {#run} and with what —
+    # each passes a block the engine calls on every field edit.
     #
     # == Implementation details
     # The verdict map has two halves with two lifetimes: field-step failures

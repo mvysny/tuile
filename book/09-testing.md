@@ -1,4 +1,4 @@
-# 8. Testing a Tuile app
+# 9. Testing a Tuile app
 
 Every chapter so far has, quietly, also been about this one. When chapter
 2 said components *invalidate* rather than paint, and write into a back

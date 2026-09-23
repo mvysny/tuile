@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Tuile
-  module Binder
+  class Binder
     # What {Buffered#write!} raises when the write was refused — bad
     # data rather than framework misuse, as {StyledString::ParseError} is.
     #
@@ -10,7 +10,7 @@ module Tuile
     #   e.failures   # => {name: [#<data ValidationFailure message="Name is required" …>]}
     class ValidationError < Error
       # @return [Hash{Symbol, nil => Array<ValidationFailure>}] the frozen
-      #   verdict map, {Buffered#last_validation} at the time of the raise.
+      #   verdict map, {Binder#last_validation} at the time of the raise.
       attr_reader :failures
 
       # @param failures [Hash{Symbol, nil => Array<ValidationFailure>}]

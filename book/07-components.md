@@ -695,13 +695,12 @@ That's the test when you build your own input: if what you hand back
 differs in type from what the user types, wrap a field; if it's the same
 thing shown another way, extend one.
 
-Turning a field's value into a domain model — parsing, validation, the
-box-holds-a-`String` ⟷ bean-holds-an-`Integer` conversion — is
-deliberately *not* the field's job; it belongs to a forms/binder layer
-that will one day sit above these components. So the seam is kept thin on
-purpose: the event `on_value_change` carries just the new value and its
-source, and there's no read-only or required flag yet. Room left for that
-layer to grow into.
+Turning a field's value into a domain model — validation, the
+field-holds-a-`Date` ⟷ model-holds-an-ISO-`String` conversion, "required" — is
+deliberately *not* the field's job; it belongs to the binder that sits above
+the fields, which is chapter 8. So the seam is kept thin on purpose:
+`on_value_change` carries just the new value and who made it, and a field
+has no required flag of its own.
 
 ### Two fields, one value
 
@@ -1912,8 +1911,9 @@ would, and the plumbing routes it through `submit` for you.
 
 That's the toolbox. None of it is large, because the framework underneath
 is small and the components inherit most of their behavior from it — which
-is the recurring theme of this whole book. What remains is proving that a
-UI built this way actually works, without a terminal in the loop. The
-fakes the design has been quietly setting up since chapter 2 — the buffer
-you can read back, the synchronous event queue, the in-memory screen — are
-what make that possible, and chapter 8 puts them to work.
+is the recurring theme of this whole book. Chapter 8 composes the value
+fields of this one into forms bound to a model. What remains after that is
+proving that a UI built this way actually works, without a terminal in the
+loop. The fakes the design has been quietly setting up since chapter 2 —
+the buffer you can read back, the synchronous event queue, the in-memory
+screen — are what make that possible, and chapter 9 puts them to work.

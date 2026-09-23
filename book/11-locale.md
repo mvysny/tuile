@@ -1,4 +1,4 @@
-# 10. Locale: the conventions, not the words
+# 11. Locale: the conventions, not the words
 
 Chapter 6 told one story about adapting to the user's environment: the
 terminal reports whether it is light or dark, Tuile picks a matching

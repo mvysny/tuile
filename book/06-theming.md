@@ -516,6 +516,6 @@ machine: a tree of components (chapter 1), repainting without flicker
 single-threaded event loop (chapter 4), with keys routed through focus
 (chapter 5) and accents drawn from a terminal-following theme (this one).
 Everything from here is *application*: chapter 7 tours the component
-library — what Tuile ships so you don't build it — and chapter 8 shows
-how to test a UI built this way, using the fakes the design has been
+library — what Tuile ships so you don't build it — chapter 8 binds its
+fields to your model, and chapter 9 shows how to test a UI built this way, using the fakes the design has been
 quietly setting up all along.

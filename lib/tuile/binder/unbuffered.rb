@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Tuile
-  module Binder
+  class Binder
     # Binds fields to a model and writes every valid edit through at once — the
     # binder for a settings panel or a live filter, where the model *is* what
     # the user sees:
@@ -37,38 +37,15 @@ module Tuile
     # back. The rules run on every edit, so {#last_validation} is always
     # current. Fields fire per keystroke, so every valid prefix passes through
     # the model and its setters on the way.
-    class Unbuffered
+    class Unbuffered < Binder
       # @return [Object, nil] the model edits write into.
       attr_reader :model
 
       def initialize
-        @engine = Engine.new { |binding, edit| edited(binding, edit) }
+        super { |binding, edit| edited(binding, edit) }
         @model = nil
         @changed = Set.new
       end
-
-      # Binds `field` to the model's `attr`; chain the steps onto the result.
-      #
-      #   binder.bind(max_field, :max).required("Pick a limit")
-      #
-      # @param field [Component::HasValue]
-      # @param attr [Symbol] read with `model.attr`, written with `model.attr = v`.
-      # @return [Binder::Binding]
-      # @raise [ArgumentError] unless `field` is a field, or when `field` or
-      #   `attr` is already bound.
-      def bind(field, attr) = @engine.bind(field, attr)
-
-      # Adds a rule over the whole model, run on every edit once the edited
-      # fields pass; see {Buffered#rule} for what it returns.
-      # @yieldparam model [Object] the model, holding the candidates.
-      # @yieldreturn [String, Hash{Symbol => String}, nil]
-      # @return [void]
-      def rule(&) = @engine.rule(&)
-
-      # @return [Hash{Symbol, nil => Array<ValidationFailure>}] the
-      #   verdict of the latest run, frozen; `{}` when valid. Form-level failures
-      #   are under `nil`.
-      def last_validation = @engine.last_validation
 
       # Shows `model` in the fields, and writes each valid edit into it from now
       # on. `nil` clears the fields: they still validate, and nothing is written.

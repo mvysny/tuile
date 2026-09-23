@@ -43,6 +43,11 @@ module Tuile
     # @return [Hash{Symbol, nil => Array<String>}]
     def messages = binder.last_validation.transform_values { |list| list.map(&:message) }
 
+    it "is a Binder, which can't be built on its own" do
+      assert_kind_of Binder, binder
+      assert_raises(Error) { Binder.new }
+    end
+
     context "bind" do
       it "refuses anything but a field" do
         assert_raises(ArgumentError) { binder.bind(Component::Label.new, :x) }

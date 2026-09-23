@@ -169,7 +169,7 @@ POSIX default is American and "said nothing" is indistinguishable from "wants
 American". Everything else falls back to `Locale::ISO`. Tuile ships no message
 catalogue and no per-country presets: this is the formatting half of what POSIX
 splits, and the wording half stays your app's.
-→ [chapter 10](book/10-locale.md)
+→ [chapter 11](book/11-locale.md)
 
 ## Components
 

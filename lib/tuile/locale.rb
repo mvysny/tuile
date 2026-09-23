@@ -9,7 +9,7 @@ module Tuile
   #
   # **It holds formatting conventions — how a value is rendered and parsed. It
   # never holds prose.** That is the rule a ninth member has to pass: no
-  # message catalogue, no lookup, no pluralization. Book ch10 argues it;
+  # message catalogue, no lookup, no pluralization. Book ch11 argues it;
   # `D_locale` records what it excludes.
   #
   # Index a name table with the `Date` accessor that selects it — which is why
@@ -556,7 +556,7 @@ module Tuile
       #   `LC_TIME` / `LANG` for the date conventions, `LC_ALL` / `LC_NUMERIC` /
       #   `LANG` for the numeric ones, with unset, `C` and `POSIX` all counting
       #   as silence. Silence yields the {ISO} member, *not* what `locale(1)`
-      #   would answer — which is American. Book ch10 has the argument.
+      #   would answer — which is American. Book ch11 has the argument.
       # - **Nothing here fails loudly.** A value that does not validate falls
       #   back to its {ISO} member on its own, and a missing binary or any other
       #   error yields {ISO} whole. `locale(1)`'s exit status is meaningless in

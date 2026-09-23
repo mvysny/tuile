@@ -1,4 +1,4 @@
-# 9. Styled text
+# 10. Styled text
 
 Everything Tuile draws is, eventually, text with colors on it — a
 highlighted list row, a red error label, a border in the active accent.

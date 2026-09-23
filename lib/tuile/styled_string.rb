@@ -6,7 +6,7 @@ module Tuile
   # `underline`, `strikethrough`, `inverse`). Spans are non-overlapping and fully tile
   # the string — every character has exactly one resolved style, no overlay
   # layers to merge, so the style at any column is just its span's `style`
-  # rather than a replay of the SGR state machine. The book's chapter 9 is
+  # rather than a replay of the SGR state machine. The book's chapter 10 is
   # the long-form *why* (spans vs. a `String` full of escape codes).
   #
   # ## Constructors

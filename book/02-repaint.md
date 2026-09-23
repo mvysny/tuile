@@ -210,7 +210,7 @@ and let the loop batch it.
 
 The one place you *will* see `Screen#repaint` called directly is in tests,
 which drive the system a step at a time and need to force a paint to
-assert on the buffer's contents. That's chapter 8; in application code,
+assert on the buffer's contents. That's chapter 9; in application code,
 invalidation is the only lever you touch.
 
 With the repaint model in hand, the natural next question is the one this

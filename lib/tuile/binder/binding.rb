@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 module Tuile
-  module Binder
+  class Binder
     # One field bound to one model attribute, and the steps between them —
-    # what {Buffered#bind} and {Unbuffered#bind} return. Each step
-    # appends and returns `self`, so the binding is complete from the `bind`
-    # onward and the chain reads field → model:
+    # what {Binder#bind} returns. Each step appends and returns `self`, so the
+    # binding is complete from the `bind` onward and the chain reads
+    # field → model:
     #
     #   binder.bind(birth_field, :birth_iso)                                  # the model stores an ISO string
     #         .validate { |d| "Can't be in the future" if d > Date.today }   # value side: a Date

@@ -25,11 +25,12 @@ negotiated min/pref/max machinery of desktop and web toolkits.
 
 Chapters 4–6 are the **runtime**: the single-threaded event loop and
 how to do background work safely, focus and keyboard dispatch, and
-theming (including live OS light/dark flips). Chapters 7–8 close out
+theming (including live OS light/dark flips). Chapters 7–9 close out
 **narratively** — a tour of the shipped component toolbox framed around
-when and why to reach for each, and how to test a Tuile app end to end.
-Those two lean on the rdoc for the exact APIs; the guide keeps to the
-walkthroughs and use-cases. Chapters 9–10 are **deep dives** on one
+when and why to reach for each, binding its fields to a model as forms,
+and how to test a Tuile app end to end. Those lean on the rdoc for the
+exact APIs; the guide keeps to the walkthroughs and use-cases. Chapters
+10–11 are **deep dives** on one
 piece each, to read when you need them: `Tuile::StyledString`, the text
 primitive under everything the framework draws, and `Tuile::Locale`, the
 formatting conventions a date or a number is spelled by.
@@ -81,16 +82,22 @@ one, not to fill an outline.
    selectors, Button, ProgressBar, Window, TabSheet, MenuBar, Popup and the
    window conveniences — framed around *when and why* you reach for each.
    Signatures stay in the rdoc.
-8. **[Testing a Tuile app](08-testing.md).** The testing approach:
+8. **[Forms: fields bound to a model](08-forms.md).** `Tuile::Binder`
+   and its two modes — buffered behind an OK/Cancel, unbuffered for a
+   live panel — the validator chain, rules across fields and why they
+   write into the model and revert, gating Save at the click, a form
+   that binds itself to the binder it is handed, and copying a draft for
+   a form whose sub-editors write as they go.
+9. **[Testing a Tuile app](09-testing.md).** The testing approach:
    `FakeScreen`, asserting against the painted buffer, locating the
    component to drive with `Tuile::Testing`, driving invalidation, and
    PTY-based end-to-end tests of runnable scripts.
-9. **[Styled text](09-styled-text.md).** A deep dive on
+10. **[Styled text](10-styled-text.md).** A deep dive on
    `Tuile::StyledString`, the span-based "text plus styling" value type
    under everything Tuile draws: why spans instead of a `String` full of
    escape codes, the style-aware algebra (slice/wrap/concat by display
    column), minimal-diff rendering, and the strict-vs-lenient parser.
-10. **[Locale](10-locale.md).** The other environment fact, shaped like
+11. **[Locale](11-locale.md).** The other environment fact, shaped like
    chapter 6's theme: `Tuile::Locale` holds *formatting conventions and
    never prose*, detected from `locale(1)` only when the environment
    actually asked, with `Locale::ISO` as the floor. Why the name tables

@@ -1103,7 +1103,7 @@ module SamplerExample
     # Three bound fields and a rule across two of them, blamed on Check-out.
     # `on_edit` is registered after the binder's own listener, so it runs after
     # the binder has validated — and, unbuffered, written.
-    # @param binder [Tuile::Binder::Buffered, Tuile::Binder::Unbuffered]
+    # @param binder [Tuile::Binder] either mode: this only binds.
     # @return [Tuile::Component::FormLayout]
     def booking_form(binder, &on_edit)
       name = Tuile::Component::TextField.new

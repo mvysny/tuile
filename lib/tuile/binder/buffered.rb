@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Tuile
-  module Binder
+  class Binder
     # Binds fields to a model and writes them back only on Save, and only when
     # every rule passes — the binder for a form in an OK/Cancel popup, where
     # Cancel is free because nothing reached the model:
@@ -34,41 +34,12 @@ module Tuile
     # the edit that fixes it, until the next of those. An edit is a
     # `from_user?` value change: the binder's own writes and an app's
     # {Component::HasValue#value=} are not the user's, and run nothing.
-    class Buffered
+    class Buffered < Binder
       def initialize
-        @engine = Engine.new { |binding, edit| edited(binding, edit) }
+        super { |binding, edit| edited(binding, edit) }
         @model = nil
         @changed = Set.new
       end
-
-      # Binds `field` to the model's `attr`; chain the steps onto the result.
-      #
-      #   binder.bind(age_field, :age).required("Age is required").validate { |v| "Too old" if v > 150 }
-      #
-      # @param field [Component::HasValue]
-      # @param attr [Symbol] read with `model.attr`, written with `model.attr = v`.
-      # @return [Binder::Binding]
-      # @raise [ArgumentError] unless `field` is a field, or when `field` or
-      #   `attr` is already bound.
-      def bind(field, attr) = @engine.bind(field, attr)
-
-      # Adds a rule over the whole model, run only once every field passes.
-      #
-      #   binder.rule { |p| "Start date is after end date" if p.start_date > p.end_date }    # form-level
-      #   binder.rule { |p| { end_date: "Ends before it starts" } if p.end_date < p.start_date } # blames a field
-      #
-      # A blamed attribute's message lands on its field; a bare String goes under
-      # the `nil` key of {#last_validation}.
-      # @yieldparam model [Object] the model, holding the candidates.
-      # @yieldreturn [String, Hash{Symbol => String}, nil]
-      # @return [void]
-      # @raise [Error] (when the rule runs) on a return that is none of these.
-      def rule(&) = @engine.rule(&)
-
-      # @return [Hash{Symbol, nil => Array<ValidationFailure>}] the
-      #   verdict of the latest run, frozen; `{}` when valid. Form-level failures
-      #   are under `nil`.
-      def last_validation = @engine.last_validation
 
       # Shows `model` in the fields and remembers it for {#validate}; a `nil`
       # model clears them. Recomputes {#last_validation}, showing no verdict, and

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Tuile
-  module Binder
+  class Binder
     # One entry of a binder's verdict map, `{attr => [ValidationFailure]}`:
     # why a field's value, or the model as a whole, cannot be written.
     #

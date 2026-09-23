@@ -82,7 +82,7 @@ module Tuile
   # included, call {Screen#repaint} and read {Screen#buffer} at the component's
   # {Component#absolute_rect}.
   #
-  # See book ch8 for the worked usage, and `design/decisions.md`
+  # See book ch9 for the worked usage, and `design/decisions.md`
   # `D_component_lookup` / `D_test_gestures` for the design.
   module Testing
     # Raised by every lookup and every gesture that does not hold: the match

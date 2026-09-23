@@ -108,14 +108,20 @@ Save applies the draft to the original.
 
 **`Binder::Buffered`** has `read` / `write?` / `write!` / `changed?`; **`Binder::Unbuffered`** has
 `model=`. The split deletes the mode-switch questions outright (`read` after `model=`, `model=`
-after `read`), and each API stays small. `bind`, `rule`, `last_validation` and the chain are shared.
+after `read`), and each API stays small. `bind`, `rule`, `last_validation` and the chain live on
+the base, `Binder`.
 
-- **Sharing is composition, not a base class** (`cop` rule 2): one internal engine both hold, with
-  about four one-line delegators. An abstract `Binder` both *are* was the road not taken — it is
-  the shared-code base class rule 2 forbids, and ~4 one-liners are no burden.
+- **`Tuile::Binder` is an abstract base both subclass, holding one internal engine** — a
+  deliberate exception to `cop` rule 2, owner's call. The base is the shared surface and nothing
+  else: `bind`, `rule`, `last_validation` and their rdoc, which the two classes would otherwise
+  repeat word for word; and it names a real type — a form builder that only binds takes a
+  `Binder` and serves either mode, where it took a `Buffered, Unbuffered` union. No template
+  method: a subclass hands its edit handler up as the block to `super`, so the base never calls
+  down, and the machinery stays composed in the engine rather than inherited. `Binder.new` raises.
+  The first cut had no base and four one-line delegators per class.
 - **Constants: `Tuile::Binder::Buffered` and `Tuile::Binder::Unbuffered`**, beside the shared
-  types — `Binding`, `ValidationFailure`, `ValidationError < Tuile::Error` and the engine — in the
-  **`Tuile::Binder` namespace module** (`lib/tuile/binder/`), so every binder type is one
+  types — `Binding`, `ValidationFailure`, `ValidationError < Tuile::Error` and the engine — nested
+  in the **`Tuile::Binder` base class** (`lib/tuile/binder/`), so every binder type is one
   `Binder::` away and both modes spell `Binder::ValidationFailure` alike. Top-level
   `BufferedBinder` / `UnbufferedBinder` was the first cut; the namespace reads as the mode it is.
 - **`model = nil`** clears every field (`nil` → `empty_value`, the same rule as `read`) and every

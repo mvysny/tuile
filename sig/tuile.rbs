@@ -1330,14 +1330,15 @@ module Tuile
   end
 
   # Binds form fields to a model's attributes, with validation — Vaadin's
-  # `Binder`, the Ruby way. Two classes, one per mode:
+  # `Binder`, the Ruby way. Abstract; build one of its two modes:
   # 
   # - {Buffered} — `read` the model into the fields, `write?` it back on
   #   Save; nothing reaches the model until every rule passes. An OK/Cancel popup.
   # - {Unbuffered} — `model=`, and every valid edit writes through at
   #   once. A settings panel, a live filter, or a draft the app deep-copied.
   # 
-  # Both bind the same way, one chain per field, read field → model:
+  # Both bind the same way, one chain per field, read field → model — so code
+  # that only binds takes a `Binder` and serves either:
   # 
   #   binder.bind(name_field, :name).required("Name is required")
   #   binder.bind(age_field, :age).validate { |v| "Must be positive" unless v.positive? }
@@ -1348,7 +1349,7 @@ module Tuile
   # (`attr_accessor`, `Struct`, ActiveRecord). A verdict lands on each field's
   # {Component::HasValidation#error_message}, and a {Component::FormItem}
   # paints it; a form-level one (a rule returning a bare String) sits under
-  # the `nil` key of {Buffered#last_validation}, for the Save alert.
+  # the `nil` key of {#last_validation}, for the Save alert.
   # 
   # == The model is scratch space for the rules
   # A rule judges the model itself, so the Binder writes the candidates into
@@ -1358,12 +1359,42 @@ module Tuile
   # restored: state a setter derives elsewhere comes back only if the setter
   # re-derives it. An attribute is written only when its candidate differs
   # from what the model holds, so a pass that changes nothing fires no setter.
-  module Binder
-    # What {Buffered} and {Unbuffered} share, held by each rather
-    # than inherited: the bindings, the rules, the verdict map, the
-    # write-validate-revert, and which fields show their verdicts. The two
-    # binders differ only in *when* they call {#run} and with what — each
-    # passes a block the engine calls on every field edit.
+  # 
+  # == Implementation details
+  # The machinery is an {Engine} this class holds; a subclass supplies only
+  # *when* it runs, as the block it hands `super` — called on every field edit.
+  class Binder
+    def initialize: () ?{ (Binder::Binding binding, bool edit) -> void } -> void
+
+    # Binds `field` to the model's `attr`; chain the steps onto the result.
+    # 
+    #   binder.bind(age_field, :age).required("Age is required").validate { |v| "Too old" if v > 150 }
+    # 
+    # _@param_ `field`
+    # 
+    # _@param_ `attr` — read with `model.attr`, written with `model.attr = v`.
+    def bind: (Component::HasValue field, Symbol attr) -> Binder::Binding
+
+    # Adds a rule over the whole model, run only once every field it judges
+    # passes — when is the mode's: {Buffered} in `read`, `validate` and
+    # `write?`, {Unbuffered} on every edit.
+    # 
+    #   binder.rule { |p| "Start date is after end date" if p.start_date > p.end_date }    # form-level
+    #   binder.rule { |p| { end_date: "Ends before it starts" } if p.end_date < p.start_date } # blames a field
+    # 
+    # A blamed attribute's message lands on its field; a bare String goes under
+    # the `nil` key of {#last_validation}.
+    def rule: () ?{ (Object model) -> (String | ::Hash[Symbol, String])? } -> void
+
+    # _@return_ — the verdict of
+    # the latest run, frozen; `{}` when valid. Form-level failures are under
+    # `nil`.
+    def last_validation: () -> ::Hash[Symbol?, ::Array[ValidationFailure]]
+
+    # The machinery every {Binder} holds: the bindings, the rules, the verdict
+    # map, the write-validate-revert, and which fields show their verdicts.
+    # The two modes differ only in *when* they call {#run} and with what —
+    # each passes a block the engine calls on every field edit.
     # 
     # == Implementation details
     # The verdict map has two halves with two lifetimes: field-step failures
@@ -1472,9 +1503,9 @@ module Tuile
     end
 
     # One field bound to one model attribute, and the steps between them —
-    # what {Buffered#bind} and {Unbuffered#bind} return. Each step
-    # appends and returns `self`, so the binding is complete from the `bind`
-    # onward and the chain reads field → model:
+    # what {Binder#bind} returns. Each step appends and returns `self`, so the
+    # binding is complete from the `bind` onward and the chain reads
+    # field → model:
     # 
     #   binder.bind(birth_field, :birth_iso)                                  # the model stores an ISO string
     #         .validate { |d| "Can't be in the future" if d > Date.today }   # value side: a Date
@@ -1629,31 +1660,8 @@ module Tuile
     # the edit that fixes it, until the next of those. An edit is a
     # `from_user?` value change: the binder's own writes and an app's
     # {Component::HasValue#value=} are not the user's, and run nothing.
-    class Buffered
+    class Buffered < Binder
       def initialize: () -> void
-
-      # Binds `field` to the model's `attr`; chain the steps onto the result.
-      # 
-      #   binder.bind(age_field, :age).required("Age is required").validate { |v| "Too old" if v > 150 }
-      # 
-      # _@param_ `field`
-      # 
-      # _@param_ `attr` — read with `model.attr`, written with `model.attr = v`.
-      def bind: (Component::HasValue field, Symbol attr) -> Binder::Binding
-
-      # Adds a rule over the whole model, run only once every field passes.
-      # 
-      #   binder.rule { |p| "Start date is after end date" if p.start_date > p.end_date }    # form-level
-      #   binder.rule { |p| { end_date: "Ends before it starts" } if p.end_date < p.start_date } # blames a field
-      # 
-      # A blamed attribute's message lands on its field; a bare String goes under
-      # the `nil` key of {#last_validation}.
-      def rule: () ?{ (Object model) -> (String | ::Hash[Symbol, String])? } -> void
-
-      # _@return_ — the
-      # verdict of the latest run, frozen; `{}` when valid. Form-level failures
-      # are under `nil`.
-      def last_validation: () -> ::Hash[Symbol?, ::Array[ValidationFailure]]
 
       # Shows `model` in the fields and remembers it for {#validate}; a `nil`
       # model clears them. Recomputes {#last_validation}, showing no verdict, and
@@ -1727,26 +1735,8 @@ module Tuile
     # back. The rules run on every edit, so {#last_validation} is always
     # current. Fields fire per keystroke, so every valid prefix passes through
     # the model and its setters on the way.
-    class Unbuffered
+    class Unbuffered < Binder
       def initialize: () -> void
-
-      # Binds `field` to the model's `attr`; chain the steps onto the result.
-      # 
-      #   binder.bind(max_field, :max).required("Pick a limit")
-      # 
-      # _@param_ `field`
-      # 
-      # _@param_ `attr` — read with `model.attr`, written with `model.attr = v`.
-      def bind: (Component::HasValue field, Symbol attr) -> Binder::Binding
-
-      # Adds a rule over the whole model, run on every edit once the edited
-      # fields pass; see {Buffered#rule} for what it returns.
-      def rule: () ?{ (Object model) -> (String | ::Hash[Symbol, String])? } -> void
-
-      # _@return_ — the
-      # verdict of the latest run, frozen; `{}` when valid. Form-level failures
-      # are under `nil`.
-      def last_validation: () -> ::Hash[Symbol?, ::Array[ValidationFailure]]
 
       # Runs every binding and every rule, showing every verdict, and writes
       # nothing.
@@ -1777,7 +1767,7 @@ module Tuile
       def initialize: (::Hash[Symbol?, ::Array[ValidationFailure]] failures) -> void
 
       # _@return_ — the frozen
-      # verdict map, {Buffered#last_validation} at the time of the raise.
+      # verdict map, {Binder#last_validation} at the time of the raise.
       attr_reader failures: ::Hash[Symbol?, ::Array[ValidationFailure]]
     end
 
@@ -2383,7 +2373,7 @@ module Tuile
   # 
   # **It holds formatting conventions — how a value is rendered and parsed. It
   # never holds prose.** That is the rule a ninth member has to pass: no
-  # message catalogue, no lookup, no pluralization. Book ch10 argues it;
+  # message catalogue, no lookup, no pluralization. Book ch11 argues it;
   # `D_locale` records what it excludes.
   # 
   # Index a name table with the `Date` accessor that selects it — which is why
@@ -2470,7 +2460,7 @@ module Tuile
     #   `LC_TIME` / `LANG` for the date conventions, `LC_ALL` / `LC_NUMERIC` /
     #   `LANG` for the numeric ones, with unset, `C` and `POSIX` all counting
     #   as silence. Silence yields the {ISO} member, *not* what `locale(1)`
-    #   would answer — which is American. Book ch10 has the argument.
+    #   would answer — which is American. Book ch11 has the argument.
     # - **Nothing here fails loudly.** A value that does not validate falls
     #   back to its {ISO} member on its own, and a missing binary or any other
     #   error yields {ISO} whole. `locale(1)`'s exit status is meaningless in
@@ -3895,7 +3885,7 @@ module Tuile
   # included, call {Screen#repaint} and read {Screen#buffer} at the component's
   # {Component#absolute_rect}.
   # 
-  # See book ch8 for the worked usage, and `design/decisions.md`
+  # See book ch9 for the worked usage, and `design/decisions.md`
   # `D_component_lookup` / `D_test_gestures` for the design.
   module Testing
     # Every component in the searched tree matching the spec, in pre-order.
@@ -16338,7 +16328,7 @@ module Tuile
   # `underline`, `strikethrough`, `inverse`). Spans are non-overlapping and fully tile
   # the string — every character has exactly one resolved style, no overlay
   # layers to merge, so the style at any column is just its span's `style`
-  # rather than a replay of the SGR state machine. The book's chapter 9 is
+  # rather than a replay of the SGR state machine. The book's chapter 10 is
   # the long-form *why* (spans vs. a `String` full of escape codes).
   # 
   # ## Constructors
