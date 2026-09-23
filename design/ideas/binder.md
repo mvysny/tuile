@@ -1,9 +1,12 @@
 # A Binder — Vaadin's pattern, the Ruby way
 
 **Status:** design converging, nothing built. Agreed for v1: no Rails, no dry-rb; the model is a
-mutable object with attr_accessors (so ActiveRecord works as-is); both modes, as two classes; a
-bind-first chain; bindings run on every value change, at the cadence `design/ideas/value-change-mode.md`
-gives the field (**a prerequisite** — build it first). Still open: the `Q_` list at the end.
+mutable object with attr_accessors (so ActiveRecord works as-is); both modes, as two classes over one
+composed engine; a bind-first chain; bindings run on every value change, at the cadence
+`design/ideas/value-change-mode.md` gives the field (**a prerequisite** — build it first); `read`
+shows no verdicts; the empty/`nil` policy; one message per field; no bean rules past a failing field;
+the constants; Vaadin's escape hatches deferred. **Nothing is open** — next is building
+`value-change-mode.md`, then this.
 The four-layer vocabulary below was settled while designing `HasBadInput` (it is why that channel is
 `bad_input`, not `presentation_error`). `D_has_value` stays the authority: model-mapping, converters,
 `read_only` and a field-side required flag live *above* the field.
@@ -108,7 +111,12 @@ Save applies the draft to the original.
 after `read`), and each API stays small. `bind`, `rule`, `last_validation` and the chain are shared.
 
 - **Sharing is composition, not a base class** (`cop` rule 2): one internal engine both hold, with
-  about four one-line delegators. Leaning, not ruled — `Q_shared_engine`.
+  about four one-line delegators. An abstract `Binder` both *are* was the road not taken — it is
+  the shared-code base class rule 2 forbids, and ~4 one-liners are no burden.
+- **Constants: `Tuile::BufferedBinder` and `Tuile::UnbufferedBinder`** (one top-level constant per
+  file); the shared types — `Binding`, `ValidationFailure`, `ValidationError < Tuile::Error` and the
+  engine — in a **`Tuile::Binder` namespace module** (`lib/tuile/binder/`). Nested in
+  `BufferedBinder`, the unbuffered side would spell `BufferedBinder::ValidationFailure`.
 - **`model = nil`** clears every field (`nil` → `empty_value`, the same rule as `read`) and every
   verdict; bindings keep listening and validating, bean rules are skipped (no bean), nothing is
   written. Vaadin's `setBean(null)`.
@@ -121,15 +129,28 @@ after `read`), and each API stays small. `bind`, `rule`, `last_validation` and t
   verdict and `last_validation`. `BufferedBinder` writes nothing then; `UnbufferedBinder` writes the
   model (write-validate-revert, bean rules included). `write?` runs every binding plus the bean
   rules — that is the "click-gated" part, and it is only the Save gate, not the display.
+- **An unbuffered change writes every binding changed since `model=` whose field steps pass**
+  (Vaadin's `changedBindings`), not just its own. With only its own: `start_date` → 10 fails the
+  rule (`end_date` 5) and reverts; `end_date` → 20 then passes against the model's *old* start, and
+  the field showing 10 never reaches the model — a silent divergence, not just a stale message.
 - **The cadence is the field's, not the Binder's**: a form field on `:on_change` announces on blur
   or ENTER, so no verdict paints while the user is mid-word (`design/ideas/value-change-mode.md`).
   The Binder owns no blur hook of its own.
 - **`write?` / `validate` read `value` live**, so a Save *shortcut* pressed with focus still in the
-  field (its notice held) still writes the right value. `changed?` is the one reader that notices
-  the held notice — `Q_changed_detection`.
-- **`read` / `model=` re-populate the fields and recompute the whole `last_validation`** — so
-  `last_validation.empty?` means something from the first frame. What they do to the *shown*
-  verdicts is `Q_read_verdicts`.
+  field (its notice held) still writes the right value.
+- **`changed?` is user-edit events, plus a live compare for the focused field** — the one reader
+  the held notice would fool (Save by shortcut, focus still in the edited field). For that field
+  alone it compares `value` against what `read` put in it (the field's value after `read`, so
+  `empty_value` for a `nil` attribute — the `""`-over-`nil` drift still doesn't read as a change).
+  Rejected: letting the Binder release held notices (`value-change-mode.md`'s `Q_pending_flush`) —
+  new public API on every field, for one reader.
+- **`read` / `model=` re-populate the fields and recompute the whole `last_validation`, but write
+  `nil` to every field's `error_message`** — so `last_validation.empty?` means something from the
+  first frame, while a blank "New person" dialog doesn't open with every required field red.
+  Verdicts then appear per field on its first change, and all at once on `write?` / `validate`.
+  Vaadin's rule: errors "only display after the user has edited each field and submitted"
+  (`components-binder-load.md`). The owner's first take — re-run the bindings "so that validation
+  errors are shown or cleared" — is met for `last_validation`, not for the display.
 
 ## `last_validation` (settled)
 
@@ -182,8 +203,20 @@ binder.model = nil      # clears the fields; validates, writes nothing
   `ArgumentError`, whose message becomes the error (an `error:` override exists) — the stdlib's own
   convention: `Integer("x")`, `Float`, `BigDecimal`, `Date.iso8601` (`Date::Error < ArgumentError`).
   Rescue nothing else, so a bug still surfaces.
+- **A model → value converter raising at `read` propagates** (a malformed stored ISO string is the
+  app's data, a bug). Blanking the field and recording a failure was rejected: the next Save would
+  write `nil` over the stored value, destroying what the app might have repaired.
+- **A validator or rule returning anything but a String or `nil` raises `Tuile::Error`** — framework
+  misuse, not bad data. It catches the predicate mistake (`validate { |v| v.positive? }` returns
+  `true`, read as a message); `false` raises too, since admitting it would let that same mistake
+  pass every *invalid* value silently. `cond && "msg"` is spelled `"msg" if cond`. (A rule may also
+  return its blame hash.)
 - **`required` is not positional** — it asks `field.empty?`, so the order is always bad input →
   `required` → the chain, wherever it is written. Still spelled in the chain: one way to write it.
+- **`required` doesn't light `FormItem`'s marker; the app says "required" twice** — the Binder is
+  handed the field, never the item. Accepted as a cost; rejected: `bind` walking up the tree for
+  an enclosing `FormItem`, which makes the Binder depend on a layout it was never given (and on
+  the field being attached at bind time). Both rdocs say so.
 - **Empty vs `nil`: copy Vaadin** (nobody has solved it better). `read` maps a `nil` attribute to
   `field.empty_value` (Vaadin's null-representation adapter); the write passes the value through
   unchanged, so a blank `TextField` writes `""` over a `nil` — the same drift Vaadin has, accepted.
@@ -193,10 +226,17 @@ binder.model = nil      # clears the fields; validates, writes nothing
   `allow_nil`) — or every validator opens with `v &&`, and `Integer("")` fails an empty optional
   field. Vaadin's built-in `StringToIntegerConverter` maps `""` to `null` itself; ours are procs, so
   the Binder does it for them. Consequence to state in the rdoc: a `TextField` with *no* converter
-  hands its validators `""`, not `nil` — as Vaadin's do. Leaning — `Q_empty_values`.
+  hands its validators `""`, not `nil` — as Vaadin's do. Rejected: pure Vaadin, where validators
+  see `""` and each converter handles empty itself.
 - **A bean rule returns `nil`, a String (form-level), or `{end_date: "…"}` to blame a field**, which
   then lands on that field's `error_message`. Form-level messages go to the Save alert below — there
   is no framework status row (`D_status_bar`).
+- **Bean rules don't run while any field step fails** (Vaadin) — the model would be missing that
+  field's candidate, so a rule would judge a mix of new and stale values. The failing field's entry
+  is the whole verdict until it is fixed.
+- **One message per field: the first failure lands on `error_message`** — `FormItem` has one
+  message row (`D_form_item`); a field step contributes one anyway, and when bean rules blame an
+  attr twice, all stay in `last_validation` and the Save alert.
 - **The verdict is one map, `{attr => [ValidationFailure]}`** — each a `Data` holding `field`,
   `message`, `value` (whatever the failing step saw: value side before a converter, model side after
   it; a blamed attribute's candidate), open to more members later. Field steps and bean rules fill
@@ -229,10 +269,12 @@ widgets — Tuile's split already: the field reports what its parse couldn't rep
 - `isValid` / `validate` → `last_validation` / `validate`, the `{attr => [ValidationFailure]}` map;
   `hasChanges` → `changed?`.
 - "Validation errors only display after the user has edited each field and submitted"
-  (`components-binder-load.md`) — the source for `Q_read_verdicts`'s lean.
+  (`components-binder-load.md`) — the source for `read` showing no verdicts.
 - `binding.validate()` for cross-field rules, driven from the other field's value-change listener.
 - Escape hatches: `setValidatorsDisabled`, `withDefaultValidator(false)`, `setIsAppliedPredicate`
-  — named here, not yet given Ruby names or a v1/deferred ruling (`Q_escape_hatches`).
+  — **deferred, unnamed**: each is additive, none has an asker, and naming one before it does is
+  guessing. Whoever re-grows `withDefaultValidator(false)` owes an answer for skipping the
+  bad-input check, which sits oddly beside "Don't copy `getDefaultValidator`" below.
 
 **Don't copy** `getDefaultValidator` / `addValidationStatusChangeListener` — they repair a *shared*
 invalid/message cell, and Tuile keeps the two facts in two places. `on_bad_input_change` is not that
@@ -277,44 +319,6 @@ gate for applying the draft. Vaadin instead enables the button from a status lis
   only refresh `last_validation` and the verdicts, never a button.) If ever wanted, copy Vaadin's
   rule: errors count only after the user edited and submitted.
 
-## Open questions
-
-- **`Q_read_verdicts`** — the owner's first take: `read` / `model=` re-run the bindings "so that
-  validation errors are shown or cleared". Leaning: **recompute `last_validation`, but write `nil`
-  to every field's `error_message`**. Vaadin's docs: errors "only display after the user has edited
-  each field and submitted" — otherwise a blank "New person" dialog opens with every required field
-  red. Verdicts then appear per field on its first change, and all at once on `write?` / `validate`.
-- **`Q_empty_values`** — the converter-maps-empty-to-`nil` / validators-skip-`nil` pair above. The
-  alternative is pure Vaadin: validators see `""` and each converter handles empty itself.
-- **`Q_changed_detection`** — `changed?` by user-edit events (Vaadin's default) misses an edit whose
-  notice a field on `:on_change` is still holding (Save by shortcut, focus still in the field).
-  Either `changed?` compares against the `read` snapshot for a focused field, or the Binder can
-  release held notices (`value-change-mode.md`'s `Q_pending_flush`) — prefer the first, no new
-  public API on fields.
-- **`Q_shared_engine`** — an internal engine both classes compose (leaning, `cop` rule 2) vs. an
-  abstract `Binder` base both *are*. The delegators are ~4 one-liners.
-- **`Q_unbuffered_candidates`** — in `UnbufferedBinder`, what the write-validate-revert of a change
-  writes: that one binding, or every binding changed since `model=` whose field steps pass (Vaadin's
-  `changedBindings`)? The second lets a rule that failed on field A pass once field B is fixed.
-- **`Q_rule_gating`** — do bean rules run while a field step fails? Leaning **no** (Vaadin): a rule
-  would see a model missing that field's candidate.
-- **`Q_one_message`** — several failures on one attr (bean rules may blame it twice): `FormItem` has
-  one message row (`D_form_item`), so leaning **the first** lands on `error_message`; all stay in
-  `last_validation`.
-- **`Q_read_conversion`** — a model → value converter raising at `read` (a malformed stored ISO
-  string): raise (it is the app's data, a bug), or blank the field and record a failure?
-- **`Q_validator_return`** — raise on a validator returning anything but a String or `nil`, to catch
-  the predicate mistake (`validate { |v| v.positive? }` returning `true`, read as a message)?
-- **`Q_required_marker`** — `required` can't light `FormItem`'s marker: the Binder is handed the
-  field, never the item, so the app says "required" twice. Accept as a cost, or let `bind` find the
-  enclosing `FormItem` (a tree walk up from the field)?
-- **`Q_escape_hatches`** — the three Vaadin escape hatches above: v1 or deferred, and their names.
-  Note `withDefaultValidator(false)` would skip the bad-input check, which sits oddly beside "Don't
-  copy `getDefaultValidator`".
-- **`Q_constants`** — leaning `Tuile::BufferedBinder` / `Tuile::UnbufferedBinder` (one top-level
-  constant per file), the shared types nested in one of them or in a `Tuile::Binder` namespace
-  module: `Binding`, `ValidationFailure`, `ValidationError < Tuile::Error`.
-
 ## Graduation owes
 
 - `design/ideas/value-change-mode.md` graduates first; this idea assumes its `:on_change` cadence.
@@ -326,8 +330,9 @@ gate for applying the draft. Vaadin instead enables the button from a status lis
 - "No `Signal`s in Tuile" is framework-wide, not the Binder's → its own `D_` (or a line in an
   existing one) once something graduates that would have used one.
 - Reverse the parking in `HasValue`'s rdoc and `D_has_value`'s *deferred* list.
-- rdoc for the Binder (the modes and their use cases, the revert caveats, how to `dup` a draft)
-  and a CHANGELOG line.
+- rdoc for the Binder (the modes and their use cases, the revert caveats, how to `dup` a draft,
+  the empty/`nil` policy, "`required` twice") and a CHANGELOG line; `FormItem`'s rdoc points at
+  `.required` for the other half of the marker.
 
 ## Related
 
