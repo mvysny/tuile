@@ -103,8 +103,8 @@ the push is held** — already the house rule for `notify_on_edit?`.
 
 ## Graduation owes
 
-- A `D_value_change_mode` entry (the modes, who gets them, edits-not-writes, held-only-while-focused,
-  the default), and `D_date_field`'s *Why not* bullet amended to point at it rather than deleted —
+- A `D_` entry on the value-change mode (the modes, who gets them, edits-not-writes,
+  held-only-while-focused, the default), and `D_date_field`'s *Why not* bullet amended to point at it rather than deleted —
   the date fields' exclusion still stands on its own grammar reason.
 - `R_value_change_timing` gains the verified Vaadin facts: `ON_CHANGE` default, `LAZY`'s 400 ms.
 - `lib/tuile/component/AGENTS.md`'s "One not prefix-closed settles its *value* notice" line
