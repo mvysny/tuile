@@ -367,6 +367,37 @@ module Tuile
       assert_includes painted, "Welcome, abc."
     end
 
+    # The Binder pane shows both modes over one form: the buffered column holds
+    # its edits until Save, the unbuffered one writes each valid edit through
+    # and keeps out the one its rule refuses.
+    it "holds the Binder pane's buffered edits until Save, and writes the unbuffered ones at once" do
+      sampler = build_sampler
+      sampler.select_entry(entries.find { _1.caption == "Binder" })
+      left, right = Testing.find(Component::FormLayout, in: sampler.demo_window)
+      left_name = left.children.first.content
+      right_name, right_in, right_out = right.children.map(&:content)
+      painted = lambda do
+        Screen.instance.repaint
+        Screen.instance.buffer.region_text(sampler.demo_window.absolute_rect).join("\n")
+      end
+
+      Testing.set_value(left_name, "Bea")
+      Testing.set_value(right_name, "Bob")
+      Testing.set_value(right_in, Date.new(2026, 10, 5))
+      Testing.set_value(right_out, Date.new(2026, 10, 1))
+      text = painted.call
+      assert_includes text, 'model: "Ann"' # not written before Save
+      assert_includes text, "changed?: true"
+      assert_includes text, 'model: "Bob"'
+      assert_includes text, "Must be after check-in"
+      assert_includes text, "2026-10-05 → –" # the refused check-out stayed out
+
+      Testing.click(Testing.get(Component::Button, in: sampler.demo_window) { _1.caption.to_s == "Save" })
+      text = painted.call
+      assert_includes text, 'model: "Bea"'
+      assert_includes text, "changed?: false"
+    end
+
     # The TabSheet pane's whole claim: a hidden pane is detached from the tree
     # and still comes back exactly as it was left. Guarded here because the
     # demo asserts it in prose on screen.

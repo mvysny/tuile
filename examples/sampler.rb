@@ -541,9 +541,9 @@ module SamplerExample
     # as a live index of the catalogue and any drift between the two is visible.
     #
     # Mnemonics are *hand-picked*: {Tuile::Component::MenuBar#add_item} raises on
-    # a duplicate among siblings, and seven leaves therefore answer to a letter
+    # a duplicate among siblings, and eight leaves therefore answer to a letter
     # other than their initial (Past`e`, Checkbox`G`roup, C`o`mboBox,
-    # Pic`k`erWindow, S`l`ash menu, DateTi`m`eField, F`o`rmLayout) — the
+    # Pic`k`erWindow, S`l`ash menu, DateTi`m`eField, Bi`n`der, F`o`rmLayout) — the
     # underline shows which.
     # No item may use
     # `q`: quit is the unhandled-key fallback, so a `q` on the live level would
@@ -570,7 +570,8 @@ module SamplerExample
                             Entry.new("TimeField", :build_time_field, "t"),
                             Entry.new("DateTimeField", :build_date_time_field, "m"),
                             Entry.new("Bad input", :build_bad_input, "a"),
-                            Entry.new("Validation", :build_validation, "v")
+                            Entry.new("Validation", :build_validation, "v"),
+                            Entry.new("Binder", :build_binder, "n")
                           ]),
                  Menu.new("Choose", "c", [
                             Entry.new("Checkbox", :build_checkboxes, "c"),
@@ -1046,6 +1047,114 @@ module SamplerExample
       else
         Tuile::Component::ConfirmWindow.alert("Cannot save", "#{bad.size} problem(s):\n#{bad.join("\n")}")
       end
+    end
+
+    # The model both Binder columns edit — a plain Struct, since a binder needs
+    # nothing but attribute readers and writers.
+    Booking = Struct.new(:name, :check_in, :check_out)
+
+    # The two binders side by side, over the same form. Left is
+    # Binder::Buffered: the fields are a copy until Save, and Revert reads the
+    # model back over them. Right is Binder::Unbuffered: every valid edit lands
+    # in its model at once, which the echo under it shows. Neither pane writes
+    # a verdict itself — the binder does, and each FormItem paints it.
+    def build_binder
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Left writes its model on Save; right writes every valid edit at once.\n" \
+                    "Try a 2-letter name, or a check-out before check-in. Verdicts show once\n" \
+                    "you edit a field, and on every field after Save or Check."
+      booked = Booking.new("Ann", Date.today + 7, Date.today + 9)
+      buffered = Tuile::Binder::Buffered.new
+      left_echo = Tuile::Component::Label.new
+      show_left = -> { left_echo.text = "#{booking_text(booked)}\nchanged?: #{buffered.changed?}" }
+      left_form = booking_form(buffered, &show_left)
+      buffered.read(booked)
+      show_left.call
+      save = Tuile::Component::Button.new("Save") do
+        buffered.write?(booked) ? show_left.call : alert_failures(buffered)
+      end
+      revert = Tuile::Component::Button.new("Revert") do
+        buffered.read(booked)
+        show_left.call
+      end
+
+      draft = Booking.new
+      unbuffered = Tuile::Binder::Unbuffered.new
+      right_echo = Tuile::Component::Label.new
+      show_right = -> { right_echo.text = booking_text(draft) }
+      right_form = booking_form(unbuffered, &show_right)
+      unbuffered.model = draft
+      show_right.call
+      check = Tuile::Component::Button.new("Check") { unbuffered.validate }
+
+      columns = row do |r|
+        r.add(binder_column("Binder::Buffered", left_form, [save, revert], left_echo), Fixed[BINDER_COLUMN_WIDTH])
+        r.add(binder_column("Binder::Unbuffered", right_form, [check], right_echo), Fixed[BINDER_COLUMN_WIDTH])
+      end
+      form do |f|
+        f.add(prompt, Fixed[3])
+        f.add(columns, Expand[1])
+      end
+    end
+
+    # Two columns and the row's gap still fit an 80-column terminal.
+    BINDER_COLUMN_WIDTH = 34
+
+    # Three bound fields and a rule across two of them, blamed on Check-out.
+    # `on_edit` is registered after the binder's own listener, so it runs after
+    # the binder has validated — and, unbuffered, written.
+    # @param binder [Tuile::Binder::Buffered, Tuile::Binder::Unbuffered]
+    # @return [Tuile::Component::FormLayout]
+    def booking_form(binder, &on_edit)
+      name = Tuile::Component::TextField.new
+      check_in = Tuile::Component::DateField.new
+      check_out = Tuile::Component::DateField.new
+      binder.bind(name, :name).required("Name is required")
+            .validate { |v| "At least 3 characters" if v.length < 3 }
+      binder.bind(check_in, :check_in).required("Pick a date")
+      binder.bind(check_out, :check_out).required("Pick a date")
+      binder.rule do |b|
+        { check_out: "Must be after check-in" } if b.check_in && b.check_out && b.check_out <= b.check_in
+      end
+      [name, check_in, check_out].each { _1.on_value_change(&on_edit) }
+      # The ∙ markers are the FormItem's, told separately: `required` on the
+      # binding tells the field nothing.
+      Tuile::Component::FormLayout.new.tap do |f|
+        f.add(name, caption: "Name", required: true)
+        f.add(check_in, caption: "Check-in", required: true)
+        f.add(check_out, caption: "Check-out", required: true)
+      end
+    end
+
+    # @param title [String]
+    # @param fields [Tuile::Component::FormLayout]
+    # @param buttons [Array<Tuile::Component::Button>]
+    # @param echo [Tuile::Component::Label] the model, as the binder left it.
+    # @return [Tuile::Component::Layout::Vertical]
+    def binder_column(title, fields, buttons, echo)
+      actions = row { |r| buttons.each { r.add(_1, Fixed[button_width(_1)]) } }
+      group do |g|
+        g.add(Tuile::Component::Label.new(title), Fixed[1])
+        g.add(fields, Fixed[9])
+        g.add(actions, Fixed[1])
+        g.add(echo, Fixed[3])
+      end
+    end
+
+    # @param booking [Booking]
+    # @return [String] the model's two lines, `–` for a nil.
+    def booking_text(booking)
+      "model: #{booking.name.inspect}\n       #{booking.check_in || "–"} → #{booking.check_out || "–"}"
+    end
+
+    # The Save gate's other half: `write?` said no, and `last_validation` says
+    # why — form-level failures would sit under the `nil` key.
+    # @param binder [Tuile::Binder::Buffered]
+    def alert_failures(binder)
+      lines = binder.last_validation.flat_map do |attr, failures|
+        failures.map { "#{attr || "form"}: #{_1.message}" }
+      end
+      Tuile::Component::ConfirmWindow.alert("Cannot save", lines.join("\n"))
     end
 
     # @param value [BigDecimal, nil]

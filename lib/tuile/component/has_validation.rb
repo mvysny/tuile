@@ -53,10 +53,9 @@ module Tuile
     #
     # Unlike `bad_input?`, this fact is *discrete* — asserted by an outside
     # validator at moments it picks, never derived from the buffer — so its
-    # notice fires straight
-    # off the write, where {HasBadInput#on_bad_input_change} has a continuous
-    # fact to settle first (`design/decisions.md` `D_bad_input`,
-    # `D_has_validation`).
+    # notice fires straight off the write, where
+    # {HasBadInput#on_bad_input_change} has a continuous fact to settle first
+    # (`design/decisions.md` `D_bad_input`, `D_has_validation`).
     module HasValidation
       extend Listeners::Declare
 

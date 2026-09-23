@@ -72,9 +72,9 @@ What Vaadin 25.2 does (docs `building-apps/forms-data/add-form/validation.md`,
 Either way an invalid value never stays in the bean — but the real bean is scratch space, so its
 setters fire, get reverted, and fire again ("your setters must consider this").
 
-**Buffered** (`BufferedBinder`) — a simple form in an OK/Cancel popup: Cancel is free, nothing is
+**Buffered** (`Binder::Buffered`) — a simple form in an OK/Cancel popup: Cancel is free, nothing is
 written until valid.
-**Write-through** (`UnbufferedBinder`) — a settings panel or a live filter; and the *complex* form: beans holding lists
+**Write-through** (`Binder::Unbuffered`) — a settings panel or a live filter; and the *complex* form: beans holding lists
 of beans, edited through sub-editor dialogs whose OK writes into the bean, which is write-through
 whatever the outer form says. There the app deep-copies a draft, binds it write-through, and on
 Save applies the draft to the original.
@@ -106,27 +106,28 @@ Save applies the draft to the original.
 
 ## Two classes, one per mode (settled)
 
-**`BufferedBinder`** has `read` / `write?` / `write!` / `changed?`; **`UnbufferedBinder`** has
+**`Binder::Buffered`** has `read` / `write?` / `write!` / `changed?`; **`Binder::Unbuffered`** has
 `model=`. The split deletes the mode-switch questions outright (`read` after `model=`, `model=`
 after `read`), and each API stays small. `bind`, `rule`, `last_validation` and the chain are shared.
 
 - **Sharing is composition, not a base class** (`cop` rule 2): one internal engine both hold, with
   about four one-line delegators. An abstract `Binder` both *are* was the road not taken — it is
   the shared-code base class rule 2 forbids, and ~4 one-liners are no burden.
-- **Constants: `Tuile::BufferedBinder` and `Tuile::UnbufferedBinder`** (one top-level constant per
-  file); the shared types — `Binding`, `ValidationFailure`, `ValidationError < Tuile::Error` and the
-  engine — in a **`Tuile::Binder` namespace module** (`lib/tuile/binder/`). Nested in
-  `BufferedBinder`, the unbuffered side would spell `BufferedBinder::ValidationFailure`.
+- **Constants: `Tuile::Binder::Buffered` and `Tuile::Binder::Unbuffered`**, beside the shared
+  types — `Binding`, `ValidationFailure`, `ValidationError < Tuile::Error` and the engine — in the
+  **`Tuile::Binder` namespace module** (`lib/tuile/binder/`), so every binder type is one
+  `Binder::` away and both modes spell `Binder::ValidationFailure` alike. Top-level
+  `BufferedBinder` / `UnbufferedBinder` was the first cut; the namespace reads as the mode it is.
 - **`model = nil`** clears every field (`nil` → `empty_value`, the same rule as `read`) and every
   verdict; bindings keep listening and validating, bean rules are skipped (no bean), nothing is
   written. Vaadin's `setBean(null)`.
-- **`changed?` is `BufferedBinder`'s alone in v1** — unbuffered, every valid edit is already in the
+- **`changed?` is `Binder::Buffered`'s alone in v1** — unbuffered, every valid edit is already in the
   model, so "changed" has no settled meaning there.
 
 ## When bindings run (settled)
 
 - **Both classes run a binding whenever its field's value changes** — to refresh that field's
-  verdict and `last_validation`. `BufferedBinder` writes nothing then; `UnbufferedBinder` writes the
+  verdict and `last_validation`. `Binder::Buffered` writes nothing then; `Binder::Unbuffered` writes the
   model (write-validate-revert, bean rules included). `write?` runs every binding plus the bean
   rules — that is the "click-gated" part, and it is only the Save gate, not the display.
 - **An unbuffered change writes every binding changed since `model=` whose field steps pass**
@@ -135,7 +136,7 @@ after `read`), and each API stays small. `bind`, `rule`, `last_validation` and t
   the field showing 10 never reaches the model — a silent divergence, not just a stale message.
 - **The cadence is the field's, not the Binder's**, and the Binder owns no blur hook of its own.
   v1 ships against eager fields, accepted: a string or number field with a rule paints its verdict
-  mid-word (`length < 3` is red at the first letter), and `UnbufferedBinder` writes every valid
+  mid-word (`length < 3` is red at the first letter), and `Binder::Unbuffered` writes every valid
   prefix through, setters firing per keystroke. Date and time fields already settle on commit, and
   the field's own bad-input report is gated by `bad_input_settled?`, so neither is affected. Once
   `design/ideas/value-change-mode.md` lands, a form field on `:on_change` announces on blur or
@@ -168,14 +169,14 @@ gets the failures after `write?` answered `false`, and what the Save alert itera
 
 **Staleness rule:** a binding run replaces only its own attr's *field-step* entry; bean-rule
 entries (the `nil` key, and attrs a rule blamed) are replaced only when bean rules run — in
-`BufferedBinder` that is `write?` / `write!` / `validate` / `read` alone. So after the user fixes `start_date`,
+`Binder::Buffered` that is `write?` / `write!` / `validate` / `read` alone. So after the user fixes `start_date`,
 "Start date is after end date" stays until the next `write?`. Vaadin behaves the same, and "last"
 in the name says so.
 
 ## The pipeline (settled shape)
 
 ```ruby
-binder = BufferedBinder.new           # or UnbufferedBinder.new
+binder = Binder::Buffered.new         # or Binder::Unbuffered.new
 binder.bind(name_field, :name).required("Name is required")
 binder.bind(age_field, :age).validate { |v| "Must be positive" unless v.positive? }
 binder.bind(birth_field, :birth_iso)                                  # model stores an ISO string
@@ -186,13 +187,13 @@ binder.rule { |p| "Start date is after end date" if p.start_date && p.end_date &
 binder.last_validation  # => {attr => [ValidationFailure]}, frozen; {} when valid
 binder.validate         # a full run — every binding + the bean rules, every verdict written — → last_validation
 
-# BufferedBinder
+# Binder::Buffered
 binder.read(person)     # model → fields, snapshot for changed?
 binder.write?(person)   # write, validate, revert on failure → true / false
 binder.write!(person)   # the same, raising ValidationError on failure
 binder.changed?
 
-# UnbufferedBinder
+# Binder::Unbuffered
 binder.model = draft    # model → fields; each valid change writes through
 binder.model = nil      # clears the fields; validates, writes nothing
 ```
@@ -272,8 +273,8 @@ widgets — Tuile's split already: the field reports what its parse couldn't rep
 - `forField(f).withValidator(pred, msg).bind(get, set)` → the bind-first chain; `asRequired(msg)` →
   `.required(msg)`.
 - `withConverter` → `.convert(to_model, to_value)`, chained.
-- `readBean` / `writeBeanIfValid` / `writeBean` → `BufferedBinder#read` / `write?` / `write!`;
-  `setBean` → `UnbufferedBinder#model=`; `ValidationException` → `ValidationError`.
+- `readBean` / `writeBeanIfValid` / `writeBean` → `Binder::Buffered#read` / `write?` / `write!`;
+  `setBean` → `Binder::Unbuffered#model=`; `ValidationException` → `ValidationError`.
 - `isValid` / `validate` → `last_validation` / `validate`, the `{attr => [ValidationFailure]}` map;
   `hasChanges` → `changed?`.
 - "Validation errors only display after the user has edited each field and submitted"
