@@ -6346,9 +6346,7 @@ module Tuile
         # 
         # Deliberately *no* `return if rect.empty?` guard: that strands the
         # children at the coordinates they last had, and the next full repaint
-        # paints them there (`D_empty_ancestor`). Construction is silent without
-        # one anyway — {#add} runs before a parent assigns a rect, so the
-        # children are already empty and `invalidate` no-ops while detached.
+        # paints them there (`D_empty_ancestor`).
         def relayout: () -> void
 
         # _@return_ — {Component#local_rect} with {#padding} taken off each

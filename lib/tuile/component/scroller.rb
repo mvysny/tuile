@@ -176,7 +176,6 @@ module Tuile
       def relayout
         content&.rect = Rect.new(0, -@scroll_top_row, inner_width, content_height)
         place_scrollbar
-        invalidate
       end
 
       private

@@ -152,7 +152,6 @@ module Tuile
           item.rect = rows.positive? ? Rect.new(0, top, rect.width, rows) : collapsed
           top += rows
         end
-        invalidate
       end
 
       # @param item [FormItem]

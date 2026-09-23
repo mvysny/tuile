@@ -57,6 +57,16 @@ module Tuile
         assert !layout.__send__(:layout_dirty?)
       end
 
+      it "blanks the cells a moved child vacated" do
+        label = Component::Label.new
+        label.text = "XX"
+        mount_at(label, Rect.new(0, 0, 2, 1))
+        Screen.instance.repaint
+        label.parent.constrain(label, Rect.new(5, 0, 2, 1))
+        Screen.instance.repaint
+        assert_equal "     XX   ", Screen.instance.buffer.region_text(Rect.new(0, 0, 10, 1)).first
+      end
+
       it "refuses a component that isn't its child" do
         layout = Component::Layout::Absolute.new
         assert_raises(ArgumentError) { layout.constrain(Component.new, Rect.new(0, 0, 1, 1)) }

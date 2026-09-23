@@ -186,9 +186,7 @@ module Tuile
         #
         # Deliberately *no* `return if rect.empty?` guard: that strands the
         # children at the coordinates they last had, and the next full repaint
-        # paints them there (`D_empty_ancestor`). Construction is silent without
-        # one anyway — {#add} runs before a parent assigns a rect, so the
-        # children are already empty and `invalidate` no-ops while detached.
+        # paints them there (`D_empty_ancestor`).
         # @return [void]
         def relayout
           inner = inner_rect
@@ -199,7 +197,6 @@ module Tuile
             children.each { _1.rect = collapsed unless _1.visible? }
             place_children(inner)
           end
-          invalidate
         end
 
         # @return [Rect] {Component#local_rect} with {#padding} taken off each

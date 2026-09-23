@@ -237,8 +237,8 @@ module Tuile
     # component by its own rect and every ancestor's (`D_clip`). Overrunning is
     # still a bug; it now shows as truncation rather than as a corrupt neighbour.
     #
-    # The component is invalidated and will paint over the new rectangle. It is
-    # parent's job to paint over the old component position.
+    # The component is invalidated and will paint over the new rectangle, and
+    # so is its parent, which owns the cells the old position vacated.
     #
     # **The children do not move yet**: this only marks a {#relayout}, so a
     # child's rect read back in the same turn is still the previous pass's —
@@ -271,6 +271,9 @@ module Tuile
       @rect = new_rect
       handle_rect_changed(old_rect)
       invalidate
+      # Nothing else blanks the cells the old rect vacated — the same reason
+      # {#visible=} invalidates the parent.
+      parent&.invalidate
       invalidate_layout
     end
     protected :rect=
