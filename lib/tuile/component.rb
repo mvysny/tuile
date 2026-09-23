@@ -264,7 +264,7 @@ module Tuile
       raise TypeError, "expected Rect, got #{new_rect.inspect}" unless new_rect.is_a? Rect
 
       LayoutPass.check(self)
-      LayoutPass.note_placement
+      LayoutPass.note_placement(self)
       return if @rect == new_rect
 
       old_rect = @rect
@@ -323,7 +323,8 @@ module Tuile
     def layout_dirty? = @layout_dirty
 
     # Whether {#rect} is the *previous* pass's rectangle, because some ancestor
-    # owes a {#relayout} and that pass reassigns every rect below it.
+    # owes a {#relayout} and that pass reassigns every rect below it — or is
+    # running it right now and has not reached this branch yet.
     #
     #   holder.constrain(pane, Rect.new(0, 0, 100, 26))
     #   pane.left.rect_stale?   # => true — `pane.left.rect` is still the old half
@@ -1312,19 +1313,26 @@ module Tuile
       LayoutPass.run(self) { relayout }
     end
 
-    # The nearest ancestor whose pending {#relayout} would rewrite this
-    # component's {#rect}, or `nil` when the rect is current — {#rect_stale?}'s
-    # answer, with the culprit kept for {StrictLayout}'s message.
+    # The nearest ancestor whose pending or running {#relayout} would rewrite
+    # this component's {#rect}, or `nil` when the rect is current —
+    # {#rect_stale?}'s answer, with the culprit kept for {StrictLayout}'s
+    # message.
     #
-    # Strictly ancestors, never `self`: a container's own flag means its
-    # children are stale, and {#perform_relayout} clears the flag before the
-    # body runs, so a `relayout` reading its own `width` is asking a settled
-    # question.
+    # Two ways to owe it: a marked ancestor, and one whose pass is running and
+    # has not yet placed the child on the way down — a hook fired mid-pass, a
+    # focus repair from a child hidden there, reading a sibling. Strictly
+    # ancestors, never `self`: a container's own flag means its children are
+    # stale, and {#perform_relayout} clears the flag before the body runs, so a
+    # `relayout` reading its own `width` is asking a settled question.
     # @return [Component, nil]
     def stale_layout_ancestor
-      node = parent
-      node = node.parent until node.nil? || node.layout_dirty?
-      node
+      node = self
+      until node.parent.nil?
+        return node.parent if node.parent.layout_dirty? || LayoutPass.unplaced?(node)
+
+        node = node.parent
+      end
+      nil
     end
 
     # Hands focus out of the subtree just hidden, if it was in there, through

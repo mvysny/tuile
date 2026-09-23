@@ -7,10 +7,11 @@ module Tuile
   #
   #   LayoutPass.run(container) { relayout }    # inside the container
   #
-  # A pass also records whether it has placed a child *yet*, which is what lets
-  # {Component#invalidate_layout} drop a mark a container makes on itself
-  # before its first placement: the pass that would answer it is the one
-  # running.
+  # A pass also records which children it has placed *so far*. Before the
+  # first, {Component#invalidate_layout} drops a mark the container makes on
+  # itself — the pass that would answer it is the one running — and until a
+  # child's turn, {Component#rect_stale?} reports its rect as the previous
+  # pass's ({.unplaced?}).
   #
   # **Thread-local rather than an ivar**, because a tree with no {Screen}
   # places children too, so there is no one object to hang the state on.
@@ -25,8 +26,8 @@ module Tuile
     PLACING = :tuile_placing
     private_constant :PLACING
 
-    # The thread-local saying whether the current placer has assigned a child
-    # rect yet.
+    # The thread-local holding the children the current placer has assigned a
+    # rect so far — an identity `Set`, or `nil` before the first.
     # @return [Symbol]
     PLACED = :tuile_placed
     private_constant :PLACED
@@ -50,7 +51,7 @@ module Tuile
       outer = Thread.current[PLACING]
       outer_placed = Thread.current[PLACED]
       Thread.current[PLACING] = placer
-      Thread.current[PLACED] = false
+      Thread.current[PLACED] = nil
       yield
     ensure
       Thread.current[PLACING] = outer
@@ -147,11 +148,12 @@ module Tuile
     end
     private_class_method :drain_round
 
-    # Records that the running pass has assigned a child rect, past which a
-    # mark on the placer is kept rather than dropped.
+    # Records that the running pass has assigned `component` its rect. Past
+    # the first, a mark on the placer is kept rather than dropped.
+    # @param component [Component]
     # @return [void]
-    def note_placement
-      Thread.current[PLACED] = true
+    def note_placement(component)
+      (Thread.current[PLACED] ||= Set.new.compare_by_identity) << component
     end
 
     # Whether `component` is the running placer and has placed no child yet —
@@ -159,7 +161,20 @@ module Tuile
     # @param component [Component]
     # @return [Boolean]
     def before_first_placement?(component)
-      Thread.current[PLACING].equal?(component) && !Thread.current[PLACED]
+      Thread.current[PLACING].equal?(component) && Thread.current[PLACED].nil?
+    end
+
+    # Whether `component`'s placer is running its pass right now and has not
+    # reached it yet — so its rect is the previous pass's, though no flag says
+    # so: {Component#perform_relayout} clears the placer's before the body runs.
+    # @param component [Component]
+    # @return [Boolean]
+    def unplaced?(component)
+      placing = Thread.current[PLACING]
+      return false if placing.nil? || !placing.equal?(placer(component))
+
+      placed = Thread.current[PLACED]
+      placed.nil? || !placed.include?(component)
     end
   end
 end

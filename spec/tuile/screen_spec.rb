@@ -263,6 +263,22 @@ module Tuile
           assert_equal [[:scroll, Rect.new(0, 0, 40, 1)], [:changed, Rect.new(0, 0, 40, 1)]], pane.seen
         end
 
+        # What still runs mid-pass, handle_focus, reads rects the pass has not
+        # reassigned; strict layout names that read rather than let it pass.
+        it "reports a sibling rect read from handle_focus as stale" do
+          pane = sidebar_pane
+          screen.content = pane
+          pane.side.focus
+          pane.define_singleton_method(:handle_focus) do
+            super()
+            main.rect
+          end
+
+          e = assert_raises(Tuile::Error) { screen.resize_terminal(40, 10) }
+
+          assert_includes e.message, "owes a relayout"
+        end
+
         it "notifies nothing when focus ends where the pass found it" do
           pane = sidebar_pane
           screen.content = pane

@@ -3876,7 +3876,8 @@ module Tuile
     def layout_dirty?: () -> bool
 
     # Whether {#rect} is the *previous* pass's rectangle, because some ancestor
-    # owes a {#relayout} and that pass reassigns every rect below it.
+    # owes a {#relayout} and that pass reassigns every rect below it — or is
+    # running it right now and has not reached this branch yet.
     # 
     #   holder.constrain(pane, Rect.new(0, 0, 100, 26))
     #   pane.left.rect_stale?   # => true — `pane.left.rect` is still the old half
@@ -4619,14 +4620,17 @@ module Tuile
     # `relayout`, reached only from {LayoutPass.drain}.
     def perform_relayout: () -> void
 
-    # The nearest ancestor whose pending {#relayout} would rewrite this
-    # component's {#rect}, or `nil` when the rect is current — {#rect_stale?}'s
-    # answer, with the culprit kept for {StrictLayout}'s message.
+    # The nearest ancestor whose pending or running {#relayout} would rewrite
+    # this component's {#rect}, or `nil` when the rect is current —
+    # {#rect_stale?}'s answer, with the culprit kept for {StrictLayout}'s
+    # message.
     # 
-    # Strictly ancestors, never `self`: a container's own flag means its
-    # children are stale, and {#perform_relayout} clears the flag before the
-    # body runs, so a `relayout` reading its own `width` is asking a settled
-    # question.
+    # Two ways to owe it: a marked ancestor, and one whose pass is running and
+    # has not yet placed the child on the way down — a hook fired mid-pass, a
+    # focus repair from a child hidden there, reading a sibling. Strictly
+    # ancestors, never `self`: a container's own flag means its children are
+    # stale, and {#perform_relayout} clears the flag before the body runs, so a
+    # `relayout` reading its own `width` is asking a settled question.
     def stale_layout_ancestor: () -> Component?
 
     # Hands focus out of the subtree just hidden, if it was in there, through
@@ -15249,10 +15253,11 @@ module Tuile
   # 
   #   LayoutPass.run(container) { relayout }    # inside the container
   # 
-  # A pass also records whether it has placed a child *yet*, which is what lets
-  # {Component#invalidate_layout} drop a mark a container makes on itself
-  # before its first placement: the pass that would answer it is the one
-  # running.
+  # A pass also records which children it has placed *so far*. Before the
+  # first, {Component#invalidate_layout} drops a mark the container makes on
+  # itself — the pass that would answer it is the one running — and until a
+  # child's turn, {Component#rect_stale?} reports its rect as the previous
+  # pass's ({.unplaced?}).
   # 
   # **Thread-local rather than an ivar**, because a tree with no {Screen}
   # places children too, so there is no one object to hang the state on.
@@ -15374,13 +15379,17 @@ module Tuile
     # _@return_ — whether it ran anything.
     def self.drain_round: (Component root) -> bool
 
-    # Records that the running pass has assigned a child rect, past which a
-    # mark on the placer is kept rather than dropped.
-    def note_placement: () -> void
+    # Records that the running pass has assigned `component` its rect. Past
+    # the first, a mark on the placer is kept rather than dropped.
+    # 
+    # _@param_ `component`
+    def note_placement: (Component component) -> void
 
-    # Records that the running pass has assigned a child rect, past which a
-    # mark on the placer is kept rather than dropped.
-    def self.note_placement: () -> void
+    # Records that the running pass has assigned `component` its rect. Past
+    # the first, a mark on the placer is kept rather than dropped.
+    # 
+    # _@param_ `component`
+    def self.note_placement: (Component component) -> void
 
     # Whether `component` is the running placer and has placed no child yet —
     # the window in which a mark it makes on itself is redundant.
@@ -15393,6 +15402,20 @@ module Tuile
     # 
     # _@param_ `component`
     def self.before_first_placement?: (Component component) -> bool
+
+    # Whether `component`'s placer is running its pass right now and has not
+    # reached it yet — so its rect is the previous pass's, though no flag says
+    # so: {Component#perform_relayout} clears the placer's before the body runs.
+    # 
+    # _@param_ `component`
+    def unplaced?: (Component component) -> bool
+
+    # Whether `component`'s placer is running its pass right now and has not
+    # reached it yet — so its rect is the previous pass's, though no flag says
+    # so: {Component#perform_relayout} clears the placer's before the body runs.
+    # 
+    # _@param_ `component`
+    def self.unplaced?: (Component component) -> bool
   end
 
   # The structural root of the {Screen}'s component tree.

@@ -76,11 +76,11 @@ module Tuile
 
     describe "#before_first_placement?" do
       it "is true only inside the component's own pass, until it places" do
-        parent, _child = parent_and_child
+        parent, child = parent_and_child
         refute LayoutPass.before_first_placement?(parent)
         LayoutPass.run(parent) do
           assert LayoutPass.before_first_placement?(parent)
-          LayoutPass.note_placement
+          LayoutPass.note_placement(child)
           refute LayoutPass.before_first_placement?(parent)
         end
       end
@@ -88,6 +88,27 @@ module Tuile
       it "is false for anyone but the running placer" do
         parent, child = parent_and_child
         LayoutPass.run(parent) { refute LayoutPass.before_first_placement?(child) }
+      end
+    end
+
+    describe "#unplaced?" do
+      it "is true for a child of the running placer until the pass reaches it" do
+        parent, child = parent_and_child
+        sibling = Component::Label.new("y")
+        parent.add(sibling, Rect.new(0, 1, 4, 1))
+        LayoutPass.run(parent) do
+          assert LayoutPass.unplaced?(child)
+          LayoutPass.note_placement(child)
+          refute LayoutPass.unplaced?(child)
+          assert LayoutPass.unplaced?(sibling)
+        end
+      end
+
+      it "is false outside a pass, and for a component another placer places" do
+        parent, child = parent_and_child
+        refute LayoutPass.unplaced?(child)
+        LayoutPass.run(Component::Layout::Absolute.new) { refute LayoutPass.unplaced?(child) }
+        LayoutPass.run(child) { refute LayoutPass.unplaced?(parent) }
       end
     end
   end

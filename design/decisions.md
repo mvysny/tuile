@@ -7098,6 +7098,14 @@ crying wolf: `perform_relayout` clears the flag *before* the body runs, and both
 pre-order, so a `relayout` reading its own `width` — and a nested one reading it mid-drain — is
 asking about a settled flag.
 
+**Clearing that flag early opens a window the flag cannot see.** While a container's pass runs, the
+children it has not reached yet still hold the previous pass's rects, and nothing is marked — so
+code the pass itself sets off (a `handle_rect_changed`, a focus repair from a child hidden there,
+the `handle_focus` it fires) read them unreported. `LayoutPass` therefore records which children
+the running pass has placed, and a child it has not reached counts as stale exactly as under a
+dirty ancestor. The record costs one identity-set insert per `rect=`, and it also answers "before
+the first placement" (`D_deferred_layout`), which a boolean did before.
+
 **Off in an app, because the reader cannot afford it.** `rect` is the hottest read in the toolkit
 (every repaint, every hit test, once per ancestor level in `clip_for`), and a check there would buy
 nothing for the code that runs it most. Prepending rather than branching is what makes the trade

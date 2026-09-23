@@ -418,6 +418,35 @@ module Tuile
         assert layout.children.first.rect_stale?
       end
 
+      # The running pass has cleared its own flag, so only the pass's progress
+      # can say which rects it is still about to rewrite.
+      it "stales what the running pass has not placed yet, subtree included" do
+        seen = []
+        klass = Class.new(Component) do
+          attr_reader :first, :second, :leaf
+
+          def initialize
+            super
+            @first = Component.new
+            @second = Component::Layout::Absolute.new
+            @leaf = Component.new
+            @second.add(@leaf, Rect.new(0, 0, 1, 1))
+            add_child(@first)
+            add_child(@second)
+          end
+        end
+        pane = klass.new
+        pane.define_singleton_method(:relayout) do
+          seen << [first.rect_stale?, second.rect_stale?, leaf.rect_stale?]
+          first.rect = Rect.new(0, 0, 5, 1)
+          seen << [first.rect_stale?, second.rect_stale?, leaf.rect_stale?]
+          second.rect = Rect.new(0, 1, 5, 1)
+        end
+        mount_at(pane, Rect.new(0, 0, 5, 2))
+        assert_equal [[true, true, true], [false, true, true]], seen.first(2)
+        assert !pane.leaf.rect_stale?
+      end
+
       it "stales a whole subtree under one dirty ancestor" do
         layout = holder
         inner = Component::Layout::Vertical.new
