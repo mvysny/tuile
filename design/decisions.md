@@ -6763,9 +6763,21 @@ the question.** A collapsed ancestor gives one — what `D_empty_ancestor` says 
 collapsed subtree means, with `Screen#repaint`'s drain filter the cheap way to
 skip it rather than the thing that makes it true. So does a component scrolled
 clean out of its viewport, with no ancestor empty anywhere, its own rect being
-folded in. So `clip_for(c).empty?` *is* "can this paint anything", which is the
-predicate the deferred culling in `design/ideas/paint-cull.md` wants, and why that
-needs no geometry of its own.
+folded in. So `clip_for(c).empty?` *is* "can this paint anything", and a cull
+would need no geometry of its own.
+
+**Why the drain filter does not cull on it** — dropping a queued component whose
+clip is empty, so a scroller's off-screen children skip `repaint`. Prototyped
+and timed on one wheel notch: 1.05× for the sampler's eight-field form, 1.7× at
+thirty fields, 2.8× at a hundred, and uncut the notch stays inside a 16 ms frame
+until roughly 150 fields in one scroller. The clip already makes a scrolled-out
+paint near free — a `Label` spends ~2 µs rejecting its writes — so a cull saves
+only the rest of `canvas_for` (origin, background) and the cascade into each
+child's subtree. The O(content) that remains is not paint: `clip_for` itself on
+every queued child, which a cull only moves into the filter, and the layout
+pass. Worth re-arguing only past a hundred-odd children in one viewport; the
+reentry is sound — anything that changes a clip changes an ancestor's rect, and
+that ancestor's repaint re-queues the children.
 
 **Why the clip sits beside the origin in backend coordinates.** The canvas's
 *state* is in backend coordinates; the arguments to its three methods are in

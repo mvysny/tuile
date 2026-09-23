@@ -1,6 +1,6 @@
 # Per-component back buffers + a z-order compositor
 
-**Status:** parked until measured; `paint-cull.md` goes first.
+**Status:** parked until measured.
 
 ## Proposal
 
@@ -28,16 +28,18 @@ places it shows:
 
 - **Scroll** — a held arrow or a spun wheel over a large component: re-composite a shifted render
   instead of re-rendering it. `Scroller` makes this regime real: a notch re-paints every child of
-  its content. `paint-cull.md` removes the off-viewport half cheaply; measure what remains.
+  its content, though an off-viewport child's paint is near free already — the clip rejects its
+  writes, and an empty-clip cull was measured and rejected (`D_clip`). The cost that grows with
+  the content is `clip_for` per child and the layout pass, neither of which a buffer removes.
 - **Popups** — a layer repaints whole whenever anything beneath it repaints (AGENTS.md); a cached
   popup layer would be re-composited instead.
 
 ## If revisited
 
-- Measure first, on `examples/` and `benchmark/`, after the cull.
+- Measure first, on `examples/` and `benchmark/`.
 - `Q_layer_clip`: the clip (`D_clip`) becomes the buffer's size — does a scrolled child get a
   full-content buffer (memory) or a viewport-sized one (re-render on scroll, losing the win)?
 
 ## Related
 
-`D_canvas`, `D_clip`, `D_relative_rect`, `R_paint_context`, `design/ideas/paint-cull.md`.
+`D_canvas`, `D_clip`, `D_relative_rect`, `R_paint_context`.

@@ -38,25 +38,25 @@ FOLD_N = 200_000
 # @return [Tuile::Component] the deepest child of a freshly built chain.
 def build(depth, cutting: false, scrolled_out: false)
   root = Tuile::Component::Layout::Absolute.new
-  Tuile::Screen.instance.content = root
+  Tuile::Screen.instance.content = root # the pane gives it the whole 120x40
   width = 120
   height = 40
-  root.rect = Tuile::Rect.new(0, 0, width, height)
   node = root
   depth.times do
     child = Tuile::Component::Layout::Absolute.new
-    node.add(child)
     width -= 2
     height -= 2
-    child.rect = Tuile::Rect.new(1, 1, width, height) # inset: genuinely fits
+    node.add(child, Tuile::Rect.new(1, 1, width, height)) # inset: genuinely fits
     node = child
   end
-  return node unless cutting || scrolled_out
-
-  leaf = Tuile::Component.new
-  node.add(leaf)
-  leaf.rect = scrolled_out ? Tuile::Rect.new(0, height + 50, width, 6) : Tuile::Rect.new(0, -10, width, height + 20)
-  leaf
+  if cutting || scrolled_out
+    leaf = Tuile::Component.new
+    leaf_rect = scrolled_out ? Tuile::Rect.new(0, height + 50, width, 6) : Tuile::Rect.new(0, -10, width, height + 20)
+    node.add(leaf, leaf_rect)
+    node = leaf
+  end
+  Tuile::Screen.instance.flush_layout
+  node
 end
 
 # @param label [String] printed as-is.
@@ -81,7 +81,10 @@ def allocations(&block)
   count / 100.0
 end
 
-Tuile::Screen.fake
+Tuile::Screen.fake(width: 120, height: 40)
+# A fake screen turns on the stale-rect check, which walks the ancestors on
+# every `rect` read and roughly doubles what `clip_for` measures.
+Tuile.strict_layout = false
 
 buffer = Tuile::Buffer.new(Tuile::Size.new(120, 40))
 row = Tuile::StyledString.parse("a fairly ordinary row of list content ~40c")

@@ -937,6 +937,10 @@ module Tuile
         # {Component#visible?} rides the same walk, one more term in the same
         # AND — a different question (geometry says *where*, the flag says
         # *whether*) with the same answer for this frame (`D_visibility`).
+        #
+        # A scrolled-out component is *not* dropped here, though its empty
+        # clip would say so: measured, the clip already makes its paint near
+        # free (`D_clip`).
         @invalidated.delete_if do |c|
           next true unless c.attached?
 
