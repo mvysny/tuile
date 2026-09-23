@@ -73,22 +73,27 @@ of beans, edited through sub-editor dialogs whose OK writes into the bean, which
 whatever the outer form says. There the app deep-copies a draft, binds it write-through, and on
 Save applies the draft to the original.
 
-- **Copying is the app's, never the Binder's** — only the app knows how deep: `dup` shares a
-  `person.addresses` array, `Marshal.load(Marshal.dump(x))` breaks on ActiveRecord, procs and IO.
-  The Binder edits whatever it is handed. For flat attributes it knows its bindings, so it can copy
-  the bound ones draft → original with no diff machinery (`Q_copy_back`).
+- **Copying is the app's; the Binder ships no copy capability** — only the app knows how deep:
+  `dup` shares a `person.addresses` array, `Marshal.load(Marshal.dump(x))` breaks on ActiveRecord,
+  procs and IO. The Binder edits whatever it is handed, and its rdoc guides the app to `dup` or
+  deep-copy as its model needs. Applying a draft needs no helper either:
+  `binder.read(draft); binder.write?(original)` copies the bound attributes, validated.
 - **Buffered nests too, if the sub-editor edits the field's *value*, never the model** — a list
   field is a `HasValue` whose value is an array; the dialog's OK sets a *new* array holding an edited
   `dup` of the element. Nothing reaches the model until the outer `write?`, so the outer Cancel still
   works. The modes differ in live bean rules and live visibility to other components, not in
   nesting.
-- **Bean rules run against `model.dup`, not Vaadin's write-validate-revert** — write the candidates
-  into the copy, run the rules, and only on a pass write the real model. Its setters run once, with
-  valid values only, and the rules can run at any time — which closes Vaadin's buffered
-  `validate()` gap. Write-through does the same per change. Caveats for the rdoc: `dup` is shallow
-  (a setter mutating a shared collection in place leaks into the original; one assigning a new
-  object doesn't), and ActiveRecord's `dup` is a new record with `id == nil`, so a rule excluding
-  "self" by id misfires (`Q_copy_strategy`).
+- **Bean rules run Vaadin's way: write into the real model, validate, revert on failure** — snapshot
+  the bound attributes through their getters, write the candidates, run the rules, and on a failure
+  restore the snapshot through the setters. Write-through does the same per change. The cost is
+  accepted and goes in the rdoc: on a failure every setter fires twice, and the revert restores
+  only *bound* attributes, so state a setter derives elsewhere comes back only if the setter
+  re-derives it. Validating a `dup` instead was rejected: it needs a copy the Binder can't do right
+  for every model (shallow `dup` leaks in-place setters; ActiveRecord's `dup` has `id == nil`), so a
+  customizable copy — against the no-copy-capability ruling above.
+- **Buffered `validate` runs bean rules too** — the Binder remembers the model `read` was handed and
+  write-validate-reverts against it, so a "Check" button sees cross-field errors before Save.
+  Vaadin's buffered `validate()` skips them, holding no bean.
 
 ## The pipeline (settled shape)
 
@@ -102,7 +107,7 @@ binder.bind(birth_field, :birth_iso)                                  # model st
 binder.rule { |p| "Start date is after end date" if p.start_date && p.end_date && p.start_date > p.end_date }
 
 binder.read(person)     # buffered: model → fields, snapshot for changed?
-binder.write?(person)   # buffered: validate on a dup, write the real model only on a pass
+binder.write?(person)   # buffered: write, validate, revert on failure
 binder.model = draft    # write-through
 binder.changed?
 ```
@@ -126,8 +131,19 @@ binder.changed?
   validator opens with `v &&`. An empty optional field passes untouched; a required one was stopped
   by `required`.
 - **A bean rule returns `nil`, a String (form-level), or `{end_date: "…"}` to blame a field**, which
-  then lands on that field's `error_message` (`Q_rule_blame`). Form-level messages go to the Save
-  alert below — there is no framework status row (`D_status_bar`).
+  then lands on that field's `error_message`. Form-level messages go to the Save alert below — there
+  is no framework status row (`D_status_bar`).
+- **The verdict is one map, `{attr => ValidationFailure}`** — a `Data` holding `field`, `message`,
+  `value` (whatever the failing step saw: value side before a converter, model side after it; a
+  blamed attribute's candidate), open to more members later. Field steps and bean rules fill the
+  same map, so the Save alert and the app iterate one thing. One failure per attr, first wins: a
+  field step stops at its first failure, and bean rules run only once every field passed. The
+  rule's *return* stays a bare String or hash; the Binder builds the `Data` — the rule knows no
+  field.
+- **Named `ValidationFailure`** — not `ValidationError`, since `*Error` reads as an exception
+  (`rescue ValidationError`, beside `Tuile::Error`); not `ValidationResult`, since a result may be
+  ok and every entry here is a failure (Vaadin's `ValidationResult` is the ok-or-error sum type
+  deleted below). Covers a parse or conversion failure as naturally as a broken rule.
 - **`write?` is the house `Set#add?`**: "did the write happen".
 
 ## What was taken from Vaadin (v25.2)
@@ -141,13 +157,14 @@ widgets — Tuile's split already: the field reports what its parse couldn't rep
 - `withConverter` → `.convert(to_model, to_value)`, chained.
 - `readBean` / `writeBeanIfValid` / `setBean` → `read` / `write?` / `model=`; `writeBean`'s
   exception has no counterpart.
-- `isValid` / `hasChanges` / `validate` → a status aggregate.
+- `isValid` / `hasChanges` / `validate` → the `{attr => ValidationFailure}` map and `changed?`.
 - `binding.validate()` for cross-field rules, driven from the other field's value-change listener.
 - Escape hatches: `setValidatorsDisabled`, `withDefaultValidator(false)`, `setIsAppliedPredicate`.
 
 **Don't copy** `getDefaultValidator` / `addValidationStatusChangeListener` — they repair a *shared*
 invalid/message cell, and Tuile keeps the two facts in two places. `on_bad_input_change` is not that
-listener renamed: it reaches cells the field doesn't own. **Ruby deletes the ceremony**: a validator
+listener renamed: it reaches cells the field doesn't own. Nor `validationStatusSignal()` — **no
+`Signal`s in Tuile, period**, until someone asks; the listener idiom is a proc. **Ruby deletes the ceremony**: a validator
 is a proc returning a message or `nil` — no `Validator`, `ValidationResult`, `Result.ok`.
 
 ## What the Binder consumes from a field
@@ -183,13 +200,9 @@ gate for applying the draft. Vaadin instead enables the button from a status lis
 
 ## Open
 
-- `Q_binder_signal` — a `Signal` type mirroring Vaadin 25's `validationStatusSignal()`? Nothing has
-  asked; the listener idiom is a proc.
-- `Q_copy_back` — the draft → original copy of bound attributes: a Binder method (name?), or left to
-  the app as `binder.read(draft); binder.write?(original)`, which already does exactly that?
-- `Q_copy_strategy` — ship `dup` hardcoded, or a `copy:` proc for models whose `dup` misbehaves
-  (ActiveRecord's `id == nil`, in-place setters)? Generic machinery takes strategies.
-- `Q_rule_blame` — the blame shape: a `{attr => msg}` hash, or `[attr, msg]`? Several at once?
+- `Q_form_level_key` — the key for a form-level error in the verdict map: `nil`, or Rails'
+  `:base`? One per key means two failing form-level rules show one at a time — acceptable, or
+  does that key alone hold an array?
 - `Q_binder_names` — `read` / `write?` / `model=` / `rule` are placeholders.
 
 ## Graduation owes
@@ -197,9 +210,13 @@ gate for applying the draft. Vaadin instead enables the button from a status lis
 - The four layer words → `design/terminology.md`, one line each; the choice → a `D_` nomenclature
   ruling in the `D_scroll_nomenclature` mould.
 - The Vaadin mode table and the ActiveModel / dry-validation survey → `R_` entries with their
-  provenance; the two modes, the `dup` choice and the nil policy → a `D_` entry.
+  provenance; the two modes, write-validate-revert over a `dup` (the road not taken), no copy
+  capability and the nil policy → a `D_` entry.
+- "No `Signal`s in Tuile" is framework-wide, not the Binder's → its own `D_` (or a line in an
+  existing one) once something graduates that would have used one.
 - Reverse the parking in `HasValue`'s rdoc and `D_has_value`'s *deferred* list.
-- rdoc for the Binder (the modes and their use cases, the `dup` caveats) and a CHANGELOG line.
+- rdoc for the Binder (the modes and their use cases, the revert caveats, how to `dup` a draft)
+  and a CHANGELOG line.
 
 ## Related
 
