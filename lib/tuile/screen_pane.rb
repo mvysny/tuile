@@ -29,6 +29,8 @@ module Tuile
       @popup_prior_focus = {}
       # Where each open popup wants to be, and the anchor rect its last
       # placement used (`:lost` once the anchor went away) — see #relayout.
+      # Hand-rolled rather than a Layout::ConstraintMap: the pane is no Layout,
+      # removes through #remove_popup, and keeps a second map in lockstep.
       @placements = {}.compare_by_identity
       @placed_anchors = {}.compare_by_identity
     end

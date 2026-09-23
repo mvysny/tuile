@@ -26,7 +26,7 @@ It looks like the banned bottom-up channel and isn't.
   opt-in, not default.
 - **Equal column widths, not configurable** — that is what makes row breaks unnecessary
   (`D_form_layout`).
-- **Colspan** (a `TextArea` across both) rides the per-child map `rows:` already uses.
+- **Colspan** (a `TextArea` across both) rides the `Layout#constraints` entry `rows:` already uses.
 - **Row-major fill**, as Vaadin's: `children`, add, Tab and reading order agree.
 - **Row height = max over the row's items** — resolves a captionless item beside a captioned one.
 

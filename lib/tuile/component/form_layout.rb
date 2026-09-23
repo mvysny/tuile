@@ -30,7 +30,7 @@ module Tuile
     # asked of a field: a captioned item is handed `1 + rows + 1` rows, a
     # captionless one `rows + 1`. The message row doubles as the gap, which is
     # why there is no `spacing` — and why `rows:` is a placement constraint in
-    # this layout's per-child map, exactly as `Fixed[n]` is in a {Layout::Box},
+    # this layout's {Layout#constraints}, exactly as `Fixed[n]` is in a {Layout::Box},
     # rather than a property of the item. See `D_form_layout`.
     #
     # **Overflow clips, and there is no scrolling.** Items are laid from the top
@@ -46,12 +46,6 @@ module Tuile
       # Placement for an item wired in through `add_child` instead of {#add}.
       # @return [Hash{Symbol => Object}]
       DEFAULT_PLACEMENT = { rows: 1 }.freeze
-
-      def initialize
-        super
-        # Identity-keyed: two == items are still two distinct slots.
-        @placements = {}.compare_by_identity
-      end
 
       # Wraps `field` in a {FormItem}, adds it, and re-runs the layout.
       #
@@ -77,8 +71,7 @@ module Tuile
         validate_rows(rows)
         item = wrap(field, caption, required)
         add_child(item, at:)
-        @placements[item] = { rows: }
-        invalidate_layout
+        constraints[item] = { rows: }
         item
       end
 
@@ -94,10 +87,7 @@ module Tuile
       def constrain(field, rows)
         item = item_for(field)
         validate_rows(rows)
-        return if placement(item)[:rows] == rows
-
-        @placements[item] = { rows: }
-        invalidate_layout
+        constraints[item] = { rows: }
       end
 
       # Removes the item, forgets its placement, and closes the rows it left.
@@ -113,10 +103,7 @@ module Tuile
       # @raise [ArgumentError] when `field` is in no item of this form.
       # @return [void]
       def remove(field)
-        item = item_for(field)
-        super(item)
-        @placements.delete(item)
-        invalidate_layout
+        super(item_for(field))
       end
 
       # The field under a caption — sugar, since the association is a {FormItem}
@@ -161,7 +148,7 @@ module Tuile
 
       # @param item [FormItem]
       # @return [Hash{Symbol => Object}] the item's `rows`.
-      def placement(item) = @placements[item] || DEFAULT_PLACEMENT
+      def placement(item) = constraints[item] || DEFAULT_PLACEMENT
 
       # @param field [Component]
       # @param caption [String, StyledString, nil]

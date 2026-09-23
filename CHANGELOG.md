@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+- Add `Component::Layout#constraints` — a protected, lazily built `Layout::ConstraintMap` of where each child wants to be: a changed write marks the layout, a non-child raises, and `Layout#remove` prunes it, so a custom layout keeps per-child settings as `Box`, `FormLayout` and `Absolute` now do.
+
 ## [0.17.0] - 2026-09-23
 
 - Add derived theme tokens — any `Theme` token may be a Proc of the terminal background (and optionally a resolver reading sibling tokens), which the screen re-derives into a `Color` whenever the theme or `Screen#background_color` changes, walking the tree once. See `design/decisions.md` `D_derived_tokens`.

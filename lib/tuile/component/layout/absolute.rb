@@ -21,12 +21,6 @@ module Tuile
       # When the rects depend on this layout's size, subclass {Layout} and write
       # the `relayout` instead.
       class Absolute < Layout
-        def initialize
-          super
-          # Identity-keyed: two == children are still two distinct slots.
-          @rects = {}.compare_by_identity
-        end
-
         # @param child [Component, Enumerable<Component>] one child, or several
         #   sharing the rect.
         # @param rect [Rect, nil] where the child sits, in this layout's
@@ -40,7 +34,7 @@ module Tuile
           rect ||= child.rect if child.is_a?(Component)
           validate_rect(rect)
           add_child(child)
-          @rects[child] = rect
+          constraints[child] = rect
         end
 
         # Moves a child already in the layout; it takes the new rect on the next
@@ -51,27 +45,15 @@ module Tuile
         # @raise [TypeError] if `rect` is not a {Rect}.
         # @return [void]
         def constrain(child, rect)
-          raise ArgumentError, "#{child} is not a child of #{self}" unless children.any? { _1.equal?(child) }
-
           validate_rect(rect)
-          return if @rects[child] == rect
-
-          @rects[child] = rect
-          invalidate_layout
-        end
-
-        # @param child [Component]
-        # @return [void]
-        def remove(child)
-          super
-          @rects.delete(child)
+          constraints[child] = rect
         end
 
         private
 
         # @return [void]
         def relayout
-          children.each { _1.rect = @rects.fetch(_1) }
+          children.each { _1.rect = constraints.fetch(_1) }
         end
 
         # @param rect [Object]

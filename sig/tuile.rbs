@@ -6019,10 +6019,16 @@ module Tuile
       # _@param_ `child`
       def add: ((Component | ::Array[Component]) child) -> void
 
+      # Removes the child and forgets its {#constraints}; the layout re-runs.
+      # 
       # _@param_ `child`
       def remove: (Component child) -> void
 
       def handle_focus: () -> void
+
+      # Where each child wants to be, for this layout's {Component#relayout} to
+      # read — see {ConstraintMap}. Built on first read; {#remove} prunes it.
+      def constraints: () -> ConstraintMap
 
       # What {Fixed}, {Percent}, {Expand} and {Clamp} have in common: each is a
       # value a {Box} resolves against the space it has. The set is closed —
@@ -6341,12 +6347,6 @@ module Tuile
                          ?align: Symbol?
                        ) -> void
 
-        # Removes the child, forgets its constraints, and closes the gap it left
-        # by re-running the layout.
-        # 
-        # _@param_ `child`
-        def remove: (Component child) -> void
-
         # Re-divides the space, giving each child an empty rect when this
         # layout's own — or {#inner_rect} — is empty. A child that went hidden
         # gives its slot *and* the {#spacing} around it to its siblings, and one
@@ -6484,8 +6484,6 @@ module Tuile
       # When the rects depend on this layout's size, subclass {Layout} and write
       # the `relayout` instead.
       class Absolute < Layout
-        def initialize: () -> void
-
         # _@param_ `child` — one child, or several sharing the rect.
         # 
         # _@param_ `rect` — where the child sits, in this layout's coordinates; `nil` keeps the rect the child already has, which for a new component is empty.
@@ -6498,9 +6496,6 @@ module Tuile
         # 
         # _@param_ `rect`
         def constrain: (Component child, Rect rect) -> void
-
-        # _@param_ `child`
-        def remove: (Component child) -> void
 
         def relayout: () -> void
 
@@ -6585,6 +6580,60 @@ module Tuile
                           Integer cross_offset,
                           Integer cross_size
                         ) -> Rect
+      end
+
+      # Where each child of one {Layout} wants to be — a {Box} child's
+      # `main`/`cross`/`align`, an {Absolute} child's {Rect} — reached through
+      # {Layout#constraints} and read back by the layout's {Component#relayout}:
+      # 
+      #   def add(child, rect)
+      #     add_child(child)
+      #     constraints[child] = rect            # marks the layout, unless unchanged
+      #   end
+      # 
+      #   def relayout = children.each { _1.rect = constraints.fetch(_1) }
+      # 
+      # **Only a child may be constrained**, so write the entry *after*
+      # `add_child`; {Layout#remove} forgets it. A child hidden with
+      # {Component#visible=} keeps its entry.
+      # 
+      # == Implementation details
+      # 
+      # **An attribute map, not a second copy of ordering** — hence no `each`,
+      # `keys` or `size`: a `relayout` walks {Component#children}, the sole
+      # ordering authority, and looks each child up here. Keys are compared by
+      # identity, entries by `==`.
+      # 
+      # A child detached other than through {Layout#remove} — a subclass calling
+      # `remove_child` itself — leaves its entry behind, to be found again should
+      # that component come back.
+      class ConstraintMap
+        # _@param_ `owner` — the layout whose children this maps.
+        def initialize: (Layout owner) -> void
+
+        # _@param_ `child`
+        # 
+        # _@return_ — the child's entry; nil when none was written.
+        def []: (Component child) -> Object?
+
+        # _@param_ `child`
+        # 
+        # _@return_ — the child's entry.
+        def fetch: (Component child) -> Object
+
+        # Constrains a child and marks the owner as owing a
+        # {Component#relayout}; writing the entry it already has marks nothing.
+        # 
+        # _@param_ `child` — a child of the owner.
+        # 
+        # _@param_ `value` — the layout's own shape — a `Hash`, a {Rect}.
+        def []=: (Component child, Object value) -> void
+
+        # Forgets a child's entry. Marks nothing: the removal that calls this
+        # already did.
+        # 
+        # _@param_ `child`
+        def delete: (Component child) -> void
       end
     end
 
@@ -10982,7 +11031,7 @@ module Tuile
     # asked of a field: a captioned item is handed `1 + rows + 1` rows, a
     # captionless one `rows + 1`. The message row doubles as the gap, which is
     # why there is no `spacing` — and why `rows:` is a placement constraint in
-    # this layout's per-child map, exactly as `Fixed[n]` is in a {Layout::Box},
+    # this layout's {Layout#constraints}, exactly as `Fixed[n]` is in a {Layout::Box},
     # rather than a property of the item. See `D_form_layout`.
     # 
     # **Overflow clips, and there is no scrolling.** Items are laid from the top
@@ -10996,8 +11045,6 @@ module Tuile
     # never arises.
     class FormLayout < Tuile::Component::Layout
       DEFAULT_PLACEMENT: ::Hash[Symbol, Object]
-
-      def initialize: () -> void
 
       # Wraps `field` in a {FormItem}, adds it, and re-runs the layout.
       # 

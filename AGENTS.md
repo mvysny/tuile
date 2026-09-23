@@ -112,8 +112,9 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   place it, hide it, or have it dismissed, and the pane's `content` slot is refused too.
 - **Named slots are readers over the array, never a second copy** — `ScreenPane#popups` is the one
   exception. See `D_tree_api`.
-- **A per-child *attribute* map, not a second copy of ordering** — `Box`'s constraints and
-  `TabSheet`'s panes key one by identity; `children` stays the sole ordering authority. See `D_tree_api`.
+- **A per-child *attribute* map, not a second copy of ordering** — a layout keeps one in
+  {Tuile::Component::Layout#constraints}, deliberately not enumerable; `children` stays the sole
+  ordering authority, and `ScreenPane`'s popup placements are the one hand-roll. See `D_tree_api`.
 - **Order is maintained at insert, so the index is part of the contract** — content at `at: 0`,
   chrome appended, popups appended; changing an index changes paint and Tab order.
 - **A container with several swappable regions gives each one a {Tuile::Component::Slot}, wired at

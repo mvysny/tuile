@@ -306,13 +306,17 @@ module Tuile
         end
       end
 
+      # Removes the child and forgets its {#constraints}; the layout re-runs.
       # @param child [Component]
+      # @raise [TypeError] if `child` is not a {Component}.
+      # @raise [ArgumentError] if `child` is not a child of this layout.
       # @return [void]
       def remove(child)
         raise TypeError, "expected Component, got #{child.inspect}" unless child.is_a? Component
         raise ArgumentError, "#{child}'s parent is #{child.parent}, not this layout #{self}" if child.parent != self
 
         remove_child(child)
+        @constraints&.delete(child)
         invalidate if @children.empty? # nothing left to paint over the gap
       end
 
@@ -337,6 +341,13 @@ module Tuile
           screen.focused = first_focusable unless first_focusable.nil?
         end
       end
+
+      protected
+
+      # Where each child wants to be, for this layout's {Component#relayout} to
+      # read — see {ConstraintMap}. Built on first read; {#remove} prunes it.
+      # @return [ConstraintMap]
+      def constraints = @constraints ||= ConstraintMap.new(self)
     end
   end
 end

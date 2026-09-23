@@ -68,8 +68,6 @@ module Tuile
           super()
           @spacing = validate_spacing(spacing)
           @padding = Insets.coerce(padding)
-          # Identity-keyed: two == children are still two distinct slots.
-          @placements = {}.compare_by_identity
         end
 
         # @return [Integer] blank cells between adjacent children.
@@ -130,8 +128,7 @@ module Tuile
           validate_cross(cross)
           validate_align(align)
           add_child(child, at:)
-          @placements[child] = { main:, cross:, align: }
-          invalidate_layout
+          constraints[child] = { main:, cross:, align: }
         end
 
         # Re-constrains a child already in the layout and re-runs the pass. A
@@ -150,29 +147,13 @@ module Tuile
         #   an unknown constraint or alignment.
         # @return [void]
         def constrain(child, main = nil, cross: nil, align: nil)
-          raise ArgumentError, "#{child} is not a child of #{self}" unless children.any? { _1.equal?(child) }
-
           validate_main(main) unless main.nil?
           validate_cross(cross) unless cross.nil?
           validate_align(align) unless align.nil?
 
           current = placement(child)
-          updated = { main: main || current[:main], cross: cross || current[:cross],
-                      align: align || current[:align] }
-          return if current == updated
-
-          @placements[child] = updated
-          invalidate_layout
-        end
-
-        # Removes the child, forgets its constraints, and closes the gap it left
-        # by re-running the layout.
-        # @param child [Component]
-        # @return [void]
-        def remove(child)
-          super
-          @placements.delete(child)
-          invalidate_layout
+          constraints[child] = { main: main || current[:main], cross: cross || current[:cross],
+                                 align: align || current[:align] }
         end
 
         private
@@ -295,7 +276,7 @@ module Tuile
 
         # @param child [Component]
         # @return [Hash{Symbol => Object}] the child's `main`/`cross`/`align`.
-        def placement(child) = @placements[child] || DEFAULT_PLACEMENT
+        def placement(child) = constraints[child] || DEFAULT_PLACEMENT
 
         # @param rect [Rect]
         # @return [Integer] the extent along the main axis.
