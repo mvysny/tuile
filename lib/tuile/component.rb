@@ -269,7 +269,6 @@ module Tuile
 
       old_rect = @rect
       @rect = new_rect
-      handle_width_changed if old_rect.width != new_rect.width
       handle_rect_changed(old_rect)
       invalidate
       invalidate_layout
@@ -1014,12 +1013,14 @@ module Tuile
       kids.each { _1.fire_lifecycle(attached) if _1.attached? == attached }
     end
 
-    # Called whenever the component width changes. Does nothing by default.
-    # @return [void]
-    def handle_width_changed; end
-
     # Called once the parent has given this component a different rect, before
     # anything repaints. Does nothing by default.
+    #
+    # The *edge*: for a reaction to the change itself, one that needs the old
+    # rect or must not repeat — closing a menu, escalating a repaint. State
+    # that merely *follows* from the size — a wrap, a scroll clamp — is
+    # re-derived in {#relayout} instead, which runs after every rect change
+    # on either axis and after every other mark too.
     # @param _old_rect [Rect] the rect it had.
     # @return [void]
     def handle_rect_changed(_old_rect); end
@@ -1179,6 +1180,22 @@ module Tuile
     # including when {#rect} is empty — a `return if rect.empty?` guard strands
     # children at stale coordinates that the next full repaint paints them at
     # (`D_empty_ancestor`).
+    #
+    # **It is also where a component re-derives what depends on its own size**
+    # — a wrap, a padded row cache, a scroll offset clamped to the viewport —
+    # because {#rect=} marks the component itself, so this runs after every
+    # rect change, width *or* height. It runs after every other mark as well,
+    # so a costly derivation keys itself on the size it was built at —
+    # {Component::TextView}'s:
+    #
+    #   def relayout
+    #     rewrap unless @wrapped_at == wrap_width   # not on every append
+    #     update_scroll_top_row_if_auto_scroll      # a taller viewport moves the bottom
+    #     @scrollbar.rect = …
+    #   end
+    #
+    # There is no width-changed hook; {#handle_rect_changed} is the edge, for a
+    # reaction to the change itself.
     #
     # Reached through `__send__`, so an override may be protected or private
     # (`D_hook_visibility`). A leaf inherits the empty body and costs nothing.

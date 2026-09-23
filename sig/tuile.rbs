@@ -4370,11 +4370,14 @@ module Tuile
     # _@param_ `attached` — true to fire {#handle_attached}, false for {#handle_detached}.
     def fire_lifecycle: (bool attached) -> void
 
-    # Called whenever the component width changes. Does nothing by default.
-    def handle_width_changed: () -> void
-
     # Called once the parent has given this component a different rect, before
     # anything repaints. Does nothing by default.
+    # 
+    # The *edge*: for a reaction to the change itself, one that needs the old
+    # rect or must not repeat — closing a menu, escalating a repaint. State
+    # that merely *follows* from the size — a wrap, a scroll clamp — is
+    # re-derived in {#relayout} instead, which runs after every rect change
+    # on either axis and after every other mark too.
     # 
     # _@param_ `_old_rect` — the rect it had.
     def handle_rect_changed: (Rect _old_rect) -> void
@@ -4517,6 +4520,22 @@ module Tuile
     # including when {#rect} is empty — a `return if rect.empty?` guard strands
     # children at stale coordinates that the next full repaint paints them at
     # (`D_empty_ancestor`).
+    # 
+    # **It is also where a component re-derives what depends on its own size**
+    # — a wrap, a padded row cache, a scroll offset clamped to the viewport —
+    # because {#rect=} marks the component itself, so this runs after every
+    # rect change, width *or* height. It runs after every other mark as well,
+    # so a costly derivation keys itself on the size it was built at —
+    # {Component::TextView}'s:
+    # 
+    #   def relayout
+    #     rewrap unless @wrapped_at == wrap_width   # not on every append
+    #     update_scroll_top_row_if_auto_scroll      # a taller viewport moves the bottom
+    #     @scrollbar.rect = …
+    #   end
+    # 
+    # There is no width-changed hook; {#handle_rect_changed} is the edge, for a
+    # reaction to the change itself.
     # 
     # Reached through `__send__`, so an override may be protected or private
     # (`D_hook_visibility`). A leaf inherits the empty body and costs nothing.
@@ -4984,16 +5003,10 @@ module Tuile
       def repaint: (Canvas canvas) -> void
 
       # The bar's whole state, pushed in one place: its column, and the two
-      # numbers it paints a handle from.
+      # numbers it paints a handle from. {#auto_scroll} re-pins first, since a
+      # taller viewport moves the bottom, and a rect that was empty skipped the
+      # pin altogether.
       def relayout: () -> void
-
-      # Re-evaluates {#auto_scroll}: if items were assigned while the rect was
-      # empty (e.g. a {Popup}-wrapped list was populated before the popup was
-      # opened), the auto-scroll update was skipped because there was no
-      # viewport — re-run it now that there is one, so the list snaps to the
-      # bottom on first paint. The row cache needs nothing here; it drops
-      # itself in {#sync_row_cache_width}.
-      def handle_width_changed: () -> void
 
       # Coerces and flattens a list of input entries into trimmed
       # {StyledString} lines. Each entry becomes a {StyledString} (String
@@ -5083,8 +5096,7 @@ module Tuile
       # negating the auto-scroll. Skipped when {#rect} is empty: without a
       # viewport the "items minus viewport" formula yields `@items.size`,
       # which would leave `scroll_top_row` past the last item once a real rect
-      # arrives. {#handle_width_changed} re-runs this hook when the rect grows so
-      # the snap-to-bottom intent is preserved.
+      # arrives. {#relayout} re-runs it once one does.
       # 
       # Gated on {#following?}: once the user scrolls up off the bottom the
       # cursor snap and viewport pin are both skipped, so reading older
@@ -5118,8 +5130,7 @@ module Tuile
       # Drops the row cache when {#content_width} has moved off the width it
       # was padded at. The width is compared rather than announced because an
       # `:auto` bar moves it on a *height* change too — a list shrinking below
-      # its item count takes the bar and the column with it — and no hook fires
-      # for that one.
+      # its item count takes the bar and the column with it.
       def sync_row_cache_width: () -> void
 
       # _@param_ `index` — 0-based index into {#items}.
@@ -5553,9 +5564,8 @@ module Tuile
       # captions, the separator or the selection ends in.
       def refresh: () -> void
 
-      # The rect's *width* is the only part of it the offset depends on, so this
-      # hook is the whole geometry story; {Component#rect=} invalidates for us.
-      def handle_width_changed: () -> void
+      # The offset follows the width; {Component#rect=} invalidates for us.
+      def relayout: () -> void
 
       # Scrolls the minimum needed to show the selected segment whole, and is the
       # sole writer of {#left_column}. Idempotent, so every mutation site can
@@ -5777,7 +5787,9 @@ module Tuile
       # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (Canvas canvas) -> void
 
-      def handle_width_changed: () -> void
+      # Re-pads the rows to the new width; a height change costs a cheap
+      # redundant pass, which beats keying the cache.
+      def relayout: () -> void
 
       # Recomputes {@rows} for the current text and rect width.
       # Each line is ellipsized to fit and padded with trailing spaces out to
@@ -7646,10 +7658,9 @@ module Tuile
       # or the highlight ends in.
       def refresh: () -> void
 
-      # The rect's *width* is the only part of it the offset depends on, so this
-      # hook is the whole geometry story; {Component#rect=} invalidates for us,
+      # The offset follows the width; {Component#rect=} invalidates for us,
       # and {#handle_rect_changed} closes the cascade rather than re-anchoring it.
-      def handle_width_changed: () -> void
+      def relayout: () -> void
 
       # Scrolls the minimum needed to show the highlighted segment whole, and is
       # the sole writer of {#left_column}. Idempotent, so every mutation site can
@@ -9031,12 +9042,12 @@ module Tuile
     # == Implementation details
     # 
     # The wrap itself — and with it every conversion between a character
-    # **index** and a **row/column** — lives in {WrappedText}, a
-    # snapshot of `(text, rect.width)` this class caches and drops whenever
-    # either changes. What stays here is the widget: keys, mouse, painting, and
-    # the {#scroll_top_row} viewport, which {WrappedText} deliberately knows
-    # nothing about (it is a pure function of text and width; the viewport is
-    # stateful and needs {Rect#height}).
+    # **index** and a **row/column** — lives in {WrappedText}, a snapshot of
+    # `(text, rect.width)` this class caches: a text mutation drops it, and a
+    # read at another width rebuilds it. What stays here is the widget: keys,
+    # mouse, painting, and the {#scroll_top_row} viewport, which {WrappedText}
+    # deliberately knows nothing about (it is a pure function of text and
+    # width; the viewport is stateful and needs {Rect#height}).
     class TextArea < Tuile::Component::AbstractStringField
       def initialize: () -> void
 
@@ -9069,7 +9080,9 @@ module Tuile
       # _@param_ `key`
       def handle_text_input_key?: (String key) -> bool
 
-      def handle_width_changed: () -> void
+      # Re-clamps the viewport to the caret, since either axis of a new rect can
+      # scroll it away.
+      def relayout: () -> void
 
       # _@return_ — the current wrap of {#text} at {Rect#width}.
       def wrap: () -> WrappedText
@@ -9504,17 +9517,13 @@ module Tuile
       # every child a rect on every pass (`D_empty_ancestor`), and
       # {#scrollbar_visible?} already answers false for an empty rect.
       # 
-      # An `:auto` bar is decided first, before the bar is placed, so the
-      # layout mark a flip's scroll clamp makes is dropped rather than costing
-      # a second pass. Every mutator already marks, for the bar's `row_count`,
-      # so this runs after each one.
+      # The rows are settled first, before the bar is placed, so the layout mark
+      # a scroll clamp makes is dropped rather than costing a second pass: a
+      # rewrap if {#wrap_width} moved — on a height change too, since an empty
+      # rect hides a `:visible` bar — then the `:auto` bar, then the
+      # {#auto_scroll} pin, which a taller viewport moves. Every mutator already
+      # marks, for the bar's `row_count`, so this runs after each one.
       def relayout: () -> void
-
-      # Rewraps the text on width changes — {#wrap_width} is {#rect}`.width`
-      # minus {#scrollbar_columns}, and the latter varies with the width too.
-      # A {#scrollbar_visibility=} change rewraps from its own setter instead,
-      # and an `:auto` bar coming or going from {#sync_auto_scrollbar}.
-      def handle_width_changed: () -> void
 
       # Validates and unpacks a {#replace}-style range argument into
       # inclusive `[from, to]` line indices. An `Integer` `n` becomes
@@ -10291,7 +10300,7 @@ module Tuile
 
       def handle_caret_mutated: () -> void
 
-      def handle_width_changed: () -> void
+      def relayout: () -> void
 
       # What the field paints in place of {#text}: one display character per
       # {#text} character, in order. `column_at` measures `display_text[0, i]` as

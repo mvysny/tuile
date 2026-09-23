@@ -1816,6 +1816,16 @@ module Tuile
         tv.scrollbar_visibility = :visible
         assert !Screen.instance.invalidated?(tv)
       end
+
+      # An empty rect hides the bar, so a height-only change moves the wrap width.
+      it "rewraps narrower when a zero-height view grows at the same width" do
+        tv = Component::TextView.new
+        tv.scrollbar_visibility = :visible
+        Testing.place(tv, Rect.new(0, 0, 10, 0))
+        tv.text = "aaaa bbbb"
+        Testing.place(tv, Rect.new(0, 0, 10, 3))
+        assert_equal 2, tv.children.first.row_count, "aaaa / bbbb at width 8"
+      end
     end
 
     context "the scrollbar child" do
@@ -1897,6 +1907,16 @@ module Tuile
         assert_equal 1, tv.scroll_top_row
         tv.add_line("e")
         assert_equal 2, tv.scroll_top_row
+      end
+
+      it "re-pins to the bottom when only the height grows" do
+        tv = Component::TextView.new
+        Testing.place(tv, Rect.new(0, 0, 20, 3))
+        tv.auto_scroll = true
+        tv.text = (1..10).map(&:to_s).join("\n")
+        assert_equal 7, tv.scroll_top_row
+        Testing.place(tv, Rect.new(0, 0, 20, 6))
+        assert_equal 4, tv.scroll_top_row
       end
 
       it "scrolls on verbatim append when extension wraps to a new row" do

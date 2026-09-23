@@ -269,6 +269,9 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   component included** — the screen places the pane, a spec holds a tree in a `Layout::Absolute`,
   and a subclass reacts in `handle_rect_changed`, since a protected override is uncallable from the
   parent. A child moves by its constraint: `constrain`, or an overlay's `placement=`.
+- **State that follows from a component's own size is re-derived in its `relayout`, and there is no
+  size-changed hook** — `rect=` marks the component itself, so the pass follows either axis;
+  `handle_rect_changed` is for a reaction to the change itself. See `D_relayout`.
 - **A mutation marks; nothing lays out inline** — `Screen#dispatch` settles after every event, so no
   pass sees a container mid-configuration. A rect read in the *same* turn that dirtied it is stale;
   `Component#flush_layout` is the force-now. See `D_deferred_layout`.

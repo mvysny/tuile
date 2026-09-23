@@ -204,7 +204,7 @@ module Tuile
       end
 
       # @return [void]
-      def handle_width_changed
+      def relayout
         super
         adjust_left_column
       end

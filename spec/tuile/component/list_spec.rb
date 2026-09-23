@@ -357,6 +357,25 @@ module Tuile
         assert !Component::List.new.auto_scroll
       end
 
+      it "re-pins to the bottom when only the height grows" do
+        l = Component::List.new
+        Testing.place(l, Rect.new(0, 0, 20, 3))
+        l.auto_scroll = true
+        l.lines = %w[a b c d e f g h i j]
+        assert_equal 7, l.scroll_top_row
+        Testing.place(l, Rect.new(0, 0, 20, 6))
+        assert_equal 4, l.scroll_top_row
+      end
+
+      it "pins once a zero-height rect grows at the same width" do
+        l = Component::List.new
+        Testing.place(l, Rect.new(0, 0, 20, 0))
+        l.auto_scroll = true
+        l.lines = %w[a b c d e f g h i j]
+        Testing.place(l, Rect.new(0, 0, 20, 3))
+        assert_equal 7, l.scroll_top_row
+      end
+
       it "can be set to true" do
         l = Component::List.new
         l.auto_scroll = true

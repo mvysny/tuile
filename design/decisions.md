@@ -6947,6 +6947,13 @@ Why not:
   `anchor_to` and `anchor_beside` wrote `@list.scrollbar_visibility` right after `self.rect =`;
   derived from `items.size > rect.height` instead — in `relayout` at first, now by the list's own
   `:auto` (`D_scrollbar_ink`) — it is also right after a plain `items=`.
+- **A `handle_width_changed` for state that follows from a component's own size.** It fired from
+  `rect=` on the width alone, and most overrides read the height too: a `List` or `TextView` under
+  `auto_scroll` kept the old bottom when it grew taller, one placed at height 0 never pinned, and a
+  shrunk `TextArea` scrolled its caret away. `rect=` marks the component itself, so `relayout`
+  already follows every change on either axis; the re-derivation moved there, a costly one keyed on
+  the width it was built at. A `handle_size_changed` would have fixed the axis and kept two sites
+  for one derivation; `handle_rect_changed(old_rect)` stays, for a reaction to the change itself.
 
 ## D_deferred_layout — Why does a mutation only *mark* a relayout, even on a detached tree?
 

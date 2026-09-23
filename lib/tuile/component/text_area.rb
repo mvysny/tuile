@@ -44,18 +44,18 @@ module Tuile
     # == Implementation details
     #
     # The wrap itself — and with it every conversion between a character
-    # **index** and a **row/column** — lives in {WrappedText}, a
-    # snapshot of `(text, rect.width)` this class caches and drops whenever
-    # either changes. What stays here is the widget: keys, mouse, painting, and
-    # the {#scroll_top_row} viewport, which {WrappedText} deliberately knows
-    # nothing about (it is a pure function of text and width; the viewport is
-    # stateful and needs {Rect#height}).
+    # **index** and a **row/column** — lives in {WrappedText}, a snapshot of
+    # `(text, rect.width)` this class caches: a text mutation drops it, and a
+    # read at another width rebuilds it. What stays here is the widget: keys,
+    # mouse, painting, and the {#scroll_top_row} viewport, which {WrappedText}
+    # deliberately knows nothing about (it is a pure function of text and
+    # width; the viewport is stateful and needs {Rect#height}).
     class TextArea < AbstractStringField
       def initialize
         super
         @scroll_top_row = 0
         # Lazy cache; nil means "stale, rebuild on next read". Reset whenever
-        # {#text} mutates or the width changes.
+        # {#text} mutates; {#wrap} notices a width change itself.
         @wrap = nil
       end
 
@@ -148,10 +148,11 @@ module Tuile
         true
       end
 
+      # Re-clamps the viewport to the caret, since either axis of a new rect can
+      # scroll it away.
       # @return [void]
-      def handle_width_changed
+      def relayout
         super
-        @wrap = nil
         adjust_scroll_top_row
       end
 
@@ -159,6 +160,7 @@ module Tuile
 
       # @return [WrappedText] the current wrap of {#text} at {Rect#width}.
       def wrap
+        @wrap = nil unless @wrap&.width == rect.width
         @wrap ||= WrappedText.new(@text, rect.width)
       end
 

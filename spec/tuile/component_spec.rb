@@ -384,22 +384,13 @@ module Tuile
         assert !Screen.instance.invalidated?(c)
       end
 
-      it "calls handle_width_changed when width changes" do
-        width_changed = false
-        klass = Class.new(Component) { define_method(:handle_width_changed) { width_changed = true } }
-        c = klass.new
-        Testing.place(c, Rect.new(0, 0, 20, 5))
-        assert width_changed
-      end
-
-      it "does not call handle_width_changed when only height changes" do
-        width_changed = false
-        klass = Class.new(Component) { define_method(:handle_width_changed) { width_changed = true } }
+      it "runs the component's own relayout on a height-only change" do
+        sizes = []
+        klass = Class.new(Component) { define_method(:relayout) { sizes << size } }
         c = klass.new
         Testing.place(c, Rect.new(0, 0, 10, 5))
-        width_changed = false
         Testing.place(c, Rect.new(0, 0, 10, 10))
-        assert !width_changed
+        assert_equal [Size.new(10, 5), Size.new(10, 10)], sizes
       end
     end
 

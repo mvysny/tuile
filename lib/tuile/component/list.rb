@@ -666,24 +666,15 @@ module Tuile
       protected
 
       # The bar's whole state, pushed in one place: its column, and the two
-      # numbers it paints a handle from.
+      # numbers it paints a handle from. {#auto_scroll} re-pins first, since a
+      # taller viewport moves the bottom, and a rect that was empty skipped the
+      # pin altogether.
       # @return [void]
       def relayout
+        update_scroll_top_row_if_auto_scroll
         @scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
         @scrollbar.row_count = @items.size
         @scrollbar.scroll_top_row = @scroll_top_row
-      end
-
-      # Re-evaluates {#auto_scroll}: if items were assigned while the rect was
-      # empty (e.g. a {Popup}-wrapped list was populated before the popup was
-      # opened), the auto-scroll update was skipped because there was no
-      # viewport — re-run it now that there is one, so the list snaps to the
-      # bottom on first paint. The row cache needs nothing here; it drops
-      # itself in {#sync_row_cache_width}.
-      # @return [void]
-      def handle_width_changed
-        super
-        update_scroll_top_row_if_auto_scroll
       end
 
       private
@@ -845,8 +836,7 @@ module Tuile
       # negating the auto-scroll. Skipped when {#rect} is empty: without a
       # viewport the "items minus viewport" formula yields `@items.size`,
       # which would leave `scroll_top_row` past the last item once a real rect
-      # arrives. {#handle_width_changed} re-runs this hook when the rect grows so
-      # the snap-to-bottom intent is preserved.
+      # arrives. {#relayout} re-runs it once one does.
       #
       # Gated on {#following?}: once the user scrolls up off the bottom the
       # cursor snap and viewport pin are both skipped, so reading older
@@ -907,8 +897,7 @@ module Tuile
       # Drops the row cache when {#content_width} has moved off the width it
       # was padded at. The width is compared rather than announced because an
       # `:auto` bar moves it on a *height* change too — a list shrinking below
-      # its item count takes the bar and the column with it — and no hook fires
-      # for that one.
+      # its item count takes the bar and the column with it.
       # @return [void]
       def sync_row_cache_width
         return if @row_cache_width == content_width

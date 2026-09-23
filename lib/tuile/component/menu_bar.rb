@@ -381,11 +381,10 @@ module Tuile
         invalidate
       end
 
-      # The rect's *width* is the only part of it the offset depends on, so this
-      # hook is the whole geometry story; {Component#rect=} invalidates for us,
+      # The offset follows the width; {Component#rect=} invalidates for us,
       # and {#handle_rect_changed} closes the cascade rather than re-anchoring it.
       # @return [void]
-      def handle_width_changed
+      def relayout
         super
         adjust_left_column
       end

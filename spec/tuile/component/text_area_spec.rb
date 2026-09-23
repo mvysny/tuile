@@ -689,6 +689,22 @@ module Tuile
         a.value = "x"
         assert_equal 0, a.scroll_top_row
       end
+
+      it "keeps the caret visible when only the height shrinks" do
+        a = area(width: 5, height: 10, text: (1..10).map(&:to_s).join("\n"))
+        a.caret = a.text.length
+        assert_equal 0, a.scroll_top_row
+        Testing.place(a, Rect.new(0, 0, 5, 3))
+        assert_equal 7, a.scroll_top_row
+      end
+
+      it "rewraps at a new width, so the caret row moves" do
+        a = area(width: 10, height: 5, text: "aaaa bbbb cccc")
+        a.caret = a.text.length
+        assert_equal 1, a.caret_row
+        Testing.place(a, Rect.new(0, 0, 5, 5))
+        assert_equal 2, a.caret_row
+      end
     end
 
     context "repaint" do

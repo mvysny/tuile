@@ -60,8 +60,10 @@ module Tuile
 
       protected
 
+      # Re-pads the rows to the new width; a height change costs a cheap
+      # redundant pass, which beats keying the cache.
       # @return [void]
-      def handle_width_changed
+      def relayout
         super
         update_rows
       end

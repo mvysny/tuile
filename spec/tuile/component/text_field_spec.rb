@@ -1314,7 +1314,7 @@ module Tuile
       end
     end
 
-    context "handle_width_changed" do
+    context "a width change" do
       it "keeps text when width shrinks, scrolling to hold the caret" do
         f = field(width: 10, text: "hello")
         f.caret = 5

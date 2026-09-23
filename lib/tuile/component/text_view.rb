@@ -48,11 +48,13 @@ module Tuile
         # Invariants:
         # - `@line_wrap_counts.size == @lines.size`
         # - `@line_wrap_counts.sum == @rows.size`
-        # A full rebuild ({#rewrap}) happens on {#text=} and width changes;
-        # other mutators splice incrementally.
+        # A full rebuild ({#rewrap}) happens on {#text=} and when
+        # {#wrap_width} moves off `@wrapped_at`; other mutators splice
+        # incrementally.
         @lines = []
         @rows = []
         @line_wrap_counts = []
+        @wrapped_at = 0
         @text = StyledString::EMPTY
         @blank_row = StyledString::EMPTY
         @scroll_top_row = 0
@@ -434,26 +436,20 @@ module Tuile
       # every child a rect on every pass (`D_empty_ancestor`), and
       # {#scrollbar_visible?} already answers false for an empty rect.
       #
-      # An `:auto` bar is decided first, before the bar is placed, so the
-      # layout mark a flip's scroll clamp makes is dropped rather than costing
-      # a second pass. Every mutator already marks, for the bar's `row_count`,
-      # so this runs after each one.
+      # The rows are settled first, before the bar is placed, so the layout mark
+      # a scroll clamp makes is dropped rather than costing a second pass: a
+      # rewrap if {#wrap_width} moved — on a height change too, since an empty
+      # rect hides a `:visible` bar — then the `:auto` bar, then the
+      # {#auto_scroll} pin, which a taller viewport moves. Every mutator already
+      # marks, for the bar's `row_count`, so this runs after each one.
       # @return [void]
       def relayout
+        rewrap unless @wrapped_at == wrap_width
         sync_auto_scrollbar
+        update_scroll_top_row_if_auto_scroll
         @scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
         @scrollbar.row_count = @rows.size
         @scrollbar.scroll_top_row = @scroll_top_row
-      end
-
-      # Rewraps the text on width changes — {#wrap_width} is {#rect}`.width`
-      # minus {#scrollbar_columns}, and the latter varies with the width too.
-      # A {#scrollbar_visibility=} change rewraps from its own setter instead,
-      # and an `:auto` bar coming or going from {#sync_auto_scrollbar}.
-      # @return [void]
-      def handle_width_changed
-        super
-        rewrap
       end
 
       private
@@ -708,6 +704,7 @@ module Tuile
       # @return [void]
       def rewrap
         width = wrap_width
+        @wrapped_at = width
         @blank_row = StyledString::EMPTY.ljust(width)
         @rows = []
         @line_wrap_counts = []
@@ -909,7 +906,6 @@ module Tuile
 
         @auto_scrollbar_shown = shown
         rewrap
-        update_scroll_top_row_if_auto_scroll
         invalidate
       end
 
