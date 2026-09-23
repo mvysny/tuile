@@ -4813,12 +4813,15 @@ module Tuile
     # {#scrollbar_visibility} turns on a {VerticalScrollBar} in the rightmost
     # column: a child component, so its handle drags (wanting
     # `run_event_loop(capture_mouse: :drag)`) and a press on its track pages.
-    # The column stays reserved either way, so toggling the bar re-flows
-    # nothing (`D_scrollbar_ink`).
+    # Under `:visible` the column stays reserved whether anything scrolls or
+    # not, so a growing list re-flows nothing; under `:auto` the bar shows only
+    # while the items outnumber the rows, and hands its column back to the
+    # rows while they fit (`D_scrollbar_ink`).
     # 
     # == Implementation details
     # Rendering is lazy: only the rows in the viewport are rendered, each
-    # memoized until {#items=}, {#renderer=} or a width change drops the cache.
+    # memoized until {#items=} or {#renderer=} drops the cache, or the row
+    # width moves off the one it was padded at.
     # So a renderer runs *at paint time*, on any frame — keep it pure and
     # cheap; work that reaches a service belongs in the item, not in the
     # renderer, and a measurement over the whole snapshot (the example's widest
@@ -4984,13 +4987,12 @@ module Tuile
       # numbers it paints a handle from.
       def relayout: () -> void
 
-      # Drops the rendered-row cache when the wrap width changes. The wrap
-      # width depends on {#rect}`.width` and the scrollbar column, both of
-      # which trigger this hook. Also re-evaluates {#auto_scroll}: if items were
-      # assigned while the rect was empty (e.g. a {Popup}-wrapped list was
-      # populated before the popup was opened), the auto-scroll update
-      # was skipped because there was no viewport — re-run it now that there
-      # is one, so the list snaps to the bottom on first paint.
+      # Re-evaluates {#auto_scroll}: if items were assigned while the rect was
+      # empty (e.g. a {Popup}-wrapped list was populated before the popup was
+      # opened), the auto-scroll update was skipped because there was no
+      # viewport — re-run it now that there is one, so the list snaps to the
+      # bottom on first paint. The row cache needs nothing here; it drops
+      # itself in {#sync_row_cache_width}.
       def handle_width_changed: () -> void
 
       # Coerces and flattens a list of input entries into trimmed
@@ -5090,6 +5092,9 @@ module Tuile
       # `@follow` when the viewport returns to the bottom.
       def update_scroll_top_row_if_auto_scroll: () -> void
 
+      # Derived on every read, never stored, so {#content_width} can't disagree
+      # with it.
+      # 
       # _@return_ — whether the scrollbar should be drawn right now.
       def scrollbar_visible?: () -> bool
 
@@ -5107,8 +5112,15 @@ module Tuile
       def text_width: () -> Integer
 
       # Discards every rendered row, so the next paint re-renders the viewport
-      # against the current items, renderer and width.
+      # against the current items and renderer.
       def drop_row_cache: () -> void
+
+      # Drops the row cache when {#content_width} has moved off the width it
+      # was padded at. The width is compared rather than announced because an
+      # `:auto` bar moves it on a *height* change too — a list shrinking below
+      # its item count takes the bar and the column with it — and no hook fires
+      # for that one.
+      def sync_row_cache_width: () -> void
 
       # _@param_ `index` — 0-based index into {#items}.
       # 
@@ -5162,7 +5174,9 @@ module Tuile
       # _@return_ — the list's cursor.
       attr_accessor cursor: Cursor
 
-      # _@return_ — scrollbar visibility: `:gone` or `:visible`.
+      # _@return_ — scrollbar visibility: `:gone`, `:visible`, or `:auto`
+      # — shown only while there are more {#items} than rows. `:gone` by
+      # default.
       attr_accessor scrollbar_visibility: Symbol
 
       # _@return_ — when true, the cursor highlight is painted even while
@@ -12216,12 +12230,6 @@ module Tuile
       # _@return_ — true iff a row was chosen (false when the cursor is
       # off-content).
       def choose: () -> bool
-
-      # The list fills the panel (inherited), and the gutter is on exactly when
-      # the rows outrun it — derived here rather than written by whichever
-      # anchor method placed the panel, so it is right again after a plain
-      # `items=` too.
-      def relayout: () -> void
 
       # Opens or moves the panel and settles the pass, because both anchor
       # methods promise a panel that *is* placed: a driver reads

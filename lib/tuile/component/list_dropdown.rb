@@ -149,6 +149,7 @@ module Tuile
         @list = Menu.new
         @list.cursor = List::Cursor.new
         @list.show_cursor_when_inactive = true # highlight the selection though focus stays on the driver
+        @list.scrollbar_visibility = :auto # the list fills the panel, so the bar is on exactly when the rows outrun it
         super(content: @list)
         self.bg_color = Theme.ref(:input_bg_color)
       end
@@ -300,18 +301,6 @@ module Tuile
       # @return [Boolean] true iff a row was chosen (false when the cursor is
       #   off-content).
       def choose = @list.handle_key?(Keys::ENTER)
-
-      protected
-
-      # The list fills the panel (inherited), and the gutter is on exactly when
-      # the rows outrun it — derived here rather than written by whichever
-      # anchor method placed the panel, so it is right again after a plain
-      # `items=` too.
-      # @return [void]
-      def relayout
-        super
-        @list.scrollbar_visibility = @list.items.size > rect.height ? :visible : :gone
-      end
 
       private
 

@@ -42,12 +42,15 @@ module Tuile
     # {#scrollbar_visibility} turns on a {VerticalScrollBar} in the rightmost
     # column: a child component, so its handle drags (wanting
     # `run_event_loop(capture_mouse: :drag)`) and a press on its track pages.
-    # The column stays reserved either way, so toggling the bar re-flows
-    # nothing (`D_scrollbar_ink`).
+    # Under `:visible` the column stays reserved whether anything scrolls or
+    # not, so a growing list re-flows nothing; under `:auto` the bar shows only
+    # while the items outnumber the rows, and hands its column back to the
+    # rows while they fit (`D_scrollbar_ink`).
     #
     # == Implementation details
     # Rendering is lazy: only the rows in the viewport are rendered, each
-    # memoized until {#items=}, {#renderer=} or a width change drops the cache.
+    # memoized until {#items=} or {#renderer=} drops the cache, or the row
+    # width moves off the one it was padded at.
     # So a renderer runs *at paint time*, on any frame — keep it pure and
     # cheap; work that reaches a service belongs in the item, not in the
     # renderer, and a measurement over the whole snapshot (the example's widest
@@ -67,6 +70,7 @@ module Tuile
         @items = []
         @renderer = DEFAULT_RENDERER
         @row_cache = {}
+        @row_cache_width = nil
         @blank_row = nil
         @auto_scroll = false
         @follow = true
@@ -140,7 +144,9 @@ module Tuile
       # @return [Cursor] the list's cursor.
       attr_reader :cursor
 
-      # @return [Symbol] scrollbar visibility: `:gone` or `:visible`.
+      # @return [Symbol] scrollbar visibility: `:gone`, `:visible`, or `:auto`
+      #   — shown only while there are more {#items} than rows. `:gone` by
+      #   default.
       attr_reader :scrollbar_visibility
 
       # @return [Boolean] when true, the cursor highlight is painted even while
@@ -181,13 +187,16 @@ module Tuile
       end
 
       # Sets the scrollbar visibility.
-      # @param value [Symbol] `:gone` or `:visible`.
+      # @param value [Symbol] `:gone`, `:visible` or `:auto`.
+      # @raise [ArgumentError] on any other value.
+      # @return [void]
       def scrollbar_visibility=(value)
-        raise ArgumentError, "expected :gone or :visible, got #{value.inspect}" unless %i[gone visible].include?(value)
+        unless %i[gone visible auto].include?(value)
+          raise ArgumentError, "expected :gone, :visible or :auto, got #{value.inspect}"
+        end
         return if @scrollbar_visibility == value
 
         @scrollbar_visibility = value
-        drop_row_cache
         invalidate
         invalidate_layout
       end
@@ -446,6 +455,7 @@ module Tuile
         return if rect.empty?
 
         invalidate_children
+        sync_row_cache_width
         (0...rect.height).each do |row|
           canvas.set_text(0, row, paintable_row(row + @scroll_top_row))
         end
@@ -664,17 +674,15 @@ module Tuile
         @scrollbar.scroll_top_row = @scroll_top_row
       end
 
-      # Drops the rendered-row cache when the wrap width changes. The wrap
-      # width depends on {#rect}`.width` and the scrollbar column, both of
-      # which trigger this hook. Also re-evaluates {#auto_scroll}: if items were
-      # assigned while the rect was empty (e.g. a {Popup}-wrapped list was
-      # populated before the popup was opened), the auto-scroll update
-      # was skipped because there was no viewport — re-run it now that there
-      # is one, so the list snaps to the bottom on first paint.
+      # Re-evaluates {#auto_scroll}: if items were assigned while the rect was
+      # empty (e.g. a {Popup}-wrapped list was populated before the popup was
+      # opened), the auto-scroll update was skipped because there was no
+      # viewport — re-run it now that there is one, so the list snaps to the
+      # bottom on first paint. The row cache needs nothing here; it drops
+      # itself in {#sync_row_cache_width}.
       # @return [void]
       def handle_width_changed
         super
-        drop_row_cache
         update_scroll_top_row_if_auto_scroll
       end
 
@@ -857,11 +865,17 @@ module Tuile
         self.scroll_top_row = new_scroll_top_row
       end
 
+      # Derived on every read, never stored, so {#content_width} can't disagree
+      # with it.
       # @return [Boolean] whether the scrollbar should be drawn right now.
       def scrollbar_visible?
         return false if rect.empty?
 
-        @scrollbar_visibility == :visible
+        case @scrollbar_visibility
+        when :visible then true
+        when :auto then @items.size > rect.height
+        else false
+        end
       end
 
       # @return [Integer] column width available for row content (rect width
@@ -883,11 +897,24 @@ module Tuile
       end
 
       # Discards every rendered row, so the next paint re-renders the viewport
-      # against the current items, renderer and width.
+      # against the current items and renderer.
       # @return [void]
       def drop_row_cache
         @row_cache.clear
         @blank_row = nil
+      end
+
+      # Drops the row cache when {#content_width} has moved off the width it
+      # was padded at. The width is compared rather than announced because an
+      # `:auto` bar moves it on a *height* change too — a list shrinking below
+      # its item count takes the bar and the column with it — and no hook fires
+      # for that one.
+      # @return [void]
+      def sync_row_cache_width
+        return if @row_cache_width == content_width
+
+        drop_row_cache
+        @row_cache_width = content_width
       end
 
       # @param index [Integer] 0-based index into {#items}.

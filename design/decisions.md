@@ -1861,13 +1861,6 @@ Why not:
   Three hooks over fifteen lines through inheritance is the converter-strategy-by-inheritance shape
   `D_float_field` rejected, and it couples two widgets that should stay free to diverge. This is the
   third copy of that shell; a *fourth* is when to re-argue.
-- **An `:auto` scrollbar mode on `List`** instead of `anchor_to` owning the toggle: it looks general
-  and carries a silent corruption, since visibility would become a function of `rect.height` while
-  the padded-line cache is rebuilt from a width-only hook — a height-only resize would flip the
-  scrollbar, shrink `content_width` and leave every row padded to the old width, one column off, no
-  exception, nothing in the diff to notice. Making it safe means a height-change hook and a wider
-  cache-invalidation surface for every `List` in the gem, to serve two callers that already know the
-  answer.
 
 The cost we carry:
 
@@ -1905,8 +1898,8 @@ private copy of the `items` / `item_label` / `label_for` / `rebuild_rows` shell,
 component takes data, a generic one takes strategies), arriving late at the one component that grew
 up without it.
 
-**Render lazily, at paint, memoized per row**, the cache dropped by `items=`, `renderer=`, a width
-change or a scrollbar toggle. Two prices, both in the class rdoc: **a renderer runs at paint time**,
+**Render lazily, at paint, memoized per row**, the cache dropped by `items=` and `renderer=`, and
+by itself whenever the row width moves (`D_scrollbar_ink`). Two prices, both in the class rdoc: **a renderer runs at paint time**,
 so it must be pure and cheap — work that reaches a service belongs in the item — and **search must
 render without memoizing**, since one failed scan over a long list would otherwise grow the cache to
 one row per item; that asymmetry is invisible in the code and silent under test, so a spec asserts
@@ -1970,7 +1963,7 @@ deducted. A row whose *shape* depends on the space it has — a right-hand colum
 pane, a path elided from the left so its tail survives — is not expressible by the trailing
 ellipsis, and the app's remaining move was to lay its own text out at a settled width and hand
 `List` finished strings: the pre-renderer design, back one pane at a time. Free at a seam that
-already existed — the row cache is dropped by every width change and scrollbar toggle, so a
+already existed — the row cache drops itself whenever the row width moves, so a
 width-dependent row is already re-rendered exactly when it must be, and re-rendering is
 viewport-bounded. The one price is the renderer's: a measurement over the whole snapshot (the widest
 counts column) is computed where `items=` is assigned, or it is an O(items²) pass on every resize.
@@ -2559,8 +2552,7 @@ Why not:
   wants them assigns `selected_index`).
 - **The four scrolling variants**, each losing to the scarcity of columns on a one-row widget:
   segment-aligned scrolling wastes up to a segment of width at the right edge; reserved cue columns
-  make the window width a function of the scroll state computed from it (`D_select`'s
-  `:auto`-scrollbar circularity) and shift the strip sideways when a caption is edited, so cues
+  make the window width a function of the scroll state computed from it and shift the strip sideways when a caption is edited, so cues
   overlay the edge columns instead, ASCII `<` / `>` because `‹ ›` are Ambiguous; clickable cues would
   hit-test differently from what they paint, where a click falling through to the half-visible
   segment selects and reveals it anyway; free scrolling needs a second "user scrolled, stop
@@ -4028,7 +4020,7 @@ The cost we carry:
   app-authored content — was built and deleted for `Label#bg`'s reason: content carries its colours
   in its own `StyledString`, and being a restyle of the text they belong there.
 
-## D_scrollbar_ink — Why is the scrollbar's ink a theme token, and why is there no handle when nothing scrolls?
+## D_scrollbar_ink — Why is the scrollbar's ink a theme token, why is there no handle when nothing scrolls, and what does `:auto` add?
 
 `scrollbar_char` returned a bare `█` / `░` that both call sites wrapped in `StyledString.plain`, so
 the bar painted in the terminal's **default foreground** — on a dark scheme, near-white — and it was
@@ -4039,12 +4031,21 @@ independent; only one needs a theme.
 
 **No handle when there is nothing to scroll, and that is an *ink* rule** — the glyph goes quiet
 while the handle geometry readers still report a covering handle. The request arrived as an `:auto`
-**visibility** mode, which `D_select` refuses and still refuses: visibility as a function of
-`rect.height` makes the wrap width one too, while the padded-row cache is rebuilt from a width-only
-hook, so a height-only resize would leave every row one column off, silently. Going quiet inside the
-*glyph* touches none of that — the column stays reserved and the wrap width never moves, pinned by a
-spec in each component — so the request is granted without reopening the ban, and the two must not
-be conflated later.
+**visibility** mode, and the two answer different panes: under `:visible` the column stays reserved
+and the row width never moves, pinned by a spec in each component, for a pane that must not reflow as
+it grows; `:auto` ([issue #62](https://github.com/mvysny/tuile/issues/62)) hands the column back
+while nothing scrolls, for a borderless pane where an idle full-height track is clutter and `:gone`
+hides the overflow too. Both ship, and must not be conflated.
+
+**`:auto` on `List` needed one fix, and it was to the cache.** It was refused (in `D_select`) for a
+real corruption: visibility as a function of `rect.height` makes the row width one too, while the
+padded-row cache was dropped only from the width-only hook, so a height-only resize across the
+threshold left every row one column off, silently. The cache now remembers the `content_width` it was
+padded at and drops itself at paint when that moved — one comparison per paint, with no hook to
+forget, and the drops in `handle_width_changed` and `scrollbar_visibility=` went with it.
+Visibility is derived on every read, never stored, so the bar's rect and the row width cannot
+disagree. The refusal's other half, "two callers already know the answer", turned out to be one
+`ListDropdown#relayout` override, which `:auto` deleted.
 
 **One token, `Theme#scrollbar_color`, read at paint time**, on the exact precedent of
 `active_border_color`: framework-chrome *foreground*, read by
@@ -6930,8 +6931,8 @@ Why not:
   anchor at open**, what `Select` did, never follows the field.
 - **A `ListDropdown` that decides its gutter beside whichever anchor method placed it.** Both
   `anchor_to` and `anchor_beside` wrote `@list.scrollbar_visibility` right after `self.rect =`;
-  derived in `relayout` from `items.size > rect.height` instead, it is also right after a plain
-  `items=`.
+  derived from `items.size > rect.height` instead — in `relayout` at first, now by the list's own
+  `:auto` (`D_scrollbar_ink`) — it is also right after a plain `items=`.
 
 ## D_deferred_layout — Why does a mutation only *mark* a relayout, even on a detached tree?
 

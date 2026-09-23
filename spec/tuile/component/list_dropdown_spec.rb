@@ -285,8 +285,8 @@ module Tuile
       end
 
       it "turns the scrollbar on only when the rows can't all be shown" do
-        assert_equal :gone, list(beside(rows: 3)).scrollbar_visibility
-        assert_equal :visible, list(beside(rows: 30)).scrollbar_visibility
+        assert list(beside(rows: 3)).children.first.rect.empty?
+        refute list(beside(rows: 30)).children.first.rect.empty?
       end
 
       it "collapses to an empty rect when there are no rows" do
@@ -360,9 +360,9 @@ module Tuile
         assert_equal "█", painted(6, top: 2).first[-1]
       end
 
-      # The one path this can break: `scrollbar_visibility=` rebuilds List's
-      # padded-row cache because the gutter changes the content width. A refill
-      # that crosses the threshold must re-pad, or every row sits a column off.
+      # The one path this can break: the bar changes List's content width, so
+      # its padded-row cache must notice. A refill that crosses the threshold
+      # must re-pad, or every row sits a column off.
       it "re-pads the rows when a refill drops below the threshold" do
         d = Component::ListDropdown.new
         Screen.instance.content = Component::Label.new

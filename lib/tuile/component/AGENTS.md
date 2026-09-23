@@ -79,16 +79,17 @@ are `Box`'s rdoc and `D_box_layouts`.
   work reaching a service belongs in the item. See `D_list_items`.
 - **Search renders without memoizing** — don't move the scan onto the cached path; one failed
   scan would otherwise grow the cache to a row per item.
-- **Every input to a row's geometry drops the row cache** — `items=`, `renderer=`,
-  `handle_width_changed`, `scrollbar_visibility=`; a new one owes a `drop_row_cache` call.
+- **The row cache drops itself when the row width moves; every other input to a row drops it** —
+  `items=`, `renderer=`, `refresh_rows`; a new one owes a `drop_row_cache` call. An `:auto` bar moves
+  the width on a height change, which no hook announces. See `D_scrollbar_ink`.
 - **`refresh_rows` is for a renderer whose *inputs* changed**, not a rebuild of every row; and **one
   item is one row** — a `\n` reaching the buffer corrupts the frame.
 - **There are no appenders and no `lines` reader** — items are assigned whole so a lazy provider
   stays expressible; incremental append lives on `TextView`. See `D_list_items`.
-- **There is no `:auto` scrollbar mode** — visibility would depend on `rect.height` while the
-  cache rebuilds from width only; a bar drawing no handle is *ink*, not visibility. See `D_scrollbar_ink`.
+- **`:auto` visibility is derived on every read, never stored** — so the bar's rect and the row
+  width cannot disagree; a bar drawing no handle under `:visible` is *ink*, a different rule. See `D_scrollbar_ink`.
 - **`List` measures nothing for its own content, and a dropdown driver supplies its own `width:`** —
-  `anchor_to` owns placement and the scrollbar toggle, never the measurement. See `D_select`.
+  `anchor_to` owns placement, never the measurement. See `D_select`.
 - **{Tuile::Component::Select} claims Enter, Space, ESC, `MOVE_KEYS` and the press — nothing else**,
   so a form's `s`-to-save keeps working while it has focus. See `D_select`.
 - **The `[x] ` / `[ ] ` glyphs are a documented convention, not constants.** See `D_boolean_fields`.

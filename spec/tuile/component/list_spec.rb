@@ -1361,6 +1361,13 @@ module Tuile
       assert_raises(ArgumentError) { Component::List.new.scrollbar_visibility = :optional }
     end
 
+    it "leaves the value unchanged when refusing one" do
+      l = Component::List.new
+      l.scrollbar_visibility = :auto
+      assert_raises(ArgumentError) { l.scrollbar_visibility = :bogus }
+      assert_equal :auto, l.scrollbar_visibility
+    end
+
     it ":gone does not affect line width" do
       l = list(rect: Rect.new(0, 0, 10, 1), lines: ["hi"], visibility: :gone)
       assert_equal 10, painted_lines(l)[0].length
@@ -1464,6 +1471,62 @@ module Tuile
       screen.handle_mouse(Mouse::DownEvent.new(:left, 9, 3))
 
       assert_empty chosen
+    end
+
+    describe ":auto" do
+      it "is accepted" do
+        l = Component::List.new
+        l.scrollbar_visibility = :auto
+        assert_equal :auto, l.scrollbar_visibility
+      end
+
+      it "hides the bar and gives its column back while the items fit" do
+        l = list(rect: Rect.new(0, 0, 10, 3), lines: %w[a b c], visibility: :auto)
+        assert l.children.first.rect.empty?
+        refute_match(/[█░]/, painted_lines(l).join)
+      end
+
+      it "shows the bar once the items outnumber the rows" do
+        l = list(rect: Rect.new(0, 0, 10, 3), lines: %w[a b c d], visibility: :auto)
+        assert_equal Rect.new(9, 0, 1, 3), l.children.first.rect
+        assert_equal(%w[█ █ ░], painted_lines(l).map { _1[-1] })
+      end
+
+      it "follows items= across the threshold, both ways" do
+        l = list(rect: Rect.new(0, 0, 10, 3), lines: %w[a b c], visibility: :auto)
+        l.lines = %w[a b c d]
+        l.flush_layout
+        refute l.children.first.rect.empty?
+        l.lines = %w[a b]
+        l.flush_layout
+        assert l.children.first.rect.empty?
+      end
+
+      # `D_select`'s objection to `:auto`: visibility follows the height while the
+      # row width follows the bar, so a height-only resize has to re-pad every row.
+      it "re-pads the rows when a height-only resize brings the bar in" do
+        l = list(rect: Rect.new(0, 0, 10, 4), lines: %w[a b c d], visibility: :auto)
+        assert_equal " a#{" " * 8}", painted_lines(l).first
+        Testing.place(l, Rect.new(0, 0, 10, 3))
+        assert_equal " a#{" " * 7}█", painted_lines(l).first
+      end
+
+      it "re-pads them when a height-only resize takes the bar away" do
+        l = list(rect: Rect.new(0, 0, 10, 3), lines: %w[a b c d], visibility: :auto)
+        assert_equal " a#{" " * 7}█", painted_lines(l).first
+        Testing.place(l, Rect.new(0, 0, 10, 4))
+        assert_equal " a#{" " * 8}", painted_lines(l).first
+      end
+
+      it "re-renders a width-dependent row when a height-only resize moves the bar" do
+        l = list(rect: Rect.new(0, 0, 20, 2), lines: [], visibility: :auto)
+        l.renderer = ->(item, w) { "#{item}:#{w}" }
+        l.items = %w[w x]
+        l.flush_layout
+        assert_includes painted_lines(l).first, "w:18"
+        Testing.place(l, Rect.new(0, 0, 20, 1))
+        assert_includes painted_lines(l).first, "w:17"
+      end
     end
   end
 
