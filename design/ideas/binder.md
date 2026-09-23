@@ -2,11 +2,11 @@
 
 **Status:** design converging, nothing built. Agreed for v1: no Rails, no dry-rb; the model is a
 mutable object with attr_accessors (so ActiveRecord works as-is); both modes, as two classes over one
-composed engine; a bind-first chain; bindings run on every value change, at the cadence
-`design/ideas/value-change-mode.md` gives the field (**a prerequisite** — build it first); `read`
-shows no verdicts; the empty/`nil` policy; one message per field; no bean rules past a failing field;
-the constants; Vaadin's escape hatches deferred. **Nothing is open** — next is building
-`value-change-mode.md`, then this.
+composed engine; a bind-first chain; bindings run on every value change, at whatever cadence the
+field fires (eager today; `design/ideas/value-change-mode.md` adds the commit-gesture cadence
+**after** this lands); `read` shows no verdicts; the empty/`nil` policy; one message per field; no
+bean rules past a failing field; the constants; Vaadin's escape hatches deferred. **Nothing is
+open** — next is building this, then `value-change-mode.md`.
 The four-layer vocabulary below was settled while designing `HasBadInput` (it is why that channel is
 `bad_input`, not `presentation_error`). `D_has_value` stays the authority: model-mapping, converters,
 `read_only` and a field-side required flag live *above* the field.
@@ -133,17 +133,25 @@ after `read`), and each API stays small. `bind`, `rule`, `last_validation` and t
   (Vaadin's `changedBindings`), not just its own. With only its own: `start_date` → 10 fails the
   rule (`end_date` 5) and reverts; `end_date` → 20 then passes against the model's *old* start, and
   the field showing 10 never reaches the model — a silent divergence, not just a stale message.
-- **The cadence is the field's, not the Binder's**: a form field on `:on_change` announces on blur
-  or ENTER, so no verdict paints while the user is mid-word (`design/ideas/value-change-mode.md`).
-  The Binder owns no blur hook of its own.
+- **The cadence is the field's, not the Binder's**, and the Binder owns no blur hook of its own.
+  v1 ships against eager fields, accepted: a string or number field with a rule paints its verdict
+  mid-word (`length < 3` is red at the first letter), and `UnbufferedBinder` writes every valid
+  prefix through, setters firing per keystroke. Date and time fields already settle on commit, and
+  the field's own bad-input report is gated by `bad_input_settled?`, so neither is affected. Once
+  `design/ideas/value-change-mode.md` lands, a form field on `:on_change` announces on blur or
+  ENTER and no verdict paints mid-word — with no change to the Binder.
+- **Specs drive values through `Testing.set_value`**, which fires at once in any mode, so the
+  cadence flip doesn't churn the Binder suite; only a spec *about* cadence types keys.
 - **`write?` / `validate` read `value` live**, so a Save *shortcut* pressed with focus still in the
   field (its notice held) still writes the right value.
-- **`changed?` is user-edit events, plus a live compare for the focused field** — the one reader
-  the held notice would fool (Save by shortcut, focus still in the edited field). For that field
-  alone it compares `value` against what `read` put in it (the field's value after `read`, so
-  `empty_value` for a `nil` attribute — the `""`-over-`nil` drift still doesn't read as a change).
-  Rejected: letting the Binder release held notices (`value-change-mode.md`'s `Q_pending_flush`) —
-  new public API on every field, for one reader.
+- **`changed?` is user-edit events** (`from_user?` value changes since `read`). Against eager
+  fields that is complete. The **live compare for the focused field** is deferred to
+  `value-change-mode.md`, which creates its need: a held notice would fool the events (Save by
+  shortcut, focus still in the edited field), so for that field alone `changed?` will compare
+  `value` against what `read` put in it (the field's value after `read`, so `empty_value` for a
+  `nil` attribute — the `""`-over-`nil` drift still doesn't read as a change). Built now it would be
+  dead code no spec could fail. Rejected: letting the Binder release held notices
+  (`value-change-mode.md`'s `Q_pending_flush`) — new public API on every field, for one reader.
 - **`read` / `model=` re-populate the fields and recompute the whole `last_validation`, but write
   `nil` to every field's `error_message`** — so `last_validation.empty?` means something from the
   first frame, while a blank "New person" dialog doesn't open with every required field red.
@@ -321,7 +329,8 @@ gate for applying the draft. Vaadin instead enables the button from a status lis
 
 ## Graduation owes
 
-- `design/ideas/value-change-mode.md` graduates first; this idea assumes its `:on_change` cadence.
+- `design/ideas/value-change-mode.md` graduates *after* this; the Binder's rdoc states the eager
+  cadence as today's, and that idea's graduation rewrites it.
 - The four layer words → `design/terminology.md`, one line each; the choice → a `D_` nomenclature
   ruling in the `D_scroll_nomenclature` mould.
 - The Vaadin mode table and the ActiveModel / dry-validation survey → `R_` entries with their
@@ -338,6 +347,6 @@ gate for applying the draft. Vaadin instead enables the button from a status lis
 
 `D_has_value`, `D_bad_input`, `D_has_validation`, `D_integer_field`, `D_float_field`, `D_form_item`,
 `D_form_layout`, `D_listeners`, `D_on_blur`, `D_confirm_window`, `D_status_bar` (no framework error
-row), `D_scroll_nomenclature`, `D_from_user`, `design/ideas/value-change-mode.md` (the
-prerequisite), `design/ideas/enabled-read-only.md`,
+row), `D_scroll_nomenclature`, `D_from_user`, `design/ideas/value-change-mode.md` (the cadence,
+built next), `design/ideas/enabled-read-only.md`,
 `design/ideas/new-components.md` (Custom Field; infra item 2).

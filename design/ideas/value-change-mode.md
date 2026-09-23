@@ -1,7 +1,8 @@
 # A value-change mode — when a text field's notice fires
 
-**Status:** proposed, nothing built. A prerequisite for `binder.md`, which relies on it for the
-cadence of its per-change validation instead of growing blur logic of its own. **Reopens a written
+**Status:** proposed, nothing built; next after `binder.md`, which ships first against eager fields
+(verdicts paint mid-word, accepted) and gains the commit-gesture cadence from this with no change of
+its own — it grows no blur logic. **Reopens a written
 ruling**: `D_date_field`'s *Why not* bullet on "Vaadin's `ValueChangeMode` as a per-field
 eager/lazy knob" (survey: `R_value_change_timing`).
 
@@ -93,10 +94,10 @@ the push is held** — already the house rule for `notify_on_edit?`.
   using `value=` / `Testing.set_value` are unaffected).
 - **`Q_lazy_timer`** — tick-and-cancel over the existing API, or a one-shot cancellable
   `EventQueue#after(seconds)` (+ its fake) that apps debouncing by hand would use too?
-- **`Q_pending_flush`** — does anything outside the field need to release a held notice? The
-  Binder's `changed?` does if it counts user edits (a Save *shortcut* leaves focus in the field),
-  unless it compares values instead — see `binder.md`. Prefer no public `flush` if the Binder can
-  do without.
+- **`Q_pending_flush`** — does anything outside the field need to release a held notice? Leaning
+  no: the Binder's `changed?` counts user edits, which a held notice would fool (a Save *shortcut*
+  leaves focus in the field), and `binder.md` answers that with a live compare for the focused
+  field, owed by this idea's graduation. `write?` / `validate` read `value` live and need nothing.
 - **`Q_textarea_submit`** — a `TextArea` subclass that rebinds ENTER to submit (pikuri's prompt)
   wants ENTER to release too; is that its own override, or does the release hook follow whatever
   key the subclass claims?
@@ -111,4 +112,6 @@ the push is held** — already the house rule for `notify_on_edit?`.
   re-phrased around the mixin.
 - rdoc on the mixin and each includer, the `**Breaking:**` CHANGELOG line, the regenerated
   `sig/tuile.rbs`; a changed responsibility owes the root `AGENTS.md`'s four registrations.
-- `binder.md`'s cadence assumption, once both have landed.
+- The Binder, built against eager fields, owes two things once this lands: `changed?` gains the
+  live compare for the focused field (`binder.md`'s `changed?` bullet, or its `D_` entry if it has
+  graduated), and its rdoc's cadence note is rewritten from "eager today" to the `:on_change` default.

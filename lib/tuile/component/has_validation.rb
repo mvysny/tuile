@@ -51,8 +51,9 @@ module Tuile
     # `bad_input?` gives a caller no way to know which to ask, and invalid *is*
     # a non-nil message. Assign `""` for a verdict with nothing to say.
     #
-    # Unlike `bad_input?`, this fact is *discrete* — asserted at a click or a
-    # binder pass, not recomputed per keystroke — so its notice fires straight
+    # Unlike `bad_input?`, this fact is *discrete* — asserted by an outside
+    # validator at moments it picks, never derived from the buffer — so its
+    # notice fires straight
     # off the write, where {HasBadInput#on_bad_input_change} has a continuous
     # fact to settle first (`design/decisions.md` `D_bad_input`,
     # `D_has_validation`).
