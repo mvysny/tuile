@@ -8187,6 +8187,8 @@ module Tuile
       # _@return_ — `0`, `1` or `2`.
       def scrollbar_columns: () -> Integer
 
+      # Derived on every read, so {#relayout} places the bar and sizes the
+      # content from one answer.
       def scrollbar_visible?: () -> bool
 
       # _@return_ — the largest {#scroll_top_row} that still shows content
@@ -8214,7 +8216,8 @@ module Tuile
       # _@return_ — how tall the content says it is, in rows.
       attr_accessor content_rows: Integer
 
-      # _@return_ — `:visible` (the default) or `:gone`.
+      # _@return_ — `:visible` (the default), `:gone`, or `:auto` — shown
+      # only while {#content_rows} exceeds {#viewport_rows}.
       attr_accessor scrollbar_visibility: Symbol
     end
 

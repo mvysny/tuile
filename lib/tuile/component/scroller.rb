@@ -53,7 +53,8 @@ module Tuile
       # @return [Integer] how tall the content says it is, in rows.
       attr_reader :content_rows
 
-      # @return [Symbol] `:visible` (the default) or `:gone`.
+      # @return [Symbol] `:visible` (the default), `:gone`, or `:auto` — shown
+      #   only while {#content_rows} exceeds {#viewport_rows}.
       attr_reader :scrollbar_visibility
 
       # @return [Integer] rows of content on screen at once — {#rect}'s height,
@@ -93,14 +94,20 @@ module Tuile
         invalidate_layout
       end
 
-      # `:gone` hides the bar and gives its columns back to the content. There
-      # is no `:auto`: a bar that came and went would re-lay-out the content
-      # mid-scroll, and one with nothing to scroll already draws as bare track
-      # (`D_scrollbar_ink`).
-      # @param value [Symbol] `:gone` or `:visible`.
+      # `:gone` hides the bar and gives its columns back to the content;
+      # `:visible` keeps them reserved, drawing bare track while nothing
+      # scrolls (`D_scrollbar_ink`). `:auto` shows the bar only while
+      # {#content_rows} outgrows the viewport — never mid-scroll, since
+      # scrolling moves neither — and the content is re-laid-out two columns
+      # narrower as it appears. A {#content_rows} computed from the content's
+      # own width is the app's to keep from chasing that flip.
+      # @param value [Symbol] `:gone`, `:visible` or `:auto`.
+      # @raise [ArgumentError] on any other value.
       # @return [void]
       def scrollbar_visibility=(value)
-        raise ArgumentError, "expected :gone or :visible, got #{value.inspect}" unless %i[gone visible].include?(value)
+        unless %i[gone visible auto].include?(value)
+          raise ArgumentError, "expected :gone, :visible or :auto, got #{value.inspect}"
+        end
         return if @scrollbar_visibility == value
 
         @scrollbar_visibility = value
@@ -217,8 +224,18 @@ module Tuile
         rect.width >= 3 ? 2 : 1
       end
 
+      # Derived on every read, so {#relayout} places the bar and sizes the
+      # content from one answer.
       # @return [Boolean]
-      def scrollbar_visible? = @scrollbar_visibility == :visible && !rect.empty?
+      def scrollbar_visible?
+        return false if rect.empty?
+
+        case @scrollbar_visibility
+        when :visible then true
+        when :auto then @content_rows > viewport_rows
+        else false
+        end
+      end
 
       # @return [Integer] the largest {#scroll_top_row} that still shows content
       #   in every viewport row; `0` when the content fits.

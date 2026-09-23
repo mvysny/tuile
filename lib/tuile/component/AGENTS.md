@@ -86,7 +86,7 @@ are `Box`'s rdoc and `D_box_layouts`.
   item is one row** — a `\n` reaching the buffer corrupts the frame.
 - **There are no appenders and no `lines` reader** — items are assigned whole so a lazy provider
   stays expressible; incremental append lives on `TextView`. See `D_list_items`.
-- **`List`'s `:auto` is derived on every read; `TextView`'s is state with one writer,
+- **`List`'s and `Scroller`'s `:auto` are derived on every read; `TextView`'s is state with one writer,
   `sync_auto_scrollbar`**, since its rows are wrapped at the width the bar leaves. A bar drawing no
   handle under `:visible` is *ink*, a different rule. See `D_scrollbar_ink`.
 - **`List` measures nothing for its own content, and a dropdown driver supplies its own `width:`** —

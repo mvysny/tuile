@@ -334,7 +334,73 @@ module Tuile
       end
 
       it "refuses a scrollbar_visibility it does not know" do
-        assert_raises(ArgumentError) { scroller.scrollbar_visibility = :auto }
+        assert_raises(ArgumentError) { scroller.scrollbar_visibility = :bogus }
+      end
+
+      context ":auto" do
+        def auto_scroller(child, rows:, rect: Rect.new(0, 0, 10, 5))
+          s = scroller(child, rows: rows, rect: rect)
+          s.scrollbar_visibility = :auto
+          s.flush_layout
+          s
+        end
+
+        def bar(scroller) = Testing.get(Component::VerticalScrollBar, in: scroller)
+
+        it "is accepted" do
+          s = scroller
+          s.scrollbar_visibility = :auto
+          assert_equal :auto, s.scrollbar_visibility
+        end
+
+        it "hides the bar and hands the content the full width while it fits" do
+          content = Component::Layout::Absolute.new
+          s = auto_scroller(content, rows: 5)
+          assert bar(s).rect.empty?
+          assert_equal Rect.new(0, 0, 10, 5), content.rect
+        end
+
+        it "shows the bar and narrows the content once it overflows" do
+          content = Component::Layout::Absolute.new
+          s = auto_scroller(content, rows: 6)
+          assert_equal Rect.new(9, 0, 1, 5), bar(s).rect
+          assert_equal 8, content.rect.width
+        end
+
+        it "follows content_rows= across the threshold, both ways" do
+          content = Component::Layout::Absolute.new
+          s = auto_scroller(content, rows: 5)
+          s.content_rows = 30
+          s.flush_layout
+          refute bar(s).rect.empty?
+          assert_equal 8, content.rect.width
+          s.content_rows = 3
+          s.flush_layout
+          assert bar(s).rect.empty?
+          assert_equal 10, content.rect.width
+        end
+
+        it "follows a height-only resize across the threshold, both ways" do
+          content = Component::Layout::Absolute.new
+          s = auto_scroller(content, rows: 5)
+          Testing.place(s, Rect.new(0, 0, 10, 4))
+          s.flush_layout
+          assert_equal Rect.new(9, 0, 1, 4), bar(s).rect
+          assert_equal 8, content.rect.width
+          Testing.place(s, Rect.new(0, 0, 10, 5))
+          s.flush_layout
+          assert bar(s).rect.empty?
+          assert_equal 10, content.rect.width
+        end
+
+        it "paints the bar's column only while there is something to scroll" do
+          s = auto_scroller(Component::Layout::Absolute.new, rows: 5)
+          screen.repaint
+          refute_match(/[█░]/, screen.buffer.region_text(s.absolute_rect).join)
+          s.content_rows = 10
+          screen.repaint
+          assert_equal "█", screen.buffer.cell(9, 0).grapheme
+        end
       end
     end
 

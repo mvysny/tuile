@@ -4057,6 +4057,10 @@ full-width recount while the bar shows stops at the first row past the viewport,
 more hard lines than rows skips it, so a long streamed transcript pays nothing per append. The price
 is one two-column reflow as the text first overflows; `:visible` stays the no-reflow choice.
 
+**`Scroller` is `List`'s case** — `content_rows` is app-declared and width-free, so `:auto` is derived
+on read. Its rdoc once refused `:auto` as re-laying-out the content mid-scroll; scrolling moves neither
+input, so the bar flips only when `content_rows` or the height crosses the threshold.
+
 **One token, `Theme#scrollbar_color`, read at paint time**, on the exact precedent of
 `active_border_color`: framework-chrome *foreground*, read by
 `Component::VerticalScrollBar#repaint` — so `Theme.ref(:scrollbar_color)` works the day it lands
