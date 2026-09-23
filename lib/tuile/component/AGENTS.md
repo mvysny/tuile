@@ -86,8 +86,9 @@ are `Box`'s rdoc and `D_box_layouts`.
   item is one row** — a `\n` reaching the buffer corrupts the frame.
 - **There are no appenders and no `lines` reader** — items are assigned whole so a lazy provider
   stays expressible; incremental append lives on `TextView`. See `D_list_items`.
-- **`:auto` visibility is derived on every read, never stored** — so the bar's rect and the row
-  width cannot disagree; a bar drawing no handle under `:visible` is *ink*, a different rule. See `D_scrollbar_ink`.
+- **`List`'s `:auto` is derived on every read; `TextView`'s is state with one writer,
+  `sync_auto_scrollbar`**, since its rows are wrapped at the width the bar leaves. A bar drawing no
+  handle under `:visible` is *ink*, a different rule. See `D_scrollbar_ink`.
 - **`List` measures nothing for its own content, and a dropdown driver supplies its own `width:`** —
   `anchor_to` owns placement, never the measurement. See `D_select`.
 - **{Tuile::Component::Select} claims Enter, Space, ESC, `MOVE_KEYS` and the press — nothing else**,

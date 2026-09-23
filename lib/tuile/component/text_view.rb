@@ -26,6 +26,10 @@ module Tuile
     # page. Its column and the blank one beside it are reserved whenever it is
     # `:visible`, whether anything scrolls or not, so the text never rewraps
     # behind a growing buffer (`D_scrollbar_reserve`, `D_scrollbar_ink`).
+    # Under `:auto` the bar shows only while the text, wrapped at the full
+    # width, has more rows than the viewport — and then the text rewraps once,
+    # two columns narrower, which is the price of the columns it hands back
+    # while everything fits.
     #
     # Meant to be the content of a {Window} — focus indication relies on the
     # surrounding window chrome.
@@ -55,6 +59,10 @@ module Tuile
         @auto_scroll = false
         @follow = true
         @scrollbar_visibility = :gone
+        # Whether an `:auto` bar is showing — state, not derived on read,
+        # because `@rows` is wrapped at the width it leaves; only
+        # {#sync_auto_scrollbar} flips it.
+        @auto_scrollbar_shown = false
         # Always ≥1 region; the implicit default owns any hard lines no
         # app-created region claims. See {Region}.
         @regions = [Region.send(:new, self)]
@@ -73,7 +81,8 @@ module Tuile
       # @return [Integer] index of the first visible row.
       attr_reader :scroll_top_row
 
-      # @return [Symbol] `:gone` or `:visible`.
+      # @return [Symbol] `:gone`, `:visible`, or `:auto` — shown only while the
+      #   text overflows the viewport at the full width. `:gone` by default.
       attr_reader :scrollbar_visibility
 
       # @return [Boolean] if true, mutating the text scrolls the viewport so
@@ -316,13 +325,17 @@ module Tuile
         invalidate_layout # {#relayout} pushes the row to the bar
       end
 
-      # @param value [Symbol] `:gone` or `:visible`.
+      # @param value [Symbol] `:gone`, `:visible` or `:auto`.
+      # @raise [ArgumentError] on any other value.
       # @return [void]
       def scrollbar_visibility=(value)
-        raise ArgumentError, "expected :gone or :visible, got #{value.inspect}" unless %i[gone visible].include?(value)
+        unless %i[gone visible auto].include?(value)
+          raise ArgumentError, "expected :gone, :visible or :auto, got #{value.inspect}"
+        end
         return if @scrollbar_visibility == value
 
         @scrollbar_visibility = value
+        @auto_scrollbar_shown = false # starts at the full width; the settle decides
         rewrap
         invalidate
         invalidate_layout # the bar's rect appears or collapses
@@ -420,8 +433,14 @@ module Tuile
       # it paints a handle from. No `rect.empty?` guard: a container assigns
       # every child a rect on every pass (`D_empty_ancestor`), and
       # {#scrollbar_visible?} already answers false for an empty rect.
+      #
+      # An `:auto` bar is decided first, before the bar is placed, so the
+      # layout mark a flip's scroll clamp makes is dropped rather than costing
+      # a second pass. Every mutator already marks, for the bar's `row_count`,
+      # so this runs after each one.
       # @return [void]
       def relayout
+        sync_auto_scrollbar
         @scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
         @scrollbar.row_count = @rows.size
         @scrollbar.scroll_top_row = @scroll_top_row
@@ -429,7 +448,8 @@ module Tuile
 
       # Rewraps the text on width changes — {#wrap_width} is {#rect}`.width`
       # minus {#scrollbar_columns}, and the latter varies with the width too.
-      # A {#scrollbar_visibility=} flip rewraps from its own setter instead.
+      # A {#scrollbar_visibility=} change rewraps from its own setter instead,
+      # and an `:auto` bar coming or going from {#sync_auto_scrollbar}.
       # @return [void]
       def handle_width_changed
         super
@@ -868,7 +888,48 @@ module Tuile
       def scrollbar_visible?
         return false if rect.empty?
 
-        @scrollbar_visibility == :visible
+        case @scrollbar_visibility
+        when :visible then true
+        when :auto then @auto_scrollbar_shown
+        else false
+        end
+      end
+
+      # The sole writer of `@auto_scrollbar_shown`: shows the bar iff the text
+      # overflows the viewport at the *full* width, and rewraps when that
+      # flips. Deciding at the full width alone is what settles it in one
+      # step — the answer does not depend on the width the bar leaves, so
+      # showing the bar can't flip it back. Idempotent.
+      # @return [void]
+      def sync_auto_scrollbar
+        return unless @scrollbar_visibility == :auto
+
+        shown = !rect.empty? && overflows_at_full_width?
+        return if shown == @auto_scrollbar_shown
+
+        @auto_scrollbar_shown = shown
+        rewrap
+        update_scroll_top_row_if_auto_scroll
+        invalidate
+      end
+
+      # Whether the text, wrapped at {#rect}`.width`, has more rows than the
+      # viewport. With the bar hidden `@rows` already *is* that wrap; with it
+      # shown the lines are re-wrapped at the full width, stopping at the first
+      # row past the viewport — so the cost is bounded by what fits on screen,
+      # and a buffer with more hard lines than rows costs nothing at all.
+      # @return [Boolean]
+      def overflows_at_full_width?
+        return @rows.size > viewport_rows unless @auto_scrollbar_shown
+        return true if @lines.size > viewport_rows
+
+        width = rect.width
+        rows = 0
+        @lines.each do |line|
+          rows += line.empty? ? 1 : line.wrap(width).size
+          return true if rows > viewport_rows
+        end
+        false
       end
 
       # @param index [Integer] 0-based index into `@rows`.

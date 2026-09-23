@@ -2393,6 +2393,111 @@ module Tuile
           end
         end
       end
+
+      context "with an :auto scrollbar" do
+        let(:screen) { Screen.instance }
+
+        def painted_lines(text_view)
+          screen.repaint
+          screen.buffer.region_text(text_view.absolute_rect)
+        end
+
+        def auto_view(text = "", rect: Rect.new(0, 0, 10, 3))
+          tv = mount_at(Component::TextView.new, rect)
+          tv.scrollbar_visibility = :auto
+          tv.text = text
+          tv.flush_layout
+          tv
+        end
+
+        def bar(text_view) = text_view.children.first
+
+        it "is accepted" do
+          tv = Component::TextView.new
+          tv.scrollbar_visibility = :auto
+          assert_equal :auto, tv.scrollbar_visibility
+        end
+
+        it "hides the bar and wraps at the full width while the text fits" do
+          tv = auto_view("aaaa bbbbb\nc")
+          assert bar(tv).rect.empty?
+          assert_equal ["aaaa bbbbb", "c#{" " * 9}", " " * 10], painted_lines(tv)
+        end
+
+        it "shows the bar and wraps two columns narrower once the text overflows" do
+          tv = auto_view("aaaa bbbb cc\nc\nd")
+          assert_equal Rect.new(9, 0, 1, 3), bar(tv).rect
+          assert_equal 4, bar(tv).row_count, "aaaa / bbbb cc / c / d at width 8"
+          assert_equal "aaaa     █", painted_lines(tv)[0]
+        end
+
+        # The wrapping catch: at the width the bar would leave this is two rows
+        # in a one-row view, but at the full width it fits — and fitting at the
+        # full width is the whole question.
+        it "keeps the bar hidden for text that overflows only at the narrower width" do
+          tv = auto_view("aaaa bbbbb", rect: Rect.new(0, 0, 10, 1))
+          assert bar(tv).rect.empty?
+          assert_equal ["aaaa bbbbb"], painted_lines(tv)
+        end
+
+        it "brings the bar in when an append overflows, keeping a tailing view at the bottom" do
+          tv = auto_view("a\nb")
+          tv.auto_scroll = true
+          tv.add_line("c")
+          tv.flush_layout
+          assert bar(tv).rect.empty?
+          tv.add_line("dddd eeee")
+          tv.flush_layout
+          refute bar(tv).rect.empty?
+          assert_equal 5, bar(tv).row_count, "a / b / c / dddd / eeee at width 8"
+          assert_equal 2, tv.scroll_top_row
+          assert_equal "eeee     █", painted_lines(tv)[2]
+        end
+
+        it "takes the bar away when removing lines lets the full-width wrap fit" do
+          # Two rows at width 8 plus two lines is four — overflowing — but at the
+          # full width the first line is one row, and three rows fit.
+          tv = auto_view("aaaa bbbbb\nc\nd\ne")
+          refute bar(tv).rect.empty?
+          tv.remove_last_n_lines(1)
+          tv.flush_layout
+          assert bar(tv).rect.empty?
+          assert_equal "aaaa bbbbb", painted_lines(tv)[0]
+          assert_equal 0, tv.scroll_top_row
+        end
+
+        it "follows a height-only resize across the threshold, both ways" do
+          tv = auto_view("aaaa bbbbb\nc\nd")
+          assert bar(tv).rect.empty?
+          Testing.place(tv, Rect.new(0, 0, 10, 2))
+          tv.flush_layout
+          assert_equal Rect.new(9, 0, 1, 2), bar(tv).rect
+          assert_equal "aaaa     █", painted_lines(tv)[0]
+          Testing.place(tv, Rect.new(0, 0, 10, 3))
+          tv.flush_layout
+          assert bar(tv).rect.empty?
+          assert_equal "aaaa bbbbb", painted_lines(tv)[0]
+        end
+
+        it "rewraps consistently when switched from a shown :auto to :visible and :gone" do
+          tv = auto_view("aaaa bbbbb\nc\nd\ne")
+          tv.scrollbar_visibility = :visible
+          tv.flush_layout
+          assert_equal "aaaa     █", painted_lines(tv)[0]
+          tv.scrollbar_visibility = :gone
+          tv.flush_layout
+          assert_equal "aaaa bbbbb", painted_lines(tv)[0]
+          tv.scrollbar_visibility = :auto
+          tv.flush_layout
+          assert_equal "aaaa     █", painted_lines(tv)[0]
+        end
+
+        it "keeps every painted row exactly rect.width columns wide either way" do
+          [auto_view("a"), auto_view("a\nb\nc\nd")].each do |tv|
+            painted_lines(tv).each { |line| assert_equal 10, line.length }
+          end
+        end
+      end
     end
   end
 end

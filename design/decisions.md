@@ -4047,6 +4047,16 @@ Visibility is derived on every read, never stored, so the bar's rect and the row
 disagree. The refusal's other half, "two callers already know the answer", turned out to be one
 `ListDropdown#relayout` override, which `:auto` deleted.
 
+**On `TextView` the bar is state, decided at the full width alone.** Its rows are *wrapped* at the
+width the bar leaves, so visibility must agree with `@rows` and cannot be derived on read; one sync at
+the top of `relayout` is its sole writer, and every mutator already marks for the bar's `row_count`.
+"Does it overflow at the full width?" settles in one step because the answer never depends on the
+width it would leave. The shortcut "the narrow wrap fits, so hide" was declined: it holds only if
+wrapping is monotone in width, and one counterexample would flip the bar on every pass. The
+full-width recount while the bar shows stops at the first row past the viewport, and a buffer with
+more hard lines than rows skips it, so a long streamed transcript pays nothing per append. The price
+is one two-column reflow as the text first overflows; `:visible` stays the no-reflow choice.
+
 **One token, `Theme#scrollbar_color`, read at paint time**, on the exact precedent of
 `active_border_color`: framework-chrome *foreground*, read by
 `Component::VerticalScrollBar#repaint` — so `Theme.ref(:scrollbar_color)` works the day it lands
