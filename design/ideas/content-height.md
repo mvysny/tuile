@@ -99,24 +99,21 @@ mirror `columns_for(height)`, never both together.
   `Label` re-measured during its parent's pass re-marks it forever. Cache the
   last answer (against `D_repaint_cascade`'s "derive, don't cache"), or let the
   scroller compare and the component fire freely?
-- `Q_drain_cap`: `Screen#flush_layout` drains uncapped; `D_deferred_layout` says
-  that's safe because no pass can dirty the parent that ran it. A tracking
-  scroller is the first non-boundary — an A-sizes-B, B-marks-A cycle hangs the UI
-  thread. Ship a cap, or an argument that one hop cannot cycle.
 - `Q_tracking_spelling`: `:content`, `-1`, or `track_content_rows = true`?
   `:auto` collides with `D_box_layouts`' banned vocabulary.
 - `Q_hidden`: summing queries skip hidden children (`D_visibility`), and
   `visible=` already marks the parent. Is a hidden *content* child `nil` or `0`?
 
 Answered by `D_deferred_layout`: re-entrancy (a mark during the parent's pass
-lands in the same drain) and batching (ten `form.add` coalesce into one settle).
+lands in the same drain), batching (ten `form.add` coalesce into one settle) and the drain cap
+(a tracking scroller that cycles raises after `LayoutPass::MAX_ROUNDS` rounds).
 
 ## Graduation owes
 
 - The `D_declared_size` amendment (or a rejection line there), and a `D_scroller`
   update: tracking mode, the content query.
 - rdoc on `Scroller#content_rows=` (its interim rule) and on each answerer.
-- The contract-spec check above; a cap or argument for `Q_drain_cap`.
+- The contract-spec check above.
 - The toolkit table below → one `R_` entry with provenance markers.
 
 ## Content size elsewhere (unverified)

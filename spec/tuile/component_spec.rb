@@ -542,6 +542,49 @@ module Tuile
         end
       end
 
+      context "a layout that never settles" do
+        # A parent and child that mark each other on every pass.
+        def ping_pong
+          child = Component.new
+          child.define_singleton_method(:relayout) { parent.__send__(:invalidate_layout) }
+          parent = Component::Layout::Absolute.new
+          parent.add(child, Rect.new(0, 0, 1, 1))
+          parent.define_singleton_method(:relayout) do
+            super()
+            child.__send__(:invalidate_layout)
+          end
+          parent
+        end
+
+        it "raises on a detached tree instead of hanging" do
+          e = assert_raises(Tuile::Error) { ping_pong.flush_layout }
+          assert_includes e.message, "did not settle after #{LayoutPass::MAX_ROUNDS} rounds"
+        end
+
+        # The cycle the cap exists for: a width-derived content_rows flipping an
+        # `:auto` bar, which flips the width.
+        it "raises on the screen, and keeps the marks for the next settle to report" do
+          body = Component.new
+          body.define_singleton_method(:relayout) { parent.content_rows = width >= 40 ? 20 : 5 }
+          scroller = Component::Scroller.new(body)
+          scroller.scrollbar_visibility = :auto
+          assert_raises(Tuile::Error) { mount_at(scroller, Rect.new(0, 0, 40, 10)) }
+          assert_raises(Tuile::Error) { Screen.instance.flush_layout }
+        end
+
+        it "still lets the screen close, firing handle_detached" do
+          body = Component.new
+          detached = false
+          body.define_singleton_method(:relayout) { parent.content_rows = width >= 40 ? 20 : 5 }
+          body.define_singleton_method(:handle_detached) { detached = true }
+          scroller = Component::Scroller.new(body)
+          scroller.scrollbar_visibility = :auto
+          assert_raises(Tuile::Error) { mount_at(scroller, Rect.new(0, 0, 40, 10)) }
+          Screen.close
+          assert detached
+        end
+      end
+
       it "reports a detached tree's own mark, and drops it on flush" do
         layout = Component::Layout::Absolute.new
         layout.add(Component.new)

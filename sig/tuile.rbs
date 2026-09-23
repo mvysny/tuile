@@ -15258,6 +15258,7 @@ module Tuile
   module LayoutPass
     PLACING: Symbol
     PLACED: Symbol
+    MAX_ROUNDS: Integer
 
     # Runs the block with `placer` as the one thing whose children's rects may
     # be assigned. Nests: the enclosing pass is restored on the way out.
@@ -15298,6 +15299,30 @@ module Tuile
 
     # _@param_ `component` — the one whose rect is being assigned.
     def self.check: (Component component) -> void
+
+    # Counts one drain round, raising once there have been more than
+    # {MAX_ROUNDS}. Asked *before* the round takes its marks, so a raise leaves
+    # them queued and the next settle reports the cycle again rather than
+    # stranding it.
+    # 
+    # _@param_ `rounds` — rounds run so far in this flush.
+    # 
+    # _@param_ `pending` — the containers the round would lay out.
+    # 
+    # _@return_ — `rounds + 1`.
+    def next_round: (Integer rounds, ::Enumerable[Component] pending) -> Integer
+
+    # Counts one drain round, raising once there have been more than
+    # {MAX_ROUNDS}. Asked *before* the round takes its marks, so a raise leaves
+    # them queued and the next settle reports the cycle again rather than
+    # stranding it.
+    # 
+    # _@param_ `rounds` — rounds run so far in this flush.
+    # 
+    # _@param_ `pending` — the containers the round would lay out.
+    # 
+    # _@return_ — `rounds + 1`.
+    def self.next_round: (Integer rounds, ::Enumerable[Component] pending) -> Integer
 
     # Records that the running pass has assigned a child rect, past which a
     # mark on the placer is kept rather than dropped.

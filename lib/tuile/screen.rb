@@ -498,11 +498,15 @@ module Tuile
     # pass walks the tree in pre-order, so a parent lays out before the children
     # whose rects it just wrote — laying a child out first would only have it
     # redone. A detached component is dropped rather than laid out.
+    # @raise [Tuile::Error] when the tree has not settled after
+    #   {LayoutPass::MAX_ROUNDS} rounds — a relayout feeding its own input.
     # @return [void]
     def flush_layout
       check_locked
+      rounds = 0
       loop do
         until @layout_invalidated.empty?
+          rounds = LayoutPass.next_round(rounds, @layout_invalidated)
           pending = @layout_invalidated
           @layout_invalidated = Set.new
           pending.delete_if { !_1.attached? }
@@ -551,8 +555,10 @@ module Tuile
       check_locked
       # Both halves below read rects: the hidden-ancestor check, and the
       # scroll-into-view request, whose answer is *latched* into a scroller's
-      # scroll_top_row and so is not re-derived by any later pass.
-      flush_layout
+      # scroll_top_row and so is not re-derived by any later pass. Neither runs
+      # for nil, and skipping it there keeps {#close}'s teardown from tripping
+      # over a layout that never settles.
+      flush_layout unless focused.nil?
       previous = @focused
       if focused.nil?
         @focused = nil

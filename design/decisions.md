@@ -7006,13 +7006,15 @@ which no later pass re-derives. Five force-now flush points in `lib/` besides th
 requests a `FormItem` makes, `ListDropdown`'s placement (a driver reads `cursor_row_rect` in the
 same handler), and `Testing`'s helpers. The falsifier did not fire.
 
-**The drain is an uncapped fixpoint**, `until` the dirty set is empty, copying `Screen#repaint`'s
-loop — so a layout that oscillated (A sizes B, B's rect dirties A) would hang the UI thread rather
-than degrade. What makes the cap unnecessary is not the loop but the shape above it: no container's
-size depends on its children (`D_box_layouts`), so every node is what Flutter calls a relayout
-boundary (`R_layout_pass`), the mark never climbs, and a pass cannot dirty the parent that ran it.
-Re-opening the bottom-up channel `D_declared_size` closed is what would change that, and it owes
-this loop a cap. The contract suite's `relayout is idempotent` check is the cheap half of the guard.
+**The drain is capped at `LayoutPass::MAX_ROUNDS` (50) rounds and then raises**, naming the
+containers still marking. The shape above the loop is what makes it converge, not the loop: no
+container's size depends on its children (`D_box_layouts`), so every node is what Flutter calls a
+relayout boundary (`R_layout_pass`) and a pass cannot dirty the parent that ran it — a tree
+settles in about its depth. But an app can still feed a pass's output back into its input — a
+`Scroller` whose `content_rows` it derives from the content's width, flipping an `:auto` bar that
+flips the width — and uncapped, that hung the UI thread. The count is taken before a round takes
+its marks, so a raise leaves them queued and the next settle reports the cycle again. The
+contract suite's `relayout is idempotent` check is the cheap half of the guard.
 
 **Nor can a pass dirty itself before it places anything:** `invalidate_layout` drops a mark on the
 container whose `relayout` is running, until that pass assigns its first child rect. Otherwise a

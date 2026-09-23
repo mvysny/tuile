@@ -31,6 +31,15 @@ module Tuile
     PLACED = :tuile_placed
     private_constant :PLACED
 
+    # Drain rounds a {Screen#flush_layout} or a detached {Component#flush_layout}
+    # runs before giving up. No container sizes itself from its children, so a
+    # tree settles in about its depth; one that is still marking past this is
+    # feeding a pass's output back into its input — a {Component::Scroller}
+    # whose `content_rows` the app derives from the content's width, say — and
+    # would otherwise hang the UI thread.
+    # @return [Integer]
+    MAX_ROUNDS = 50
+
     module_function
 
     # Runs the block with `placer` as the one thing whose children's rects may
@@ -73,6 +82,23 @@ module Tuile
       raise Tuile::Error, "#{component}'s rect assigned outside #{component.parent}'s relayout; change " \
                           "what the parent places it by instead (Absolute#constrain, Box#constrain, " \
                           "Overlay#placement=)"
+    end
+
+    # Counts one drain round, raising once there have been more than
+    # {MAX_ROUNDS}. Asked *before* the round takes its marks, so a raise leaves
+    # them queued and the next settle reports the cycle again rather than
+    # stranding it.
+    # @param rounds [Integer] rounds run so far in this flush.
+    # @param pending [Enumerable<Component>] the containers the round would lay out.
+    # @raise [Tuile::Error] past {MAX_ROUNDS}, naming the containers still marking.
+    # @return [Integer] `rounds + 1`.
+    def next_round(rounds, pending)
+      return rounds + 1 if rounds < MAX_ROUNDS
+
+      culprits = pending.first(5).map(&:inspect).join(", ")
+      raise Tuile::Error, "layout did not settle after #{MAX_ROUNDS} rounds, still marking: #{culprits} — " \
+                          "a relayout keeps changing its own input (content_rows derived from the " \
+                          "content's width?)"
     end
 
     # Records that the running pass has assigned a child rect, past which a

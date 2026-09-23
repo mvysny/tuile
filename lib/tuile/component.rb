@@ -302,15 +302,19 @@ module Tuile
     # Attached that is {Screen#flush_layout}; detached it is the same fixpoint
     # over pre-order passes from {#root}, so a parent lays out before the
     # children whose rects it just wrote.
+    # @raise [Tuile::Error] when the tree has not settled after
+    #   {LayoutPass::MAX_ROUNDS} rounds — a relayout feeding its own input.
     # @return [void]
     def flush_layout
       return screen.flush_layout if attached?
 
+      rounds = 0
       loop do
         pending = []
         root.walk_tree { pending << _1 if _1.layout_dirty? }
         break if pending.empty?
 
+        rounds = LayoutPass.next_round(rounds, pending)
         pending.each { _1.__send__(:perform_relayout) }
       end
     end
