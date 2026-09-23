@@ -377,18 +377,23 @@ module Tuile
       Tuile.logger.warn("#{popup} lost its anchor; left where it was — close it when the anchor goes")
     end
 
-    # Whether an anchored popup's anchor now resolves elsewhere than where its
-    # last placement read it. {Screen#flush_layout} asks once the queue is
-    # empty, because this pass runs *before* the content it anchors to, so a
-    # settle that moved the content handed the pass a stale anchor.
-    # @return [Boolean]
-    def anchors_moved?
+    # Re-marks the pane when an anchored popup's anchor now resolves elsewhere
+    # than where its last placement read it. {Screen#flush_layout} asks once
+    # its drain is empty, because this pane's pass runs *before* the content an
+    # anchor sits in, so a settle that moved the content handed the pass a
+    # stale anchor. Anchors in `lib/` converge in one more round — the content
+    # never moves for a popup, and a cascade anchors to a `Rect` — but a popup
+    # anchored inside another takes one round per level.
+    # @return [Boolean] whether it marked, so the screen drains again.
+    def remark_moved_anchors
       return false if rect.empty? # #relayout collapses rather than places then, so nothing records
 
-      @popups.any? do |popup|
+      moved = @popups.any? do |popup|
         anchor = @placements[popup].anchor
         !anchor.nil? && (resolve_anchor(anchor) || :lost) != @placed_anchors[popup]
       end
+      invalidate_layout if moved
+      moved
     end
 
     # The overlays a click counts as landing *inside*: the one it hit, plus

@@ -73,8 +73,10 @@ module Tuile
       @event_queue = EventQueue.new
       @size = EventQueue::TTYSizeEvent.create.size
       @invalidated = Set.new
-      # Containers owing a {Component#relayout}, drained by {#flush_layout}.
-      @layout_invalidated = Set.new
+      # Whether some container may owe a {Component#relayout} — the O(1) gate
+      # that lets a no-op {#flush_layout} skip the walk; the containers' own
+      # flags are the queue.
+      @layout_pending = false
       # A {#focused=} made inside a pass whose scroll and notice wait for the
       # drain, and what was focused before the first such call.
       @focus_deferred = false
@@ -481,7 +483,7 @@ module Tuile
       check_locked
       raise TypeError, "expected Component, got #{component.inspect}" unless component.is_a? Component
 
-      @layout_invalidated << component
+      @layout_pending = true
     end
 
     # Runs every pending {Component#relayout}, so rects are current again.
@@ -497,13 +499,11 @@ module Tuile
     #
     # == Implementation details
     #
-    # Iterates to a fixpoint, like {#repaint}'s drain: a parent's pass assigns
-    # its children's rects, which marks those that are containers in turn. Each
-    # pass walks the tree in pre-order, so a parent lays out before the children
-    # whose rects it just wrote — laying a child out first would only have it
-    # redone. A detached component is dropped rather than laid out.
-    #
-    # Once the tree has settled it runs the half of a {#focused=} that was
+    # {LayoutPass.drain} over the pane, the same fixpoint a detached tree's
+    # {Component#flush_layout} runs. Then two follow-ups the pane's tree owes
+    # once it has settled: the pane places anchored popups before the content
+    # they hang from, so a moved anchor re-marks it and the drain runs again
+    # ({ScreenPane#remark_moved_anchors}); and the half of a {#focused=} that was
     # deferred because it happened inside a pass — see there.
     # @raise [Tuile::Error] when the tree has not settled after
     #   {LayoutPass::MAX_ROUNDS} rounds — a relayout feeding its own input — or
@@ -513,22 +513,19 @@ module Tuile
     def flush_layout
       check_locked
       LayoutPass.refuse_nested
+      return if @pane.nil?
+
       rounds = 0
       loop do
-        until @layout_invalidated.empty?
-          rounds = LayoutPass.next_round(rounds, @layout_invalidated)
-          pending = @layout_invalidated
-          @layout_invalidated = Set.new
-          pending.delete_if { !_1.attached? }
-          # `__send__`: `perform_relayout` is private, and clears the mark. The
-          # flag check: one marked while waiting in `pending` is in the next
-          # round too, and this round's pass already answered it.
-          @pane.walk_tree { _1.__send__(:perform_relayout) if pending.include?(_1) && _1.layout_dirty? }
+        if @layout_pending
+          rounds = LayoutPass.drain(@pane, rounds)
+          # Only once the drain returns: a raise leaves the gate open, so the
+          # next settle reports the same cycle rather than skipping the walk.
+          @layout_pending = false
         end
-        # The pane places anchored popups before the content they hang from
-        # settles, so it re-checks once everything has; placing a popup never
-        # moves the content, so this ends after one more round.
-        next @pane.__send__(:invalidate_layout) if !@pane.nil? && @pane.__send__(:anchors_moved?)
+        # One round shared with the drain: an anchor chain that never settles
+        # hits the same cap.
+        next if @pane.__send__(:remark_moved_anchors)
         break unless @focus_deferred
 
         # Last, so the scroll sees popups at their final place; and looped, so

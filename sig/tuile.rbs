@@ -2813,13 +2813,11 @@ module Tuile
     # 
     # == Implementation details
     # 
-    # Iterates to a fixpoint, like {#repaint}'s drain: a parent's pass assigns
-    # its children's rects, which marks those that are containers in turn. Each
-    # pass walks the tree in pre-order, so a parent lays out before the children
-    # whose rects it just wrote — laying a child out first would only have it
-    # redone. A detached component is dropped rather than laid out.
-    # 
-    # Once the tree has settled it runs the half of a {#focused=} that was
+    # {LayoutPass.drain} over the pane, the same fixpoint a detached tree's
+    # {Component#flush_layout} runs. Then two follow-ups the pane's tree owes
+    # once it has settled: the pane places anchored popups before the content
+    # they hang from, so a moved anchor re-marks it and the drain runs again
+    # ({ScreenPane#remark_moved_anchors}); and the half of a {#focused=} that was
     # deferred because it happened inside a pass — see there.
     def flush_layout: () -> void
 
@@ -3864,9 +3862,8 @@ module Tuile
     # 
     # The whole tree, never this subtree, whichever end it is asked from: a
     # pending ancestor pass would overwrite whatever a narrower one wrote.
-    # Attached that is {Screen#flush_layout}; detached it is the same fixpoint
-    # over pre-order passes from {#root}, so a parent lays out before the
-    # children whose rects it just wrote.
+    # Attached that is {Screen#flush_layout}; detached it is {LayoutPass.drain}
+    # from {#root}, the same fixpoint the screen runs.
     def flush_layout: () -> void
 
     # Whether this container owes a {#relayout} — that its *children*'s rects
@@ -4619,7 +4616,7 @@ module Tuile
     def invalidate_children: () -> void
 
     # Clears the mark and runs {#relayout} — the sole invocation site of
-    # `relayout`, shared by the screen's drain and {#flush_layout}.
+    # `relayout`, reached only from {LayoutPass.drain}.
     def perform_relayout: () -> void
 
     # The nearest ancestor whose pending {#relayout} would rewrite this
@@ -15325,29 +15322,57 @@ module Tuile
     # _@param_ `component` — the one whose rect is being assigned.
     def self.check: (Component component) -> void
 
-    # Counts one drain round, raising once there have been more than
-    # {MAX_ROUNDS}. Asked *before* the round takes its marks, so a raise leaves
-    # them queued and the next settle reports the cycle again rather than
-    # stranding it.
+    # Runs every {Component#relayout} `root`'s tree owes, to a fixpoint — the one
+    # drain behind both {Screen#flush_layout} and a detached
+    # {Component#flush_layout}.
     # 
-    # _@param_ `rounds` — rounds run so far in this flush.
+    # **The dirty flags are the queue.** Each round walks the tree pre-order and
+    # runs whatever is marked, so a parent lays out before the children whose
+    # rects it just wrote, and those children run in the same walk. A mark on
+    # something *earlier* in the order — a child's pass marking its parent —
+    # waits for the next round, and the drain ends on the first walk that finds
+    # nothing marked. A flag is cleared by the pass that answers it, so a
+    # container is never run twice for one mark, and a raise strands nothing.
     # 
-    # _@param_ `pending` — the containers the round would lay out.
+    # _@param_ `root` — the tree's root: the {ScreenPane}, or a detached root.
     # 
-    # _@return_ — `rounds + 1`.
-    def next_round: (Integer rounds, ::Enumerable[Component] pending) -> Integer
+    # _@param_ `rounds` — rounds already run in this flush, so a caller draining more than once — the screen, re-checking anchors — keeps one count.
+    # 
+    # _@return_ — the rounds run in total.
+    def drain: (Component root, ?Integer rounds) -> Integer
 
-    # Counts one drain round, raising once there have been more than
-    # {MAX_ROUNDS}. Asked *before* the round takes its marks, so a raise leaves
-    # them queued and the next settle reports the cycle again rather than
-    # stranding it.
+    # Runs every {Component#relayout} `root`'s tree owes, to a fixpoint — the one
+    # drain behind both {Screen#flush_layout} and a detached
+    # {Component#flush_layout}.
     # 
-    # _@param_ `rounds` — rounds run so far in this flush.
+    # **The dirty flags are the queue.** Each round walks the tree pre-order and
+    # runs whatever is marked, so a parent lays out before the children whose
+    # rects it just wrote, and those children run in the same walk. A mark on
+    # something *earlier* in the order — a child's pass marking its parent —
+    # waits for the next round, and the drain ends on the first walk that finds
+    # nothing marked. A flag is cleared by the pass that answers it, so a
+    # container is never run twice for one mark, and a raise strands nothing.
     # 
-    # _@param_ `pending` — the containers the round would lay out.
+    # _@param_ `root` — the tree's root: the {ScreenPane}, or a detached root.
     # 
-    # _@return_ — `rounds + 1`.
-    def self.next_round: (Integer rounds, ::Enumerable[Component] pending) -> Integer
+    # _@param_ `rounds` — rounds already run in this flush, so a caller draining more than once — the screen, re-checking anchors — keeps one count.
+    # 
+    # _@return_ — the rounds run in total.
+    def self.drain: (Component root, ?Integer rounds) -> Integer
+
+    # One pre-order walk running every marked container.
+    # 
+    # _@param_ `root`
+    # 
+    # _@return_ — whether it ran anything.
+    def drain_round: (Component root) -> bool
+
+    # One pre-order walk running every marked container.
+    # 
+    # _@param_ `root`
+    # 
+    # _@return_ — whether it ran anything.
+    def self.drain_round: (Component root) -> bool
 
     # Records that the running pass has assigned a child rect, past which a
     # mark on the placer is kept rather than dropped.
@@ -15594,11 +15619,16 @@ module Tuile
     # _@param_ `popup`
     def lose_anchor: (Component::Overlay popup) -> void
 
-    # Whether an anchored popup's anchor now resolves elsewhere than where its
-    # last placement read it. {Screen#flush_layout} asks once the queue is
-    # empty, because this pass runs *before* the content it anchors to, so a
-    # settle that moved the content handed the pass a stale anchor.
-    def anchors_moved?: () -> bool
+    # Re-marks the pane when an anchored popup's anchor now resolves elsewhere
+    # than where its last placement read it. {Screen#flush_layout} asks once
+    # its drain is empty, because this pane's pass runs *before* the content an
+    # anchor sits in, so a settle that moved the content handed the pass a
+    # stale anchor. Anchors in `lib/` converge in one more round — the content
+    # never moves for a popup, and a cascade anchors to a `Rect` — but a popup
+    # anchored inside another takes one round per level.
+    # 
+    # _@return_ — whether it marked, so the screen drains again.
+    def remark_moved_anchors: () -> bool
 
     # The overlays a click counts as landing *inside*: the one it hit, plus
     # every overlay that one belongs to, up the {Component::Overlay#owner}

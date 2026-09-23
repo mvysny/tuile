@@ -6898,8 +6898,9 @@ pane's. The popups had grown a second layout path: each overlay assigned its own
 popup owed a pass that placed nothing — a mark a stale-rect diagnostic then read as "everything
 below is stale". A placement is a rule, so a resize or a second popup re-derives the same rect. An
 anchored dropdown reads its anchor during the pane's pass, which runs *before* the content it hangs
-from, so `Screen#flush_layout` re-checks the anchors once the drain is empty: at most one more round,
-since placing a popup never moves content.
+from, so `Screen#flush_layout` re-checks the anchors once the drain is empty: one more round for
+every anchor in `lib/`, since placing a popup never moves content, and one per level for a popup an
+app anchors inside another.
 
 Why not:
 
@@ -6968,11 +6969,11 @@ ordering rule — a trap — and the codebase already hand-solves the same order
 (`HasContent#content=`, `TabSheet#sync_pane`, and the whole reason `detach_child` exists apart from
 `remove_child`). Deferring dissolves it: **a pass never observes a container mid-configuration.**
 It also coalesces (twenty `add`s are one pass), and it answers re-entrancy by construction — a
-child that dirties its parent mid-pass lands in the same drain set, and the drain iterates.
+child that dirties its parent mid-pass is marked like anything else, and the drain iterates.
 
 **It keeps the promise.** *A retained tree, not a redraw loop* is a sentence about the app — no
-per-frame rebuild, no model/update/view pass of its own — and a set drained only when something was
-marked is `Screen#repaint`'s own machinery one level up. Terminal.Gui v2 and Textual are
+per-frame rebuild, no model/update/view pass of its own — and a drain that walks only when something
+was marked is `Screen#repaint`'s own machinery one level up. Terminal.Gui v2 and Textual are
 retained-tree TUIs whose users mutate widgets and never write a frame, and both run a marked layout
 pass in the loop (`R_layout_pass`). What the promise forbids is a *measurement* phase, and
 `D_declared_size` deleted that channel.
@@ -7036,9 +7037,15 @@ been derived from the old state, so dropping loses nothing. After it, the divisi
 stale — a `Box` subclass hiding a child *after* `super` is the natural spelling — so the mark is
 kept: dropping it too left the hidden child's rect and its siblings' share unrepaired, silently,
 and the contract suite's idempotency check never sees an app subclass. Keeping it costs a pass, and
-a stale-rect report in that window is a true one. For the same reason the drain skips a container
-whose flag is already clear — one marked by an ancestor's pass while still waiting in this round
-is also in the next.
+a stale-rect report in that window is a true one.
+
+**The flags are the queue, for both drains.** `LayoutPass.drain` walks the tree pre-order and runs
+whatever is marked, until a walk finds nothing, so a child its parent's pass just marked runs in
+the same walk and a mark on something earlier waits one round. The screen keeps a single "anything
+marked?" boolean in front of it, so a flush with nothing to do skips the walk. It replaced a set of
+marked containers intersected with the walk, which ran a container twice when an ancestor's pass
+marked it while it was still waiting, needed an attachedness filter, and was a second drain
+beside the detached one — a flag cleared by the pass that answers it is none of those.
 
 Why not:
 

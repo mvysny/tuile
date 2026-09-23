@@ -102,22 +102,50 @@ module Tuile
                           "Overlay#placement=)"
     end
 
-    # Counts one drain round, raising once there have been more than
-    # {MAX_ROUNDS}. Asked *before* the round takes its marks, so a raise leaves
-    # them queued and the next settle reports the cycle again rather than
-    # stranding it.
-    # @param rounds [Integer] rounds run so far in this flush.
-    # @param pending [Enumerable<Component>] the containers the round would lay out.
-    # @raise [Tuile::Error] past {MAX_ROUNDS}, naming the containers still marking.
-    # @return [Integer] `rounds + 1`.
-    def next_round(rounds, pending)
-      return rounds + 1 if rounds < MAX_ROUNDS
+    # Runs every {Component#relayout} `root`'s tree owes, to a fixpoint — the one
+    # drain behind both {Screen#flush_layout} and a detached
+    # {Component#flush_layout}.
+    #
+    # **The dirty flags are the queue.** Each round walks the tree pre-order and
+    # runs whatever is marked, so a parent lays out before the children whose
+    # rects it just wrote, and those children run in the same walk. A mark on
+    # something *earlier* in the order — a child's pass marking its parent —
+    # waits for the next round, and the drain ends on the first walk that finds
+    # nothing marked. A flag is cleared by the pass that answers it, so a
+    # container is never run twice for one mark, and a raise strands nothing.
+    # @param root [Component] the tree's root: the {ScreenPane}, or a detached root.
+    # @param rounds [Integer] rounds already run in this flush, so a caller
+    #   draining more than once — the screen, re-checking anchors — keeps one count.
+    # @raise [Tuile::Error] past {MAX_ROUNDS} rounds, naming the containers still marked.
+    # @return [Integer] the rounds run in total.
+    def drain(root, rounds = 0)
+      while drain_round(root)
+        next rounds += 1 if rounds < MAX_ROUNDS
 
-      culprits = pending.first(5).map(&:inspect).join(", ")
-      raise Tuile::Error, "layout did not settle after #{MAX_ROUNDS} rounds, still marking: #{culprits} — " \
-                          "a relayout keeps changing its own input (content_rows derived from the " \
-                          "content's width?)"
+        culprits = []
+        root.walk_tree { culprits << _1 if _1.layout_dirty? }
+        raise Tuile::Error, "layout did not settle after #{MAX_ROUNDS} rounds, still marking: " \
+                            "#{culprits.first(5).map(&:inspect).join(", ")} — a relayout keeps changing its " \
+                            "own input (content_rows derived from the content's width?)"
+      end
+      rounds
     end
+
+    # One pre-order walk running every marked container.
+    # @param root [Component]
+    # @return [Boolean] whether it ran anything.
+    def drain_round(root)
+      ran = false
+      root.walk_tree do |component|
+        next unless component.layout_dirty?
+
+        # `__send__`: private, because it is this drain's alone.
+        component.__send__(:perform_relayout)
+        ran = true
+      end
+      ran
+    end
+    private_class_method :drain_round
 
     # Records that the running pass has assigned a child rect, past which a
     # mark on the placer is kept rather than dropped.

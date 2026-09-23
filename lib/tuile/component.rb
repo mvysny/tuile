@@ -299,9 +299,8 @@ module Tuile
     #
     # The whole tree, never this subtree, whichever end it is asked from: a
     # pending ancestor pass would overwrite whatever a narrower one wrote.
-    # Attached that is {Screen#flush_layout}; detached it is the same fixpoint
-    # over pre-order passes from {#root}, so a parent lays out before the
-    # children whose rects it just wrote.
+    # Attached that is {Screen#flush_layout}; detached it is {LayoutPass.drain}
+    # from {#root}, the same fixpoint the screen runs.
     # @raise [Tuile::Error] when the tree has not settled after
     #   {LayoutPass::MAX_ROUNDS} rounds — a relayout feeding its own input — or
     #   when called from inside a {#relayout}.
@@ -310,15 +309,7 @@ module Tuile
       return screen.flush_layout if attached?
 
       LayoutPass.refuse_nested
-      rounds = 0
-      loop do
-        pending = []
-        root.walk_tree { pending << _1 if _1.layout_dirty? }
-        break if pending.empty?
-
-        rounds = LayoutPass.next_round(rounds, pending)
-        pending.each { _1.__send__(:perform_relayout) }
-      end
+      LayoutPass.drain(root)
     end
 
     # Whether this container owes a {#relayout} — that its *children*'s rects
@@ -1314,7 +1305,7 @@ module Tuile
     private
 
     # Clears the mark and runs {#relayout} — the sole invocation site of
-    # `relayout`, shared by the screen's drain and {#flush_layout}.
+    # `relayout`, reached only from {LayoutPass.drain}.
     # @return [void]
     def perform_relayout
       @layout_dirty = false
