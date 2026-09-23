@@ -214,6 +214,74 @@ module Tuile
         end
       end
 
+      # A relayout hiding the focused child repairs focus mid-pass, before the
+      # pass has placed its children: the scroll and the notice must wait for
+      # the drain, or they read — and the scroll latches — the old rects.
+      context "made inside a relayout" do
+        # A sidebar shown only at 60 columns or more, holding focus, beside a
+        # main field that takes the rest; records the main field's rect when
+        # asked to scroll.
+        def sidebar_pane
+          Class.new(Component) do
+            attr_reader :side, :main, :seen
+
+            def initialize
+              super
+              @side = Component::TextField.new
+              @main = Component::TextField.new
+              @seen = []
+              add_child(@side)
+              add_child(@main)
+            end
+
+            def focusable? = true
+
+            def scroll_to_visible(rect = local_extent_rect)
+              @seen << [:scroll, @main.rect]
+              super
+            end
+
+            def relayout
+              @side.visible = width >= 60
+              left = @side.visible? ? 20 : 0
+              @side.rect = Rect.new(0, 0, left, 1)
+              @main.rect = Rect.new(left, 0, width - left, 1)
+            end
+          end.new
+        end
+
+        it "scrolls and notifies once the layout has settled" do
+          pane = sidebar_pane
+          screen.content = pane
+          pane.side.focus
+          pane.seen.clear
+          screen.on_focus_changed { pane.seen << [:changed, pane.main.rect] }
+
+          screen.resize_terminal(40, 10)
+
+          assert_equal pane, screen.focused
+          assert_equal [[:scroll, Rect.new(0, 0, 40, 1)], [:changed, Rect.new(0, 0, 40, 1)]], pane.seen
+        end
+
+        it "notifies nothing when focus ends where the pass found it" do
+          pane = sidebar_pane
+          screen.content = pane
+          pane.main.focus
+          fired = 0
+          screen.on_focus_changed { fired += 1 }
+          main = pane.main
+          main.define_singleton_method(:handle_rect_changed) do |_old|
+            screen.focused = parent
+            screen.focused = self
+          end
+
+          screen.resize_terminal(40, 10)
+
+          assert_equal main, screen.focused
+          assert_equal 0, fired
+        end
+      end
+
       it "delivers a key to the focused window nested under layouts" do
         nested_layout = Component::Layout::Absolute.new
         screen.content.add(nested_layout)
@@ -224,6 +292,14 @@ module Tuile
         w.define_singleton_method(:handle_key?) { |_key| handled = true }
         screen.pane.handle_key?("x")
         assert handled
+      end
+    end
+
+    context "flush_layout" do
+      it "refuses to run inside a relayout, naming the pass" do
+        reentrant = Class.new(Component) { def relayout = screen.flush_layout }.new
+        e = assert_raises(Tuile::Error) { screen.content = reentrant }
+        assert_includes e.message, "flush_layout inside"
       end
     end
 

@@ -57,6 +57,24 @@ module Tuile
       Thread.current[PLACED] = outer_placed
     end
 
+    # Whether any pass is placing children right now — what a drain refuses to
+    # run inside ({.refuse_nested}), and {Screen#focused=} defers its geometry under.
+    # @return [Boolean]
+    def running? = !Thread.current[PLACING].nil?
+
+    # The guard at the top of both drains, {Screen#flush_layout} and a detached
+    # {Component#flush_layout}.
+    # @raise [Tuile::Error] while a pass is running: it has not placed its
+    #   children yet, so a nested drain would read the rects it is about to
+    #   reassign.
+    # @return [void]
+    def refuse_nested
+      return unless running?
+
+      raise Tuile::Error, "flush_layout inside #{Thread.current[PLACING]}'s relayout: the running pass " \
+                          "has not placed its children yet, so a nested drain would read stale rects"
+    end
+
     # What may assign `component`'s rect: its parent, whose
     # {Component#relayout} does. The exception is the {ScreenPane}, which has
     # no parent whose pass could place it, so the {Screen} does (`D_tree_first`

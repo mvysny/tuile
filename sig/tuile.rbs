@@ -2818,6 +2818,9 @@ module Tuile
     # pass walks the tree in pre-order, so a parent lays out before the children
     # whose rects it just wrote — laying a child out first would only have it
     # redone. A detached component is dropped rather than laid out.
+    # 
+    # Once the tree has settled it runs the half of a {#focused=} that was
+    # deferred because it happened inside a pass — see there.
     def flush_layout: () -> void
 
     # Fired with a {FocusChangedEvent} after {#focused} changes.
@@ -3039,6 +3042,12 @@ module Tuile
     # 
     # _@param_ `focused` — what the assignment asked for.
     def fire_focus_hooks: (Component? previous, Component? focused) -> void
+
+    # The geometry half of {#focused=}: scroll the target into view, warn if it
+    # still shows nothing, then fire the notice.
+    # 
+    # _@param_ `previous` — what was focused before the change.
+    def follow_up_focus: (Component? previous) -> void
 
     # Unguarded on purpose: a container forwarding focus re-enters {#focused=},
     # so a target may be reported twice.
@@ -15275,6 +15284,22 @@ module Tuile
     # 
     # _@return_ — the block's value.
     def self.run: ((Component | Screen) placer) -> Object
+
+    # Whether any pass is placing children right now — what a drain refuses to
+    # run inside ({.refuse_nested}), and {Screen#focused=} defers its geometry under.
+    def running?: () -> bool
+
+    # Whether any pass is placing children right now — what a drain refuses to
+    # run inside ({.refuse_nested}), and {Screen#focused=} defers its geometry under.
+    def self.running?: () -> bool
+
+    # The guard at the top of both drains, {Screen#flush_layout} and a detached
+    # {Component#flush_layout}.
+    def refuse_nested: () -> void
+
+    # The guard at the top of both drains, {Screen#flush_layout} and a detached
+    # {Component#flush_layout}.
+    def self.refuse_nested: () -> void
 
     # What may assign `component`'s rect: its parent, whose
     # {Component#relayout} does. The exception is the {ScreenPane}, which has

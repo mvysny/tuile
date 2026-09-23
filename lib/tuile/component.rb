@@ -303,11 +303,13 @@ module Tuile
     # over pre-order passes from {#root}, so a parent lays out before the
     # children whose rects it just wrote.
     # @raise [Tuile::Error] when the tree has not settled after
-    #   {LayoutPass::MAX_ROUNDS} rounds — a relayout feeding its own input.
+    #   {LayoutPass::MAX_ROUNDS} rounds — a relayout feeding its own input — or
+    #   when called from inside a {#relayout}.
     # @return [void]
     def flush_layout
       return screen.flush_layout if attached?
 
+      LayoutPass.refuse_nested
       rounds = 0
       loop do
         pending = []

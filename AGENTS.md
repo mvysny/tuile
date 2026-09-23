@@ -274,7 +274,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   `handle_rect_changed` is for a reaction to the change itself. See `D_relayout`.
 - **A mutation marks; nothing lays out inline** — `Screen#dispatch` settles after every event, so no
   pass sees a container mid-configuration. A rect read in the *same* turn that dirtied it is stale;
-  `Component#flush_layout` is the force-now. See `D_deferred_layout`.
+  `Component#flush_layout` is the force-now, and raises inside a pass. See `D_deferred_layout`.
 - **A pre-settle rect read raises under a {Tuile::FakeScreen}, and the predicate is a dirty
   *ancestor*** — only for a read the app made; a component's own `layout_dirty?` is about its
   *children*, so a check reading that fires on the fresh rect and misses the stale one.

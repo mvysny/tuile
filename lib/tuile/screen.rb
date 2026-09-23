@@ -75,6 +75,10 @@ module Tuile
       @invalidated = Set.new
       # Containers owing a {Component#relayout}, drained by {#flush_layout}.
       @layout_invalidated = Set.new
+      # A {#focused=} made inside a pass whose scroll and notice wait for the
+      # drain, and what was focused before the first such call.
+      @focus_deferred = false
+      @focus_deferred_from = nil
       # Components being repainted right now. A component may invalidate its
       # children during its repaint phase; this prevents double-draw.
       @repainting = Set.new
@@ -498,11 +502,17 @@ module Tuile
     # pass walks the tree in pre-order, so a parent lays out before the children
     # whose rects it just wrote — laying a child out first would only have it
     # redone. A detached component is dropped rather than laid out.
+    #
+    # Once the tree has settled it runs the half of a {#focused=} that was
+    # deferred because it happened inside a pass — see there.
     # @raise [Tuile::Error] when the tree has not settled after
-    #   {LayoutPass::MAX_ROUNDS} rounds — a relayout feeding its own input.
+    #   {LayoutPass::MAX_ROUNDS} rounds — a relayout feeding its own input — or
+    #   when called from inside a {Component#relayout}, where the running pass
+    #   has not yet assigned the rects a nested drain would read.
     # @return [void]
     def flush_layout
       check_locked
+      LayoutPass.refuse_nested
       rounds = 0
       loop do
         until @layout_invalidated.empty?
@@ -518,9 +528,13 @@ module Tuile
         # The pane places anchored popups before the content they hang from
         # settles, so it re-checks once everything has; placing a popup never
         # moves the content, so this ends after one more round.
-        break if @pane.nil? || !@pane.__send__(:anchors_moved?)
+        next @pane.__send__(:invalidate_layout) if !@pane.nil? && @pane.__send__(:anchors_moved?)
+        break unless @focus_deferred
 
-        @pane.__send__(:invalidate_layout)
+        # Last, so the scroll sees popups at their final place; and looped, so
+        # what an on_focus_changed callback marks is settled before we return.
+        @focus_deferred = false
+        follow_up_focus(@focus_deferred_from)
       end
     end
 
@@ -542,6 +556,14 @@ module Tuile
     # therefore reads settled geometry. The outer two are edge-triggered and the
     # middle two are not — see `handle_focus`.
     #
+    # **Inside a {Component#relayout} the last two wait for the layout** — a
+    # focus repair from a child hidden there, a menu closed from
+    # {Component#handle_rect_changed}. The pass has not placed its children yet,
+    # and a scroll decided now is latched, so {#flush_layout} runs them once the
+    # tree has settled: the final target is scrolled into view, and
+    # {#on_focus_changed} fires once if focus ended somewhere other than where
+    # the pass found it.
+    #
     # A target whose {#clip_for} is still empty after that request — a stale
     # {Component::Scroller#content_rows}, say — logs a warning to
     # {Tuile.logger} rather than raising: a terminal shrunk to nothing causes it
@@ -553,12 +575,12 @@ module Tuile
       end
 
       check_locked
-      # Both halves below read rects: the hidden-ancestor check, and the
-      # scroll-into-view request, whose answer is *latched* into a scroller's
-      # scroll_top_row and so is not re-derived by any later pass. Neither runs
-      # for nil, and skipping it there keeps {#close}'s teardown from tripping
-      # over a layout that never settles.
-      flush_layout unless focused.nil?
+      # For the scroll-into-view request, whose answer is *latched* into a
+      # scroller's scroll_top_row and so is not re-derived by any later pass.
+      # Nil scrolls nothing, and skipping it there keeps {#close}'s teardown
+      # from tripping over a layout that never settles; inside a pass the
+      # request waits for the drain instead (#fire_focus_hooks).
+      flush_layout unless focused.nil? || LayoutPass.running?
       previous = @focused
       if focused.nil?
         @focused = nil
@@ -1076,11 +1098,27 @@ module Tuile
     # @param focused [Component, nil] what the assignment asked for.
     # @return [void]
     def fire_focus_hooks(previous, focused)
+      deferred = LayoutPass.running?
+      # Recorded before the hooks, which may reassign focus themselves: the
+      # first deferral in a drain keeps its `previous`, so the one notice fired
+      # later compares against where focus stood before any of them.
+      if deferred && !@focus_deferred
+        @focus_deferred = true
+        @focus_deferred_from = previous
+      end
       unless focused.equal?(previous)
         previous&.__send__(:handle_blur)
         return unless @focused.equal?(focused)
       end
       @focused&.__send__(:handle_focus)
+      follow_up_focus(previous) unless deferred
+    end
+
+    # The geometry half of {#focused=}: scroll the target into view, warn if it
+    # still shows nothing, then fire the notice.
+    # @param previous [Component, nil] what was focused before the change.
+    # @return [void]
+    def follow_up_focus(previous)
       # Level-triggered like `handle_focus`, not edge-triggered like the notice
       # below: re-focusing what already has focus is how an app says "bring it
       # back into view", and an already-satisfied request scrolls by zero.

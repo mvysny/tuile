@@ -7006,6 +7006,16 @@ which no later pass re-derives. Five force-now flush points in `lib/` besides th
 requests a `FormItem` makes, `ListDropdown`'s placement (a driver reads `cursor_row_rect` in the
 same handler), and `Testing`'s helpers. The falsifier did not fire.
 
+**A force-now never runs inside a pass: `Screen#flush_layout` raises there.** The running pass has
+not placed its children, so a nested drain would settle nothing it is about to reassign, and a
+scroll decided from those rects is latched. `focused=` is the one caller a pass reaches
+legitimately — a `relayout` hiding the focused child repairs focus, and `MenuBar#handle_rect_changed`
+closes its cascade — so inside a pass it does its immediate half (pointer, active flags,
+`handle_blur`, `handle_focus`) and leaves the geometry half to the drain: once the tree has settled
+and anchors are re-checked, the final target is scrolled into view and `on_focus_changed` fires
+once, against where focus stood before the first deferral. `D_on_blur`'s order holds; only the
+last two steps move, within the same turn.
+
 **The drain is capped at `LayoutPass::MAX_ROUNDS` (50) rounds and then raises**, naming the
 containers still marking. The shape above the loop is what makes it converge, not the loop: no
 container's size depends on its children (`D_box_layouts`), so every node is what Flutter calls a
@@ -7038,12 +7048,12 @@ Why not:
 - **Synchronous at the seam, coalesced within** (a re-entrancy flag absorbing nested marks). Gets
   the re-entrancy answer and synchronous reads, but not the bookkeeping fix: `add_child` is itself
   the outermost frame, so there is nowhere later to flush to.
-- **Deferring the scroll-into-view request too**, by posting it and honouring it at the settle,
-  rather than flushing inside `focused=`. Neither existing channel works under `FakeScreen`:
+- **Deferring the scroll-into-view request everywhere**, by posting it and honouring it at the
+  settle, rather than flushing inside `focused=`. Neither existing channel works under `FakeScreen`:
   `FakeEventQueue#post` is `def post(event); end`, so the request is thrown away — a silent
   no-scroll in every spec that focuses into a scroller — and `submit` runs inline there, which is
-  synchronous-against-stale-rects again. Flushing first also leaves `D_on_blur`'s firing order
-  intact.
+  synchronous-against-stale-rects again. Outside a pass, flushing first is the whole fix; inside
+  one, the deferral above is a step at the drain's tail, not an event, so neither objection applies.
 - **Only `rect=` settling a detached subtree.** Dodges the constructor hazard, since no rect is
   assigned during `initialize`, and would have left ~50 detached examples untouched. Still two
   modes, and it has a hole: `layout.rect = X` *then* `layout.add(child)` leaves the child unplaced
