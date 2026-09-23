@@ -107,7 +107,8 @@ binder.bind(birth_field, :birth_iso)                                  # model st
 binder.rule { |p| "Start date is after end date" if p.start_date && p.end_date && p.start_date > p.end_date }
 
 binder.read(person)     # buffered: model → fields, snapshot for changed?
-binder.write?(person)   # buffered: write, validate, revert on failure
+binder.write?(person)   # buffered: write, validate, revert on failure → true / false
+binder.write!(person)   # the same, raising ValidationError on failure
 binder.model = draft    # write-through
 binder.changed?
 ```
@@ -133,18 +134,23 @@ binder.changed?
 - **A bean rule returns `nil`, a String (form-level), or `{end_date: "…"}` to blame a field**, which
   then lands on that field's `error_message`. Form-level messages go to the Save alert below — there
   is no framework status row (`D_status_bar`).
-- **The verdict is one map, `{attr => ValidationFailure}`** — a `Data` holding `field`, `message`,
-  `value` (whatever the failing step saw: value side before a converter, model side after it; a
-  blamed attribute's candidate), open to more members later. Field steps and bean rules fill the
-  same map, so the Save alert and the app iterate one thing. One failure per attr, first wins: a
-  field step stops at its first failure, and bean rules run only once every field passed. The
-  rule's *return* stays a bare String or hash; the Binder builds the `Data` — the rule knows no
-  field.
-- **Named `ValidationFailure`** — not `ValidationError`, since `*Error` reads as an exception
-  (`rescue ValidationError`, beside `Tuile::Error`); not `ValidationResult`, since a result may be
+- **The verdict is one map, `{attr => [ValidationFailure]}`** — each a `Data` holding `field`,
+  `message`, `value` (whatever the failing step saw: value side before a converter, model side after
+  it; a blamed attribute's candidate), open to more members later. Field steps and bean rules fill
+  the same map, so the Save alert and the app iterate one thing. Every key holds an array, one
+  shape: a field step stops at its first failure, so a field contributes one; several bean rules may
+  blame the same attr. **Form-level failures sit under the `nil` key** (a `Hash` takes it; Rails'
+  `:base` is the fallback that wasn't needed), with `field` and `value` nil. The rule's *return*
+  stays a bare String or hash; the Binder builds the `Data` — the rule knows no field.
+- **A failure is a value, an error is raised** — `ValidationFailure` is the entry; `ValidationError`
+  is the exception `write!` raises, carrying the whole map. Not `ValidationResult`: a result may be
   ok and every entry here is a failure (Vaadin's `ValidationResult` is the ok-or-error sum type
-  deleted below). Covers a parse or conversion failure as naturally as a broken rule.
-- **`write?` is the house `Set#add?`**: "did the write happen".
+  deleted below). `ValidationFailure` covers a parse or conversion failure as naturally as a
+  broken rule.
+- **`write?` / `write!` are ActiveRecord's `save` / `save!`** (`save!` raises `RecordInvalid`,
+  ActiveModel's `validate!` raises `ValidationError`) — `write?` in the house `Set#add?` sense, "did
+  the write happen". `ValidationError < Tuile::Error`, like `StyledString::ParseError`: bad data,
+  not framework misuse, yet still Tuile's.
 
 ## What was taken from Vaadin (v25.2)
 
@@ -155,9 +161,9 @@ widgets — Tuile's split already: the field reports what its parse couldn't rep
 - `forField(f).withValidator(pred, msg).bind(get, set)` → the bind-first chain; `asRequired(msg)` →
   `.required(msg)`.
 - `withConverter` → `.convert(to_model, to_value)`, chained.
-- `readBean` / `writeBeanIfValid` / `setBean` → `read` / `write?` / `model=`; `writeBean`'s
-  exception has no counterpart.
-- `isValid` / `hasChanges` / `validate` → the `{attr => ValidationFailure}` map and `changed?`.
+- `readBean` / `writeBeanIfValid` / `writeBean` / `setBean` → `read` / `write?` / `write!` /
+  `model=`; `ValidationException` → `ValidationError`.
+- `isValid` / `hasChanges` / `validate` → the `{attr => [ValidationFailure]}` map and `changed?`.
 - `binding.validate()` for cross-field rules, driven from the other field's value-change listener.
 - Escape hatches: `setValidatorsDisabled`, `withDefaultValidator(false)`, `setIsAppliedPredicate`.
 
@@ -197,13 +203,6 @@ gate for applying the draft. Vaadin instead enables the button from a status lis
 - **It removes the only continuous consumer of bad input**, so no settling policy is needed here.
   (The field side has one anyway: `bad_input_settled?`, `D_bad_input`.) If ever wanted, copy
   Vaadin's rule: errors count only after the user edited and submitted.
-
-## Open
-
-- `Q_form_level_key` — the key for a form-level error in the verdict map: `nil`, or Rails'
-  `:base`? One per key means two failing form-level rules show one at a time — acceptable, or
-  does that key alone hold an array?
-- `Q_binder_names` — `read` / `write?` / `model=` / `rule` are placeholders.
 
 ## Graduation owes
 
