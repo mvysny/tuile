@@ -132,9 +132,8 @@ lands in the same drain), batching (ten `form.add` coalesce into one settle) and
 - Measurement splits by whether the toolkit has a layout pass; Tuile is in the
   told group by construction, so staleness can't be answered with "measure it".
 - Render-then-crop (Textual, brick, ncurses pads, notcurses, tui-scrollview) is
-  per-component buffers under another name; Tuile clips at write, and the
-  `Canvas::Backend` seam keeps the other family reachable
-  (`design/ideas/per-component-buffers.md`).
+  per-component buffers under another name; Tuile clips at write and rejected
+  that family (`D_clip`), though the `Canvas::Backend` seam keeps it reachable.
 - `R_layout_pass` already covers Flutter's relayout boundary / `markNeedsLayout`
   and Android's climbing `requestLayout` — cite it. Still to verify: Android's
   two-pass `MeasureSpec`, GTK height-for-width.
@@ -151,5 +150,4 @@ Sources: [Textual widgets](https://textual.textualize.io/guide/widgets/),
 `D_scroller`, `D_declared_size`, `D_box_layouts`, `D_relayout`,
 `D_deferred_layout`, `R_layout_pass`, `D_visibility`, `D_listeners`,
 `D_scroll_nomenclature`, `D_repaint_cascade`, `Component#scroll_to_visible`,
-`design/ideas/form-layout.md` (the first answerer),
-`design/ideas/per-component-buffers.md`.
+`design/ideas/form-layout.md` (the first answerer).

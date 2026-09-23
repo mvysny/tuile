@@ -63,9 +63,8 @@ Why not:
 - *A new `INHERIT` sentinel:* unnecessary — `bg: nil` already means
   inherit-from-upward; fill-the-gaps just splices component ancestors
   between a leaf and the terminal root.
-- *notcurses-style true per-cell alpha compositing:* deferred — a much
-  larger commitment that belongs with the parked
-  `design/ideas/per-component-buffers.md` compositor, not here.
+- *notcurses-style true per-cell alpha compositing:* rejected with the
+  per-component-buffer compositor it would need (`D_clip`).
 
 The cost we carry:
 - Self-painters (`List`, `Window`'s border) can't ride the base
@@ -6470,8 +6469,8 @@ the component's `rect.top_left`, the three primitives add it on the way to the
 backend, and a `repaint` writes at `(0, 0)`. The cheap half of the win is that
 the `rect.left +` noise leaves every paint method. The half worth having is that
 a render now bakes no screen position, so it can be *moved* — the precondition
-for blitting a cached one, which is the whole of
-`design/ideas/per-component-buffers.md`. The prior art is unanimous, the TUI
+for blitting a cached one, should per-component buffers ever return (`D_clip`
+says why not). The prior art is unanimous, the TUI
 included — every toolkit surveyed hands a child an already-translated context
 (`R_paint_context`). A scrolled child still gets a rect with a negative
 `top`, so its canvas origin is simply negative too — `Rect` permits it and
@@ -6581,9 +6580,8 @@ Why not:
 - **Keep `rect` absolute and live with the mixed model.** What the origin shipped
   with, and `D_canvas` reads it honestly: a real improvement and a real
   inconsistency. What tipped it was not elegance but that the inconsistency
-  compounds — a per-component buffer
-  (`design/ideas/per-component-buffers.md`) wants the *whole* component
-  position-independent, not just its paint calls, and a second translating
+  compounds — a per-component buffer, then on the table and since rejected
+  (`D_clip`), wanted the *whole* component position-independent, not just its paint calls, and a second translating
   container would have duplicated the offset arithmetic rather than invented it.
 - **Relative `rect`, screen-space mouse events.** The obvious middle, and what
   the idea note sketched. It reads cheaper until you count: every widget's
@@ -6778,6 +6776,25 @@ every queued child, which a cull only moves into the filter, and the layout
 pass. Worth re-arguing only past a hundred-odd children in one viewport; the
 reentry is sound — anything that changes a clip changes an ancestor's rect, and
 that ancestor's repaint re-queues the children.
+
+**Why not per-component buffers** — each component rendering into a buffer of
+its own and a compositor blending them in z-order before `Buffer#flush`, so a
+scroll re-blits a shifted render instead of repainting. The seam exists
+(`D_canvas`); the prize does not. The wire is already minimal: `flush` emits
+only changed cells, and a scroll changes nearly every visible cell however the
+frame was built. What is left is `repaint` CPU, which the cull's timing above
+already bounds, and the O(content) part — `clip_for` and the layout pass —
+survives a buffer, because a scroll still moves the content's rect. A buffer
+sized to the content renders every off-viewport row the clip now skips, in
+memory; one sized to the viewport re-renders on every scroll and saves nothing.
+The one version that pays makes a scroll a blit offset rather than a rect
+change, which breaks `D_relative_rect`'s one space: `to_screen`, the mouse
+router and `cursor_position` would each learn an offset the rect does not carry.
+And a component need not fill its rect and inherits its background through the
+canvas (`D_bg_surface`), so a buffer needs a transparent cell and the compositor
+a second resolution of the background chain, silently wrong when the two drift.
+A popup, the other regime, is a few rows repainted whole. Argued, not
+prototyped; past a hundred-odd children in one viewport, the cull comes first.
 
 **Why the clip sits beside the origin in backend coordinates.** The canvas's
 *state* is in backend coordinates; the arguments to its three methods are in
