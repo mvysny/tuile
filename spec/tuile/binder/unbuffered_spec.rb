@@ -75,10 +75,34 @@ module Tuile
         assert_nil end_day.error_message
       end
 
-      it "holds every changed field back while one of them fails" do
+      it "writes the other fields through around one that fails" do
         Testing.set_value(name, "")
         Testing.set_value(end_day, 7)
-        assert_equal 5, plan.end_day
+        assert_equal ["Trip", 7], [plan.name, plan.end_day]
+        assert_equal "Name is required", name.error_message.to_s
+      end
+
+      it "keeps the failing field pending until a later edit makes it pass" do
+        Testing.set_value(name, "")
+        Testing.set_value(end_day, 7)
+        Testing.set_value(start_day, 2)
+        assert_equal "Trip", plan.name
+        Testing.set_value(name, "Holiday")
+        assert_equal ["Holiday", 2, 7], [plan.name, plan.start_day, plan.end_day]
+        assert_empty binder.last_validation
+      end
+
+      it "judges the rules with the model's value in place of the failing field" do
+        Testing.set_value(start_day, nil)
+        Testing.set_value(end_day, 0)
+        assert_equal [1, 5], [plan.start_day, plan.end_day]
+        assert_equal "Ends before it starts", end_day.error_message.to_s
+      end
+
+      it "reverts the whole batch when a rule fails" do
+        Testing.set_value(start_day, 9)
+        Testing.set_value(name, "Holiday")
+        assert_equal ["Trip", 1], [plan.name, plan.start_day]
       end
 
       it "is not an app's programmatic write" do

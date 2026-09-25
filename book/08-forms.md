@@ -42,7 +42,9 @@ is known before the form opens:
   never saw the edit.
 - **`Binder::Unbuffered`** writes every valid edit straight through. It is
   for a settings panel or a live filter, where the model *is* what the user is
-  looking at and there is no Save button at all.
+  looking at and there is no Save button at all. A field left invalid keeps
+  its old value in the model and shows why, and the other fields go on
+  writing around it.
 
 ```ruby
 binder = Binder::Unbuffered.new

@@ -1377,7 +1377,8 @@ module Tuile
 
     # Adds a rule over the whole model, run only once every field it judges
     # passes — when is the mode's: {Buffered} in `read`, `validate` and
-    # `write?`, {Unbuffered} on every edit.
+    # `write?`, {Unbuffered} on every edit, where the rule sees the model's
+    # value in place of a field left invalid.
     # 
     #   binder.rule { |p| "Start date is after end date" if p.start_date > p.end_date }    # form-level
     #   binder.rule { |p| { end_date: "Ends before it starts" } if p.end_date < p.start_date } # blames a field
@@ -1443,14 +1444,23 @@ module Tuile
       # 
       # _@param_ `show` — the attributes whose verdicts become shown; unless empty, the attributes the rules blamed are shown too.
       # 
-      # _@return_ — whether every binding and rule passed.
+      # _@param_ `partial` — write the passing candidates of `write` and run the rules even when another binding failed — its attribute keeps the value the model holds.
+      # 
+      # _@return_ — whether the rules ran and passed, which with `keep`
+      # means the passing candidates stayed in the model.
       def run: (
                  ::Array[Binder::Binding] bindings,
                  model: Object?,
                  write: ::Array[Binder::Binding],
                  keep: bool,
-                 show: (::Array[Symbol] | Symbol)
+                 show: (::Array[Symbol] | Symbol),
+                 ?partial: bool
                ) -> bool
+
+      # _@param_ `binding`
+      # 
+      # _@return_ — whether `binding` passed the last time it ran.
+      def passed?: (Binder::Binding binding) -> bool
 
       # Runs each binding's field steps and records its outcome, touching no
       # rule failure.
@@ -1709,7 +1719,8 @@ module Tuile
     #   binder.bind(max_field, :max).validate { |v| "Must be positive" unless v.positive? }
     #   binder.model = filter
     # 
-    # An invalid edit never reaches the model; the field shows why. The chain,
+    # An invalid edit never reaches the model; the field shows why, and the
+    # other fields keep writing through around it. The chain,
     # the empty/`nil` policy and how the rules use the model as scratch space are
     # {Binder}'s.
     # 
@@ -1729,12 +1740,15 @@ module Tuile
     # and the lists the sub-editors write are exactly what no binding covers.
     # 
     # == Implementation details
-    # Each edit writes every binding the user changed since {#model=}, not only
-    # its own, once all of them pass — so an edit that fixes a rule another
-    # field broke writes both, and a field the user left invalid holds the rest
-    # back. The rules run on every edit, so {#last_validation} is always
-    # current. Fields fire per keystroke, so every valid prefix passes through
-    # the model and its setters on the way.
+    # Each edit writes every binding the user changed and the model doesn't yet
+    # hold, not only its own — so an edit that fixes a rule another field broke
+    # writes both. A binding failing its field steps sits out and stays pending,
+    # its attribute keeping the last value that passed; the rules judge the
+    # model with the rest written in, and a rule failure reverts the whole
+    # batch. Vaadin's `setBean` differs here: one invalid field holds every
+    # other edit back. The rules run on every edit, so {#last_validation} is
+    # always current. Fields fire per keystroke, so every valid prefix passes
+    # through the model and its setters on the way.
     class Unbuffered < Binder
       def initialize: () -> void
 
@@ -1744,7 +1758,7 @@ module Tuile
       # _@return_ — {#last_validation}.
       def validate: () -> ::Hash[Symbol?, ::Array[ValidationFailure]]
 
-      # _@return_ — the bindings edited since the last write.
+      # _@return_ — the bindings edited and not yet written.
       def pending: () -> ::Array[Binder::Binding]
 
       # _@param_ `binding`

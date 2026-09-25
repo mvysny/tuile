@@ -102,20 +102,28 @@ module Tuile
       # @param keep [Boolean] whether a passing write stays in the model.
       # @param show [Array<Symbol>, :all] the attributes whose verdicts become
       #   shown; unless empty, the attributes the rules blamed are shown too.
-      # @return [Boolean] whether every binding and rule passed.
-      def run(bindings, model:, write:, keep:, show:)
+      # @param partial [Boolean] write the passing candidates of `write` and run
+      #   the rules even when another binding failed — its attribute keeps the
+      #   value the model holds.
+      # @return [Boolean] whether the rules ran and passed, which with `keep`
+      #   means the passing candidates stayed in the model.
+      def run(bindings, model:, write:, keep:, show:, partial: false)
         outcomes = run_fields(bindings)
-        ok = outcomes.values.all?(&:ok?)
-        if ok && model
-          candidates = write.to_h { [_1.attr, outcomes.fetch(_1).candidate] }
-          ok = run_rules(model, candidates, keep:)
+        passed = false
+        if model && (partial || outcomes.values.all?(&:ok?))
+          candidates = write.select { outcomes.fetch(_1).ok? }.to_h { [_1.attr, outcomes.fetch(_1).candidate] }
+          passed = run_rules(model, candidates, keep:)
         else
           @rule_failures = {}
         end
         show += @rule_failures.keys.compact if show.is_a?(Array) && !show.empty?
         reveal(show)
-        ok
+        passed
       end
+
+      # @param binding [Binder::Binding]
+      # @return [Boolean] whether `binding` passed the last time it ran.
+      def passed?(binding) = !@field_failures.key?(binding.attr)
 
       # Runs each binding's field steps and records its outcome, touching no
       # rule failure.

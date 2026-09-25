@@ -140,6 +140,14 @@ the base, `Binder`.
   (Vaadin's `changedBindings`), not just its own. With only its own: `start_date` → 10 fails the
   rule (`end_date` 5) and reverts; `end_date` → 20 then passes against the model's *old* start, and
   the field showing 10 never reaches the model — a silent divergence, not just a stale message.
+- **…and a failing one sits out rather than holding the rest back — unlike Vaadin.** Vaadin's
+  `setBean` runs `doWriteIfValid(bean, changedBindings)` on every edit, which writes nothing while
+  any changed binding fails (verified with a Karibu test against 25.2.7: an empty required name
+  keeps a valid `endDay` edit out of the bean). In a settings panel or a live filter that freezes
+  the whole form on one bad box. The failing binding stays pending, its attribute keeps the last
+  value that passed, so the model still only ever holds a state the rules accepted; the divergence
+  is on screen, as the field's red verdict. A rule failure still reverts the whole batch — a rule
+  can't say which attributes it read.
 - **The cadence is the field's, not the Binder's**, and the Binder owns no blur hook of its own.
   v1 ships against eager fields, accepted: a string or number field with a rule paints its verdict
   mid-word (`length < 3` is red at the first letter), and `Binder::Unbuffered` writes every valid

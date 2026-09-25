@@ -11,7 +11,8 @@ module Tuile
     #   binder.bind(max_field, :max).validate { |v| "Must be positive" unless v.positive? }
     #   binder.model = filter
     #
-    # An invalid edit never reaches the model; the field shows why. The chain,
+    # An invalid edit never reaches the model; the field shows why, and the
+    # other fields keep writing through around it. The chain,
     # the empty/`nil` policy and how the rules use the model as scratch space are
     # {Binder}'s.
     #
@@ -31,12 +32,15 @@ module Tuile
     # and the lists the sub-editors write are exactly what no binding covers.
     #
     # == Implementation details
-    # Each edit writes every binding the user changed since {#model=}, not only
-    # its own, once all of them pass — so an edit that fixes a rule another
-    # field broke writes both, and a field the user left invalid holds the rest
-    # back. The rules run on every edit, so {#last_validation} is always
-    # current. Fields fire per keystroke, so every valid prefix passes through
-    # the model and its setters on the way.
+    # Each edit writes every binding the user changed and the model doesn't yet
+    # hold, not only its own — so an edit that fixes a rule another field broke
+    # writes both. A binding failing its field steps sits out and stays pending,
+    # its attribute keeping the last value that passed; the rules judge the
+    # model with the rest written in, and a rule failure reverts the whole
+    # batch. Vaadin's `setBean` differs here: one invalid field holds every
+    # other edit back. The rules run on every edit, so {#last_validation} is
+    # always current. Fields fire per keystroke, so every valid prefix passes
+    # through the model and its setters on the way.
     class Unbuffered < Binder
       # @return [Object, nil] the model edits write into.
       attr_reader :model
@@ -69,7 +73,7 @@ module Tuile
 
       private
 
-      # @return [Array<Binder::Binding>] the bindings edited since the last write.
+      # @return [Array<Binder::Binding>] the bindings edited and not yet written.
       def pending = @engine.bindings.select { @changed.include?(_1.attr) }
 
       # @param binding [Binder::Binding]
@@ -79,8 +83,8 @@ module Tuile
         @changed << binding.attr if edit
         set = pending
         set << binding unless set.include?(binding)
-        written = @engine.run(set, model: @model, write: set, keep: true, show: [binding.attr])
-        @changed.clear if written && @model
+        kept = @engine.run(set, model: @model, write: set, keep: true, show: [binding.attr], partial: true)
+        @changed.subtract(set.select { @engine.passed?(_1) }.map(&:attr)) if kept
       end
     end
   end

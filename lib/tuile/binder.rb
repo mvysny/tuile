@@ -59,7 +59,8 @@ module Tuile
 
     # Adds a rule over the whole model, run only once every field it judges
     # passes — when is the mode's: {Buffered} in `read`, `validate` and
-    # `write?`, {Unbuffered} on every edit.
+    # `write?`, {Unbuffered} on every edit, where the rule sees the model's
+    # value in place of a field left invalid.
     #
     #   binder.rule { |p| "Start date is after end date" if p.start_date > p.end_date }    # form-level
     #   binder.rule { |p| { end_date: "Ends before it starts" } if p.end_date < p.start_date } # blames a field
