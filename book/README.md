@@ -84,8 +84,8 @@ one, not to fill an outline.
    Signatures stay in the rdoc.
 8. **[Forms: fields bound to a model](08-forms.md).** `Tuile::Binder`
    and its two modes — buffered behind an OK/Cancel, unbuffered for a
-   live panel — the validator chain, rules across fields and why they
-   write into the model and revert, gating Save at the click, a form
+   live panel — the validator chain, model validators across fields and
+   why they write into the model and revert, gating Save at the click, a form
    that binds itself to the binder it is handed, and copying a draft for
    a form whose sub-editors write as they go.
 9. **[Testing a Tuile app](09-testing.md).** The testing approach:

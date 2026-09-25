@@ -1,7 +1,7 @@
 # 8. Forms: fields bound to a model
 
 Chapter 7 left the model to you. Its login form did the bookkeeping by hand:
-read the fields, check each rule, set *or clear* every verdict, and only then
+read the fields, check each one, set *or clear* every verdict, and only then
 act. That is fine for two fields. On a form with ten fields and a model
 behind it you would write the same thing over and over: copy the model into
 the fields, copy the fields back on Save, and make sure an invalid value never
@@ -73,7 +73,7 @@ the Ruby way, by raising `ArgumentError`, which is what `Integer("x")`,
 as converters unchanged, and their message becomes the verdict. Nothing else is
 rescued, so a bug in your converter still surfaces as a bug.
 
-Three rules keep the common case short:
+Three conventions keep the common case short:
 
 - **Validators skip `nil`, and a converter turns an empty field into `nil`
   without calling you.** An optional field never needs a `v &&` guard, and
@@ -92,30 +92,33 @@ as the field's empty value, which for a text field is `""`. Save that form
 untouched and the model's `nil` becomes `""`. Vaadin has the same drift, and
 nobody has solved it better. If your model cares, normalize in the setter.
 
-## Rules across fields
+## Validating the whole model
 
-Some rules need two fields at once: a check-out after its check-in, two
+Some checks need two fields at once: a check-out after its check-in, two
 passwords that must match. The field can't compute those. It can't even see
-its sibling. So a rule is written against the whole model:
+its sibling. So validation comes at two levels. Everything so far was *field
+validation*, a binding's chain judging one field's value. A *model
+validator* judges the whole model, and you add it to the binder rather than
+to a binding:
 
 ```ruby
-binder.rule do |b|
+binder.add_validator do |b|
   { check_out: "Must be after check-in" } if b.check_in && b.check_out && b.check_out <= b.check_in
 end
-binder.rule { |p| "This booking would overlap another" if overlaps?(p) }
+binder.add_validator { |p| "This booking would overlap another" if overlaps?(p) }
 ```
 
-Validators skip `nil`, but a rule sees the whole model and gets no such help,
-hence the guard on an optional date. A rule returns a bare `String` for a
-form-level problem, or a hash to blame one
-or more fields. A blamed message lands on that field's `error_message`. A
+Field validators skip `nil`, but a model validator sees the whole model and
+gets no such help, hence the guard on an optional date. A model validator
+returns a bare `String` for a form-level problem, or a hash to blame one or
+more fields. A blamed message lands on that field's `error_message`. A
 form-level one has no field to land on, so it sits under the `nil` key of
 `last_validation`, for your Save alert to show.
 
-A rule judges the model itself, which raises the question of *which* model.
-The candidates are still in the fields, not in `person`. So the binder writes
-them into the model, runs the rules, and puts the old values back through the
-setters when a rule fails. **An invalid value never stays in your model.** That
+A model validator judges the model itself, which raises the question of
+*which* model. The candidates are still in the fields, not in `person`. So the
+binder writes them into the model, runs the model validators, and puts the old
+values back through the setters when one fails. **An invalid value never stays in your model.** That
 matters because a Tuile app's model is often the source of truth in memory,
 not a copy about to be thrown away at the end of a web request.
 
@@ -135,9 +138,13 @@ correctly. `dup` shares every nested array, `Marshal` breaks on ActiveRecord,
 and an ActiveRecord `dup` loses its `id`. Only the app knows how deep a copy
 its model needs, a point we come back to below.
 
-Rules don't run while any field's own steps fail. The model would be missing
-that field's candidate, and the rule would judge a mix of new and stale values.
-Fix the field, and the rules get their turn.
+In the buffered mode, model validators don't run while any field validation
+fails. The model would be missing that field's candidate, and the model
+validators would judge a mix of new and stale values. Fix the field, and they
+get their turn. The unbuffered mode can't wait like that, or one bad field
+would freeze a live panel. There, a field left invalid keeps its last good
+value in the model, and the model validators judge the model with that value
+in its place.
 
 ## When a verdict shows
 
@@ -152,12 +159,12 @@ button. A text or number field announces every keystroke, so its verdict
 follows along as the user types; a date or time field announces only when the
 user leaves it or presses Enter, for the reason chapter 7 gave.
 
-A rule's message is a snapshot. In the buffered mode rules run only on `read`,
-`validate` and `write?`. So once the user fixes the check-in date,
-"Must be after check-in" stays on the check-out field until the next Save.
-That is the "last" in `last_validation`, and Vaadin behaves the same way. The
-unbuffered mode runs its rules on every edit, so there the message is always
-current.
+A model validation failure is a snapshot. In the buffered mode the model
+validators run only on `read`, `validate` and `write?`. So once the user fixes
+the check-in date, "Must be after check-in" stays on the check-out field until
+the next Save. That is the "last" in `last_validation`, and Vaadin behaves the
+same way. The unbuffered mode runs its model validators on every edit, so
+there the message is always current.
 
 ## Gating Save at the click
 
@@ -227,14 +234,14 @@ binder.read(booking)
 ```
 
 This splits the work cleanly. The **form** owns its fields, their captions and
-its rules, so no caller ever reaches in for a `TextField`. The **caller** owns
+its validators, so no caller ever reaches in for a `TextField`. The **caller** owns
 the choice of mode, the model and the Save button, because only the caller
 knows whether this form sits in an OK/Cancel popup or a live panel. Both modes
 share one base class, so `booking_form` takes a `Binder` and serves either one
 unchanged.
 
-Notice `required` said twice: once to the binder, as a rule, and once to the
-`FormItem`, as the marker beside the caption. The binder is handed the field,
+Notice `required` said twice: once to the binder, as a field validation, and
+once to the `FormItem`, as the marker beside the caption. The binder is handed the field,
 never the item around it. Reaching up the tree to find one would make the
 binder depend on a layout nobody gave it.
 

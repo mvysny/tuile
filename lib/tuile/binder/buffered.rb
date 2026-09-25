@@ -3,7 +3,7 @@
 module Tuile
   class Binder
     # Binds fields to a model and writes them back only on Save, and only when
-    # every rule passes — the binder for a form in an OK/Cancel popup, where
+    # every validator passes — the binder for a form in an OK/Cancel popup, where
     # Cancel is free because nothing reached the model:
     #
     #   binder = Binder::Buffered.new
@@ -23,15 +23,16 @@ module Tuile
     # A field's verdict shows once the user has edited it, and on every field
     # at once after {#write?} or {#validate}; {#read} shows none, so a blank
     # "New person" form doesn't open red. The chain, the empty/`nil` policy and
-    # how the rules use the model as scratch space are {Binder}'s.
+    # how the model validators use the model as scratch space are {Binder}'s.
     #
     # Fields fire {Component::HasValue#on_value_change} per keystroke, so a
     # string or number field's verdict updates as the user types.
     #
     # == Implementation details
-    # Each edit runs its own binding only; the rules run in {#read}, {#validate}
-    # and {#write?} alone, so a rule's message stays in {#last_validation} after
-    # the edit that fixes it, until the next of those. An edit is a
+    # Each edit runs its own binding only; the model validators run in
+    # {#read}, {#validate} and {#write?} alone, so a model validation failure
+    # stays in {#last_validation} after the edit that fixes it, until the next
+    # of those. An edit is a
     # `from_user?` value change: the binder's own writes and an app's
     # {Component::HasValue#value=} are not the user's, and run nothing.
     class Buffered < Binder
@@ -43,7 +44,7 @@ module Tuile
 
       # Shows `model` in the fields and remembers it for {#validate}; a `nil`
       # model clears them. Recomputes {#last_validation}, showing no verdict, and
-      # writes nothing — the rules see the model as it is.
+      # writes nothing — the model validators see the model as it is.
       # @param model [Object, nil]
       # @return [void]
       # @raise [ArgumentError] when a converter's `to_value` rejects the stored value.
@@ -56,7 +57,7 @@ module Tuile
       end
 
       # Runs every binding and — against the model {#read} was handed — every
-      # rule, showing every verdict, and leaves the model as it was.
+      # model validator, showing every verdict, and leaves the model as it was.
       # @return [Hash{Symbol, nil => Array<ValidationFailure>}] {#last_validation}.
       def validate
         all = @engine.bindings
@@ -64,7 +65,7 @@ module Tuile
         last_validation
       end
 
-      # Writes the fields into `model` if every binding and rule passes, showing
+      # Writes the fields into `model` if every validator passes, showing
       # every verdict either way; on a failure `model` is left as it was.
       # @param model [Object] usually the one {#read} was handed, but need not be.
       # @return [Boolean] whether the write happened; see {#last_validation} when not.

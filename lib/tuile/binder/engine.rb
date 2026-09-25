@@ -2,17 +2,18 @@
 
 module Tuile
   class Binder
-    # The machinery every {Binder} holds: the bindings, the rules, the verdict
-    # map, the write-validate-revert, and which fields show their verdicts.
-    # The two modes differ only in *when* they call {#run} and with what —
-    # each passes a block the engine calls on every field edit.
+    # The machinery every {Binder} holds: the bindings, the model validators,
+    # the verdict map, the write-validate-revert, and which fields show their
+    # verdicts. The two modes differ only in *when* they call {#run} and with
+    # what — each passes a block the engine calls on every field edit.
     #
     # == Implementation details
-    # The verdict map has two halves with two lifetimes: field-step failures
-    # are replaced per binding whenever that binding runs, rule failures only
-    # when the rules run (or are skipped, which clears them). So a rule's
-    # message outlives the edit that fixed it until the next rule run — the
-    # "last" in `last_validation`.
+    # The verdict map has two halves with two lifetimes: field validation
+    # failures are replaced per binding whenever that binding runs, model
+    # validation failures only when the model validators run (or are skipped,
+    # which clears them). So a model validation failure outlives the edit that
+    # fixed it until the next model validation — the "last" in
+    # `last_validation`.
     #
     # A field shows its verdict only once it is *shown*: {#populate} hides
     # every one, an edit reveals its own field, a full run shows them all. That
@@ -29,9 +30,9 @@ module Tuile
       def initialize(&on_edit)
         @notify = on_edit
         @bindings = []
-        @rules = []
+        @model_validators = []
         @field_failures = {}
-        @rule_failures = {}
+        @model_failures = {}
         @shown = Set.new
         @populating = false
       end
@@ -58,15 +59,16 @@ module Tuile
       end
 
       # @return [void]
-      def rule(&rule)
-        raise ArgumentError, "rule needs a block" if rule.nil?
+      def add_validator(&validator)
+        raise ArgumentError, "add_validator needs a block" if validator.nil?
 
-        @rules << rule
+        @model_validators << validator
         nil
       end
 
       # @return [Hash{Symbol, nil => Array<ValidationFailure>}] frozen, keys in
-      #   `bind` order then the rules' blame, the form-level `nil` key last.
+      #   `bind` order then the model validators' blame, the form-level `nil`
+      #   key last.
       def last_validation
         @last_validation ||= begin
           map = {}
@@ -74,7 +76,7 @@ module Tuile
             outcome = @field_failures[b.attr]
             map[b.attr] = [outcome.failure] if outcome
           end
-          @rule_failures.each { |key, list| map[key] = map.fetch(key, []) + list }
+          @model_failures.each { |key, list| map[key] = map.fetch(key, []) + list }
           map.transform_values(&:freeze).freeze
         end
       end
@@ -92,31 +94,33 @@ module Tuile
       end
 
       # Runs `bindings`, then — only if every one passed and there is a model —
-      # writes the candidates of `write` into it and runs the rules, keeping the
-      # write only when `keep` and every rule passed. Skipped rules clear their
-      # failures, since they would judge a mix of new and stale values.
+      # writes the candidates of `write` into it and runs the model validators,
+      # keeping the write only when `keep` and every model validator passed.
+      # Skipped model validators clear their failures, since they would judge a
+      # mix of new and stale values.
       # @param bindings [Array<Binder::Binding>] whose field steps to run.
       # @param model [Object, nil]
       # @param write [Array<Binder::Binding>] a subset of `bindings` whose candidates
       #   to write.
       # @param keep [Boolean] whether a passing write stays in the model.
       # @param show [Array<Symbol>, :all] the attributes whose verdicts become
-      #   shown; unless empty, the attributes the rules blamed are shown too.
+      #   shown; unless empty, the attributes the model validators blamed are
+      #   shown too.
       # @param partial [Boolean] write the passing candidates of `write` and run
-      #   the rules even when another binding failed — its attribute keeps the
-      #   value the model holds.
-      # @return [Boolean] whether the rules ran and passed, which with `keep`
-      #   means the passing candidates stayed in the model.
+      #   the model validators even when another binding failed — its attribute
+      #   keeps the value the model holds.
+      # @return [Boolean] whether the model validators ran and passed, which
+      #   with `keep` means the passing candidates stayed in the model.
       def run(bindings, model:, write:, keep:, show:, partial: false)
         outcomes = run_fields(bindings)
         passed = false
         if model && (partial || outcomes.values.all?(&:ok?))
           candidates = write.select { outcomes.fetch(_1).ok? }.to_h { [_1.attr, outcomes.fetch(_1).candidate] }
-          passed = run_rules(model, candidates, keep:)
+          passed = run_model_validators(model, candidates, keep:)
         else
-          @rule_failures = {}
+          @model_failures = {}
         end
-        show += @rule_failures.keys.compact if show.is_a?(Array) && !show.empty?
+        show += @model_failures.keys.compact if show.is_a?(Array) && !show.empty?
         reveal(show)
         passed
       end
@@ -126,7 +130,7 @@ module Tuile
       def passed?(binding) = !@field_failures.key?(binding.attr)
 
       # Runs each binding's field steps and records its outcome, touching no
-      # rule failure.
+      # model validation failure.
       # @param bindings [Array<Binder::Binding>]
       # @return [Hash{Binder::Binding => Binder::Binding::Outcome}]
       def run_fields(bindings)
@@ -157,7 +161,8 @@ module Tuile
         @notify.call(binding, edit) unless @populating
       end
 
-      # One message per field: its own failure first, then the rules' blame.
+      # One message per field: its own failure first, then the model
+      # validators' blame.
       # Bad input writes `nil` — the field shows its own report already, and a
       # copy would go stale the moment the input is fixed.
       # @param binding [Binder::Binding]
@@ -166,15 +171,15 @@ module Tuile
         own = @field_failures[binding.attr]
         return nil if own&.bad_input
 
-        (own&.failure || @rule_failures[binding.attr]&.first)&.message
+        (own&.failure || @model_failures[binding.attr]&.first)&.message
       end
 
       # @param model [Object]
       # @param candidates [Hash{Symbol => Object}]
       # @param keep [Boolean]
-      # @return [Boolean] whether every rule passed.
-      def run_rules(model, candidates, keep:)
-        @rule_failures = {}
+      # @return [Boolean] whether every model validator passed.
+      def run_model_validators(model, candidates, keep:)
+        @model_failures = {}
         snapshot = {}
         ok = false
         begin
@@ -185,8 +190,8 @@ module Tuile
             snapshot[attr] = old
             model.public_send(:"#{attr}=", value)
           end
-          @rules.each { collect(model, _1.call(model)) }
-          ok = @rule_failures.empty?
+          @model_validators.each { collect(model, _1.call(model)) }
+          ok = @model_failures.empty?
         ensure
           snapshot.each { |attr, value| model.public_send(:"#{attr}=", value) } unless ok && keep
         end
@@ -194,7 +199,8 @@ module Tuile
       end
 
       # @param model [Object]
-      # @param result [String, Hash{Symbol, nil => String, nil}, nil] what a rule returned.
+      # @param result [String, Hash{Symbol, nil => String, nil}, nil] what a
+      #   model validator returned.
       # @return [void]
       # @raise [Error] on any other return.
       def collect(model, result)
@@ -205,13 +211,13 @@ module Tuile
           result.each do |attr, message|
             next if message.nil?
             unless (attr.nil? || attr.is_a?(Symbol)) && message.is_a?(String)
-              raise Error, "a rule blamed #{attr.inspect} => #{message.inspect}; blame {Symbol => String}"
+              raise Error, "a model validator blamed #{attr.inspect} => #{message.inspect}; blame {Symbol => String}"
             end
 
             blame(model, attr, message)
           end
         else
-          raise Error, "a rule returned #{result.inspect}; return nil, a String message, " \
+          raise Error, "a model validator returned #{result.inspect}; return nil, a String message, " \
                        "or {attr => message} — spell a condition `\"msg\" if cond`"
         end
       end
@@ -223,7 +229,7 @@ module Tuile
       def blame(model, attr, message)
         field = attr && @bindings.find { _1.attr == attr }&.field
         value = model.public_send(attr) if attr && model.respond_to?(attr)
-        (@rule_failures[attr] ||= []) << ValidationFailure.new(field, message, value)
+        (@model_failures[attr] ||= []) << ValidationFailure.new(field, message, value)
       end
     end
   end

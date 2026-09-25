@@ -85,7 +85,7 @@ module Tuile
       end
 
       it "fires no setter, even over the \"\"-for-nil drift" do
-        binder.rule { nil }
+        binder.add_validator { nil }
         blank = person_class.new
         binder.read(blank)
         assert_empty blank.writes
@@ -192,10 +192,10 @@ module Tuile
       end
     end
 
-    context "rules" do
+    context "model validators" do
       before do
-        binder.rule { |p| "Too old for this form" if p.age > 100 }
-        binder.rule { |p| { name: "Reserved" } if p.name == "root" }
+        binder.add_validator { |p| "Too old for this form" if p.age > 100 }
+        binder.add_validator { |p| { name: "Reserved" } if p.name == "root" }
         binder.read(person)
       end
 
@@ -234,19 +234,19 @@ module Tuile
         assert_nil name.error_message
       end
 
-      it "raises on a rule answering false" do
-        binder.rule { false }
+      it "raises on a model validator answering false" do
+        binder.add_validator { false }
         assert_raises(Error) { binder.write?(person) }
       end
     end
 
     context "validate" do
       before do
-        binder.rule { |p| "Too old for this form" if p.age > 100 }
+        binder.add_validator { |p| "Too old for this form" if p.age > 100 }
         binder.read(person)
       end
 
-      it "runs the rules against read's model and leaves it as it was" do
+      it "runs the model validators against read's model and leaves it as it was" do
         Testing.set_value(age, 200)
         assert_equal({ nil => ["Too old for this form"] }, binder.validate.transform_values { _1.map(&:message) })
         assert_equal 30, person.age

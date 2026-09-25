@@ -12,10 +12,10 @@ module Tuile
     # @!attribute [r] field
     #   @return [Component::HasValue, nil] the field bound to the failing
     #     attribute; `nil` for a form-level failure (the `nil` key) and for an
-    #     attribute a rule blamed that no field is bound to.
+    #     attribute a model validator blamed that no field is bound to.
     # @!attribute [r] message
-    #   @return [String] what went wrong, as the validator, converter or rule
-    #     worded it; a field's own bad input reports its `bad_input_message`.
+    #   @return [String] what went wrong, as the validator or converter worded
+    #     it; a field's own bad input reports its `bad_input_message`.
     # @!attribute [r] value
     #   @return [Object, nil] whatever the failing step saw — the field's value
     #     before a converter, the model form after one; for a blamed attribute,

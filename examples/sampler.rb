@@ -1100,7 +1100,8 @@ module SamplerExample
     # Two columns and the row's gap still fit an 80-column terminal.
     BINDER_COLUMN_WIDTH = 34
 
-    # Three bound fields and a rule across two of them, blamed on Check-out.
+    # Three bound fields and a model validator across two of them, blamed on
+    # Check-out.
     # `on_edit` is registered after the binder's own listener, so it runs after
     # the binder has validated — and, unbuffered, written.
     # @param binder [Tuile::Binder] either mode: this only binds.
@@ -1113,7 +1114,7 @@ module SamplerExample
             .validate { |v| "At least 3 characters" if v.length < 3 }
       binder.bind(check_in, :check_in).required("Pick a date")
       binder.bind(check_out, :check_out).required("Pick a date")
-      binder.rule do |b|
+      binder.add_validator do |b|
         { check_out: "Must be after check-in" } if b.check_in && b.check_out && b.check_out <= b.check_in
       end
       [name, check_in, check_out].each { _1.on_value_change(&on_edit) }

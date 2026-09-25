@@ -1333,7 +1333,8 @@ module Tuile
   # `Binder`, the Ruby way. Abstract; build one of its two modes:
   # 
   # - {Buffered} — `read` the model into the fields, `write?` it back on
-  #   Save; nothing reaches the model until every rule passes. An OK/Cancel popup.
+  #   Save; nothing reaches the model until every validator passes. An
+  #   OK/Cancel popup.
   # - {Unbuffered} — `model=`, and every valid edit writes through at
   #   once. A settings panel, a live filter, or a draft the app deep-copied.
   # 
@@ -1342,19 +1343,23 @@ module Tuile
   # 
   #   binder.bind(name_field, :name).required("Name is required")
   #   binder.bind(age_field, :age).validate { |v| "Must be positive" unless v.positive? }
-  #   binder.rule { |p| { end_date: "Ends before it starts" } if p.end_date < p.start_date }
+  #   binder.add_validator { |p| { end_date: "Ends before it starts" } if p.end_date < p.start_date }
   #   binder.last_validation   # => {end_date: [ValidationFailure]}, frozen; {} when valid
   # 
-  # The model is any object with attribute readers and writers
-  # (`attr_accessor`, `Struct`, ActiveRecord). A verdict lands on each field's
+  # Validation comes at two levels: a *field validation failure* is one
+  # binding's chain rejecting its field's value (`required`, a `validate`
+  # step, a failed `convert`, the field's own bad input); a *model validation
+  # failure* is an {#add_validator} block rejecting the model as a whole. The
+  # model is any object with attribute readers and writers (`attr_accessor`,
+  # `Struct`, ActiveRecord). A verdict lands on each field's
   # {Component::HasValidation#error_message}, and a {Component::FormItem}
-  # paints it; a form-level one (a rule returning a bare String) sits under
-  # the `nil` key of {#last_validation}, for the Save alert.
+  # paints it; a form-level one (a model validator returning a bare String)
+  # sits under the `nil` key of {#last_validation}, for the Save alert.
   # 
-  # == The model is scratch space for the rules
-  # A rule judges the model itself, so the Binder writes the candidates into
-  # it, runs the rules, and restores the previous values through the setters
-  # when one fails — an invalid value never *stays* in the model, but on a
+  # == The model is scratch space for the model validators
+  # A model validator judges the model itself, so the Binder writes the
+  # candidates into it, runs the model validators, and restores the previous
+  # values through the setters when one fails — an invalid value never *stays* in the model, but on a
   # failure every written setter fires twice. Only bound attributes are
   # restored: state a setter derives elsewhere comes back only if the setter
   # re-derives it. An attribute is written only when its candidate differs
@@ -1375,34 +1380,35 @@ module Tuile
     # _@param_ `attr` — read with `model.attr`, written with `model.attr = v`.
     def bind: (Component::HasValue field, Symbol attr) -> Binder::Binding
 
-    # Adds a rule over the whole model, run only once every field it judges
-    # passes — when is the mode's: {Buffered} in `read`, `validate` and
-    # `write?`, {Unbuffered} on every edit, where the rule sees the model's
-    # value in place of a field left invalid.
+    # Adds a model validator, judging the whole model, run only once every
+    # field it judges passes — when is the mode's: {Buffered} in `read`,
+    # `validate` and `write?`, {Unbuffered} on every edit, where it sees the
+    # model's value in place of a field left invalid.
     # 
-    #   binder.rule { |p| "Start date is after end date" if p.start_date > p.end_date }    # form-level
-    #   binder.rule { |p| { end_date: "Ends before it starts" } if p.end_date < p.start_date } # blames a field
+    #   binder.add_validator { |p| "Start date is after end date" if p.start_date > p.end_date }    # form-level
+    #   binder.add_validator { |p| { end_date: "Ends before it starts" } if p.end_date < p.start_date } # blames a field
     # 
     # A blamed attribute's message lands on its field; a bare String goes under
     # the `nil` key of {#last_validation}.
-    def rule: () ?{ (Object model) -> (String | ::Hash[Symbol, String])? } -> void
+    def add_validator: () ?{ (Object model) -> (String | ::Hash[Symbol, String])? } -> void
 
     # _@return_ — the verdict of
     # the latest run, frozen; `{}` when valid. Form-level failures are under
     # `nil`.
     def last_validation: () -> ::Hash[Symbol?, ::Array[ValidationFailure]]
 
-    # The machinery every {Binder} holds: the bindings, the rules, the verdict
-    # map, the write-validate-revert, and which fields show their verdicts.
-    # The two modes differ only in *when* they call {#run} and with what —
-    # each passes a block the engine calls on every field edit.
+    # The machinery every {Binder} holds: the bindings, the model validators,
+    # the verdict map, the write-validate-revert, and which fields show their
+    # verdicts. The two modes differ only in *when* they call {#run} and with
+    # what — each passes a block the engine calls on every field edit.
     # 
     # == Implementation details
-    # The verdict map has two halves with two lifetimes: field-step failures
-    # are replaced per binding whenever that binding runs, rule failures only
-    # when the rules run (or are skipped, which clears them). So a rule's
-    # message outlives the edit that fixed it until the next rule run — the
-    # "last" in `last_validation`.
+    # The verdict map has two halves with two lifetimes: field validation
+    # failures are replaced per binding whenever that binding runs, model
+    # validation failures only when the model validators run (or are skipped,
+    # which clears them). So a model validation failure outlives the edit that
+    # fixed it until the next model validation — the "last" in
+    # `last_validation`.
     # 
     # A field shows its verdict only once it is *shown*: {#populate} hides
     # every one, an edit reveals its own field, a full run shows them all. That
@@ -1417,10 +1423,11 @@ module Tuile
       # _@param_ `attr`
       def bind: (Component::HasValue field, Symbol attr) -> Binder::Binding
 
-      def rule: () -> void
+      def add_validator: () -> void
 
       # _@return_ — frozen, keys in
-      # `bind` order then the rules' blame, the form-level `nil` key last.
+      # `bind` order then the model validators' blame, the form-level `nil`
+      # key last.
       def last_validation: () -> ::Hash[Symbol?, ::Array[ValidationFailure]]
 
       # Shows `model` in every field (a `nil` model clears them) and hides every
@@ -1430,9 +1437,10 @@ module Tuile
       def populate: (Object? model) -> void
 
       # Runs `bindings`, then — only if every one passed and there is a model —
-      # writes the candidates of `write` into it and runs the rules, keeping the
-      # write only when `keep` and every rule passed. Skipped rules clear their
-      # failures, since they would judge a mix of new and stale values.
+      # writes the candidates of `write` into it and runs the model validators,
+      # keeping the write only when `keep` and every model validator passed.
+      # Skipped model validators clear their failures, since they would judge a
+      # mix of new and stale values.
       # 
       # _@param_ `bindings` — whose field steps to run.
       # 
@@ -1442,12 +1450,12 @@ module Tuile
       # 
       # _@param_ `keep` — whether a passing write stays in the model.
       # 
-      # _@param_ `show` — the attributes whose verdicts become shown; unless empty, the attributes the rules blamed are shown too.
+      # _@param_ `show` — the attributes whose verdicts become shown; unless empty, the attributes the model validators blamed are shown too.
       # 
-      # _@param_ `partial` — write the passing candidates of `write` and run the rules even when another binding failed — its attribute keeps the value the model holds.
+      # _@param_ `partial` — write the passing candidates of `write` and run the model validators even when another binding failed — its attribute keeps the value the model holds.
       # 
-      # _@return_ — whether the rules ran and passed, which with `keep`
-      # means the passing candidates stayed in the model.
+      # _@return_ — whether the model validators ran and passed, which
+      # with `keep` means the passing candidates stayed in the model.
       def run: (
                  ::Array[Binder::Binding] bindings,
                  model: Object?,
@@ -1463,7 +1471,7 @@ module Tuile
       def passed?: (Binder::Binding binding) -> bool
 
       # Runs each binding's field steps and records its outcome, touching no
-      # rule failure.
+      # model validation failure.
       # 
       # _@param_ `bindings`
       def run_fields: (::Array[Binder::Binding] bindings) -> ::Hash[Binder::Binding, Binder::Binding::Outcome]
@@ -1480,7 +1488,8 @@ module Tuile
       # _@param_ `edit`
       def edited: (Binder::Binding binding, bool edit) -> void
 
-      # One message per field: its own failure first, then the rules' blame.
+      # One message per field: its own failure first, then the model
+      # validators' blame.
       # Bad input writes `nil` — the field shows its own report already, and a
       # copy would go stale the moment the input is fixed.
       # 
@@ -1493,12 +1502,12 @@ module Tuile
       # 
       # _@param_ `keep`
       # 
-      # _@return_ — whether every rule passed.
-      def run_rules: (Object model, ::Hash[Symbol, Object] candidates, keep: bool) -> bool
+      # _@return_ — whether every model validator passed.
+      def run_model_validators: (Object model, ::Hash[Symbol, Object] candidates, keep: bool) -> bool
 
       # _@param_ `model`
       # 
-      # _@param_ `result` — what a rule returned.
+      # _@param_ `result` — what a model validator returned.
       def collect: (Object model, (String | ::Hash[Symbol?, String?])? result) -> void
 
       # _@param_ `model`
@@ -1639,7 +1648,7 @@ module Tuile
     end
 
     # Binds fields to a model and writes them back only on Save, and only when
-    # every rule passes — the binder for a form in an OK/Cancel popup, where
+    # every validator passes — the binder for a form in an OK/Cancel popup, where
     # Cancel is free because nothing reached the model:
     # 
     #   binder = Binder::Buffered.new
@@ -1659,15 +1668,16 @@ module Tuile
     # A field's verdict shows once the user has edited it, and on every field
     # at once after {#write?} or {#validate}; {#read} shows none, so a blank
     # "New person" form doesn't open red. The chain, the empty/`nil` policy and
-    # how the rules use the model as scratch space are {Binder}'s.
+    # how the model validators use the model as scratch space are {Binder}'s.
     # 
     # Fields fire {Component::HasValue#on_value_change} per keystroke, so a
     # string or number field's verdict updates as the user types.
     # 
     # == Implementation details
-    # Each edit runs its own binding only; the rules run in {#read}, {#validate}
-    # and {#write?} alone, so a rule's message stays in {#last_validation} after
-    # the edit that fixes it, until the next of those. An edit is a
+    # Each edit runs its own binding only; the model validators run in
+    # {#read}, {#validate} and {#write?} alone, so a model validation failure
+    # stays in {#last_validation} after the edit that fixes it, until the next
+    # of those. An edit is a
     # `from_user?` value change: the binder's own writes and an app's
     # {Component::HasValue#value=} are not the user's, and run nothing.
     class Buffered < Binder
@@ -1675,18 +1685,18 @@ module Tuile
 
       # Shows `model` in the fields and remembers it for {#validate}; a `nil`
       # model clears them. Recomputes {#last_validation}, showing no verdict, and
-      # writes nothing — the rules see the model as it is.
+      # writes nothing — the model validators see the model as it is.
       # 
       # _@param_ `model`
       def read: (Object? model) -> void
 
       # Runs every binding and — against the model {#read} was handed — every
-      # rule, showing every verdict, and leaves the model as it was.
+      # model validator, showing every verdict, and leaves the model as it was.
       # 
       # _@return_ — {#last_validation}.
       def validate: () -> ::Hash[Symbol?, ::Array[ValidationFailure]]
 
-      # Writes the fields into `model` if every binding and rule passes, showing
+      # Writes the fields into `model` if every validator passes, showing
       # every verdict either way; on a failure `model` is left as it was.
       # 
       # _@param_ `model` — usually the one {#read} was handed, but need not be.
@@ -1720,8 +1730,8 @@ module Tuile
     #   binder.model = filter
     # 
     # An invalid edit never reaches the model; the field shows why, and the
-    # other fields keep writing through around it. The chain,
-    # the empty/`nil` policy and how the rules use the model as scratch space are
+    # other fields keep writing through around it. The chain, the empty/`nil`
+    # policy and how the model validators use the model as scratch space are
     # {Binder}'s.
     # 
     # == A complex form: bind a draft
@@ -1741,19 +1751,20 @@ module Tuile
     # 
     # == Implementation details
     # Each edit writes every binding the user changed and the model doesn't yet
-    # hold, not only its own — so an edit that fixes a rule another field broke
-    # writes both. A binding failing its field steps sits out and stays pending,
-    # its attribute keeping the last value that passed; the rules judge the
-    # model with the rest written in, and a rule failure reverts the whole
-    # batch. Vaadin's `setBean` differs here: one invalid field holds every
-    # other edit back. The rules run on every edit, so {#last_validation} is
+    # hold, not only its own — so an edit that fixes a model validation
+    # failure another field caused writes both. A binding with a field
+    # validation failure sits out and stays pending, its attribute keeping the
+    # last value that passed; the model validators judge the model with the
+    # rest written in, and a model validation failure reverts the whole batch.
+    # Vaadin's `setBean` differs here: one invalid field holds every other edit
+    # back. The model validators run on every edit, so {#last_validation} is
     # always current. Fields fire per keystroke, so every valid prefix passes
     # through the model and its setters on the way.
     class Unbuffered < Binder
       def initialize: () -> void
 
-      # Runs every binding and every rule, showing every verdict, and writes
-      # nothing.
+      # Runs every binding and every model validator, showing every verdict,
+      # and writes nothing.
       # 
       # _@return_ — {#last_validation}.
       def validate: () -> ::Hash[Symbol?, ::Array[ValidationFailure]]
@@ -1795,10 +1806,10 @@ module Tuile
     # @!attribute [r] field
     #   @return [Component::HasValue, nil] the field bound to the failing
     #     attribute; `nil` for a form-level failure (the `nil` key) and for an
-    #     attribute a rule blamed that no field is bound to.
+    #     attribute a model validator blamed that no field is bound to.
     # @!attribute [r] message
-    #   @return [String] what went wrong, as the validator, converter or rule
-    #     worded it; a field's own bad input reports its `bad_input_message`.
+    #   @return [String] what went wrong, as the validator or converter worded
+    #     it; a field's own bad input reports its `bad_input_message`.
     # @!attribute [r] value
     #   @return [Object, nil] whatever the failing step saw — the field's value
     #     before a converter, the model form after one; for a blamed attribute,
@@ -1806,11 +1817,11 @@ module Tuile
     class ValidationFailure < Data
       # _@return_ — the field bound to the failing
       # attribute; `nil` for a form-level failure (the `nil` key) and for an
-      # attribute a rule blamed that no field is bound to.
+      # attribute a model validator blamed that no field is bound to.
       attr_reader field: Component::HasValue?
 
-      # _@return_ — what went wrong, as the validator, converter or rule
-      # worded it; a field's own bad input reports its `bad_input_message`.
+      # _@return_ — what went wrong, as the validator or converter worded
+      # it; a field's own bad input reports its `bad_input_message`.
       attr_reader message: String
 
       # _@return_ — whatever the failing step saw — the field's value

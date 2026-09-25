@@ -22,7 +22,7 @@ module Tuile
         b.bind(name, :name).required("Name is required")
         b.bind(start_day, :start_day).required("Pick a start")
         b.bind(end_day, :end_day).required("Pick an end")
-        b.rule { |p| { end_day: "Ends before it starts" } if p.end_day < p.start_day }
+        b.add_validator { |p| { end_day: "Ends before it starts" } if p.end_day < p.start_day }
       end
     end
 
@@ -60,7 +60,7 @@ module Tuile
         assert_equal "Name is required", name.error_message.to_s
       end
 
-      it "runs the rules, reverting the write and blaming the field" do
+      it "runs the model validators, reverting the write and blaming the field" do
         Testing.set_value(start_day, 9)
         assert_equal 1, plan.start_day
         assert_equal({ end_day: ["Ends before it starts"] }, messages)
@@ -92,14 +92,14 @@ module Tuile
         assert_empty binder.last_validation
       end
 
-      it "judges the rules with the model's value in place of the failing field" do
+      it "runs the model validators with the model's value in place of the failing field" do
         Testing.set_value(start_day, nil)
         Testing.set_value(end_day, 0)
         assert_equal [1, 5], [plan.start_day, plan.end_day]
         assert_equal "Ends before it starts", end_day.error_message.to_s
       end
 
-      it "reverts the whole batch when a rule fails" do
+      it "reverts the whole batch on a model validation failure" do
         Testing.set_value(start_day, 9)
         Testing.set_value(name, "Holiday")
         assert_equal ["Trip", 1], [plan.name, plan.start_day]

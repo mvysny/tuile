@@ -97,3 +97,11 @@ content-space.
 | **conventions** | the formatting facts a {Tuile::Locale} carries — how a value is *rendered and parsed* (date formats, calendar, month and weekday names, decimal separator). Deliberately the opposite pole from *prose*, which a `Locale` never holds. |
 | **prose** | wording: a message in one language, belonging to one component. Outside `Locale` by rule, and outside Tuile by default — the wording fork of `D_bad_input` is where a translated one arrives. |
 | **primary format** | `formats.first` of a date field or a {Tuile::Locale#date_formats} list — the one a value is *written* in, and the only one that must survive a `strftime`/`strptime` round-trip. The rest only ever parse. |
+
+## Forms
+
+| term | means |
+|---|---|
+| **field validation failure** | one binding's chain rejecting its field's value — the field's own bad input, `required`, a `validate` step or a failed `convert`. Lands on that field. |
+| **model validator** | a block added with {Tuile::Binder#add_validator}, judging the whole model; never "rule", which names no level. |
+| **model validation failure** | a model validator rejecting the model: a bare String is form-level (the `nil` key of `last_validation`), a `{attr => message}` hash blames fields. Reverts every candidate written with it. |

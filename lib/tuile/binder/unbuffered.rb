@@ -12,8 +12,8 @@ module Tuile
     #   binder.model = filter
     #
     # An invalid edit never reaches the model; the field shows why, and the
-    # other fields keep writing through around it. The chain,
-    # the empty/`nil` policy and how the rules use the model as scratch space are
+    # other fields keep writing through around it. The chain, the empty/`nil`
+    # policy and how the model validators use the model as scratch space are
     # {Binder}'s.
     #
     # == A complex form: bind a draft
@@ -33,12 +33,13 @@ module Tuile
     #
     # == Implementation details
     # Each edit writes every binding the user changed and the model doesn't yet
-    # hold, not only its own — so an edit that fixes a rule another field broke
-    # writes both. A binding failing its field steps sits out and stays pending,
-    # its attribute keeping the last value that passed; the rules judge the
-    # model with the rest written in, and a rule failure reverts the whole
-    # batch. Vaadin's `setBean` differs here: one invalid field holds every
-    # other edit back. The rules run on every edit, so {#last_validation} is
+    # hold, not only its own — so an edit that fixes a model validation
+    # failure another field caused writes both. A binding with a field
+    # validation failure sits out and stays pending, its attribute keeping the
+    # last value that passed; the model validators judge the model with the
+    # rest written in, and a model validation failure reverts the whole batch.
+    # Vaadin's `setBean` differs here: one invalid field holds every other edit
+    # back. The model validators run on every edit, so {#last_validation} is
     # always current. Fields fire per keystroke, so every valid prefix passes
     # through the model and its setters on the way.
     class Unbuffered < Binder
@@ -63,8 +64,8 @@ module Tuile
         @engine.run(@engine.bindings, model:, write: [], keep: false, show: [])
       end
 
-      # Runs every binding and every rule, showing every verdict, and writes
-      # nothing.
+      # Runs every binding and every model validator, showing every verdict,
+      # and writes nothing.
       # @return [Hash{Symbol, nil => Array<ValidationFailure>}] {#last_validation}.
       def validate
         @engine.run(@engine.bindings, model: @model, write: pending, keep: false, show: :all)
