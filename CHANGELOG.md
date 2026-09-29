@@ -5,6 +5,7 @@
 
 ## [Unreleased]
 
+- Add `EventQueue#after(seconds)` — runs a block once on the event-loop thread after a delay (zero queues it at once, like `submit`), returning an `EventQueue::Timer` whose `cancel` drops it even once queued; the fake's `after` fires only on `FakeEventQueue#fire_timers`, never on `tick_once`.
 - Add `Tuile::Binder` — `Binder::Buffered` (`read` / `write?` / `write!` / `changed?`) and `Binder::Unbuffered` (`model=`, writing each valid edit through) bind fields to a model's attributes through a `bind(field, :attr)` chain of `required` / `validate` / `convert`, with `add_validator` for the whole model and a frozen `last_validation` map. See `design/decisions.md` `D_binder_modes`.
 - Add `Component::Layout#constraints` — a protected, lazily built `Layout::ConstraintMap` of where each child wants to be: a changed write marks the layout, a non-child raises, and `Layout#remove` prunes it, so a custom layout keeps per-child settings as `Box`, `FormLayout` and `Absolute` now do.
 - Fix `run_event_loop(capture_mouse: :drag)` and `:hover` leaving no mouse at all on a terminal without mode 1002 or 1003: each level now also requests the rungs beneath it, so such a terminal falls back to the highest one it knows. See `design/research.md` `R_mouse_reporting`.

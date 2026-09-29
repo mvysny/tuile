@@ -126,7 +126,7 @@ child's extent as `Fixed` / `Percent` / `Expand`.
 dispatched on the loop's, and *every* UI mutation must happen there —
 violating it raises `Tuile::Error` rather than corrupting the screen.
 Background work marshals back through `screen.event_queue.submit { … }`, and
-periodic work through `tick` / `tick_fps`. Resize isn't a callback either:
+periodic work through `tick` / `tick_fps`, delayed work through `after`. Resize isn't a callback either:
 `SIGWINCH` becomes an event in the same queue.
 → [chapter 4](book/04-event-loop.md)
 

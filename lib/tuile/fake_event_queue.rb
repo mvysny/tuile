@@ -6,6 +6,7 @@ module Tuile
   class FakeEventQueue
     def initialize
       @tickers = []
+      @timers = []
     end
 
     # Lets a spec assert that a component started a ticker, and — via
@@ -14,6 +15,11 @@ module Tuile
     # prunes them.
     # @return [Array<FakeTicker>] the registered tickers, in creation order.
     attr_reader :tickers
+
+    # The {#after} counterpart of {#tickers}: every timer scheduled since the
+    # last {#fire_timers}, cancelled or not.
+    # @return [Array<FakeTimer>] in creation order.
+    attr_reader :timers
 
     # @return [Boolean] always false — {#run_loop} raises, so no loop ever runs.
     def running? = false
@@ -87,6 +93,36 @@ module Tuile
       @tickers.each(&:fire)
     end
 
+    # Mirrors {EventQueue#after} but timeless: returns a {FakeTimer} that
+    # fires only when a test calls {#fire_timers} — `after(0)` too, unlike
+    # {#submit}, so the block never runs inside the call that scheduled it.
+    # `seconds` is validated as the real queue validates it, then discarded.
+    #
+    # @param seconds [Numeric] delay before the block runs, zero or positive.
+    #   Validated for parity with {EventQueue#after}; otherwise unused.
+    # @yield called once, on {#fire_timers}.
+    # @yieldreturn [void]
+    # @return [FakeTimer]
+    def after(seconds, &block)
+      raise ArgumentError, "block required" unless block
+      unless seconds.is_a?(Numeric) && !seconds.negative?
+        raise ArgumentError, "seconds must be a non-negative Numeric, got #{seconds.inspect}"
+      end
+
+      FakeTimer.new(block).tap { |t| @timers << t }
+    end
+
+    # Test helper: lets every pending timer's delay elapse at once — each runs
+    # its block unless cancelled, and all are dropped from {#timers}. Kept apart
+    # from {#tick_once} so pumping an animation frame never elapses a debounce.
+    # A timer scheduled by a block that runs here waits for the next call.
+    # @return [void]
+    def fire_timers
+      due = @timers
+      @timers = []
+      due.each(&:fire)
+    end
+
     # Handle returned by {FakeEventQueue#tick}. Mirrors the public surface of
     # {EventQueue::Ticker} (`cancel`, `cancelled?`) but does not auto-fire —
     # the host {FakeEventQueue} drives firing via {FakeEventQueue#tick_once}.
@@ -119,6 +155,40 @@ module Tuile
 
         @block.call(@tick)
         @tick += 1
+      end
+    end
+
+    # Handle returned by {FakeEventQueue#after}. Mirrors the public surface of
+    # {EventQueue::Timer} (`cancel`, `cancelled?`); the host
+    # {FakeEventQueue} fires it via {FakeEventQueue#fire_timers}.
+    class FakeTimer
+      # @param block [Proc] called with no arguments on the first {#fire}.
+      def initialize(block)
+        @block = block
+        @cancelled = false
+        @fired = false
+      end
+
+      # @return [Boolean] true once {#cancel} has been called, whether or not
+      #   the block had already run.
+      def cancelled? = @cancelled
+
+      # Marks the timer cancelled, so {#fire} no longer runs the block.
+      # Idempotent.
+      # @return [void]
+      def cancel
+        @cancelled = true
+      end
+
+      # Runs the block, at most once over the timer's life, and never after
+      # {#cancel}. Typically driven by {FakeEventQueue#fire_timers}; safe to
+      # call directly from a test that wants to elapse a single timer.
+      # @return [void]
+      def fire
+        return if @cancelled || @fired
+
+        @fired = true
+        @block.call
       end
     end
   end

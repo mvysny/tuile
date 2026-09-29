@@ -1,6 +1,7 @@
 # A value-change mode — when a text field's notice fires
 
-**Status:** proposed, nothing built; next. The Binder shipped first, against eager fields
+**Status:** proposed, every question settled; only the timer it needs (`EventQueue#after`) is
+built. Next. The Binder shipped first, against eager fields
 (verdicts paint mid-word, accepted) and gains the commit-gesture cadence from this with no change of
 its own — it grows no blur logic. **Reopens a written
 ruling**: `D_date_field`'s *Why not* bullet on "Vaadin's `ValueChangeMode` as a per-field
@@ -100,10 +101,12 @@ the push is held** — already the house rule for `notify_on_edit?`.
    isn't focused would wait for a blur that never comes.
 4. **ENTER is released and then left to bubble**, so a scope's default button acts on an announced
    value — `AbstractWrappingField#handle_key?`'s existing contract.
-5. **`:lazy` needs no new timer primitive**: a self-cancelling `EventQueue#tick`, restarted per
-   edit; `FakeEventQueue#tick_once` drives it in specs. The pending ticker is a hook-owned resource
-   — cancelled on release, on `set_value`, on `clear`, on detach — so it is **synced from one
-   condition** (root `AGENTS.md`), not toggled from four sites. `Q_lazy_timer`.
+5. **`:lazy` runs on `EventQueue#after`** (built ahead, with `EventQueue::Timer` and
+   `FakeEventQueue#fire_timers`): one timer per pending notice, cancelled and rescheduled per edit.
+   A repeating `tick` that cancels itself on first firing was the alternative, and read as a hack.
+   The pending timer is a hook-owned resource — cancelled on release, on `set_value`, on `clear`,
+   on detach — so it is **synced from one condition** (root `AGENTS.md`), not toggled from four
+   sites; `Timer#cancel` dropping an already-queued firing is what makes that sync safe.
 6. **Shared code as a mixin, `HasValueChangeMode`** (Vaadin's name): the knob, its validation, the
    pending-notice diff guard and the release. Included by `AbstractStringField` and the number
    fields; not by the date fields, which keep `notify_on_edit? = false` as a fixed rule.
@@ -112,14 +115,12 @@ the push is held** — already the house rule for `notify_on_edit?`.
    without one. `write?` / `validate` read `value` live, and the Binder's `changed?` gets a live
    compare for the focused field (Graduation owes), since it counts user edits and a Save
    *shortcut* leaves focus in the field with its notice unfired.
-
-## Open questions
-
-- **`Q_lazy_timer`** — tick-and-cancel over the existing API, or a one-shot cancellable
-  `EventQueue#after(seconds)` (+ its fake) that apps debouncing by hand would use too?
-- **`Q_textarea_submit`** — a `TextArea` subclass that rebinds ENTER to submit (pikuri's prompt)
-  wants ENTER to release too; is that its own override, or does the release hook follow whatever
-  key the subclass claims?
+8. **Claiming ENTER opts out of its release** (settled). The ENTER release is part of the field's
+   own ENTER handling, so a subclass that claims the key first, such as a `TextArea` rebinding it to
+   submit, gets no release on it; the notice goes out when the field loses focus. Its submit handler
+   loses nothing, since it reads `value` live. The alternative, a release that follows whatever key
+   the subclass claims, would need the framework to know which key means "submit": a dispatch-phase
+   gate, the thing `D_key_dispatch` deleted.
 
 ## Graduation owes
 

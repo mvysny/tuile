@@ -359,6 +359,12 @@ that wants to advance an animation five frames calls `tick_once` five
 times — frame cadence is the test's to decide, since there's no real time
 passing.
 
+A delay is the same idea. `after` on the fake schedules nothing; call
+`event_queue.fire_timers` and every pending timer's delay elapses at once,
+each block running unless it was cancelled. It is a separate call from
+`tick_once` on purpose: pumping an animation frame shouldn't also elapse
+a debounce behind the test's back.
+
 ## End to end, through a real terminal
 
 Unit tests with the fake cover component logic and rendering, which is

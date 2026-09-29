@@ -173,6 +173,25 @@ Reach for `tick` when you're pacing work ("check every two seconds"),
 `tick_fps` when you're driving an animation ("spin at 8 fps"). Same
 machinery underneath; pick the unit that matches how you're thinking.
 
+## Delayed work: `after`
+
+Something that should happen *once*, a little later, is
+{Tuile::EventQueue#after}. The commonest case is a debounce: a search box
+that refetches only once the user stops typing, rather than once per letter.
+
+```ruby
+field.on_value_change do |e|
+  @refetch&.cancel                              # the user typed again: start over
+  @refetch = screen.event_queue.after(0.4) { search(e.value) }
+end
+```
+
+The block runs on the loop thread, like everything else here. `after`
+returns a {Tuile::EventQueue::Timer}, and `cancel` really does mean
+"never": even if the delay has elapsed and the firing is already waiting in
+the queue behind a slow event, a cancelled timer's block does not run. So
+the snippet above can't search for a stale prefix.
+
 ## Owning a resource for as long as you're on screen
 
 Both examples above end with a loose thread: *who calls `cancel`, and

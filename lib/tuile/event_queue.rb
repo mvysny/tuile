@@ -97,6 +97,29 @@ module Tuile
       tick(1.0 / fps, &block)
     end
 
+    # Schedules `block` to run once on the event-loop thread, `seconds` from
+    # now. The returned {Timer} cancels it — a debounce restarts by cancelling
+    # the pending one and scheduling afresh:
+    #
+    #   @timer&.cancel
+    #   @timer = screen.event_queue.after(0.4) { refetch(query) }
+    #
+    # `after(0)` is {#submit} with a {Timer}: queued at once, in order with
+    # other submits, and still cancellable until the loop reaches it.
+    #
+    # @param seconds [Numeric] delay before the block runs, zero or positive.
+    # @yield called once, from the event-loop thread.
+    # @yieldreturn [void]
+    # @return [Timer]
+    def after(seconds, &block)
+      raise ArgumentError, "block required" unless block
+      unless seconds.is_a?(Numeric) && !seconds.negative?
+        raise ArgumentError, "seconds must be a non-negative Numeric, got #{seconds.inspect}"
+      end
+
+      Timer.new(self, seconds, block)
+    end
+
     # Runs the event loop and blocks. Must be run from at most one thread at the
     # same time. Blocks until some thread calls {#stop}. Calls block for all
     # events; the block is always called from the thread running this function.
@@ -288,7 +311,7 @@ module Tuile
     end
 
     # Handle returned by {EventQueue#tick}. Cancel a running ticker via
-    # {#cancel}.
+    # {#cancel}; {Timer} is the one-shot counterpart.
     #
     # Internally wraps a `Concurrent::TimerTask` whose firing posts a single
     # submit-block to the owning {EventQueue}; the user's block therefore
@@ -342,6 +365,54 @@ module Tuile
       rescue StandardError
         cancel
         raise
+      end
+    end
+
+    # Handle returned by {EventQueue#after}: a block scheduled to run once,
+    # which {#cancel} drops. {Ticker} is the repeating counterpart.
+    #
+    # Wraps a `Concurrent::ScheduledTask` on `concurrent-ruby`'s shared timer
+    # thread, whose firing submits the block to the owning {EventQueue}. A raise
+    # from the block flows through the loop's normal error handling
+    # ({Screen#on_error} for the default Tuile setup).
+    class Timer
+      # @param event_queue [EventQueue] queue to run the block on.
+      # @param delay [Numeric] seconds until the block runs (zero or positive).
+      # @param block [Proc] called with no arguments.
+      def initialize(event_queue, delay, block)
+        @block = block
+        # AtomicBoolean for the same reason as Ticker's: cancel may run on any thread.
+        @cancelled = Concurrent::AtomicBoolean.new(false)
+        if delay.zero?
+          # Straight onto the queue, not via the timer thread, which could
+          # land it behind a submit made after this call.
+          event_queue.submit { fire }
+        else
+          @task = Concurrent::ScheduledTask.execute(delay) { event_queue.submit { fire } }
+        end
+      end
+
+      # @return [Boolean] true once {#cancel} has been called, whether or not
+      #   the block had already run.
+      def cancelled? = @cancelled.true?
+
+      # Drops the block unless it has already run. Idempotent and safe to call
+      # from any thread, including from inside the block; a firing already
+      # queued on the event loop is dropped before the block runs, so a
+      # debounce that cancels on a keystroke never sees a stale firing.
+      # @return [void]
+      def cancel
+        return unless @cancelled.make_true
+
+        @task&.cancel
+      end
+
+      private
+
+      # Runs on the event-loop thread.
+      # @return [void]
+      def fire
+        @block.call unless @cancelled.true?
       end
     end
 

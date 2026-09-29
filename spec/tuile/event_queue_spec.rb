@@ -224,6 +224,104 @@ module Tuile
         t&.join(1)
       end
     end
+
+    context "after" do
+      it "requires a block" do
+        assert_raises(ArgumentError) { queue.after(0.1) }
+      end
+
+      it "rejects a negative or non-numeric delay" do
+        assert_raises(ArgumentError) { queue.after(-1) {} }
+        assert_raises(ArgumentError) { queue.after("1") {} }
+      end
+
+      it "queues a zero delay at once, in order with submit" do
+        t = run_thread
+        calls = []
+        gate = Thread::Queue.new
+        queue.submit { gate.pop } # holds the loop so both land before either runs
+        queue.after(0) { calls << :after }
+        queue.submit { calls << :submit }
+        gate << :go
+        queue.await_empty
+        assert_equal %i[after submit], calls
+      ensure
+        queue.stop
+        t&.join(1)
+      end
+
+      it "drops a zero-delay block cancelled before the loop reaches it" do
+        t = run_thread
+        calls = []
+        gate = Thread::Queue.new
+        queue.submit { gate.pop }
+        timer = queue.after(0) { calls << :fired }
+        timer.cancel
+        gate << :go
+        queue.await_empty
+        assert_empty calls
+      ensure
+        queue.stop
+        t&.join(1)
+      end
+
+      it "runs the block once, on the event-loop thread" do
+        t = run_thread
+        calls = []
+        queue.after(0.01) { calls << queue.in_loop_thread? }
+        sleep 0.1
+        queue.await_empty
+        assert_equal [true], calls
+      ensure
+        queue.stop
+        t&.join(1)
+      end
+
+      it "never runs the block once cancelled" do
+        t = run_thread
+        calls = []
+        timer = queue.after(0.05) { calls << :fired }
+        timer.cancel
+        sleep 0.1
+        queue.await_empty
+        assert_empty calls
+        assert timer.cancelled?
+      ensure
+        queue.stop
+        t&.join(1)
+      end
+
+      it "drops a firing that is already queued when cancel runs" do
+        t = run_thread
+        calls = []
+        gate = Thread::Queue.new
+        queue.submit { gate.pop } # holds the loop, so the firing queues up behind it
+        timer = queue.after(0.01) { calls << :fired }
+        sleep 0.05
+        timer.cancel
+        gate << :go
+        queue.await_empty
+        assert_empty calls
+      ensure
+        queue.stop
+        t&.join(1)
+      end
+
+      it "cancel is idempotent, and a no-op once the block has run" do
+        t = run_thread
+        calls = []
+        timer = queue.after(0.01) { calls << :fired }
+        sleep 0.05
+        queue.await_empty
+        timer.cancel
+        timer.cancel
+        assert timer.cancelled?
+        assert_equal [:fired], calls
+      ensure
+        queue.stop
+        t&.join(1)
+      end
+    end
   end
 
   describe EventQueue::TTYSizeEvent do
