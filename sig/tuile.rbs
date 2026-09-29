@@ -9128,7 +9128,7 @@ module Tuile
       # 
       # _@param_ `caption` — the text above it; omit it for a widget painting its own, such as a {Checkbox} or a {Button}.
       # 
-      # _@param_ `required` — whether to paint {.required_marker} beside the caption.
+      # _@param_ `required` — whether to paint {.required_marker} beside the caption. Paint only: the check is a {Binder::Binding#required}, said to the binder separately.
       def initialize: (?Component? content, ?caption: (String | StyledString)?, ?required: bool) -> void
 
       # _@return_ — whether the caption carries {.required_marker}.
@@ -9229,7 +9229,7 @@ module Tuile
 
     # The value seam every input component shares: a settable/gettable {#value}
     # of *any* type, an {#on_value_change} listener, {#empty?}, and {#clear}. A
-    # form (a future binder) drives a mix of field types uniformly through it,
+    # {Binder} drives a mix of field types uniformly through it,
     # not caring that a {TextField}'s value is a `String` while another field's
     # is a domain object.
     # 

@@ -15,8 +15,8 @@ No `enabled` or `read_only` in `lib/`. The axes that exist:
 | `active?` | on the focus chain; paint-time, a `ComponentBackground::STATES` key | — |
 
 Two places park the axis on purpose:
-- `HasValue`'s rdoc: read-only belongs to the not-yet-built form layer (`D_has_value`).
-- `binder.md` refuses the Save-button case, the usual motivation for `enabled`: the
+- `D_has_value` keeps read-only deferred; the Binder landed without it.
+- `D_binder_verdicts` refuses the Save-button case, the usual motivation for `enabled`: the
   gate goes at the click, because a disabled control can't say why (no tooltip; hover is
   opt-in and cosmetic).
 
@@ -84,5 +84,5 @@ working, so it lands in the widget's edit path (`insert_text`, the editing
 ## Related
 
 `D_visibility`, `D_has_value`, `D_color_slots`, `D_bg_surface`, `D_input_filters`,
-`D_key_dispatch` (no gates in the ladder), `D_test_gestures`, `design/ideas/binder.md`,
+`D_key_dispatch` (no gates in the ladder), `D_test_gestures`, `D_binder_verdicts`,
 GitHub #64.

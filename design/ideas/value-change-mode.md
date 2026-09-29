@@ -1,6 +1,6 @@
 # A value-change mode — when a text field's notice fires
 
-**Status:** proposed, nothing built; next after `binder.md`, which ships first against eager fields
+**Status:** proposed, nothing built; next. The Binder shipped first, against eager fields
 (verdicts paint mid-word, accepted) and gains the commit-gesture cadence from this with no change of
 its own — it grows no blur logic. **Reopens a written
 ruling**: `D_date_field`'s *Why not* bullet on "Vaadin's `ValueChangeMode` as a per-field
@@ -96,7 +96,7 @@ the push is held** — already the house rule for `notify_on_edit?`.
   `EventQueue#after(seconds)` (+ its fake) that apps debouncing by hand would use too?
 - **`Q_pending_flush`** — does anything outside the field need to release a held notice? Leaning
   no: the Binder's `changed?` counts user edits, which a held notice would fool (a Save *shortcut*
-  leaves focus in the field), and `binder.md` answers that with a live compare for the focused
+  leaves focus in the field), and `D_binder_verdicts` answers that with a live compare for the focused
   field, owed by this idea's graduation. `write?` / `validate` read `value` live and need nothing.
 - **`Q_textarea_submit`** — a `TextArea` subclass that rebinds ENTER to submit (pikuri's prompt)
   wants ENTER to release too; is that its own override, or does the release hook follow whatever
@@ -113,5 +113,5 @@ the push is held** — already the house rule for `notify_on_edit?`.
 - rdoc on the mixin and each includer, the `**Breaking:**` CHANGELOG line, the regenerated
   `sig/tuile.rbs`; a changed responsibility owes the root `AGENTS.md`'s four registrations.
 - The Binder, built against eager fields, owes two things once this lands: `changed?` gains the
-  live compare for the focused field (`binder.md`'s `changed?` bullet, or its `D_` entry if it has
-  graduated), and its rdoc's cadence note is rewritten from "eager today" to the `:on_change` default.
+  live compare for the focused field (`D_binder_verdicts`, whose last why-not then becomes the
+  answer), and its rdoc's cadence note is rewritten from "eager today" to the `:on_change` default.

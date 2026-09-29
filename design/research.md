@@ -935,3 +935,63 @@ Surveyed 2026-09-21 for `D_deferred_layout`: the mark, when the pass runs, and t
   FTXUI and egui recompute layout inside each frame's render call. **[docs]**
 - Not checked: Qt (`QEvent::LayoutRequest`) and GTK4 (`gtk_widget_queue_allocate`); both are
   believed deferred and neither would change the tally. **[unverified]**
+
+## R_vaadin_binder — What Vaadin's `Binder` does in each mode, and where its docs stop
+
+Checked 2026-09-29 against the Vaadin 25.2 docs, the 25.2 javadoc and `flow-data` 25.2.6 sources,
+while designing `Tuile::Binder`.
+
+| | buffered (`readBean` / `writeBean…`) | write-through (`setBean`) |
+|---|---|---|
+| a field validation fails | nothing written; `writeBean` throws, `writeBeanIfValid` → `false` | *no* changed binding is written |
+| bean validators run | only inside `writeBean` / `writeBeanIfValid` / `writeRecord` / `writeChangedBindingsToBean` | on every field change, once every changed binding passes |
+| `validate()` | bean validators ignored — there is no bean | all of them |
+
+- **Bean validators judge the real bean**: *"Binder first writes the change to the FDO, then runs
+  the validators. If any validator fails, Binder reverts the change. Any extra business logic in
+  the setters of the FDO must consider this."* **[docs]**
+- **Write-through holds every pending edit back while any one fails**: a field change calls
+  `doWriteIfValid(getBean(), changedBindings)`, which writes only if *none* of the changed bindings
+  is in error, then runs the bean validators and restores the bean state on a failure;
+  `changedBindings` clears on success. The docs say only *"validators are triggered whenever a
+  field value changes"*. **[src]** An empty required name keeps a valid edit of another field out of
+  the bean. **[verified 2026-09-25, Vaadin 25.2.7, Karibu test]**
+- **Since 25, `validate()` no longer fails** *"when bean level validators have been configured but
+  no bean is currently set (i.e. Binder is used in buffered mode)"*; the javadoc: *"Bean level
+  validators are ignored if there is no bound bean"*. `validation.md` still says such methods
+  *"only work in write-through mode"*. **[docs]**
+- **Errors show late on purpose**: *"validation errors only display after the user has edited each
+  field and submitted (i.e., loaded) the form"* (`flow/binding-data/components-binder-load.md`). **[docs]**
+- **The Save button is enabled from a status listener** in the docs' own pattern:
+  `saveButton.setEnabled(hasChanges && isValid)` inside `addStatusChangeListener`. **[docs]**
+- **A forgotten terminal `bind()` is caught late**: only `setBean` and `readBean` check, raising
+  `IllegalStateException("All bindings created with forField must be completed before calling …")`;
+  `writeBean` and `validate` don't. **[src]**
+- **`StringToIntegerConverter` maps `""` to `null` itself** (input trimmed first), and an overload
+  takes the empty value. **[src]**
+- **The value layer is called the presentation**: `Converter<PRESENTATION, MODEL>`. **[src]**
+- **The escape hatches**: `Binder#setValidatorsDisabled` (also on `Binding`),
+  `Binder#setDefaultValidatorsEnabled`, `BindingBuilder#withDefaultValidator(boolean)`,
+  `Binding#setIsAppliedPredicate`; `getDefaultValidator` and `addValidationStatusChangeListener`
+  live on `HasValidator`, and `Binder#validationStatusSignal()` returns a
+  `Signal<BinderValidationStatus>`. **[docs]**
+
+## R_ruby_validation — ActiveModel and dry-validation, the validation Ruby already has
+
+Checked 2026-09-29 against the Rails guides and API, the Rails source, rubygems.org and the
+dry-validation docs. Ruby has no JSR-303: no spec, no annotations.
+
+- **ActiveModel assigns first and validates after**: class macros (`validates :name, presence:
+  true`), `valid?`, an `errors` map; the object may sit invalid, and `save` answers `false`. **[docs]**
+- **Form-level errors go under `:base`** — *"errors that are related to the object's state as a
+  whole"*. **[docs]**
+- **The bang pair**: `save!` raises `ActiveRecord::RecordInvalid`, ActiveModel's `validate!` raises
+  `ActiveModel::ValidationError`. **[docs]**
+- **`allow_nil: true` skips a validation when the value is `nil`.** **[docs]**
+- **`numericality` checks the raw input when the model keeps one** — it reads
+  `<attr>_before_type_cast` if the record responds to it, so a plain `attr_accessor` model is
+  validated on the stored value. The same side channel as a field's bad input. **[src]**
+- **`activemodel` drags in `activesupport`, which drags in `i18n`** (activemodel 8.1.4). **[docs]**
+- **dry-validation is a contract applied to a hash**, standalone rather than tied to a model:
+  `contract.call(email: …, age: '17')`, whose `params` schema coerces and type-checks, `'17'` → 17.
+  dry-rb.org now redirects to hanakai.org. **[docs]**

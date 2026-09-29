@@ -90,7 +90,8 @@ module Tuile
       # @param caption [String, StyledString, nil] the text above it; omit it
       #   for a widget painting its own, such as a {Checkbox} or a {Button}.
       # @param required [Boolean] whether to paint {.required_marker} beside
-      #   the caption.
+      #   the caption. Paint only: the check is a {Binder::Binding#required},
+      #   said to the binder separately.
       # @raise [ArgumentError] when `required` is true and there is no caption
       #   for the marker to sit beside.
       def initialize(content = nil, caption: nil, required: false)

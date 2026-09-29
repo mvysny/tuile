@@ -54,6 +54,7 @@ module Tuile
         binding = Binding.new(field, attr)
         @bindings << binding
         field.on_value_change { |e| edited(binding, true) if e.from_user? }
+        # Bad input can move no value: `-` typed into an empty IntegerField goes nil → nil.
         field.on_bad_input_change { edited(binding, false) } if field.respond_to?(:on_bad_input_change)
         binding
       end

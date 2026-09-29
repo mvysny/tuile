@@ -4,7 +4,7 @@ module Tuile
   class Component
     # The value seam every input component shares: a settable/gettable {#value}
     # of *any* type, an {#on_value_change} listener, {#empty?}, and {#clear}. A
-    # form (a future binder) drives a mix of field types uniformly through it,
+    # {Binder} drives a mix of field types uniformly through it,
     # not caring that a {TextField}'s value is a `String` while another field's
     # is a domain object.
     #

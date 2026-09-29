@@ -204,9 +204,9 @@ A uniform, typed value seam: `Component::HasValue`, a thin mixin
 of `value` / `value=` / `empty?` / `clear` + an `on_value_change` listener
 (the new value and its origin, `D_from_user`). `value` holds whatever the component holds — `String` for a
 text field (its value *is* its text, read back as `text`), a
-domain object for a `ComboBox`. Model-mapping (presentation ⟷ domain) is left
-to a future forms/binder layer *above* the field, never baked into field
-state.
+domain object for a `ComboBox`. Model-mapping (value ⟷ model, the layers
+`D_field_layers` names) is the `Binder`'s, a layer *above* the field, never
+baked into field state.
 
 **Why typed, not String-only.** The pull toward String-only is the fear of
 "renderer machinery" — but that is a *Java* cost. In Java a typed value drags
@@ -225,13 +225,14 @@ Why not:
   object," and bakes a `String` assumption a future `IntegerField`/`DateField`
   would fight. Kept only as a theoretical fallback.
 - *A full Vaadin-shaped `HasValue`* (read-only, required-indicator, an
-  old-value event payload, converters): every one of those answers a
-  forms/binder problem Tuile doesn't have yet. Deferred, not adopted — re-grow
-  deliberately when a Forms layer lands. `isFromClient` is the one that grew
-  back early, as `from_user?`, because two guards already needed it (`D_from_user`).
+  old-value event payload, converters): each answers a forms problem, and the
+  `Binder` landed needing none of them on the field — converters and `required`
+  are binding steps (`D_binder_chain`), and it skips its own writes by
+  `from_user?` rather than an old value. `isFromClient` is the one that grew
+  back, as `from_user?`, because two guards already needed it (`D_from_user`).
 - *Naming — `Field` / `Valued` / `Bindable` / `Input` / `HoldsValue` /
   `Editable`:* each names an *adjacent* capability (focus/editing, esteem,
-  a nonexistent binder, a role, a wrapper class, the deferred read-only axis)
+  a binder's job, a role, a wrapper class, the deferred read-only axis)
   rather than "holds a value." `HasValue` is brutally literal, matches its own
   method names, and carries the Vaadin lineage the project already wears.
 
@@ -240,13 +241,10 @@ The cost we carry:
 - A string field has **one writer and one slot**, `value=` and `on_value_change`; `text` is only a
   reader. `text=` and `on_change` were exact twins firing from adjacent lines, and a second name for
   the same write is a second place every future event member (an origin flag, an old value) must ride.
-- Deferred for the Forms layer (not decided here): where a `Converter` lives
-  (on the field vs. purely in the binder), `read_only`, a required flag *on the
-  field* (the marker beside the caption ships on the wrapper, and the field never
-  learns of it — `D_form_item`),
-  and whether the listener ever needs an old-value payload. The
-  survey's verdict — model-mapping is a layer *above* the field — is the
-  standing guidance for that work.
+- Still deferred: `read_only`, and an old-value payload on the listener, which
+  waits for a reader. A required flag *on the field* stays refused — the marker
+  beside the caption ships on the wrapper (`D_form_item`) and the validation on
+  the binding (`D_binder_chain`), and the field never learns of either.
 
 ---
 
@@ -352,7 +350,7 @@ since its inner field carries the stop and a tab-stop wrapper around a tab-stop 
 double-stop Tab.
 
 **The converter stays private and hardcoded**, exactly as `TextField` hardcodes identity-String. No
-public `converter=` strategy: that is the future Binder's job, and `D_has_value` keeps converters
+public `converter=` strategy: that is a binding's `convert` step (`D_binder_chain`), and `D_has_value` keeps converters
 *above* the field. **Value is a derived parse, fired eagerly** — recomputed from the buffer on read,
 with `on_value_change` firing per keystroke but only on a real *value* change, so `"7"` → `"07"` is
 silent. No normalization in v1: rewriting the buffer under the caret while typing is worse than an
@@ -2557,7 +2555,7 @@ Why not:
   segment selects and reveals it anyway; free scrolling needs a second "user scrolled, stop
   following" state with a resume rule — `List#auto_scroll`'s machinery for one row.
 - **A `Tab#data` slot** handing `on_tab_selected` a domain object: the pane owns its data (COP — the
-  pane *is* the handle), or a future binder does, and this keeps `Tab` from becoming the items API
+  pane *is* the handle), or a binder does, and this keeps `Tab` from becoming the items API
   just refused.
 - **`Tab` including `HasCaption`**, which would be DRY-only: `HasCaption` earns its place as a
   **test-locator seam** (a locator matches `is_a?(HasCaption)` with no class list), and a `Tab` is
@@ -6135,12 +6133,15 @@ Roads not taken:
 - **A structural notice** — `error_message=` telling `parent` through a
   protected hook, mirroring `handle_child_visibility_changed`. Refused on the
   merits: an error message is a *logical* fact, so the tree is the wrong channel
-  to carry it; it fails outright for a future binder, which is not a `Component`
+  to carry it; it fails outright for the `Binder`, which is not a `Component`
   and has no position in the tree to be notified at; and it is Vaadin 6's `Form`
   / `FieldGroup`, whose coupling of validation to form *structure* was
   demonstrated an anti-pattern over a whole major version.
 - **Growing just the one slot into a list.** Then every reader has to check
   which kind it holds. If the reasoning is right it is right for all 23.
+- **A `Signal`** — a reactive cell, Vaadin 25's `validationStatusSignal()`. No `Signal`s in
+  Tuile, framework-wide, until someone asks: the listener idiom is a proc, and a signal would be a
+  second notification idiom beside it.
 - **stdlib `observer` or an ecosystem pub/sub.** Nothing in Ruby offers typed,
   per-event, multicast *with removal*, which is exactly and only what a widget
   toolkit needs (`R_listener_multiplicity`).
@@ -6185,7 +6186,7 @@ Why not:
 - *The flag on every slot, or on the `Event` marker.* A member goes where
   something reads it (`D_bad_input`); only `on_value_change` has readers, and
   adding it elsewhere later is additive. Same for `old_value`, the other half
-  of Vaadin's payload: no reader yet, so it waits for the binder.
+  of Vaadin's payload: no reader yet — the `Binder` shipped without one — so it waits.
 
 The cost we carry:
 - An includer's override moves from `value=` to `set_value`; the contract
@@ -6409,6 +6410,179 @@ changes.** A caption that appears or disappears after the item is placed therefo
 height at the next `rect=` rather than at once. The alternative was a caption notice — a new slot,
 its `Event` and a framework hook — for a case that only arises when a caption is not passed to
 `add`. Revisit if v2's left-caption column, which must measure captions, needs the notice anyway.
+
+## D_field_layers — Why are a bound field's layers called model, transformation, value and input, rather than Vaadin's presentation and model?
+
+Settled while designing `HasBadInput`, before the Binder existed, because the channel needed a name
+that said which layer it reported on. A `Date` field bound to `Person#birth_date` has four layers:
+
+| layer | example | spoken by |
+|---|---|---|
+| **model** | `Person#birth_date` | the Binder |
+| **transformation** | `year` + `month` + `day` → `Date`; an ISO string → `Date` | the Binder |
+| **value** | the `Date` or `nil`, `HasValue#value` | both — why `HasValue` is *the* seam |
+| **input** | the glyphs typed, a calendar click, a mask's partial fill | the field; the Binder may *ask* |
+
+Input → value is a **parse** (partial; its failure is **bad input**, `D_bad_input`), value → input
+a **format** (total), the pair inside a field its private **converter** (`D_integer_field`), and
+model ⟷ value a chain of **transformations** — a binding's `convert` steps. The definitions are
+`design/terminology.md`'s.
+
+Why not:
+- **`presentation`**: Vaadin's `Converter<PRESENTATION, MODEL>` spends it on the *value* layer (a
+  `Date` is "the presentation", `R_vaadin_binder`); it never names glyphs, so the channel is `bad_input`, not `presentation_error`.
+- **A pair of words**: model → value may be several transformations, and a pair can't name a chain.
+- **`input` for the widget**: `input` is what the user put in; the widget is always a **field**.
+  `Theme#input_bg_color` is grandfathered, and English ("a renderer whose inputs changed") is left alone.
+
+**Reserved** for the layers above `value`: `model`, `transformation`, `presentation`, `domain` —
+none is spent on a field concept.
+
+## D_binder_modes — Why does the binder come in two classes that validate against the real model, rather than one mode-switched class validating a copy?
+
+Vaadin's `Binder` has both modes on one class — `readBean` / `writeBean` buffered, `setBean`
+write-through (`R_vaadin_binder`) — and each has its use: **`Binder::Buffered`** is the OK/Cancel
+popup, where Cancel is free because nothing was written; **`Binder::Unbuffered`** is the settings
+panel, the live filter, and the complex form whose sub-editors write as they go, bound as a draft
+the app copied. Both ship, **as two classes**: the split deletes the mode-switch questions outright
+(`read` after `model=`, `model=` after `read`), and each API stays small — `changed?` is
+`Buffered`'s alone, since unbuffered every valid edit is already in the model.
+
+**`Tuile::Binder` is their abstract base, holding one composed `Engine` — a deliberate exception
+to `cop` rule 2, the owner's call.** The base is the shared surface and nothing else: `bind`,
+`add_validator`, `last_validation` and their rdoc, which the two classes would otherwise repeat
+word for word; and it names a real type, so a form that only binds takes a `Binder` and serves
+either mode. No template method: a subclass hands its edit handler up as the block to `super`, so
+the base never calls down. The first cut had no base and four one-line delegators per class, and
+top-level `BufferedBinder` / `UnbufferedBinder` constants; the namespace reads as the mode it is.
+
+**Model validators judge the real model: write the candidates, validate, revert on a failure** —
+Vaadin's way. An invalid value never *stays* in the model, which matters more here than on the
+web: a Tuile model may be the in-memory source of truth, not a request-scoped copy about to die.
+The cost is in the rdoc — on a failure each written setter fires twice, and only bound attributes
+come back. **The binder ships no copy capability, and applying a draft back is the app's**: only
+the app knows how deep its model copies, and the draft exists *because* of nested lists no binding
+covers, so "copy the bound attributes back" would miss exactly them.
+
+**Buffered, model validators wait for every field to pass** (Vaadin), since they would judge a mix
+of new and stale values; `validate` runs them against the model `read` was handed, where Vaadin's
+buffered `validate()` has no bean and skips them, so a Check button sees cross-field errors before
+Save. **Unbuffered, an edit writes every pending binding whose field steps pass, and a failing one
+sits out** — its attribute keeps the last value that passed, and a model validation failure
+reverts the whole batch, since a model validator can't say which attributes it read. Writing only
+the edited binding diverges silently: `start_date` → 10 fails against `end_date` 5 and reverts,
+`end_date` → 20 then passes against the *old* start, and the 10 on screen never reaches the model.
+`Unbuffered#validate` is a draft's Save gate and is as strict as the buffered one.
+
+Why not:
+- *Vaadin's `setBean`, which writes nothing while any changed binding fails* (`R_vaadin_binder`):
+  in a settings panel or a live filter it freezes the whole form on one bad box.
+- *Validating a `dup`*: it needs a copy the binder can't do right for every model — a shallow
+  `dup` leaks through in-place setters, ActiveRecord's has `id == nil` — so a customizable copy,
+  the capability refused above.
+- *ActiveModel or dry-validation underneath* (`R_ruby_validation`): `activemodel` drags in
+  `activesupport` and `i18n`, a validator is just a proc, and ActiveModel assigns first and
+  validates after, leaving the invalid value in the object.
+- *`binder.read(draft); binder.write?(original)`*, an early sketch for the complex form: the
+  two-class split removes it, and it was wrong for the case anyway.
+
+## D_binder_chain — Why is a binding a chain begun by `bind(field, :attr)`, rather than Vaadin's builder ending in `bind()`, or keyword arguments?
+
+**A chain, because converters make order semantic**: a validator before a `convert` sees the
+field's value, one after it the model form, and keyword arguments can't say order. **`bind` comes
+first and registers at once**, each step appending and returning `self`, so there is never an
+unfinished binding — Vaadin's terminal `bind()` leaves one possible (`R_vaadin_binder`) — and the
+chain still reads field → model. The common case, `bind(f, :name)` with no steps, is complete.
+
+- **`bind(field, :name)` is `public_send(:name)` / `public_send(:name=, v)`** — `attr_accessor`,
+  `Struct` and ActiveRecord with no adapter; `Data` is immutable and out. No getter/setter lambda
+  pair: the symbol is what keys `last_validation` and what a model validator blames, so a lambda
+  binding, additive later, owes an answer for both. An attribute or field bound twice raises —
+  the map is keyed by attribute, and an `error_message` has room for one writer.
+- **A converter is a pair**, since `read` needs model → value too, and **fails by raising
+  `ArgumentError`**, the stdlib's convention — `Integer("x")`, `Float`, `BigDecimal`,
+  `Date.iso8601` work unchanged. Nothing else is rescued, so a bug still surfaces. A `to_value`
+  raising at `read` propagates: blanking the field would write `nil` over the stored value on the
+  next Save, destroying what the app might have repaired.
+- **A validator of either level returning anything but a String or `nil` raises `Tuile::Error`**
+  — framework misuse. It catches the predicate mistake (`{ |v| v.positive? }`); `false` raises too,
+  or the same mistake would pass every invalid value silently. Ruby deletes the rest of the
+  ceremony: no `Validator`, no `ValidationResult`, no `Result.ok`.
+- **`required` is not positional**: bad input, then `required`, then the chain, wherever it was
+  written. **Bad input fails even an optional field** — optional means "may be empty", not "may be
+  garbage", and `empty?` can't tell, being `true` for a field full of unparseable glyphs.
+- **Empty and `nil` copy Vaadin**: `read` shows a `nil` attribute as `field.empty_value`, and the
+  write passes the value through, so a blank `TextField` writes `""` over a `nil` — Vaadin's drift,
+  accepted. **Validators skip `nil`, and a converter maps `nil` and the empty value to `nil`
+  itself** (Rails' `allow_nil`, `R_ruby_validation`), or every validator opens with `v &&` and
+  `Integer("")` fails a blank optional field. The rdoc states the consequence: a `TextField` with no
+  converter hands its validators `""`.
+- **Two levels, named as such — field validation and model validation**, the second added with
+  `add_validator { |model| … }`. A model validator returns `nil`, a String (form-level) or
+  `{attr => message}` to blame fields.
+
+Why not:
+- *Pure Vaadin on empty*, validators seeing `""` and each converter handling empty itself: Vaadin's
+  `StringToIntegerConverter` does it for you (`R_vaadin_binder`); ours are procs, so the binder does.
+- *`required` lighting `FormItem`'s marker*, by `bind` walking up the tree for an enclosing item:
+  the binder would depend on a layout it was never given, and on the field being attached at bind
+  time. The app says "required" twice, and both rdocs say so.
+- *`rule { }`*, the first name: "at least 3 characters" is a rule too, so it names no level.
+  *`validate { }`*: `binder.validate` already runs everything. *`with_validator`* (Vaadin's): in
+  Ruby `with_x { }` reads as a scoped block, and Vaadin's returns `this` for a chain ours doesn't
+  offer. A binding keeps `.validate { }`, where the imperative reads as the step it appends.
+
+## D_binder_verdicts — Why does a binder open a form showing no verdict, keep one frozen map, and gate Save at the click?
+
+**`read` and `model=` recompute the whole `last_validation` but write `nil` to every
+`error_message`** — so `last_validation.empty?` means something from the first frame, while a
+blank "New person" dialog doesn't open with every required field red. A field's verdict appears
+once the user edits it, and every field's on `write?` / `validate`: Vaadin's rule, that errors
+"only display after the user has edited each field and submitted" (`R_vaadin_binder`).
+
+**Bindings run on every value change, at whatever cadence the field fires; the binder owns no blur
+hook.** An edit is a `from_user?` change (`D_from_user`), so the binder's own writes don't echo
+back, and it needs no `old_value`. It subscribes `on_bad_input_change` beside `on_value_change`,
+because typing `-` into an empty `IntegerField` goes `nil` → `nil` and fires no value change. A
+bad-input verdict writes `nil`, not the report: `shown_message` already prefers the field's own
+(`D_has_validation`), and a copy would go stale the moment the input is fixed. Built against
+eager fields, accepted: a string or number field paints its verdict mid-word, and `Unbuffered`
+writes every valid prefix through; a commit cadence on the field changes none of the binder.
+
+**The verdict is one map, `{attr => [ValidationFailure]}`, frozen** — field steps and model
+validators fill it alike, every key holds an array, and **form-level failures sit under the `nil`
+key** (a `Hash` takes it; Rails' `:base` was the fallback that wasn't needed). **One message per
+field** reaches `error_message`, its own failure first — a `FormItem` has one message row
+(`D_form_item`) — while all stay in the map for the Save alert. **Its staleness is the "last"**:
+a binding run replaces only its own attribute's entry, the model validators' only in a pass that
+runs or skips them, so buffered, a fixed cross-field error stays until the next `write?`. Vaadin behaves
+the same. **A failure is a value, an error is raised**: `ValidationFailure` is the entry,
+`ValidationError < Tuile::Error` what `write!` raises carrying the map, and `write?` / `write!`
+are ActiveRecord's `save` / `save!` (`R_ruby_validation`), `?` in the `Set#add?` sense.
+
+**Save asks the binder when pressed**, and on "no" `ConfirmWindow.alert` names the problems. Vaadin
+enables the button from a status listener instead (`R_vaadin_binder`). **`changed?` counts user
+edits** since `read` or the last successful `write?`, not `==`, so the `""`-over-`nil` drift doesn't
+read as a change; `write?` and `validate` read `value` live.
+
+Why not:
+- *A disabled Save*: there is no disabled state (`ComponentBackground::STATES` is `normal` /
+  `active`), a disabled control can't say why — no tooltip, and hover is opt-in with an unreliable
+  exit — and it would make bad input a continuous consumer needing a settling policy.
+- *Copying `getDefaultValidator` / `addValidationStatusChangeListener`*: they repair a *shared*
+  invalid-and-message cell, and Tuile keeps the two facts in two places (`D_has_validation`,
+  `D_bad_input`). `on_bad_input_change` is not that listener renamed: it reaches cells the field
+  doesn't own.
+- *`ValidationResult`*: a result may be ok, and every entry here is a failure — it is Vaadin's
+  ok-or-error sum type, the ceremony `D_binder_chain` deletes.
+- *Vaadin's escape hatches* — `setValidatorsDisabled`, `withDefaultValidator(false)`,
+  `setIsAppliedPredicate`: deferred and unnamed, each additive with no asker. Whoever re-grows
+  `withDefaultValidator(false)` owes an answer for skipping the bad-input check.
+- *The binder releasing a field's held notice*, once a field can hold one until commit
+  (`design/ideas/value-change-mode.md`): new public API on every field for one reader. That cadence
+  makes `changed?` owe a live compare for the focused field — a Save *shortcut* leaves focus in
+  the edited field, its notice unfired — against what `read` put in it; built now, no spec could
+  fail it.
 
 ---
 
