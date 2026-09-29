@@ -107,15 +107,16 @@ the push is held** — already the house rule for `notify_on_edit?`.
 6. **Shared code as a mixin, `HasValueChangeMode`** (Vaadin's name): the knob, its validation, the
    pending-notice diff guard and the release. Included by `AbstractStringField` and the number
    fields; not by the date fields, which keep `notify_on_edit? = false` as a fixed rule.
+7. **The pending notice is the field's own business** (settled): no public flush, no `pending?`,
+   nothing outside the component releases or asks about it. Every outside reader has what it needs
+   without one. `write?` / `validate` read `value` live, and the Binder's `changed?` gets a live
+   compare for the focused field (Graduation owes), since it counts user edits and a Save
+   *shortcut* leaves focus in the field with its notice unfired.
 
 ## Open questions
 
 - **`Q_lazy_timer`** — tick-and-cancel over the existing API, or a one-shot cancellable
   `EventQueue#after(seconds)` (+ its fake) that apps debouncing by hand would use too?
-- **`Q_pending_flush`** — does anything outside the field need to release a held notice? Leaning
-  no: the Binder's `changed?` counts user edits, which a held notice would fool (a Save *shortcut*
-  leaves focus in the field), and `D_binder_verdicts` answers that with a live compare for the focused
-  field, owed by this idea's graduation. `write?` / `validate` read `value` live and need nothing.
 - **`Q_textarea_submit`** — a `TextArea` subclass that rebinds ENTER to submit (pikuri's prompt)
   wants ENTER to release too; is that its own override, or does the release hook follow whatever
   key the subclass claims?
@@ -123,7 +124,7 @@ the push is held** — already the house rule for `notify_on_edit?`.
 ## Graduation owes
 
 - A `D_` entry on the value-change mode (the modes, the `:commit`-over-`ON_CHANGE` name, who gets them, edits-not-writes,
-  held-only-while-focused, the default), and `D_date_field`'s *Why not* bullet amended to point at it rather than deleted —
+  held-only-while-focused, the pending notice private to the field, the default), and `D_date_field`'s *Why not* bullet amended to point at it rather than deleted —
   the date fields' exclusion still stands on its own grammar reason.
 - `R_value_change_timing` gains the verified Vaadin facts: `ON_CHANGE` default, `LAZY`'s 400 ms.
 - `lib/tuile/component/AGENTS.md`'s "One not prefix-closed settles its *value* notice" line
