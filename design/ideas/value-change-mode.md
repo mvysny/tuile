@@ -17,21 +17,44 @@ number fields. Three consumers want three cadences:
 | a filter / search box | the query ~300–400 ms after the last keystroke, not a refetch per letter | `LAZY` |
 | a slash palette, a live echo | every edit | `EAGER` |
 
-Today only the third is expressible; a filter debounces by hand, and the Binder would have to
-invent a blur hook (`Screen#on_focus_changed`) to avoid painting verdicts mid-word — which also
-breaks `HasValidation`'s own rdoc ("discrete … not recomputed per keystroke").
+Today only the third is expressible: a filter debounces by hand, and the Binder, which owns no
+blur hook, paints a string or number field's verdict mid-word (`D_binder_verdicts`, accepted
+until this lands).
 
 ## Proposal
 
-A `value_change_mode` knob, Vaadin's names, on the string-ish fields only:
+A `value_change_mode` knob, on the string-ish fields only:
 
 - **`:eager`** — every edit, today's behaviour.
-- **`:on_change`** — on a commit gesture: leaving the focus chain, or ENTER. `TextArea`: leaving
+- **`:commit`** — on a commit gesture: leaving the focus chain, or ENTER. `TextArea`: leaving
   only, since ENTER inserts a newline there (Vaadin's `change` event is the same).
 - **`:lazy`** — once edits pause for `value_change_timeout` (Vaadin: 400 ms default, verified in
   the 25.2 text-field docs); a commit gesture releases it early.
 
-Skip `TIMEOUT` (throttle) and `ON_BLUR` (on-change minus ENTER) until someone asks.
+Skip `TIMEOUT` (throttle) and `ON_BLUR` (commit minus ENTER) until someone asks.
+
+**Named `:commit`, not Vaadin's `ON_CHANGE`.**
+- **The word is already the house one.** `AbstractWrappingField#commit` runs on exactly these
+  gestures, "commit gesture" is the phrase across `lib/`, `design/` and `book/`, and
+  `R_value_change_timing`'s "commit notice" column is defined as Enter-or-leaving.
+- **It stays true per field.** It means "this field's commit gestures", so `TextArea`'s leave-only
+  set needs no caveat.
+- **`:on_change` reads as its opposite** beside `on_value_change`: every change, which is `:eager`.
+- **`:on_blur` is taken and wrong.** Vaadin's `ON_BLUR` excludes ENTER, so borrowing the name
+  misleads anyone who knows Vaadin, and it squats the name that mode would need. It also hides
+  mechanism 4's ENTER release.
+- **No `on_` prefix at all**, since `on_` is reserved for listener slots. `:eager` / `:commit` /
+  `:lazy` are then one kind of word.
+
+**The default is `:commit`** (settled; Vaadin's `ON_CHANGE` default too). Eager is rarely what you
+want: a form is the commonest multi-field consumer and shouldn't need the knob per field, while a
+filter that stays silent until blur shows up on first use and takes one line to fix. The cost:
+- a `**Breaking:**` CHANGELOG line;
+- `ComboBox`'s inner field and every wrapping field's editor set `:eager` explicitly, and so does
+  pikuri's prompt palette;
+- specs that type and then assert on the notice owe an ENTER or a blur. There are 136
+  `on_value_change` references across 16 spec files; those using `value=` / `Testing.set_value`
+  are unaffected.
 
 **Who gets it** — Vaadin's `HasValueChangeMode` implementors, mapped: `AbstractStringField`
 (`TextField`, `PasswordField`, `TextArea`), `IntegerField`, `FloatField`, `BigDecimalField`.
@@ -49,7 +72,9 @@ Its three objections, answered:
    consumer existed when the ruling was written.
 2. *"It would sit on `AbstractWrappingField` meaning noise-suppression for one subclass and
    correctness for another."* Only if it reached the date fields; it doesn't (above).
-3. *"No defensible default."* Still the real call — `Q_default`.
+3. *"No defensible default."* `:commit`, above. The ruling's "nobody wants a search-as-you-type
+   `TextField` silent until blur" still holds, but that failure is loud and fixed in one line,
+   whereas an eager default makes every form paint verdicts mid-word.
 
 Bonus over Vaadin: its `LAZY` lets a blur handler read the *old* value (vaadin/flow#14090,
 `R_value_change_timing`). Tuile's `value` is a live parse of the buffer whatever the mode; **only
@@ -85,13 +110,6 @@ the push is held** — already the house rule for `notify_on_edit?`.
 
 ## Open questions
 
-- **`Q_default`** — leaning **`:on_change`** (Vaadin's default, and the owner's read that eager is
-  rarely what you want). A form is the commonest multi-field consumer and shouldn't need the knob
-  per field; a filter silent until blur is obvious on first use and a one-line fix. Cost: a
-  `**Breaking:**` CHANGELOG line; `ComboBox`'s inner field and every wrapping field's editor set
-  `:eager` explicitly; pikuri's prompt palette sets `:eager`; specs that type and then assert on
-  the notice owe an ENTER or a blur (136 `on_value_change` references across 16 spec files — those
-  using `value=` / `Testing.set_value` are unaffected).
 - **`Q_lazy_timer`** — tick-and-cancel over the existing API, or a one-shot cancellable
   `EventQueue#after(seconds)` (+ its fake) that apps debouncing by hand would use too?
 - **`Q_pending_flush`** — does anything outside the field need to release a held notice? Leaning
@@ -104,7 +122,7 @@ the push is held** — already the house rule for `notify_on_edit?`.
 
 ## Graduation owes
 
-- A `D_` entry on the value-change mode (the modes, who gets them, edits-not-writes,
+- A `D_` entry on the value-change mode (the modes, the `:commit`-over-`ON_CHANGE` name, who gets them, edits-not-writes,
   held-only-while-focused, the default), and `D_date_field`'s *Why not* bullet amended to point at it rather than deleted —
   the date fields' exclusion still stands on its own grammar reason.
 - `R_value_change_timing` gains the verified Vaadin facts: `ON_CHANGE` default, `LAZY`'s 400 ms.
@@ -112,6 +130,11 @@ the push is held** — already the house rule for `notify_on_edit?`.
   re-phrased around the mixin.
 - rdoc on the mixin and each includer, the `**Breaking:**` CHANGELOG line, the regenerated
   `sig/tuile.rbs`; a changed responsibility owes the root `AGENTS.md`'s four registrations.
-- The Binder, built against eager fields, owes two things once this lands: `changed?` gains the
+- The Binder, built against eager fields, owes three things once this lands: `changed?` gains the
   live compare for the focused field (`D_binder_verdicts`, whose last why-not then becomes the
-  answer), and its rdoc's cadence note is rewritten from "eager today" to the `:on_change` default.
+  answer); `D_binder_verdicts`' "Built against eager fields, accepted" sentence is rewritten; and
+  the "fields fire per keystroke" cadence notes in `Binder::Buffered`'s and `Binder::Unbuffered`'s
+  rdoc move to the `:commit` default.
+- The book: `08-forms.md`'s "a text or number field announces every keystroke", and
+  `07-components.md`'s `filter_results` example on `on_value_change`, which goes silent until blur
+  under a `:commit` default and becomes the place to show `:lazy`.
