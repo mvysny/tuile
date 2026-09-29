@@ -25,17 +25,34 @@ module Tuile
     # caption and the message with it, while `field.visible = false` blanks the
     # field's rows and leaves its caption stranded above them.
     #
+    # **`caption_position: :left` puts the caption beside the field**, and the
+    # message under the field rather than under the caption — one row less:
+    #
+    #   Component::FormItem.new(username, caption: "Username", caption_position: :left)
+    #
+    #   Username [__________]
+    #            Must not be blank
+    #
+    # The caption column fits the caption unless {#caption_width} fixes it;
+    # inside a {FormLayout} both are the form's, written on every pass, so the
+    # column lines up across its items.
+    #
     # == Implementation details
     # **The message row is also the gap row**, which is why the item's pitch is
     # a flat three rows and nothing ever reflows: a form that grew a row when a
     # field went invalid would push the fields below it down *while the user is
     # typing into one of them*. See `D_form_item`.
     #
-    # **It measures nothing.** The rect it is handed is divided top-down —
-    # caption, content, message — so there is no `rows` property here and no
-    # question asked of the field. Rows are served content-first when there are
-    # too few: the content never drops below one row, then the caption takes the
-    # next row it can, then the message.
+    # **It measures nothing of the field.** The rect it is handed is divided
+    # top-down — caption, content, message — so there is no `rows` property
+    # here and no question asked of the field. Rows are served content-first
+    # when there are too few: the content never drops below one row, then the
+    # caption takes the next row it can, then the message. Columns go the same
+    # way: a left caption yields until the field keeps {MIN_FIELD_COLUMNS}, then
+    # the gap goes, and the field is never hidden.
+    #
+    # **A caption too wide for its cells is ellipsized, and the required marker
+    # survives the cut** (`Userna… ∙`).
     #
     # **The message comes from two channels and the item orders neither.** A
     # validator's verdict ({HasValidation#error_message}) and the field's own
@@ -85,6 +102,13 @@ module Tuile
 
       self.required_marker = "∙"
 
+      # Columns a left caption leaves the field before it yields any of its own.
+      # @return [Integer]
+      MIN_FIELD_COLUMNS = 5
+
+      # @return [Array<Symbol>] what {#caption_position=} accepts.
+      CAPTION_POSITIONS = %i[above left].freeze
+
       # @param content [Component, nil] the field to wrap; assignable later
       #   through {#content=}.
       # @param caption [String, StyledString, nil] the text above it; omit it
@@ -92,23 +116,76 @@ module Tuile
       # @param required [Boolean] whether to paint {.required_marker} beside
       #   the caption. Paint only: the check is a {Binder::Binding#required},
       #   said to the binder separately.
+      # @param caption_position [Symbol] `:above` or `:left`; see {#caption_position=}.
+      # @param caption_width [Integer, nil] see {#caption_width=}.
       # @raise [ArgumentError] when `required` is true and there is no caption
-      #   for the marker to sit beside.
-      def initialize(content = nil, caption: nil, required: false)
+      #   for the marker to sit beside, or on a bad `caption_position` / `caption_width`.
+      def initialize(content = nil, caption: nil, required: false, caption_position: :above, caption_width: nil)
         super()
         @content = nil
         @required = false
+        @caption_position = :above
+        @caption_width = nil
         @caption_label = Label.new
         @message_label = Label.new
         add_child(@caption_label) # appended: HasContent forces the content to index 0
         add_child(@message_label)
         self.caption = caption
         self.required = required
+        self.caption_position = caption_position
+        self.caption_width = caption_width
         self.content = content unless content.nil?
       end
 
       # @return [Boolean] whether the caption carries {.required_marker}.
       def required? = @required
+
+      # @return [Symbol] `:above` (the default) or `:left`.
+      attr_reader :caption_position
+
+      # Puts the caption above the field, or beside it with the message under
+      # the field. Inside a {FormLayout} this is the form's to write.
+      # @param position [Symbol] one of {CAPTION_POSITIONS}.
+      # @raise [ArgumentError] on anything else.
+      # @return [void]
+      def caption_position=(position)
+        unless CAPTION_POSITIONS.include?(position)
+          raise ArgumentError, "caption_position expects one of #{CAPTION_POSITIONS.inspect}, got #{position.inspect}"
+        end
+        return if @caption_position == position
+
+        @caption_position = position
+        invalidate_geometry
+      end
+
+      # @return [Integer, nil] the left caption's column, in cells; nil fits
+      #   the caption, marker included. Ignored while {#caption_position} is
+      #   `:above`.
+      attr_reader :caption_width
+
+      # Fixes the left caption's column, so items stacked in a {Layout::Vertical}
+      # can line up. Inside a {FormLayout} this is the form's to write.
+      #
+      #   FormItem.new(city, caption: "City", caption_position: :left, caption_width: 12)
+      #
+      # One gap column always follows the caption, outside this width.
+      # @param columns [Integer, nil] `>= 0`, or nil to fit the caption.
+      # @raise [ArgumentError] on a negative or non-Integer width.
+      # @return [void]
+      def caption_width=(columns)
+        unless columns.nil? || (columns.is_a?(Integer) && !columns.negative?)
+          raise ArgumentError, "caption_width expects nil or a non-negative Integer, got #{columns.inspect}"
+        end
+        return if @caption_width == columns
+
+        @caption_width = columns
+        invalidate_geometry
+      end
+
+      # The caption as painted, {.required_marker} included — what a left
+      # caption column is measured against.
+      # @return [StyledString]
+      def marked_caption = required? ? caption + marker : caption
 
       # Paints {.required_marker} beside the caption. The field never learns it
       # is required — nothing here validates, and this is not a rule.
@@ -123,10 +200,12 @@ module Tuile
 
         @required = flag
         refresh_chrome
+        invalidate_geometry
       end
 
       # Sets the caption, adding or dropping the caption row as it becomes
-      # non-empty or empty.
+      # non-empty or empty, and re-running the parent's pass: a {FormLayout}
+      # sizes the item, and its caption column, from it.
       # @param new_caption [String, StyledString, nil]
       # @return [void]
       # @raise [ArgumentError] when clearing the caption of a {#required?} item.
@@ -135,11 +214,11 @@ module Tuile
         if required? && new_caption.empty?
           raise ArgumentError, "a required FormItem keeps its caption: the marker has nowhere else to go"
         end
+        return if caption == new_caption
 
-        had_row = !caption.empty?
         super
         refresh_chrome
-        invalidate_layout unless had_row == !caption.empty?
+        invalidate_geometry
       end
 
       # Mounts the field, moving the message subscriptions onto it: the outgoing
@@ -181,11 +260,17 @@ module Tuile
 
       protected
 
-      # The caption, the content and the message each take one row of three.
+      # Divides the rect into caption, content and message — stacked, or with
+      # the caption in a column beside the other two.
       # @return [void]
       def relayout
-        content&.rect = row_rects[1]
-        layout_chrome
+        caption_rect, content_rect, message_rect = caption_position == :left ? left_rects : row_rects
+        content&.rect = content_rect
+        @caption_label.rect = caption_rect
+        @message_label.rect = message_rect
+        # The cut depends on the cells the caption was just handed.
+        @caption_columns = caption_rect.width
+        refresh_chrome
       end
 
       # @return [void]
@@ -210,22 +295,42 @@ module Tuile
       # one of them just calls this.
       # @return [void]
       def refresh_chrome
-        # The marker shares the message's red rather than earning a theme token
-        # of its own — a required field is not yet invalid; see `D_form_item`.
-        ink = Screen.instance? ? screen.theme.error_color : nil
-        marker = StyledString.styled(" #{self.class.required_marker}", fg: ink)
-        @caption_label.text = required? ? caption + marker : caption
+        @caption_label.text = fitted_caption
         # `shown_message` orders the two channels, and hands back a plain
         # String for a field's own report — hence the parse.
         message = StyledString.parse(content.respond_to?(:shown_message) ? content.shown_message : nil)
-        @message_label.text = message.empty? ? StyledString::EMPTY : message.with_fg(ink)
+        @message_label.text = message.empty? ? StyledString::EMPTY : message.with_fg(error_ink)
       end
 
+      # @return [StyledString] {#marked_caption}, ellipsized to the columns the
+      #   last pass handed the caption, keeping the marker whole.
+      def fitted_caption
+        columns = @caption_columns
+        full = marked_caption
+        return full if columns.nil? || full.display_width <= columns
+        return full.ellipsize(columns) unless required? && columns > marker.display_width
+
+        caption.ellipsize(columns - marker.display_width) + marker
+      end
+
+      # @return [StyledString] the required marker with its leading space.
+      def marker
+        # The marker shares the message's red rather than earning a theme token
+        # of its own — a required field is not yet invalid; see `D_form_item`.
+        StyledString.styled(" #{self.class.required_marker}", fg: error_ink)
+      end
+
+      # @return [Color, nil]
+      def error_ink = Screen.instance? ? screen.theme.error_color : nil
+
+      # Marks both passes that depend on the caption's shape: this item's, and
+      # the parent's — a {FormLayout} sizes the item and its caption column from
+      # it, and re-imposes its own position and width. Inside the form's own
+      # pass the second mark is dropped, as it is written before any placement.
       # @return [void]
-      def layout_chrome
-        caption_rect, _content_rect, message_rect = row_rects
-        @caption_label.rect = caption_rect
-        @message_label.rect = message_rect
+      def invalidate_geometry
+        invalidate_layout
+        parent&.invalidate_layout
       end
 
       # Divides {Component#rect} top-down. A part with no row left gets a rect
@@ -246,6 +351,23 @@ module Tuile
       # @param rows [Integer]
       # @return [Rect] the full width, `rows` tall.
       def row_rect(top, rows) = Rect.new(0, top, rect.width, rows)
+
+      # Divides {Component#rect} into a caption column on the first row, a gap
+      # column, and the content over the message beside them. A captionless
+      # item keeps the indent and paints nothing in it.
+      # @return [Array(Rect, Rect, Rect)] the caption, content and message rects.
+      def left_rects
+        width = rect.width
+        height = rect.height
+        requested = caption_width || marked_caption.display_width
+        columns = requested.clamp(0, [width - 1 - MIN_FIELD_COLUMNS, 0].max)
+        field_left = columns.positive? ? columns + 1 : 0
+        message_rows = height < 2 ? 0 : 1
+        content_rows = height - message_rows
+        [Rect.new(0, 0, columns, [height, 1].min),
+         Rect.new(field_left, 0, width - field_left, content_rows),
+         Rect.new(field_left, content_rows, width - field_left, message_rows)]
+      end
     end
   end
 end

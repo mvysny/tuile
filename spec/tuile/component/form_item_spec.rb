@@ -83,6 +83,95 @@ module Tuile
       end
     end
 
+    context "a left caption" do
+      let(:left_item) { Component::FormItem.new(field, caption: "Username", caption_position: :left) }
+
+      it "puts the caption beside the field and the message under the field" do
+        mount(left_item, height: 2)
+        assert_equal Rect.new(0, 0, 8, 1), left_item.children[1].rect
+        assert_equal Rect.new(9, 0, 11, 1), field.rect
+        assert_equal Rect.new(9, 1, 11, 1), left_item.children[2].rect
+      end
+
+      it "paints them there" do
+        mount(left_item, height: 2)
+        field.value = "admin"
+        field.error_message = "Too short"
+        assert_equal ["Username admin      ", "         Too short  "], painted(2)
+      end
+
+      it "counts the required marker in the column it fits" do
+        mount(Component::FormItem.new(field, caption: "Username", required: true, caption_position: :left),
+              height: 2)
+        assert_equal Rect.new(11, 0, 9, 1), field.rect
+      end
+
+      it "takes a fixed caption_width instead, the gap outside it" do
+        left_item.caption_width = 12
+        mount(left_item, height: 2)
+        assert_equal Rect.new(13, 0, 7, 1), field.rect
+      end
+
+      it "ellipsizes a caption wider than its column, keeping the marker whole" do
+        item = Component::FormItem.new(field, caption: "Username", required: true,
+                                              caption_position: :left, caption_width: 8)
+        mount(item, height: 2)
+        assert_equal "Usern… ∙", painted(2)[0][0, 8]
+      end
+
+      it "yields caption columns until the field keeps its minimum" do
+        left_item.caption_width = 30
+        mount(left_item, height: 2)
+        assert_equal Component::FormItem::MIN_FIELD_COLUMNS, field.rect.width
+        assert_equal Rect.new(0, 0, 14, 1), left_item.children[1].rect
+      end
+
+      it "drops the caption and then the gap on a form too narrow for both, never the field" do
+        mount_at(left_item, Rect.new(0, 0, 6, 2))
+        assert left_item.children[1].rect.empty?
+        assert_equal Rect.new(0, 0, 6, 1), field.rect
+      end
+
+      it "keeps the indent for a captionless item with a fixed width" do
+        bare = mount(Component::FormItem.new(field, caption_position: :left, caption_width: 8), height: 2)
+        assert_equal Rect.new(9, 0, 11, 1), field.rect
+        assert_equal " " * 9, painted(2)[0][0, 9]
+        assert_equal "", bare.children[1].text.to_s
+      end
+
+      it "indents nothing for a captionless item left to fit itself" do
+        mount(Component::FormItem.new(field, caption_position: :left), height: 2)
+        assert_equal Rect.new(0, 0, 20, 1), field.rect
+      end
+
+      it "gives a taller field the rows under the caption" do
+        area = Component::TextArea.new
+        mount(Component::FormItem.new(area, caption: "Notes", caption_position: :left), height: 4)
+        assert_equal Rect.new(6, 0, 14, 3), area.rect
+      end
+
+      it "re-divides at once when the position changes" do
+        mount(item, height: 3)
+        item.caption_position = :left
+        item.flush_layout
+        assert_equal Rect.new(9, 0, 11, 2), field.rect
+      end
+
+      it "refuses an unknown position and a negative or fractional width" do
+        assert_raises(ArgumentError) { item.caption_position = :right }
+        assert_raises(ArgumentError) { item.caption_width = -1 }
+        assert_raises(ArgumentError) { Component::FormItem.new(field, caption_width: 1.5) }
+      end
+    end
+
+    context "a caption wider than its row" do
+      it "is ellipsized with the marker kept whole, above the field too" do
+        item = Component::FormItem.new(field, caption: "A very long caption indeed", required: true)
+        mount(item)
+        assert_equal "A very long capti… ∙", painted[0]
+      end
+    end
+
     context "the message" do
       it "mirrors the field's verdict into the last row" do
         mount

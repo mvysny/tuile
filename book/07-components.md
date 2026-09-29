@@ -660,9 +660,32 @@ one line: a captioned item is `1 + rows + 1` rows tall, a captionless one
 counts rows *on top of* it — one blank row between items — and a tighter form
 than the default isn't available.
 
-Two things it deliberately won't do. It **measures nothing** — `rows:` is yours
+On a terminal with width to spare, captions can go beside the fields instead,
+and every item gets a row shorter:
+
+```ruby
+form = Component::FormLayout.new(caption_position: :left)
+```
+
+```
+   Username ∙ [__________]
+              Must not be blank
+   Password   [__________]
+              [x] Remember me     ← no caption, but indented all the same
+```
+
+The caption column is one decision for the whole form, not per item — a column
+that jogged from row to row would be no column at all — so the form writes it
+into every item it holds. It fits the widest caption, up to half the form's
+width; past that a caption is cut to an ellipsis, and `caption_width: 12` fixes
+the column outright. Whichever, the field is what survives a squeeze: the caption
+gives up columns before the field drops below five.
+
+Two things it deliberately won't do. It **measures no field** — `rows:` is yours
 to declare, exactly as `Fixed[n]` is in a `Vertical`, because a field that could
-ask for a height is the bottom-up channel chapter 3 doesn't have. And it
+ask for a height is the bottom-up channel chapter 3 doesn't have; the caption
+column is measured from text the form *holds*, never from a field's opinion of
+itself. And it
 **doesn't scroll**: items are laid from the top, the one straddling the bottom
 edge keeps the rows that are left, and anything past it is clipped away. A form
 taller than its rect either wants splitting — across a `TabSheet`, say — or

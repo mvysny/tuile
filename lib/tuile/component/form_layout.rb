@@ -17,6 +17,19 @@ module Tuile
     #   Notes
     #   [              ]
     #
+    # **`caption_position: :left` puts every caption in one column beside its
+    # field**, the message under the field, so an item costs a row less:
+    #
+    #   form = Component::FormLayout.new(caption_position: :left)
+    #
+    #   Username ∙ [__________]
+    #              Must not be blank
+    #   Password   [__________]
+    #              [x] Remember me   ← captionless, but indented to the column
+    #
+    # The column fits the widest caption, clamped to half the form's width and
+    # ellipsized past it; `caption_width: 12` fixes it instead.
+    #
     # **You hand it fields, it holds items.** {#add} wraps whatever you give it
     # and returns the {FormItem} it built, so the chrome is the item's from the
     # start — `add(field, caption:)` reads as though it set the *field*'s
@@ -26,23 +39,25 @@ module Tuile
     # its caption and message go with it and the rows come back here.
     #
     # == Implementation details
-    # **Every row count is the caller's.** Nothing here measures and nothing is
-    # asked of a field: a captioned item is handed `1 + rows + 1` rows, a
-    # captionless one `rows + 1`, and {#spacing} adds rows between adjacent
+    # **Every row count is the caller's.** Nothing is asked of a field: a
+    # captioned item is handed `1 + rows + 1` rows, a captionless or
+    # left-captioned one `rows + 1`, and {#spacing} adds rows between adjacent
     # items. The message row already doubles as the gap, so `spacing` counts
     # *extra* rows on top of it and defaults to none. `rows:` is a placement
     # constraint in this layout's {Layout#constraints}, exactly as `Fixed[n]` is
     # in a {Layout::Box}, rather than a property of the item. See `D_form_layout`.
+    #
+    # **The caption settings are the form's, and it writes them into every item
+    # on every pass** — a ready-made item's own included — so the field column
+    # lines up. The widest caption counts hidden items too, so showing one never
+    # shifts the rest sideways; the only thing measured is the form's own
+    # caption strings, never a field.
     #
     # **Overflow clips, and there is no scrolling.** Items are laid from the top
     # edge; the one straddling the bottom takes the rows that are left — a
     # {FormItem} serves its content first — and everything past it gets an empty
     # rect rather than a stale one (`D_empty_ancestor`).
     #
-    # **The caption is read at every pass and nothing announces a change to it**,
-    # so one that appears or disappears after the item is placed resizes it at
-    # the next `rect=` rather than at once. Pass it to {#add} and the question
-    # never arises.
     class FormLayout < Layout
       # Placement for an item wired in through `add_child` instead of {#add}.
       # @return [Hash{Symbol => Object}]
@@ -50,14 +65,52 @@ module Tuile
 
       # @param spacing [Integer] extra blank rows between adjacent items, on top
       #   of the message row each item already ends with; `>= 0`.
-      # @raise [ArgumentError] on a negative `spacing`.
-      def initialize(spacing: 0)
+      # @param caption_position [Symbol] `:above` or `:left`, for every item.
+      # @param caption_width [Integer, nil] the left caption column in cells;
+      #   nil fits the widest caption, up to half the form's width.
+      # @raise [ArgumentError] on a negative `spacing`, or a bad
+      #   `caption_position` / `caption_width`.
+      def initialize(spacing: 0, caption_position: :above, caption_width: nil)
         super()
         @spacing = validate_spacing(spacing)
+        @caption_position = validate_caption_position(caption_position)
+        @caption_width = validate_caption_width(caption_width)
       end
 
       # @return [Integer] extra blank rows between adjacent items.
       attr_reader :spacing
+
+      # @return [Symbol] `:above` (the default) or `:left`, for every item.
+      attr_reader :caption_position
+
+      # @return [Integer, nil] the left caption column in cells, or nil for
+      #   the widest caption up to half the form's width.
+      attr_reader :caption_width
+
+      # Moves every caption above its field or into a column beside it.
+      # @param position [Symbol] one of {FormItem::CAPTION_POSITIONS}.
+      # @raise [ArgumentError] on anything else.
+      # @return [void]
+      def caption_position=(position)
+        position = validate_caption_position(position)
+        return if @caption_position == position
+
+        @caption_position = position
+        invalidate_layout
+      end
+
+      # Fixes the left caption column, or with nil fits it to the widest caption.
+      # The field still keeps {FormItem::MIN_FIELD_COLUMNS}: the caption yields.
+      # @param columns [Integer, nil] `>= 0`.
+      # @raise [ArgumentError] on a negative or non-Integer width.
+      # @return [void]
+      def caption_width=(columns)
+        columns = validate_caption_width(columns)
+        return if @caption_width == columns
+
+        @caption_width = columns
+        invalidate_layout
+      end
 
       # @param rows [Integer] extra blank rows between adjacent items; `>= 0`.
       # @raise [ArgumentError] on a negative value.
@@ -155,6 +208,13 @@ module Tuile
       # there (`D_empty_ancestor`).
       # @return [void]
       def relayout
+        # Before any placement, so the marks these writes put back on this
+        # layout are dropped as redundant rather than re-running the pass.
+        columns = item_caption_width
+        children.each do |item|
+          item.caption_position = caption_position
+          item.caption_width = columns
+        end
         collapsed = Rect.new(0, 0, 0, 0)
         top = 0
         bottom = rect.empty? ? 0 : rect.height
@@ -169,8 +229,22 @@ module Tuile
 
       # @param item [FormItem]
       # @return [Integer] the rows it is handed: a caption row when it carries a
-      #   caption, its content rows, and the message row that doubles as the gap.
-      def item_height(item) = (item.caption.empty? ? 0 : 1) + placement(item)[:rows] + 1
+      #   caption above, its content rows, and the message row that doubles as the gap.
+      def item_height(item)
+        caption_rows = caption_position == :left || item.caption.empty? ? 0 : 1
+        caption_rows + placement(item)[:rows] + 1
+      end
+
+      # @return [Integer, nil] the column every item's left caption gets — the
+      #   fixed {#caption_width}, else the widest caption, hidden items
+      #   included, clamped to half the width. Nil above, where no column exists.
+      def item_caption_width
+        return nil if caption_position == :above
+        return caption_width unless caption_width.nil?
+
+        widest = children.map { _1.marked_caption.display_width }.max || 0
+        [widest, rect.width / 2].min
+      end
 
       # @param item [FormItem]
       # @return [Hash{Symbol => Object}] the item's `rows`.
@@ -212,6 +286,25 @@ module Tuile
         return rows if rows.is_a?(Integer) && !rows.negative?
 
         raise ArgumentError, "spacing expects a non-negative Integer, got #{rows.inspect}"
+      end
+
+      # @param position [Symbol]
+      # @raise [ArgumentError] unless one of {FormItem::CAPTION_POSITIONS}.
+      # @return [Symbol] `position`.
+      def validate_caption_position(position)
+        return position if FormItem::CAPTION_POSITIONS.include?(position)
+
+        raise ArgumentError, "caption_position expects one of #{FormItem::CAPTION_POSITIONS.inspect}, " \
+                             "got #{position.inspect}"
+      end
+
+      # @param columns [Integer, nil]
+      # @raise [ArgumentError] unless nil or a non-negative Integer.
+      # @return [Integer, nil] `columns`.
+      def validate_caption_width(columns)
+        return columns if columns.nil? || (columns.is_a?(Integer) && !columns.negative?)
+
+        raise ArgumentError, "caption_width expects nil or a non-negative Integer, got #{columns.inspect}"
       end
 
       # @param rows [Integer]

@@ -60,8 +60,10 @@ module Tuile
       Component::FormItem => lambda {
         Component::FormItem.new(Component::TextField.new, caption: "Username", required: true)
       },
+      # Left captions, so the contract covers the pass that writes each item's
+      # caption settings; the FormItem entry above covers captions above.
       Component::FormLayout => lambda {
-        Component::FormLayout.new.tap do |form|
+        Component::FormLayout.new(caption_position: :left).tap do |form|
           form.add(Component::TextField.new, caption: "Username", required: true)
           form.add(Component::Button.new("Save"))
         end

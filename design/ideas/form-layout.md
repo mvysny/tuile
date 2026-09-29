@@ -1,21 +1,9 @@
-# `FormLayout` v2 and v3 — left captions, multiple columns
+# `FormLayout` v3 — multiple columns
 
 **Status:** v1 shipped (`Component::FormLayout`: a column of `FormItem`s, captions above, `rows:`
-per child, no scrolling, overflow clipped), and v2's `spacing:` with it. Its choices are `D_form_layout`, usage its
-rdoc and book ch7, Vaadin's behaviour `R_form_items`. This note is only the staging v1 deferred and
-re-argues none of it.
-
-## v2 — captions to the left
-
-- **Optional left captions.** A captionless child still has no caption cell, so `required: true`
-  without a caption keeps raising.
-- **It may close v1's caption-liveness edge**: a left column must measure captions, so it may need
-  the caption notice v1 declined (`D_form_layout`).
-
-`Q_caption_width` — widest caption capped, a fixed `caption_width:`, or a percentage? Whichever,
-the container measures *its own* strings and assigns the rect, as `Select` measures its item labels
-(`D_select`; `D_box_layouts`' "`align:` is legal only because the cross extent is caller-supplied").
-It looks like the banned bottom-up channel and isn't.
+per child, no scrolling, overflow clipped), and v2 with it — `spacing:`, and left captions in a
+column the form sizes. Their choices are `D_form_layout`, usage the rdoc and book ch7, Vaadin's
+behaviour `R_form_items`. This note is only the staging still deferred and re-argues none of it.
 
 ## v3 — multiple columns
 
@@ -27,9 +15,12 @@ It looks like the banned bottom-up channel and isn't.
 - **Colspan** (a `TextArea` across both) rides the `Layout#constraints` entry `rows:` already uses.
 - **Row-major fill**, as Vaadin's: `children`, add, Tab and reading order agree.
 - **Row height = max over the row's items** — resolves a captionless item beside a captioned one.
+- **The narrow-terminal fallback is argued here too** — Vaadin drops side labels back above the
+  field when the layout gets too narrow (`R_form_items`), the same width-driven switch as an auto
+  `columns`. v2 shipped without it; its caption yields to keep the field's minimum instead.
 
-v2 and v3 are in tension by design: Vaadin doesn't recommend side captions with multiple columns
-(`R_form_items`).
+v3 is in tension with left captions by design: Vaadin doesn't recommend side captions with multiple
+columns (`R_form_items`), so a left-caption column per form column is a question, not a given.
 
 ## Not here
 
@@ -38,5 +29,4 @@ v2 and v3 are in tension by design: Vaadin doesn't recommend side captions with 
 
 ## Related
 
-`D_form_layout`, `D_form_item`, `D_caption_ownership`, `R_form_items`, `D_select`, `D_box_layouts`,
-`D_scroller`, `design/ideas/new-components.md`.
+`D_form_layout`, `D_form_item`, `R_form_items`, `D_scroller`, `design/ideas/new-components.md`.

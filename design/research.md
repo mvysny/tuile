@@ -782,6 +782,11 @@ Verified against the Vaadin 25.2 docs, 2026-09-19, while designing `FormItem` an
 - **Side captions and multiple columns are documented as a bad pairing**: *"Forms with labels next
   to the fields can be confusing if fields are rendered in multiple columns … this combination is
   not recommended."* **[docs]**
+- **Side-caption position and width are the layout's, not the item's** — `FormLayout#setLabelsAside`
+  and `FormLayout#setLabelWidth` (the `--vaadin-form-layout-label-width` property), one width for
+  every item. Rechecked against the 25.2 docs, 2026-09-29. **[docs]**
+- **Side labels fall back above the field when the layout is too narrow** — automatically in
+  auto-responsive mode, and below `20em` in the default responsive steps. **[docs]**
 - **Both fill orders ship.** Responsive-steps mode fills row-major into the columns a breakpoint
   declares (default one column below `40em`, two above); auto-responsive mode puts every field in
   one column until `FormRow` groups some onto a row, and a row too wide for the column count wraps.

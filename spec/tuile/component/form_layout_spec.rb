@@ -162,6 +162,103 @@ module Tuile
       end
     end
 
+    context "left captions" do
+      let(:form) { Component::FormLayout.new(caption_position: :left) }
+
+      it "lines every field up at the widest caption, an item costing rows + 1" do
+        first = form.add(username, caption: "Username")
+        second = form.add(notes, caption: "Notes")
+        mount
+        assert_equal Rect.new(0, 0, 20, 2), first.rect
+        assert_equal Rect.new(0, 2, 20, 2), second.rect
+        assert_equal [9, 9], [username.rect.left, notes.rect.left]
+      end
+
+      it "indents a captionless item to the same column" do
+        form.add(username, caption: "Username")
+        save = Component::Button.new("Save")
+        form.add(save)
+        mount
+        assert_equal 9, save.rect.left
+      end
+
+      it "counts the required marker in the widest caption" do
+        form.add(username, caption: "Username", required: true)
+        form.add(notes, caption: "Notes")
+        mount
+        assert_equal 11, notes.rect.left
+      end
+
+      it "clamps the column to half the form's width and ellipsizes past it" do
+        form.add(username, caption: "A rather long caption")
+        mount
+        assert_equal 11, username.rect.left
+        assert_equal "A rather …", painted[0][0, 10]
+      end
+
+      it "counts hidden items, so showing one never shifts the rest" do
+        hidden = form.add(username, caption: "Username")
+        form.add(notes, caption: "Notes")
+        mount
+        hidden.visible = false
+        notes.flush_layout
+        assert_equal 9, notes.rect.left
+      end
+
+      it "takes a fixed caption_width instead" do
+        form.caption_width = 4
+        form.add(username, caption: "Username")
+        mount
+        assert_equal 5, username.rect.left
+        assert_equal "Use…", painted[0][0, 4]
+      end
+
+      it "writes its own settings over a ready-made item's" do
+        item = Component::FormItem.new(username, caption: "Username", caption_width: 3)
+        form.add(item)
+        mount
+        assert_equal [:left, 8], [item.caption_position, item.caption_width]
+        item.caption_width = 2
+        item.flush_layout
+        assert_equal 8, item.caption_width, "the form re-imposes it at once"
+      end
+
+      it "widens the column at once when a caption grows" do
+        item = form.add(username, caption: "Name")
+        mount
+        item.caption = "Username"
+        username.flush_layout
+        assert_equal 9, username.rect.left
+      end
+
+      it "re-runs the pass when the position changes" do
+        item = form.add(username, caption: "Username")
+        mount
+        form.caption_position = :above
+        item.flush_layout
+        assert_equal Rect.new(0, 0, 20, 3), item.rect
+        assert_equal Rect.new(0, 1, 20, 1), username.rect
+      end
+
+      it "refuses an unknown position and a negative or fractional width" do
+        assert_raises(ArgumentError) { Component::FormLayout.new(caption_position: :right) }
+        assert_raises(ArgumentError) { form.caption_width = -1 }
+        assert_raises(ArgumentError) { form.caption_width = 0.5 }
+      end
+    end
+
+    context "a caption that changes after placement" do
+      it "resizes its item at once, with no resize of the form" do
+        item = form.add(username)
+        below = form.add(notes, caption: "Notes")
+        mount
+        item.caption = "Username"
+        below.flush_layout
+        assert_equal Rect.new(0, 0, 20, 3), item.rect
+        assert_equal Rect.new(0, 3, 20, 3), below.rect
+      end
+    end
+
     context "overflow" do
       it "clips the item straddling the bottom edge to the rows that are left" do
         form.add(username, caption: "Username")

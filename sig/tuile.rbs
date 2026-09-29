@@ -9105,17 +9105,34 @@ module Tuile
     # caption and the message with it, while `field.visible = false` blanks the
     # field's rows and leaves its caption stranded above them.
     # 
+    # **`caption_position: :left` puts the caption beside the field**, and the
+    # message under the field rather than under the caption — one row less:
+    # 
+    #   Component::FormItem.new(username, caption: "Username", caption_position: :left)
+    # 
+    #   Username [__________]
+    #            Must not be blank
+    # 
+    # The caption column fits the caption unless {#caption_width} fixes it;
+    # inside a {FormLayout} both are the form's, written on every pass, so the
+    # column lines up across its items.
+    # 
     # == Implementation details
     # **The message row is also the gap row**, which is why the item's pitch is
     # a flat three rows and nothing ever reflows: a form that grew a row when a
     # field went invalid would push the fields below it down *while the user is
     # typing into one of them*. See `D_form_item`.
     # 
-    # **It measures nothing.** The rect it is handed is divided top-down —
-    # caption, content, message — so there is no `rows` property here and no
-    # question asked of the field. Rows are served content-first when there are
-    # too few: the content never drops below one row, then the caption takes the
-    # next row it can, then the message.
+    # **It measures nothing of the field.** The rect it is handed is divided
+    # top-down — caption, content, message — so there is no `rows` property
+    # here and no question asked of the field. Rows are served content-first
+    # when there are too few: the content never drops below one row, then the
+    # caption takes the next row it can, then the message. Columns go the same
+    # way: a left caption yields until the field keeps {MIN_FIELD_COLUMNS}, then
+    # the gap goes, and the field is never hidden.
+    # 
+    # **A caption too wide for its cells is ellipsized, and the required marker
+    # survives the cut** (`Userna… ∙`).
     # 
     # **The message comes from two channels and the item orders neither.** A
     # validator's verdict ({HasValidation#error_message}) and the field's own
@@ -9137,16 +9154,32 @@ module Tuile
     class FormItem < Component
       include Tuile::Component::HasContent
       include Tuile::Component::HasCaption
+      MIN_FIELD_COLUMNS: Integer
+      CAPTION_POSITIONS: ::Array[Symbol]
 
       # _@param_ `content` — the field to wrap; assignable later through {#content=}.
       # 
       # _@param_ `caption` — the text above it; omit it for a widget painting its own, such as a {Checkbox} or a {Button}.
       # 
       # _@param_ `required` — whether to paint {.required_marker} beside the caption. Paint only: the check is a {Binder::Binding#required}, said to the binder separately.
-      def initialize: (?Component? content, ?caption: (String | StyledString)?, ?required: bool) -> void
+      # 
+      # _@param_ `caption_position` — `:above` or `:left`; see {#caption_position=}.
+      # 
+      # _@param_ `caption_width` — see {#caption_width=}.
+      def initialize: (
+                        ?Component? content,
+                        ?caption: (String | StyledString)?,
+                        ?required: bool,
+                        ?caption_position: Symbol,
+                        ?caption_width: Integer?
+                      ) -> void
 
       # _@return_ — whether the caption carries {.required_marker}.
       def required?: () -> bool
+
+      # The caption as painted, {.required_marker} included — what a left
+      # caption column is measured against.
+      def marked_caption: () -> StyledString
 
       # Paints {.required_marker} beside the caption. The field never learns it
       # is required — nothing here validates, and this is not a rule.
@@ -9155,7 +9188,8 @@ module Tuile
       def required=: (bool flag) -> void
 
       # Sets the caption, adding or dropping the caption row as it becomes
-      # non-empty or empty.
+      # non-empty or empty, and re-running the parent's pass: a {FormLayout}
+      # sizes the item, and its caption column, from it.
       # 
       # _@param_ `new_caption`
       def caption=: ((String | StyledString)? new_caption) -> void
@@ -9183,7 +9217,8 @@ module Tuile
       # _@param_ `rect` — in this component's coordinates.
       def scroll_to_visible: (?Rect rect) -> void
 
-      # The caption, the content and the message each take one row of three.
+      # Divides the rect into caption, content and message — stacked, or with
+      # the caption in a column beside the other two.
       def relayout: () -> void
 
       def handle_theme_changed: () -> void
@@ -9197,7 +9232,20 @@ module Tuile
       # one of them just calls this.
       def refresh_chrome: () -> void
 
-      def layout_chrome: () -> void
+      # _@return_ — {#marked_caption}, ellipsized to the columns the
+      # last pass handed the caption, keeping the marker whole.
+      def fitted_caption: () -> StyledString
+
+      # _@return_ — the required marker with its leading space.
+      def marker: () -> StyledString
+
+      def error_ink: () -> Color?
+
+      # Marks both passes that depend on the caption's shape: this item's, and
+      # the parent's — a {FormLayout} sizes the item and its caption column from
+      # it, and re-imposes its own position and width. Inside the form's own
+      # pass the second mark is dropped, as it is written before any placement.
+      def invalidate_geometry: () -> void
 
       # Divides {Component#rect} top-down. A part with no row left gets a rect
       # of zero height — empty, so the {Label} in it paints nothing — rather
@@ -9212,6 +9260,13 @@ module Tuile
       # 
       # _@return_ — the full width, `rows` tall.
       def row_rect: (Integer _top, Integer rows) -> Rect
+
+      # Divides {Component#rect} into a caption column on the first row, a gap
+      # column, and the content over the message beside them. A captionless
+      # item keeps the indent and paints nothing in it.
+      # 
+      # _@return_ — the caption, content and message rects.
+      def left_rects: () -> [Rect, Rect, Rect]
 
       # Read through *this* method, never `@caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).
@@ -9239,6 +9294,14 @@ module Tuile
       # 
       # _@return_ — frozen.
       def self.required_marker=: (String value) -> String
+
+      # _@return_ — `:above` (the default) or `:left`.
+      attr_accessor caption_position: Symbol
+
+      # _@return_ — the left caption's column, in cells; nil fits
+      # the caption, marker included. Ignored while {#caption_position} is
+      # `:above`.
+      attr_accessor caption_width: Integer?
     end
 
     # The value seam every input component shares: a settable/gettable {#value}
@@ -11600,6 +11663,19 @@ module Tuile
     #   Notes
     #   [              ]
     # 
+    # **`caption_position: :left` puts every caption in one column beside its
+    # field**, the message under the field, so an item costs a row less:
+    # 
+    #   form = Component::FormLayout.new(caption_position: :left)
+    # 
+    #   Username ∙ [__________]
+    #              Must not be blank
+    #   Password   [__________]
+    #              [x] Remember me   ← captionless, but indented to the column
+    # 
+    # The column fits the widest caption, clamped to half the form's width and
+    # ellipsized past it; `caption_width: 12` fixes it instead.
+    # 
     # **You hand it fields, it holds items.** {#add} wraps whatever you give it
     # and returns the {FormItem} it built, so the chrome is the item's from the
     # start — `add(field, caption:)` reads as though it set the *field*'s
@@ -11609,28 +11685,33 @@ module Tuile
     # its caption and message go with it and the rows come back here.
     # 
     # == Implementation details
-    # **Every row count is the caller's.** Nothing here measures and nothing is
-    # asked of a field: a captioned item is handed `1 + rows + 1` rows, a
-    # captionless one `rows + 1`, and {#spacing} adds rows between adjacent
+    # **Every row count is the caller's.** Nothing is asked of a field: a
+    # captioned item is handed `1 + rows + 1` rows, a captionless or
+    # left-captioned one `rows + 1`, and {#spacing} adds rows between adjacent
     # items. The message row already doubles as the gap, so `spacing` counts
     # *extra* rows on top of it and defaults to none. `rows:` is a placement
     # constraint in this layout's {Layout#constraints}, exactly as `Fixed[n]` is
     # in a {Layout::Box}, rather than a property of the item. See `D_form_layout`.
     # 
+    # **The caption settings are the form's, and it writes them into every item
+    # on every pass** — a ready-made item's own included — so the field column
+    # lines up. The widest caption counts hidden items too, so showing one never
+    # shifts the rest sideways; the only thing measured is the form's own
+    # caption strings, never a field.
+    # 
     # **Overflow clips, and there is no scrolling.** Items are laid from the top
     # edge; the one straddling the bottom takes the rows that are left — a
     # {FormItem} serves its content first — and everything past it gets an empty
     # rect rather than a stale one (`D_empty_ancestor`).
-    # 
-    # **The caption is read at every pass and nothing announces a change to it**,
-    # so one that appears or disappears after the item is placed resizes it at
-    # the next `rect=` rather than at once. Pass it to {#add} and the question
-    # never arises.
     class FormLayout < Tuile::Component::Layout
       DEFAULT_PLACEMENT: ::Hash[Symbol, Object]
 
       # _@param_ `spacing` — extra blank rows between adjacent items, on top of the message row each item already ends with; `>= 0`.
-      def initialize: (?spacing: Integer) -> void
+      # 
+      # _@param_ `caption_position` — `:above` or `:left`, for every item.
+      # 
+      # _@param_ `caption_width` — the left caption column in cells; nil fits the widest caption, up to half the form's width.
+      def initialize: (?spacing: Integer, ?caption_position: Symbol, ?caption_width: Integer?) -> void
 
       # Wraps `field` in a {FormItem}, adds it, and re-runs the layout.
       # 
@@ -11701,8 +11782,13 @@ module Tuile
       # _@param_ `item`
       # 
       # _@return_ — the rows it is handed: a caption row when it carries a
-      # caption, its content rows, and the message row that doubles as the gap.
+      # caption above, its content rows, and the message row that doubles as the gap.
       def item_height: (FormItem item) -> Integer
+
+      # _@return_ — the column every item's left caption gets — the
+      # fixed {#caption_width}, else the widest caption, hidden items
+      # included, clamped to half the width. Nil above, where no column exists.
+      def item_caption_width: () -> Integer?
 
       # _@param_ `item`
       # 
@@ -11724,11 +11810,28 @@ module Tuile
       # _@return_ — `rows`.
       def validate_spacing: (Integer rows) -> Integer
 
+      # _@param_ `position`
+      # 
+      # _@return_ — `position`.
+      def validate_caption_position: (Symbol position) -> Symbol
+
+      # _@param_ `columns`
+      # 
+      # _@return_ — `columns`.
+      def validate_caption_width: (Integer? columns) -> Integer?
+
       # _@param_ `rows`
       def validate_rows: (Integer rows) -> void
 
       # _@return_ — extra blank rows between adjacent items.
       attr_accessor spacing: Integer
+
+      # _@return_ — `:above` (the default) or `:left`, for every item.
+      attr_accessor caption_position: Symbol
+
+      # _@return_ — the left caption column in cells, or nil for
+      # the widest caption up to half the form's width.
+      attr_accessor caption_width: Integer?
     end
 
     # The chrome text a component *wears* — a {Window}'s border title, a
