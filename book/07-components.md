@@ -656,9 +656,9 @@ form.add(save)                                      # nor does a Button
 Everything it holds is a `FormItem` — `add` returns the one it built, so
 `item.required = true` later goes to the right receiver — and the arithmetic is
 one line: a captioned item is `1 + rows + 1` rows tall, a captionless one
-`rows + 1`. There is no `spacing`, because the message row already *is* the gap;
-a looser form is a `Vertical` of several `FormLayout`s, and a tighter one isn't
-available.
+`rows + 1`. The message row already *is* the gap, so `FormLayout.new(spacing: 1)`
+counts rows *on top of* it — one blank row between items — and a tighter form
+than the default isn't available.
 
 Two things it deliberately won't do. It **measures nothing** — `rows:` is yours
 to declare, exactly as `Fixed[n]` is in a `Vertical`, because a field that could

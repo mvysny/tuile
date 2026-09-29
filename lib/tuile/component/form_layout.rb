@@ -28,10 +28,11 @@ module Tuile
     # == Implementation details
     # **Every row count is the caller's.** Nothing here measures and nothing is
     # asked of a field: a captioned item is handed `1 + rows + 1` rows, a
-    # captionless one `rows + 1`. The message row doubles as the gap, which is
-    # why there is no `spacing` — and why `rows:` is a placement constraint in
-    # this layout's {Layout#constraints}, exactly as `Fixed[n]` is in a {Layout::Box},
-    # rather than a property of the item. See `D_form_layout`.
+    # captionless one `rows + 1`, and {#spacing} adds rows between adjacent
+    # items. The message row already doubles as the gap, so `spacing` counts
+    # *extra* rows on top of it and defaults to none. `rows:` is a placement
+    # constraint in this layout's {Layout#constraints}, exactly as `Fixed[n]` is
+    # in a {Layout::Box}, rather than a property of the item. See `D_form_layout`.
     #
     # **Overflow clips, and there is no scrolling.** Items are laid from the top
     # edge; the one straddling the bottom takes the rows that are left — a
@@ -46,6 +47,28 @@ module Tuile
       # Placement for an item wired in through `add_child` instead of {#add}.
       # @return [Hash{Symbol => Object}]
       DEFAULT_PLACEMENT = { rows: 1 }.freeze
+
+      # @param spacing [Integer] extra blank rows between adjacent items, on top
+      #   of the message row each item already ends with; `>= 0`.
+      # @raise [ArgumentError] on a negative `spacing`.
+      def initialize(spacing: 0)
+        super()
+        @spacing = validate_spacing(spacing)
+      end
+
+      # @return [Integer] extra blank rows between adjacent items.
+      attr_reader :spacing
+
+      # @param rows [Integer] extra blank rows between adjacent items; `>= 0`.
+      # @raise [ArgumentError] on a negative value.
+      # @return [void]
+      def spacing=(rows)
+        rows = validate_spacing(rows)
+        return if @spacing == rows
+
+        @spacing = rows
+        invalidate_layout
+      end
 
       # Wraps `field` in a {FormItem}, adds it, and re-runs the layout.
       #
@@ -122,9 +145,10 @@ module Tuile
 
       private
 
-      # Stacks the items from the top edge, each {#item_height} tall, and clips
-      # at the bottom. A hidden item gives up its content rows *and* the fused
-      # gap row below them, and everything under it moves up.
+      # Stacks the items from the top edge, each {#item_height} tall and
+      # {#spacing} apart, and clips at the bottom. A hidden item gives up its
+      # content rows, the fused gap row below them *and* its spacing, and
+      # everything under it moves up.
       #
       # Deliberately *no* `return if rect.empty?` guard: that strands the items
       # at the coordinates they last had, and the next full repaint paints them
@@ -135,6 +159,8 @@ module Tuile
         top = 0
         bottom = rect.empty? ? 0 : rect.height
         children.each do |item|
+          # Spacing goes between shown items: the first one has none above it.
+          top += spacing if item.visible? && top.positive?
           rows = item.visible? ? [item_height(item), bottom - top].min : 0
           item.rect = rows.positive? ? Rect.new(0, top, rect.width, rows) : collapsed
           top += rows
@@ -177,6 +203,15 @@ module Tuile
         raise ArgumentError, "#{field} is in no item of #{self}" if item.nil?
 
         item
+      end
+
+      # @param rows [Integer]
+      # @raise [ArgumentError] unless `rows` is a non-negative Integer.
+      # @return [Integer] `rows`.
+      def validate_spacing(rows)
+        return rows if rows.is_a?(Integer) && !rows.negative?
+
+        raise ArgumentError, "spacing expects a non-negative Integer, got #{rows.inspect}"
       end
 
       # @param rows [Integer]

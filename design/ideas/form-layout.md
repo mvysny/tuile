@@ -1,14 +1,12 @@
 # `FormLayout` v2 and v3 — left captions, multiple columns
 
 **Status:** v1 shipped (`Component::FormLayout`: a column of `FormItem`s, captions above, `rows:`
-per child, no `spacing`, no scrolling, overflow clipped). Its choices are `D_form_layout`, usage its
+per child, no scrolling, overflow clipped), and v2's `spacing:` with it. Its choices are `D_form_layout`, usage its
 rdoc and book ch7, Vaadin's behaviour `R_form_items`. This note is only the staging v1 deferred and
 re-argues none of it.
 
-## v2 — `spacing`, and captions to the left
+## v2 — captions to the left
 
-- **`spacing:` = extra rows on top of an item's three, default 0** — same look as today's gap, named
-  for what it is instead of sharing cells with the message row.
 - **Optional left captions.** A captionless child still has no caption cell, so `required: true`
   without a caption keeps raising.
 - **It may close v1's caption-liveness edge**: a left column must measure captions, so it may need

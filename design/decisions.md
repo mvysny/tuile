@@ -6356,7 +6356,7 @@ of this entry to rewrite. The glyph, and why it is not `•`, is the rdoc's.
 **`required: true` without a caption raises**, because the marker rides the caption and a
 captionless item reserves no caption row for it to sit in.
 
-## D_form_layout — Why does a form layout stack `FormItem`s in one column, captions above, with no spacing knob?
+## D_form_layout — Why does a form layout stack `FormItem`s in one column, captions above, the message row as the gap?
 
 `D_form_item` shipped the chrome around one field and left open the container that stacks the items.
 A `Layout::Vertical` of them is already a form, so what `Component::FormLayout` has to earn is the
@@ -6371,15 +6371,20 @@ available with the right receiver.
 
 **Captions go above the field, and that is what makes v1 shippable**: the caption spans the form's
 full width, so there is no caption-column width policy, no caller-side measuring pass and no
-ellipsis. It is also the shape that survives a narrow terminal. Left captions and configurable
-`spacing` are the staged v2, multiple equal-width columns with colspan the staged v3 — and Vaadin's
+ellipsis. It is also the shape that survives a narrow terminal. Left captions are the staged v2,
+multiple equal-width columns with colspan the staged v3 — and Vaadin's
 docs put side captions and multiple columns in tension on purpose (`R_form_items`).
+
+**`spacing:` counts extra rows, on top of the message row, and defaults to 0.** It sits between
+adjacent shown items as a `Box`'s does, never above the first or below the last, and a hidden item
+takes its spacing with it.
 
 Why not:
 
-- **A `spacing` knob now** — the item's message row *is* the gap row (`D_form_item`), so a second
-  gap concept would compete with it for the same cells. v2 spells it as **extra** rows on top of the
-  item's three, named for what it is.
+- **`spacing` as *the* gap, the message row inside it** — the item's message row already *is* the
+  gap row (`D_form_item`), so a knob counting the same cells would compete with it: `spacing: 0`
+  would have to mean "the message row overlaps the next caption" or be refused. Counting extra rows
+  names what it adds, and 0 is exactly the v1 look.
 - **A bare field as a child** — non-uniform children are how the chrome-vs-app-children distinction
   grows back at the layout level, and `field_for` / `remove` / the hide idiom all key off "every
   child is an item". A captionless item simply does not reserve row 0, so a `Button` costs

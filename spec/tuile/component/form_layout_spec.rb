@@ -113,6 +113,55 @@ module Tuile
       end
     end
 
+    context "spacing" do
+      it "defaults to none, the message row being the gap" do
+        assert_equal 0, form.spacing
+      end
+
+      it "adds extra rows between adjacent items, never above the first or below the last" do
+        spaced = Component::FormLayout.new(spacing: 2)
+        first = spaced.add(username, caption: "Username")
+        second = spaced.add(Component::Button.new("Save"))
+        mount_at(spaced, Rect.new(0, 0, 20, 12))
+        assert_equal Rect.new(0, 0, 20, 3), first.rect
+        assert_equal Rect.new(0, 5, 20, 2), second.rect
+      end
+
+      it "re-runs the pass when it changes" do
+        form.add(username, caption: "Username")
+        second = form.add(notes, caption: "Notes")
+        mount
+        form.spacing = 1
+        second.flush_layout
+        assert_equal Rect.new(0, 4, 20, 3), second.rect
+      end
+
+      it "gives a hidden item's spacing back with its rows" do
+        form.spacing = 1
+        hidden = form.add(username, caption: "Username")
+        middle = form.add(notes, caption: "Notes")
+        last = form.add(Component::Button.new("Save"))
+        mount
+        hidden.visible = false
+        hidden.flush_layout
+        assert_equal Rect.new(0, 0, 20, 3), middle.rect
+        assert_equal Rect.new(0, 4, 20, 2), last.rect
+      end
+
+      it "counts against the bottom edge, so an item past it gets an empty rect" do
+        form.spacing = 3
+        form.add(username, caption: "Username")
+        clipped = form.add(notes, caption: "Notes")
+        mount(height: 5)
+        assert clipped.rect.empty?
+      end
+
+      it "refuses a negative or non-Integer count" do
+        assert_raises(ArgumentError) { Component::FormLayout.new(spacing: -1) }
+        assert_raises(ArgumentError) { form.spacing = 1.5 }
+      end
+    end
+
     context "overflow" do
       it "clips the item straddling the bottom edge to the rows that are left" do
         form.add(username, caption: "Username")
