@@ -1714,13 +1714,9 @@ module Tuile
       # _@return_ — whether the user edited a field since {#read} or the
       # last successful {#write?} — edited, not differing, so a `""` shown for
       # a `nil` attribute is no change. An edit counts once its field
-      # announces it; the field that still has focus is compared live against
-      # what {#read} showed instead, since a Save *shortcut* leaves it
-      # holding its notice.
+      # announces it; a Save the user reaches takes focus, which announces
+      # the field being left.
       def changed?: () -> bool
-
-      # Records what every field shows, for {#changed?}'s live compare.
-      def take_baseline: () -> void
 
       # _@param_ `binding`
       # 
@@ -1770,8 +1766,8 @@ module Tuile
     # a string or number field, on leaving it or on ENTER by default
     # ({Component::HasValueChangeMode#value_change_mode}), so a live filter sets
     # its fields `:lazy`, and an `:eager` field passes every valid prefix
-    # through the model and its setters. Until then the model lacks that last
-    # edit, which a Save *shortcut* fired from inside the field would miss.
+    # through the model and its setters. A Save the user reaches takes focus,
+    # which announces the field being left, so the model has it by then.
     class Unbuffered < Binder
       def initialize: () -> void
 

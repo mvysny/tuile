@@ -42,7 +42,6 @@ module Tuile
         super { |binding, edit| edited(binding, edit) }
         @model = nil
         @changed = Set.new
-        @baseline = {}
       end
 
       # Shows `model` in the fields and remembers it for {#validate}; a `nil`
@@ -55,7 +54,6 @@ module Tuile
         @model = model
         @changed.clear
         @engine.populate(model)
-        take_baseline
         @engine.run(@engine.bindings, model:, write: [], keep: false, show: [])
         nil
       end
@@ -78,10 +76,7 @@ module Tuile
 
         all = @engine.bindings
         written = @engine.run(all, model:, write: all, keep: true, show: :all)
-        if written
-          @changed.clear
-          take_baseline
-        end
+        @changed.clear if written
         written
       end
 
@@ -96,24 +91,11 @@ module Tuile
       # @return [Boolean] whether the user edited a field since {#read} or the
       #   last successful {#write?} — edited, not differing, so a `""` shown for
       #   a `nil` attribute is no change. An edit counts once its field
-      #   announces it; the field that still has focus is compared live against
-      #   what {#read} showed instead, since a Save *shortcut* leaves it
-      #   holding its notice.
-      def changed?
-        return true unless @changed.empty?
-
-        @engine.bindings.any? do |b|
-          b.field.active? && @baseline.key?(b.attr) && b.field.value != @baseline[b.attr]
-        end
-      end
+      #   announces it; a Save the user reaches takes focus, which announces
+      #   the field being left.
+      def changed? = !@changed.empty?
 
       private
-
-      # Records what every field shows, for {#changed?}'s live compare.
-      # @return [void]
-      def take_baseline
-        @baseline = @engine.bindings.to_h { [_1.attr, _1.field.value] }
-      end
 
       # @param binding [Binder::Binding]
       # @param edit [Boolean]

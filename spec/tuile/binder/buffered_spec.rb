@@ -283,14 +283,6 @@ module Tuile
         binder.read(person)
         refute binder.changed?
       end
-
-      it "sees typing in the field that still has focus, whose notice is held" do
-        Screen.instance.focused = name
-        Screen.instance.send(:handle_key?, "x")
-        assert binder.changed? # a Save shortcut fired now must not think the form clean
-        Screen.instance.send(:handle_key?, Keys::BACKSPACE)
-        refute binder.changed?
-      end
     end
   end
 end

@@ -6561,8 +6561,9 @@ are ActiveRecord's `save` / `save!` (`R_ruby_validation`), `?` in the `Set#add?`
 **Save asks the binder when pressed**, and on "no" `ConfirmWindow.alert` names the problems. Vaadin
 enables the button from a status listener instead (`R_vaadin_binder`). **`changed?` counts user
 edits** since `read` or the last successful `write?`, not `==`, so the `""`-over-`nil` drift doesn't
-read as a change — except that the *focused* field is compared live against what `read` showed,
-since a Save *shortcut* leaves it holding its notice. `write?` and `validate` read `value` live.
+read as a change. **The binder honors only announced values**: an edit counts once its field
+announces it, and a Save the user reaches — a click, Tab, a shortcut — takes focus first, which
+announces the field being left (`D_value_change_mode`). `write?` and `validate` read `value` live.
 
 Why not:
 - *A disabled Save*: there is no disabled state (`ComponentBackground::STATES` is `normal` /
@@ -6577,8 +6578,10 @@ Why not:
 - *Vaadin's escape hatches* — `setValidatorsDisabled`, `withDefaultValidator(false)`,
   `setIsAppliedPredicate`: deferred and unnamed, each additive with no asker. Whoever re-grows
   `withDefaultValidator(false)` owes an answer for skipping the bad-input check.
-- *The binder releasing a field's held notice*: new public API on every field for one reader,
-  where the live compare for the focused field answers `changed?` with none.
+- *The binder releasing a field's held notice*: new public API on every field for one reader.
+- *A live compare of the focused field in `changed?`*: built, then removed — it guards a Save that
+  runs without taking focus, and the answer to that is that Save takes focus. If a delayed value
+  outlives a Save in practice, revisit it then.
 
 ---
 
@@ -6602,8 +6605,9 @@ mode, so a Save handler reads what is on screen. A *write* — `set_value`, an U
 `Testing.set_value` — announces at once, as does an edit reaching a field off the focus chain,
 which has no commit gesture coming. A wrapping field pins its editor `:eager`, because bad-input
 sync and `ComboBox`'s refill need every edit, and holds its own notice instead. **The hold is the
-field's own business**: no flush, no `pending?`; the one outside reader that needed it, the
-Binder's `changed?`, compares the focused field live (`D_binder_verdicts`).
+field's own business**: no flush, no `pending?`. The Binder honors only announced values, relying
+on a Save the user reaches taking focus first, which announces the field being left
+(`D_binder_verdicts`).
 
 **Claiming ENTER opts out of its release.** The release is part of the field's own ENTER handling,
 so a subclass that takes ENTER first — a `TextArea` rebound to submit — releases on leaving only,
