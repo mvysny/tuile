@@ -117,8 +117,8 @@ protect the plaintext in memory: it's an ordinary Ruby string, and
 anything stronger is a job for a type the whole application cooperates
 with.
 
-Both inherit the same event hooks from the base. `on_value_change` fires
-whenever the text changes; `on_escape` reacts to ESC; `on_enter`, `on_key_up` and
+Both inherit the same event hooks from the base. `on_value_change` reports
+the text changing; `on_escape` reacts to ESC; `on_enter`, `on_key_up` and
 `on_key_down` each claim one key. Notice what
 they have in common: every one of them either *reports* something or takes a
 **single named key** whose meaning the field itself has no use for. There is
@@ -127,9 +127,22 @@ keys *do*, you subclass (see *Keeping input out of a field*, below).
 
 ```ruby
 field = Component::TextField.new
+field.value_change_mode = :lazy        # announce once typing pauses
 field.on_value_change { |e| filter_results(e.value) }
 field.on_enter { submit }              # empty (default) → Enter bubbles to the parent
 ```
+
+*When* `on_value_change` fires is the field's `value_change_mode`. The
+default, `:commit`, holds the notice while the user types and lets it go when
+they are done: when they leave the field or press Enter. That is what a form
+wants, since a field that shouted "at least 3 characters" after the first
+letter would be shouting at someone typing correctly. A filter like the one
+above wants `:lazy` instead, which announces once the typing pauses (for
+0.4 s, `value_change_timeout`), so the results refresh without a refetch per
+letter. `:eager` announces every keystroke, for something that must follow
+the typing exactly, like a slash-command menu. Only the *notice* waits:
+`value` always answers what is in the field right now, and a write from your
+own code (`field.value = "x"`) announces at once in every mode.
 
 Note that `on_enter` / `on_key_up` / `on_key_down` on a TextField, while
 *empty*, let those keys *fall through* to the parent — that's how Enter in a

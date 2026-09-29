@@ -103,7 +103,8 @@ module Tuile
       listener :on_key_down
 
       # @!method on_enter
-      #   Fired with an {EnterEvent} when ENTER is pressed. **Empty means the field
+      #   Fired with an {EnterEvent} when ENTER is pressed, after a held
+      #   {HasValue#on_value_change} has gone out. **Empty means the field
       #   declines ENTER**, which then falls through to the parent — which is how
       #   a scope's default button keeps working.
       #   @return [Listeners]
@@ -162,6 +163,9 @@ module Tuile
 
           on_key_down.fire(KeyDownEvent.new(source: self))
         when Keys::ENTER
+          # A commit gesture: announced before a listener or the bubble to the
+          # scope's default button can act on the value.
+          announce(from_user: true)
           return false if on_enter.empty?
 
           on_enter.fire(EnterEvent.new(source: self))

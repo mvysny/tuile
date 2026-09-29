@@ -67,8 +67,10 @@ module Tuile
     # characters in through a paste (`D_input_filters`, book ch7).
     #
     # The mutation pipeline is a template method: {#set_value} and {#caret=}
-    # detect no-ops, mutate state, fire {HasValue#on_value_change}, and invalidate.
-    # Typing, a paste and the deleting keys write with `from_user: true`, every
+    # detect no-ops, mutate state, and invalidate. {#set_value} fires
+    # {HasValue#on_value_change} at once, while typing, a paste and the deleting
+    # keys fire it per {HasValueChangeMode#value_change_mode} — at a commit
+    # gesture by default. Those edits write with `from_user: true`, every
     # other write with `false` ({HasValue::ValueChangeEvent#from_user?}).
     # Subclasses inject their own behavior via four protected hooks:
     #
@@ -83,10 +85,12 @@ module Tuile
     #   keep the caret visible).
     class AbstractStringField < Component
       include HasValue
+      include HasValueChangeMode
 
       def initialize
         super
         @text = +""
+        @announced_text = ""
         @caret = 0
         @escape_clears_focus = true
         # Unconditional on purpose: a field used as the face of a composed one
@@ -106,7 +110,9 @@ module Tuile
 
       # Replaces the text. Runs {#preprocess_text} first, then clamps the caret
       # to the new text and snaps it onto a cluster boundary of it. Fires
-      # {HasValue#on_value_change} only on a real change — never on {#caret=}.
+      # {HasValue#on_value_change} at once, whatever the
+      # {HasValueChangeMode#value_change_mode}, and only on a real change —
+      # never on {#caret=}.
       #
       #   field.value = "admin"
       #   field.caret = field.text.length   # the caret is clamped, never moved to the end
@@ -115,14 +121,16 @@ module Tuile
       # @param from_user [Boolean] see {HasValue#set_value}.
       # @return [void]
       def set_value(new_value, from_user:)
-        new_value = preprocess_text(new_value)
-        return if @text == new_value
+        announce(from_user:) if write_text(new_value)
+      end
 
-        @text = +new_value
-        @caret = snap_to_cluster(@caret.clamp(0, @text.length))
-        handle_text_mutated
-        invalidate
-        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: @text, from_user:))
+      # Releases a held notice when the field leaves the focus chain.
+      # @param flag [Boolean]
+      # @return [void]
+      def active=(flag)
+        was = active?
+        super
+        announce(from_user: true) if was && !active?
       end
 
       # `""` (not `nil`): a text field is empty when its buffer is blank.
@@ -230,8 +238,9 @@ module Tuile
       #
       # {#set_value} does *not* pass through here: only user input is filtered,
       # so a programmatic write may still hold what no key types. The same line
-      # decides the origin: an insertion is the user's, so it writes with
-      # `from_user: true`.
+      # decides the origin: an insertion is the user's edit, so it writes with
+      # `from_user: true` and its notice follows
+      # {HasValueChangeMode#value_change_mode}.
       # @param str [String]
       # @return [Boolean] true if the text changed.
       def insert_text(str)
@@ -239,7 +248,7 @@ module Tuile
 
         new_text = @text.dup.insert(@caret, str)
         @caret += str.length
-        set_value(new_text, from_user: true)
+        edit_text(new_text)
         true
       end
 
@@ -306,8 +315,8 @@ module Tuile
       def delete_before_caret = delete_back_to(cluster_boundary_before(@caret))
 
       # Removes the text between `index` and the caret, leaving the caret at
-      # `index` — one mutation, so {HasValue#on_value_change} fires once, as the
-      # user's: every caller is a deleting key.
+      # `index` — one mutation, so {HasValue#on_value_change} fires at most
+      # once, as the user's edit: every caller is a deleting key.
       #
       # `index` is snapped forward onto a grapheme-cluster boundary, so a
       # caller may compute it by counting characters.
@@ -320,7 +329,7 @@ module Tuile
         new_text = @text.dup
         new_text.slice!(start...@caret)
         @caret = start
-        set_value(new_text, from_user: true)
+        edit_text(new_text)
       end
 
       # Removes the whole grapheme cluster at the caret.
@@ -330,10 +339,45 @@ module Tuile
 
         new_text = @text.dup
         new_text.slice!(@caret...cluster_boundary_after(@caret))
-        set_value(new_text, from_user: true)
+        edit_text(new_text)
       end
 
       private
+
+      # The edit route every key and paste takes: writes the buffer, then
+      # announces or holds the notice ({HasValueChangeMode}).
+      # @param new_text [String]
+      # @return [void]
+      def edit_text(new_text)
+        return unless write_text(new_text)
+
+        notify_on_edit? ? announce(from_user: true) : hold_edit
+      end
+
+      # @param new_text [String, #to_s] run through {#preprocess_text} first.
+      # @return [Boolean] true if the buffer changed.
+      def write_text(new_text)
+        new_text = preprocess_text(new_text)
+        return false if @text == new_text
+
+        @text = +new_text
+        @caret = snap_to_cluster(@caret.clamp(0, @text.length))
+        handle_text_mutated
+        invalidate
+        true
+      end
+
+      # Fires {HasValue#on_value_change} unless the buffer still reads what was
+      # last announced — so a held edit typed and then deleted again stays
+      # silent.
+      # @param from_user [Boolean]
+      # @return [void]
+      def fire_if_changed(from_user:)
+        return if @text == @announced_text
+
+        @announced_text = @text
+        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: @text, from_user:))
+      end
 
       # @param index [Integer] a {#text} index in `0..text.length`.
       # @return [Integer] the smallest grapheme-cluster boundary `>= index`.

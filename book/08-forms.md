@@ -155,9 +155,12 @@ first frame.
 
 After that, a field shows its verdict once the user has edited it, and every
 field shows its verdict after Save, or after `validate` behind a "Check"
-button. A text or number field announces every keystroke, so its verdict
-follows along as the user types; a date or time field announces only when the
-user leaves it or presses Enter, for the reason chapter 7 gave.
+button. A field announces an edit when the user leaves it or presses Enter,
+so that is when its verdict appears: nobody is told "at least 3 characters"
+while typing the second letter. A date or time field always works this way,
+for the reason chapter 7 gave; a text or number field does by default, and
+one set to `value_change_mode = :eager` announces every keystroke, so its
+verdict follows along as the user types.
 
 A model validation failure is a snapshot. In the buffered mode the model
 validators run only on `read`, `validate` and `write?`. So once the user fixes

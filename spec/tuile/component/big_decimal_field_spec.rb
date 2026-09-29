@@ -208,6 +208,7 @@ module Tuile
       it "fires once per real value change, with a BigDecimal or nil" do
         seen = []
         f = field
+        f.value_change_mode = :eager
         f.on_value_change { |e| seen << e.value }
         type("1.5")
         key(Keys::BACKSPACE) # "1.5" -> "1."

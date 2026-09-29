@@ -58,8 +58,10 @@ module Tuile
         # bg_color reaches the cells the field paints.
         @field.bg_color = ComponentBackground::INHERIT
         bg.default_color = ComponentBackground::INPUT_WELL
-        # Only the user's typing filters: a programmatic write to the field
-        # ({#sync_field}) must not spring the dropdown open.
+        # Only the user's typing filters, and every keystroke of it: a
+        # programmatic write to the field ({#sync_field}) must not spring the
+        # dropdown open.
+        @field.value_change_mode = :eager
         @field.on_value_change { |e| refill if e.from_user? }
         # ESC is the one key this combo wants that the field consumes itself, so
         # it cannot arrive by bubbling the way {#handle_key?}'s do. With no menu

@@ -40,8 +40,12 @@ module Tuile
     # rest written in, and a model validation failure reverts the whole batch.
     # Vaadin's `setBean` differs here: one invalid field holds every other edit
     # back. The model validators run on every edit, so {#last_validation} is
-    # always current. Fields fire per keystroke, so every valid prefix passes
-    # through the model and its setters on the way.
+    # always current. An edit writes through when its field announces it — for
+    # a string or number field, on leaving it or on ENTER by default
+    # ({Component::HasValueChangeMode#value_change_mode}), so a live filter sets
+    # its fields `:lazy`, and an `:eager` field passes every valid prefix
+    # through the model and its setters. Until then the model lacks that last
+    # edit, which a Save *shortcut* fired from inside the field would miss.
     class Unbuffered < Binder
       # @return [Object, nil] the model edits write into.
       attr_reader :model

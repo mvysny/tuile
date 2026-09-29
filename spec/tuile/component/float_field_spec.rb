@@ -250,6 +250,7 @@ module Tuile
       it "fires once per real value change, with a Float or nil (never a String)" do
         seen = []
         f = field
+        f.value_change_mode = :eager
         f.on_value_change { |e| seen << e.value }
         type("4.5")
         key(Keys::BACKSPACE) # "4.5" -> "4."
@@ -262,6 +263,7 @@ module Tuile
       it "does not fire while a transient '-' leaves the value nil" do
         seen = []
         f = field
+        f.value_change_mode = :eager
         f.on_value_change { |e| seen << e.value }
         type("-")   # value still nil -> silent
         type("0.5") # now -0.5 -> fires per digit
@@ -295,6 +297,7 @@ module Tuile
       it "is the only channel that speaks when the value does not move" do
         seen = []
         f = field
+        f.value_change_mode = :eager
         f.on_value_change { |e| seen << e.value }
         refute f.bad_input?
         type("1e")        # "1" reads 1.0, "1e" reads nil...

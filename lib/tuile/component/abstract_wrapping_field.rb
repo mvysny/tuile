@@ -62,10 +62,12 @@ module Tuile
     # consumes it, which is {TextField#on_enter}'s existing contract.
     #
     # == When the value notice fires
-    # Per edit by default. A field whose grammar is not prefix-closed sets
-    # {#notify_on_edit?} to `false` and lets the notice settle onto those same
-    # two gestures, so a form is never handed a half-typed date that happens to
-    # parse ({DateField}, {TimeField}).
+    # Per edit here. A number field includes {HasValueChangeMode}, which
+    # holds an edit's notice until those same two gestures by default. A field
+    # whose grammar is not prefix-closed holds it for good — {#notify_on_edit?}
+    # answers `false` — so a form is never handed a half-typed date that
+    # happens to parse ({DateField}, {TimeField}). Either way a *write* is not
+    # an edit: `set_value` announces its own change at once.
     #
     # == Who made the change
     # The editor's own event says whether the user moved the buffer, and this
@@ -116,9 +118,12 @@ module Tuile
         # field's well covers it and its bg_color reaches the cells the editor paints.
         editor.bg_color = ComponentBackground::INHERIT
         bg.default_color = ComponentBackground::INPUT_WELL
+        # Every edit reaches this field, which decides for itself whether its
+        # own notice waits: the bad-input sync below needs each one.
+        editor.value_change_mode = :eager
         editor.on_value_change do |e|
           handle_editor_change
-          fire_if_changed(from_user: e.from_user?) if notify_on_edit?
+          notify_on_edit? ? announce(from_user: e.from_user?) : hold_edit
         end
         add_child(editor, at: 0)
       end
@@ -146,7 +151,7 @@ module Tuile
         # Announced here rather than through the editor's change, so a field
         # holding its notice ({#notify_on_edit?}) still reports an emptying as
         # it happens: emptying is not a half-typed prefix.
-        fire_if_changed(from_user: false)
+        announce(from_user: false)
       end
 
       # @return [String, nil] the hint the editor paints while empty
@@ -228,17 +233,16 @@ module Tuile
       def commit = nil
 
       # Whether an edit of the buffer fires {HasValue#on_value_change} as it
-      # happens. `true` here, which is right wherever every buffer state is a
-      # value the user might mean: an {IntegerField} passing through `4` on the
-      # way to `42` really does hold 4 for that keystroke. A field whose
-      # grammar is **not prefix-closed** answers `false` and lets the notice
-      # settle onto the commit gestures instead ({DateField}, `D_date_field`).
+      # happens. `true` here, and {HasValueChangeMode} answers it from the
+      # mode. A field whose grammar is **not prefix-closed** answers `false`
+      # and lets the notice settle onto the commit gestures instead
+      # ({DateField}, `D_date_field`).
       #
       # Only the *push* settles: {HasValue#value} stays a live parse of the
-      # buffer either way. And overriding this is half the job — {#commit} is
-      # covered here, but the field must fire from its own `set_value` too, or a
-      # programmatic write and an Up/Down step go unannounced until the next
-      # commit.
+      # buffer either way. And a field that can answer `false` owes the other
+      # half — {#commit} is covered here, but its `set_value` must call
+      # `announce` too, or a programmatic write and an Up/Down step go
+      # unannounced until the next commit.
       # @return [Boolean]
       def notify_on_edit? = true
 
@@ -264,8 +268,20 @@ module Tuile
       # @return [void]
       def commit_and_notify
         commit
-        fire_if_changed(from_user: true)
+        announce(from_user: true)
       end
+
+      # Announces the value, if it changed; {HasValueChangeMode} extends it to
+      # end a hold.
+      # @param from_user [Boolean]
+      # @return [void]
+      def announce(from_user:) = fire_if_changed(from_user:)
+
+      # Called for an edit {#notify_on_edit?} declined; no-op here, since every
+      # commit gesture announces anyway. {HasValueChangeMode} starts its
+      # `:lazy` wait from it.
+      # @return [void]
+      def hold_edit = nil
 
       # Re-emits {HasValue#on_value_change}, but only when {#value} differs from
       # the last one fired — so a buffer edit that leaves the value alone

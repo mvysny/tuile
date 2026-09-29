@@ -10,7 +10,7 @@ module Tuile
     # An empty or otherwise un-parseable buffer reads back as `nil`:
     #
     #   field = Component::IntegerField.new
-    #   field.on_value_change { |e| puts e.value.inspect }  # Integer or nil, per change
+    #   field.on_value_change { |e| puts e.value.inspect }  # Integer or nil, on ENTER or on leaving
     #   field.value = 42                                   # field shows "42"
     #   field.value                                        # => 42
     #   field.clear                                        # empties it; value => nil
@@ -23,9 +23,10 @@ module Tuile
     # == The value is a *derived parse* of the buffer
     # {#value} is `Integer(buffer, 10)` (or `nil`), recomputed on read — the
     # buffer is the single source of truth, {#value=} just writes it. So `"-"`
-    # alone and `""` both read as `nil`, and `on_value_change` fires eagerly
-    # once per real *value* change: typing `0`→`7` in `"07"` shifts the buffer
-    # but not the value (`7`), so it does not fire. No normalization — a typed
+    # alone and `""` both read as `nil`, and `on_value_change` fires only on a
+    # real *value* change, when {HasValueChangeMode#value_change_mode} says:
+    # typing `0`→`7` in `"07"` shifts the buffer but not the value (`7`), so it
+    # does not fire. No normalization — a typed
     # `"007"` stays `"007"` on screen though its value is `7`.
     #
     # `min`/`max`, a `+` sign, and thousands separators are deliberately out of
@@ -34,6 +35,7 @@ module Tuile
     # UI-thread-confined, like every component (see {Screen}).
     class IntegerField < AbstractWrappingField
       include HasBadInput
+      include HasValueChangeMode
 
       # @return [String] what {#bad_input_message} reports for a buffer that is
       #   typeable but not an integer.
@@ -87,6 +89,8 @@ module Tuile
       def set_value(new_value, from_user:)
         editor.set_value(new_value.nil? ? "" : new_value.to_s, from_user:)
         editor.caret = editor.text.length
+        # A write, not an edit: announced now whatever the mode.
+        announce(from_user:)
       end
 
       # `nil`, not `""`: an integer field with no parseable number is empty.

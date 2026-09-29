@@ -791,6 +791,8 @@ module SamplerExample
       field = Tuile::Component::IntegerField.new
       # Set on the composed field, not on the TextField inside it.
       field.placeholder = "1-65535"
+      # A live echo: announce every keystroke, not just on leaving the field.
+      field.value_change_mode = :eager
       status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
       field.on_value_change { |e| status.text = "e.value: #{e.value.inspect}" }
       form do |f|
@@ -809,6 +811,8 @@ module SamplerExample
       prompt.text = "Tab here, then type digits, one '.' and a leading -. Anything else is ignored.\n" \
                     "Up/Down step the value by one. Watch the value while you type '1.5'."
       field = Tuile::Component::FloatField.new
+      # A live echo: announce every keystroke, not just on leaving the field.
+      field.value_change_mode = :eager
       status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
       field.on_value_change { |e| status.text = "e.value: #{e.value.inspect}" }
       form do |f|
@@ -828,6 +832,8 @@ module SamplerExample
                     "This is the field for money: no binary rounding, and nothing pads or trims\n" \
                     "what you typed (19.90 keeps its zero)."
       field = Tuile::Component::BigDecimalField.new
+      # A live echo: announce every keystroke, not just on leaving the field.
+      field.value_change_mode = :eager
       status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
       field.on_value_change { |e| status.text = triple_report(e.value) }
       form do |f|
@@ -956,6 +962,9 @@ module SamplerExample
       # can drive them through Tuile::Testing.get by name.
       amount = Tuile::Component::IntegerField.new.tap { _1.id = :amount }
       rate = Tuile::Component::FloatField.new.tap { _1.id = :rate }
+      # Eager, so the echo row speaks on every keystroke that moves the value —
+      # which is what makes its silence on a lone "-" telling.
+      [amount, rate].each { _1.value_change_mode = :eager }
       echo = Tuile::Component::Label.new.tap { _1.text = "on_value_change: (nothing yet)" }
       amount.on_value_change { |e| echo.text = "on_value_change: amount = #{e.value.inspect}" }
       rate.on_value_change { |e| echo.text = "on_value_change: rate = #{e.value.inspect}" }
@@ -1184,7 +1193,10 @@ module SamplerExample
       status = Tuile::Component::Label.new
       refresh = -> { status.text = "user: #{user.text.inspect}  password: #{password.value.length} chars" }
       refresh.call
-      [user, password].each { _1.on_value_change { refresh.call } }
+      [user, password].each do |field|
+        field.value_change_mode = :eager # the status line follows the typing
+        field.on_value_change { refresh.call }
+      end
       form do |f|
         f.add(prompt, Fixed[4])
         f.add([user, password], Fixed[1], cross: Fixed[30]) # one constraint, both fields
@@ -1223,6 +1235,8 @@ module SamplerExample
         end
       end
 
+      # The menu refilters on every keystroke, so the area announces each one.
+      area.value_change_mode = :eager
       area.on_value_change { refill.call }
       overlay.list.on_item_chosen { |e| accept_slash_command(area, e.item.to_s) }
 
@@ -1250,6 +1264,7 @@ module SamplerExample
       refresh = lambda do
         stats.text = "submits: #{submits}   pastes: #{pastes}   rows in draft: #{area.row_count}"
       end
+      area.value_change_mode = :eager # the row count follows the draft
       area.on_value_change { refresh.call }
       area.on_paste_received do |e|
         pastes += 1

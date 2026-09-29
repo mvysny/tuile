@@ -59,8 +59,10 @@ module Tuile
       end
 
       # @!method on_value_change
-      #   Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      #   never on a no-op set.
+      #   Fired with a {ValueChangeEvent} when {#value} actually changes —
+      #   never on a no-op set. A write fires at once; a typed edit in a
+      #   {HasValueChangeMode} field fires when its mode says, by default once
+      #   the user leaves the field or presses ENTER.
       #   @return [Listeners]
       listener :on_value_change
 

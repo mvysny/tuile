@@ -395,6 +395,7 @@ module Tuile
 
         it "fires on_value_change once for the whole kill" do
           f = field(width: 20, text: "hello world")
+          f.value_change_mode = :eager
           f.caret = 11
           changes = []
           f.on_value_change { |e| changes << e.value }
@@ -1273,6 +1274,7 @@ module Tuile
 
       it "fires on insert via keystroke" do
         f = field(width: 10)
+        f.value_change_mode = :eager
         received = nil
         f.on_value_change { |e| received = e.value }
         f.handle_key?("a")
@@ -1281,6 +1283,7 @@ module Tuile
 
       it "fires on backspace deletion" do
         f = field(width: 10, text: "hi")
+        f.value_change_mode = :eager
         f.caret = 2
         received = nil
         f.on_value_change { |e| received = e.value }
@@ -1290,6 +1293,7 @@ module Tuile
 
       it "fires on delete-at-caret" do
         f = field(width: 10, text: "hi")
+        f.value_change_mode = :eager
         f.caret = 0
         received = nil
         f.on_value_change { |e| received = e.value }
@@ -1348,6 +1352,7 @@ module Tuile
     context "#handle_paste" do
       it "inserts at the caret as one mutation" do
         f = field(text: "ac")
+        f.value_change_mode = :eager
         f.caret = 1
         changes = []
         f.on_value_change { |e| changes << e.value }
@@ -1396,6 +1401,7 @@ module Tuile
     describe "from_user? on on_value_change" do
       it "is true for typing, a paste and a deleting key; false for value= and clear" do
         f = Component::TextField.new
+        f.value_change_mode = :eager
         mount_at(f, Rect.new(0, 0, 20, 1))
         Screen.instance.focused = f
         seen = []

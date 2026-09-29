@@ -351,9 +351,9 @@ double-stop Tab.
 
 **The converter stays private and hardcoded**, exactly as `TextField` hardcodes identity-String. No
 public `converter=` strategy: that is a binding's `convert` step (`D_binder_chain`), and `D_has_value` keeps converters
-*above* the field. **Value is a derived parse, fired eagerly** — recomputed from the buffer on read,
-with `on_value_change` firing per keystroke but only on a real *value* change, so `"7"` → `"07"` is
-silent. No normalization in v1: rewriting the buffer under the caret while typing is worse than an
+*above* the field. **Value is a derived parse** — recomputed from the buffer on read, with
+`on_value_change` firing only on a real *value* change, so `"7"` → `"07"` is silent, and at the
+cadence `D_value_change_mode` gives it. No normalization in v1: rewriting the buffer under the caret while typing is worse than an
 ugly buffer, so it would have to wait for a commit point — and `handle_blur` is now that point
 (`D_on_blur`), which makes this re-openable on the merits rather than blocked on a missing hook.
 **Up/Down are a built-in ±1 spinner**, treating an empty or unparseable field as `0`, which is why
@@ -5136,15 +5136,12 @@ Why not:
 - **Designs that make bad input impossible** rather than reportable: a calendar-grid-only picker (no
   parse at all, but ~30 keystrokes for a birth date) and text entry behind a modal commit (a
   `ConfirmWindow`-shaped dialog that will not close on garbage — heavy in a form with six dates).
-- **Vaadin's `ValueChangeMode` as a per-field eager/lazy knob**, where the notice ruling started —
-  and Vaadin does not apply it here: `DatePicker` and `TimePicker` implement no
-  `HasValueChangeMode` at all and are on-commit unconditionally, while the knob's own javadoc
-  scopes it to how a value *"on the client side is synchronized with the server side"*, a debounce
-  over a network round-trip Tuile does not have (`R_value_change_timing`). Beyond the missing
-  force, a mode has **no defensible default** — nobody wants the year 2, nobody wants a
-  search-as-you-type `TextField` silent until blur — and would sit on `AbstractWrappingField`
-  meaning noise-suppression for one subclass and correctness for another. Purely additive to
-  re-grow the day a consumer wants an eager date field.
+- **Vaadin's `ValueChangeMode` on the date fields**, where the notice ruling started. The knob now
+  exists on the string and number fields (`D_value_change_mode`), and stays off these: Vaadin
+  doesn't apply it here either — `DatePicker` and `TimePicker` implement no `HasValueChangeMode`
+  and are on-commit unconditionally (`R_value_change_timing`) — and on a date field `:eager` would
+  mean announcing the year 2, a *wrong* value rather than a noisy one. Purely additive to re-grow
+  the day a consumer wants an eager date field.
 - **A latched last-good value**, Swing's `JFormattedTextField`, whose `getValue()` is the most
   recent *valid* content until `commitEdit` (`R_value_change_timing`): it makes the field hold bad
   input **and** a value at once, which `D_bad_input` forbids, and ends `value` being a pure
@@ -6545,9 +6542,10 @@ hook.** An edit is a `from_user?` change (`D_from_user`), so the binder's own wr
 back, and it needs no `old_value`. It subscribes `on_bad_input_change` beside `on_value_change`,
 because typing `-` into an empty `IntegerField` goes `nil` → `nil` and fires no value change. A
 bad-input verdict writes `nil`, not the report: `shown_message` already prefers the field's own
-(`D_has_validation`), and a copy would go stale the moment the input is fixed. Built against
-eager fields, accepted: a string or number field paints its verdict mid-word, and `Unbuffered`
-writes every valid prefix through; a commit cadence on the field changes none of the binder.
+(`D_has_validation`), and a copy would go stale the moment the input is fixed. The cadence is
+the field's (`D_value_change_mode`): by default a string or number field announces on leaving or
+ENTER, so its verdict shows then and `Unbuffered` writes the finished value, not every prefix; an
+`:eager` field brings both back per keystroke, and the binder changes for neither.
 
 **The verdict is one map, `{attr => [ValidationFailure]}`, frozen** — field steps and model
 validators fill it alike, every key holds an array, and **form-level failures sit under the `nil`
@@ -6563,7 +6561,8 @@ are ActiveRecord's `save` / `save!` (`R_ruby_validation`), `?` in the `Set#add?`
 **Save asks the binder when pressed**, and on "no" `ConfirmWindow.alert` names the problems. Vaadin
 enables the button from a status listener instead (`R_vaadin_binder`). **`changed?` counts user
 edits** since `read` or the last successful `write?`, not `==`, so the `""`-over-`nil` drift doesn't
-read as a change; `write?` and `validate` read `value` live.
+read as a change — except that the *focused* field is compared live against what `read` showed,
+since a Save *shortcut* leaves it holding its notice. `write?` and `validate` read `value` live.
 
 Why not:
 - *A disabled Save*: there is no disabled state (`ComponentBackground::STATES` is `normal` /
@@ -6578,11 +6577,52 @@ Why not:
 - *Vaadin's escape hatches* — `setValidatorsDisabled`, `withDefaultValidator(false)`,
   `setIsAppliedPredicate`: deferred and unnamed, each additive with no asker. Whoever re-grows
   `withDefaultValidator(false)` owes an answer for skipping the bad-input check.
-- *The binder releasing a field's held notice*, once a field can hold one until commit
-  (`design/ideas/value-change-mode.md`): new public API on every field for one reader. That cadence
-  makes `changed?` owe a live compare for the focused field — a Save *shortcut* leaves focus in
-  the edited field, its notice unfired — against what `read` put in it; built now, no spec could
-  fail it.
+- *The binder releasing a field's held notice*: new public API on every field for one reader,
+  where the live compare for the focused field answers `changed?` with none.
+
+---
+
+## D_value_change_mode — Why does a text field hold its value notice until the user commits, and what may change that?
+
+Three consumers want three cadences from one `TextField`: a form wants a verdict when the user is
+done with the field, not a red well after the first letter of a `length < 3` name; a filter wants
+the query once typing pauses, not a refetch per letter; a slash palette wants every edit. One
+per-keystroke notice served only the last.
+
+**`value_change_mode` is `:eager`, `:commit` or `:lazy`, and `:commit` is the default** — Vaadin's
+three that matter, with Vaadin's default (`R_value_change_timing`). A commit gesture is leaving the
+focus chain or ENTER; `:lazy` waits `value_change_timeout` (0.4 s) after the last edit, on
+`EventQueue#after`, and a commit gesture releases it early. The knob is `HasValueChangeMode`, on
+the string fields and the number fields only: the date and time fields hold unconditionally, since
+their grammar is not prefix-closed (`D_date_field`), and `ComboBox`'s value moves only on commit
+anyway.
+
+**Only the push waits, and only for an edit, and only while focused.** `value` is live in every
+mode, so a Save handler reads what is on screen. A *write* — `set_value`, an Up/Down step,
+`Testing.set_value` — announces at once, as does an edit reaching a field off the focus chain,
+which has no commit gesture coming. A wrapping field pins its editor `:eager`, because bad-input
+sync and `ComboBox`'s refill need every edit, and holds its own notice instead. **The hold is the
+field's own business**: no flush, no `pending?`; the one outside reader that needed it, the
+Binder's `changed?`, compares the focused field live (`D_binder_verdicts`).
+
+**Claiming ENTER opts out of its release.** The release is part of the field's own ENTER handling,
+so a subclass that takes ENTER first — a `TextArea` rebound to submit — releases on leaving only,
+and loses nothing, since its submit handler reads `value` live.
+
+Why not:
+- *Vaadin's name, `:on_change`*: beside `on_value_change` it reads as "every change", which is
+  `:eager`, and the `on_` prefix is the listener slots' (`D_handler_naming`). "Commit" is already
+  the house word for exactly these two gestures, and stays true for `TextArea`'s leave-only set.
+- *`:on_blur`*: Vaadin's `ON_BLUR` excludes ENTER, so the name would mislead anyone who knows it
+  and squat the name that mode would need; it would also hide the ENTER release.
+- *An `:eager` default*: it makes every form paint verdicts mid-word, where a filter silent until
+  blur is obvious on first use and a one-line fix.
+- *Pushing the mode down into a wrapped editor*: the editor's notice is internal plumbing that
+  needs every edit, so the wrapping field gates its own.
+- *A release that follows whatever key a subclass claims*: the framework would have to know which
+  key means "submit", a gate ahead of delivery that `D_key_dispatch` deleted.
+- *A self-cancelling `tick` for `:lazy`*: a repeating timer used once read as a hack, so the
+  one-shot `EventQueue#after` was built for it, and for apps debouncing by hand.
 
 ---
 

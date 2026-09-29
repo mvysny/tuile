@@ -626,6 +626,12 @@ Rows are the *notice*, not the widget: a "commit notice" fires on Enter or on le
 - **The knob is about a network, not about semantics**: `HasValueChangeMode` is documented as
   changing *"the way its value on the client side is synchronized with the server side"*, and
   LAZY/TIMEOUT are described in terms of a scheduling interval. **[docs]**
+- **Vaadin's default is `ON_CHANGE`**, syncing on the DOM `change` event "when the component value
+  is committed"; `LAZY` restarts its wait on every change, and the wait defaults to **400 ms**
+  (`HasValueChangeMode.DEFAULT_CHANGE_TIMEOUT`) — the 25.2 text-field and text-area pages.
+  **[docs]**
+- **The enum has five constants, the docs page four**: `ON_BLUR` is in the 25.2.8 javadoc but
+  missing from the 25.2 text-field page's table. **[docs]**
 - **Debounce and commit are different clocks, and Vaadin ships the bug**: under LAZY or TIMEOUT the
   value syncs after a delay, so a blur handler can read the *old* value (vaadin/flow#14090).
   **[docs]**

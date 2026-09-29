@@ -758,6 +758,7 @@ module Tuile
 
       it "fires on insert via keystroke" do
         a = area
+        a.value_change_mode = :eager
         received = nil
         a.on_value_change { |e| received = e.value }
         a.handle_key?("a")
@@ -766,6 +767,7 @@ module Tuile
 
       it "fires on backspace deletion" do
         a = area(text: "hi")
+        a.value_change_mode = :eager
         a.caret = 2
         received = nil
         a.on_value_change { |e| received = e.value }
@@ -775,6 +777,7 @@ module Tuile
 
       it "fires on delete-at-caret" do
         a = area(text: "hi")
+        a.value_change_mode = :eager
         received = nil
         a.on_value_change { |e| received = e.value }
         a.handle_key?(Keys::DELETE)
@@ -783,6 +786,7 @@ module Tuile
 
       it "fires when Enter inserts a newline" do
         a = area
+        a.value_change_mode = :eager
         received = nil
         a.on_value_change { |e| received = e.value }
         a.handle_key?(Keys::ENTER)
@@ -1010,6 +1014,7 @@ module Tuile
 
       it "fires on_value_change once for the whole paste" do
         a = area(width: 20, height: 5)
+        a.value_change_mode = :eager
         changes = []
         a.on_value_change { |e| changes << e.value }
         a.handle_paste("one\ntwo\nthree")

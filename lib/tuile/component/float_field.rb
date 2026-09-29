@@ -6,7 +6,7 @@ module Tuile
     # the {IntegerField} twin, one Ruby type over. Give it a single-row {#rect}:
     #
     #   field = Component::FloatField.new
-    #   field.on_value_change { |e| puts e.value.inspect }  # Float or nil, per change
+    #   field.on_value_change { |e| puts e.value.inspect }  # Float or nil, on ENTER or on leaving
     #   field.value = 19.99                               # field shows "19.99"
     #   field.clear                                       # empties it; value => nil
     #
@@ -25,8 +25,8 @@ module Tuile
     # It reads `nil` for a buffer that isn't a number (`""`, a lone `"-"`) but
     # `1.0` / `0.5` for a half-typed `"1."` / `".5"`, so reaching for the
     # decimal point doesn't blink the value to `nil` and back through
-    # {#on_value_change} — which fires per keystroke, but only on a real *value*
-    # change (`"7"`→`"07"` is silent). The parse also accepts the exponent
+    # {#on_value_change} under `value_change_mode = :eager` — which fires only
+    # on a real *value* change (`"7"`→`"07"` is silent). The parse also accepts the exponent
     # `Float#to_s` writes for extreme magnitudes, so `value = 1e-5` round-trips
     # through the `"1.0e-05"` it displays — and `e` is typeable, so what the
     # field displays is always something the user can go on editing.
@@ -38,6 +38,7 @@ module Tuile
     # UI-thread-confined, like every component (see {Screen}).
     class FloatField < AbstractWrappingField
       include HasBadInput
+      include HasValueChangeMode
 
       # @return [String] what {#bad_input_message} reports for a buffer that is
       #   typeable but not a number.
@@ -101,6 +102,8 @@ module Tuile
       def set_value(new_value, from_user:)
         editor.set_value(new_value.nil? ? "" : coerce(new_value).to_s, from_user:)
         editor.caret = editor.text.length
+        # A write, not an edit: announced now whatever the mode.
+        announce(from_user:)
       end
 
       # `nil`, not `""`: a numeric field with no parseable number is empty.

@@ -39,9 +39,9 @@ module Tuile
     # which `BigDecimal#to_s` would not). It reads `nil` for a buffer that
     # isn't a number (`""`, a lone `"-"`) but `1` / `0.5` for a half-typed
     # `"1."` / `".5"`, so reaching for the decimal point doesn't blink the
-    # value to `nil` and back through {#on_value_change} — which fires per
-    # keystroke, but only on a real *value* change (`"1.0"`→`"1.00"` is silent,
-    # since the two compare equal).
+    # value to `nil` and back through {#on_value_change} under
+    # `value_change_mode = :eager` — which fires only on a real *value* change
+    # (`"1.0"`→`"1.00"` is silent, since the two compare equal).
     #
     # Both ends of that round-trip are written here rather than left to the
     # library, because `bigdecimal` 3.1 (Ruby 3.3's default gem) and 4.x
@@ -57,6 +57,7 @@ module Tuile
     # UI-thread-confined, like every component (see {Screen}).
     class BigDecimalField < AbstractWrappingField
       include HasBadInput
+      include HasValueChangeMode
 
       # @return [String] what {#bad_input_message} reports for a buffer that is
       #   typeable but not a decimal.
@@ -123,6 +124,8 @@ module Tuile
       def set_value(new_value, from_user:)
         editor.set_value(new_value.nil? ? "" : coerce(new_value).to_s("F"), from_user:)
         editor.caret = editor.text.length
+        # A write, not an edit: announced now whatever the mode.
+        announce(from_user:)
       end
 
       # `nil`, not `""`: a numeric field with no parseable number is empty.

@@ -1670,8 +1670,10 @@ module Tuile
     # "New person" form doesn't open red. The chain, the empty/`nil` policy and
     # how the model validators use the model as scratch space are {Binder}'s.
     # 
-    # Fields fire {Component::HasValue#on_value_change} per keystroke, so a
-    # string or number field's verdict updates as the user types.
+    # A verdict updates when its field announces an edit: for a string or
+    # number field that is when the user leaves it or presses ENTER, the
+    # {Component::HasValueChangeMode#value_change_mode} default — set a field
+    # `:eager` for a verdict that follows every keystroke.
     # 
     # == Implementation details
     # Each edit runs its own binding only; the model validators run in
@@ -1710,9 +1712,15 @@ module Tuile
       def write!: (Object model) -> void
 
       # _@return_ — whether the user edited a field since {#read} or the
-      # last successful {#write?} — edited, not differing: typing a letter and
-      # deleting it counts.
+      # last successful {#write?} — edited, not differing, so a `""` shown for
+      # a `nil` attribute is no change. An edit counts once its field
+      # announces it; the field that still has focus is compared live against
+      # what {#read} showed instead, since a Save *shortcut* leaves it
+      # holding its notice.
       def changed?: () -> bool
+
+      # Records what every field shows, for {#changed?}'s live compare.
+      def take_baseline: () -> void
 
       # _@param_ `binding`
       # 
@@ -1758,8 +1766,12 @@ module Tuile
     # rest written in, and a model validation failure reverts the whole batch.
     # Vaadin's `setBean` differs here: one invalid field holds every other edit
     # back. The model validators run on every edit, so {#last_validation} is
-    # always current. Fields fire per keystroke, so every valid prefix passes
-    # through the model and its setters on the way.
+    # always current. An edit writes through when its field announces it — for
+    # a string or number field, on leaving it or on ENTER by default
+    # ({Component::HasValueChangeMode#value_change_mode}), so a live filter sets
+    # its fields `:lazy`, and an `:eager` field passes every valid prefix
+    # through the model and its setters. Until then the model lacks that last
+    # edit, which a Save *shortcut* fired from inside the field would miss.
     class Unbuffered < Binder
       def initialize: () -> void
 
@@ -7289,8 +7301,10 @@ module Tuile
       # being unset never reaches an {#item_label} that assumes an item.
       def label_for: (Object item) -> StyledString
 
-      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set.
+      # Fired with a {ValueChangeEvent} when {#value} actually changes —
+      # never on a no-op set. A write fires at once; a typed edit in a
+      # {HasValueChangeMode} field fires when its mode says, by default once
+      # the user leaves the field or presses ENTER.
       def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
@@ -7981,8 +7995,10 @@ module Tuile
       # Adds `caption="…"` to {Component#inspect}, omitted while empty.
       def inspect_details: () -> ::Array[String]
 
-      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set.
+      # Fired with a {ValueChangeEvent} when {#value} actually changes —
+      # never on a no-op set. A write fires at once; a typed edit in a
+      # {HasValueChangeMode} field fires when its mode says, by default once
+      # the user leaves the field or presses ENTER.
       def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
@@ -8971,8 +8987,10 @@ module Tuile
       # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
       def inspect_details: () -> ::Array[String]
 
-      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set.
+      # Fired with a {ValueChangeEvent} when {#value} actually changes —
+      # never on a no-op set. A write fires at once; a typed edit in a
+      # {HasValueChangeMode} field fires when its mode says, by default once
+      # the user leaves the field or presses ENTER.
       def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
@@ -9266,8 +9284,10 @@ module Tuile
       include Tuile::Component::HasValidation
       extend Tuile::Listeners::Declare
 
-      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set.
+      # Fired with a {ValueChangeEvent} when {#value} actually changes —
+      # never on a no-op set. A write fires at once; a typed edit in a
+      # {HasValueChangeMode} field fires when its mode says, by default once
+      # the user leaves the field or presses ENTER.
       def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
@@ -9620,6 +9640,9 @@ module Tuile
     # deliberately knows nothing about (it is a pure function of text and
     # width; the viewport is stateful and needs {Rect#height}).
     class TextArea < Tuile::Component::AbstractStringField
+      MODES: ::Array[Symbol]
+      DEFAULT_TIMEOUT: Float
+
       def initialize: () -> void
 
       # The caret's row, counted from the text's first row — *not* from the top
@@ -10818,6 +10841,8 @@ module Tuile
     # cells show the substitute, and the two drift apart by a growing offset.
     class TextField < Tuile::Component::AbstractStringField
       include Tuile::Component::HasPlaceholder
+      MODES: ::Array[Symbol]
+      DEFAULT_TIMEOUT: Float
 
       def initialize: () -> void
 
@@ -10832,7 +10857,8 @@ module Tuile
       # parent. Only triggered by {Keys::DOWN_ARROW}, not by `j`.
       def on_key_down: () -> Listeners
 
-      # Fired with an {EnterEvent} when ENTER is pressed. **Empty means the field
+      # Fired with an {EnterEvent} when ENTER is pressed, after a held
+      # {HasValue#on_value_change} has gone out. **Empty means the field
       # declines ENTER**, which then falls through to the parent — which is how
       # a scope's default button keeps working.
       def on_enter: () -> Listeners
@@ -11349,7 +11375,7 @@ module Tuile
     # the {IntegerField} twin, one Ruby type over. Give it a single-row {#rect}:
     # 
     #   field = Component::FloatField.new
-    #   field.on_value_change { |e| puts e.value.inspect }  # Float or nil, per change
+    #   field.on_value_change { |e| puts e.value.inspect }  # Float or nil, on ENTER or on leaving
     #   field.value = 19.99                               # field shows "19.99"
     #   field.clear                                       # empties it; value => nil
     # 
@@ -11368,8 +11394,8 @@ module Tuile
     # It reads `nil` for a buffer that isn't a number (`""`, a lone `"-"`) but
     # `1.0` / `0.5` for a half-typed `"1."` / `".5"`, so reaching for the
     # decimal point doesn't blink the value to `nil` and back through
-    # {#on_value_change} — which fires per keystroke, but only on a real *value*
-    # change (`"7"`→`"07"` is silent). The parse also accepts the exponent
+    # {#on_value_change} under `value_change_mode = :eager` — which fires only
+    # on a real *value* change (`"7"`→`"07"` is silent). The parse also accepts the exponent
     # `Float#to_s` writes for extreme magnitudes, so `value = 1e-5` round-trips
     # through the `"1.0e-05"` it displays — and `e` is typeable, so what the
     # field displays is always something the user can go on editing.
@@ -11381,6 +11407,7 @@ module Tuile
     # UI-thread-confined, like every component (see {Screen}).
     class FloatField < Tuile::Component::AbstractWrappingField
       include Tuile::Component::HasBadInput
+      include Tuile::Component::HasValueChangeMode
       BAD_INPUT_MESSAGE: String
       NUMERIC: Regexp
 
@@ -11414,6 +11441,49 @@ module Tuile
       # 
       # _@param_ `delta`
       def step: (Float delta) -> void
+
+      # When {HasValue#on_value_change} fires for an edit:
+      # 
+      # - `:eager` — on every edit;
+      # - `:commit` (the default) — on a commit gesture: leaving the focus
+      #   chain, or ENTER. A {TextArea} commits on leaving only, since ENTER
+      #   types a newline there, and so does a subclass that claims ENTER itself;
+      # - `:lazy` — once edits pause for {#value_change_timeout}, or at a
+      #   commit gesture if that comes first.
+      # 
+      # _@return_ — one of {MODES}.
+      def value_change_mode: () -> Symbol
+
+      # A held notice goes out at once on a switch to `:eager`, which never
+      # holds one.
+      # 
+      # _@param_ `mode` — one of {MODES}.
+      def value_change_mode=: (Symbol mode) -> void
+
+      # _@return_ — how long `:lazy` waits after the last edit, in seconds.
+      def value_change_timeout: () -> Numeric
+
+      # Takes effect from the next edit.
+      # 
+      # _@param_ `seconds` — zero or positive.
+      def value_change_timeout=: (Numeric seconds) -> void
+
+      def handle_detached: () -> void
+
+      # _@return_ — whether an edit announces now rather than being held.
+      def notify_on_edit?: () -> bool
+
+      # Holds the notice for an edit {#notify_on_edit?} declined, restarting a
+      # `:lazy` wait.
+      def hold_edit: () -> void
+
+      # Announces the current value, if it differs from the last one announced,
+      # and ends any hold.
+      # 
+      # _@param_ `from_user` — what the write declared; `true` at a commit gesture, which only releases the user's own edits.
+      def announce: (from_user: bool) -> void
+
+      def sync_notice_timer: () -> void
 
       # Fired with a {BadInputChangeEvent} whenever the **showable** report
       # changes — see the class doc for what that is and why it is not
@@ -11505,6 +11575,8 @@ module Tuile
       # typed through, however the characters arrive.
       class Field < Tuile::Component::TextField
         TYPEABLE: Regexp
+        MODES: ::Array[Symbol]
+        DEFAULT_TIMEOUT: Float
 
         # Accepts the insertion only if the whole resulting buffer is still
         # typeable, so a European `"1,5"` is dropped rather than sieved into the
@@ -11909,8 +11981,10 @@ module Tuile
       # right — so a styled label keeps its spans and a plain one is parsed.
       def label_for: (Object item) -> (StyledString | String)
 
-      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set.
+      # Fired with a {ValueChangeEvent} when {#value} actually changes —
+      # never on a no-op set. A write fires at once; a typed edit in a
+      # {HasValueChangeMode} field fires when its mode says, by default once
+      # the user leaves the field or presses ENTER.
       def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
@@ -12535,7 +12609,7 @@ module Tuile
     # An empty or otherwise un-parseable buffer reads back as `nil`:
     # 
     #   field = Component::IntegerField.new
-    #   field.on_value_change { |e| puts e.value.inspect }  # Integer or nil, per change
+    #   field.on_value_change { |e| puts e.value.inspect }  # Integer or nil, on ENTER or on leaving
     #   field.value = 42                                   # field shows "42"
     #   field.value                                        # => 42
     #   field.clear                                        # empties it; value => nil
@@ -12548,9 +12622,10 @@ module Tuile
     # == The value is a *derived parse* of the buffer
     # {#value} is `Integer(buffer, 10)` (or `nil`), recomputed on read — the
     # buffer is the single source of truth, {#value=} just writes it. So `"-"`
-    # alone and `""` both read as `nil`, and `on_value_change` fires eagerly
-    # once per real *value* change: typing `0`→`7` in `"07"` shifts the buffer
-    # but not the value (`7`), so it does not fire. No normalization — a typed
+    # alone and `""` both read as `nil`, and `on_value_change` fires only on a
+    # real *value* change, when {HasValueChangeMode#value_change_mode} says:
+    # typing `0`→`7` in `"07"` shifts the buffer but not the value (`7`), so it
+    # does not fire. No normalization — a typed
     # `"007"` stays `"007"` on screen though its value is `7`.
     # 
     # `min`/`max`, a `+` sign, and thousands separators are deliberately out of
@@ -12559,6 +12634,7 @@ module Tuile
     # UI-thread-confined, like every component (see {Screen}).
     class IntegerField < Tuile::Component::AbstractWrappingField
       include Tuile::Component::HasBadInput
+      include Tuile::Component::HasValueChangeMode
       BAD_INPUT_MESSAGE: String
 
       def initialize: () -> void
@@ -12586,6 +12662,49 @@ module Tuile
       # 
       # _@param_ `delta`
       def step: (Integer delta) -> void
+
+      # When {HasValue#on_value_change} fires for an edit:
+      # 
+      # - `:eager` — on every edit;
+      # - `:commit` (the default) — on a commit gesture: leaving the focus
+      #   chain, or ENTER. A {TextArea} commits on leaving only, since ENTER
+      #   types a newline there, and so does a subclass that claims ENTER itself;
+      # - `:lazy` — once edits pause for {#value_change_timeout}, or at a
+      #   commit gesture if that comes first.
+      # 
+      # _@return_ — one of {MODES}.
+      def value_change_mode: () -> Symbol
+
+      # A held notice goes out at once on a switch to `:eager`, which never
+      # holds one.
+      # 
+      # _@param_ `mode` — one of {MODES}.
+      def value_change_mode=: (Symbol mode) -> void
+
+      # _@return_ — how long `:lazy` waits after the last edit, in seconds.
+      def value_change_timeout: () -> Numeric
+
+      # Takes effect from the next edit.
+      # 
+      # _@param_ `seconds` — zero or positive.
+      def value_change_timeout=: (Numeric seconds) -> void
+
+      def handle_detached: () -> void
+
+      # _@return_ — whether an edit announces now rather than being held.
+      def notify_on_edit?: () -> bool
+
+      # Holds the notice for an edit {#notify_on_edit?} declined, restarting a
+      # `:lazy` wait.
+      def hold_edit: () -> void
+
+      # Announces the current value, if it differs from the last one announced,
+      # and ends any hold.
+      # 
+      # _@param_ `from_user` — what the write declared; `true` at a commit gesture, which only releases the user's own edits.
+      def announce: (from_user: bool) -> void
+
+      def sync_notice_timer: () -> void
 
       # Fired with a {BadInputChangeEvent} whenever the **showable** report
       # changes — see the class doc for what that is and why it is not
@@ -12677,6 +12796,8 @@ module Tuile
       # typed through, however the characters arrive.
       class Field < Tuile::Component::TextField
         TYPEABLE: Regexp
+        MODES: ::Array[Symbol]
+        DEFAULT_TIMEOUT: Float
 
         # Accepts the insertion only if the whole resulting buffer is still
         # typeable, so `"12abc34"` is dropped rather than sieved into `"1234"`.
@@ -13198,8 +13319,10 @@ module Tuile
       # right — so a styled label keeps its spans and a plain one is parsed.
       def label_for: (Object item) -> (StyledString | String)
 
-      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set.
+      # Fired with a {ValueChangeEvent} when {#value} actually changes —
+      # never on a no-op set. A write fires at once; a typed edit in a
+      # {HasValueChangeMode} field fires when its mode says, by default once
+      # the user leaves the field or presses ENTER.
       def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
@@ -13733,6 +13856,9 @@ module Tuile
     # 
     # UI-thread-confined, like every component (see {Screen}).
     class PasswordField < Tuile::Component::TextField
+      MODES: ::Array[Symbol]
+      DEFAULT_TIMEOUT: Float
+
       def initialize: () -> void
 
       # _@return_ — {#revealed} in predicate form.
@@ -13997,8 +14123,10 @@ module Tuile
       # a {Testing.get} failure dump says which field is already flagged.
       def inspect_details: () -> ::Array[String]
 
-      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set.
+      # Fired with a {ValueChangeEvent} when {#value} actually changes —
+      # never on a no-op set. A write fires at once; a typed edit in a
+      # {HasValueChangeMode} field fires when its mode says, by default once
+      # the user leaves the field or presses ENTER.
       def on_value_change: () -> Listeners
 
       # A programmatic write: {#set_value} with `from_user: false`. Defined
@@ -14098,9 +14226,9 @@ module Tuile
     # which `BigDecimal#to_s` would not). It reads `nil` for a buffer that
     # isn't a number (`""`, a lone `"-"`) but `1` / `0.5` for a half-typed
     # `"1."` / `".5"`, so reaching for the decimal point doesn't blink the
-    # value to `nil` and back through {#on_value_change} — which fires per
-    # keystroke, but only on a real *value* change (`"1.0"`→`"1.00"` is silent,
-    # since the two compare equal).
+    # value to `nil` and back through {#on_value_change} under
+    # `value_change_mode = :eager` — which fires only on a real *value* change
+    # (`"1.0"`→`"1.00"` is silent, since the two compare equal).
     # 
     # Both ends of that round-trip are written here rather than left to the
     # library, because `bigdecimal` 3.1 (Ruby 3.3's default gem) and 4.x
@@ -14116,6 +14244,7 @@ module Tuile
     # UI-thread-confined, like every component (see {Screen}).
     class BigDecimalField < Tuile::Component::AbstractWrappingField
       include Tuile::Component::HasBadInput
+      include Tuile::Component::HasValueChangeMode
       BAD_INPUT_MESSAGE: String
       NUMERIC: Regexp
 
@@ -14155,6 +14284,49 @@ module Tuile
       # 
       # _@param_ `delta`
       def step: (Integer delta) -> void
+
+      # When {HasValue#on_value_change} fires for an edit:
+      # 
+      # - `:eager` — on every edit;
+      # - `:commit` (the default) — on a commit gesture: leaving the focus
+      #   chain, or ENTER. A {TextArea} commits on leaving only, since ENTER
+      #   types a newline there, and so does a subclass that claims ENTER itself;
+      # - `:lazy` — once edits pause for {#value_change_timeout}, or at a
+      #   commit gesture if that comes first.
+      # 
+      # _@return_ — one of {MODES}.
+      def value_change_mode: () -> Symbol
+
+      # A held notice goes out at once on a switch to `:eager`, which never
+      # holds one.
+      # 
+      # _@param_ `mode` — one of {MODES}.
+      def value_change_mode=: (Symbol mode) -> void
+
+      # _@return_ — how long `:lazy` waits after the last edit, in seconds.
+      def value_change_timeout: () -> Numeric
+
+      # Takes effect from the next edit.
+      # 
+      # _@param_ `seconds` — zero or positive.
+      def value_change_timeout=: (Numeric seconds) -> void
+
+      def handle_detached: () -> void
+
+      # _@return_ — whether an edit announces now rather than being held.
+      def notify_on_edit?: () -> bool
+
+      # Holds the notice for an edit {#notify_on_edit?} declined, restarting a
+      # `:lazy` wait.
+      def hold_edit: () -> void
+
+      # Announces the current value, if it differs from the last one announced,
+      # and ends any hold.
+      # 
+      # _@param_ `from_user` — what the write declared; `true` at a commit gesture, which only releases the user's own edits.
+      def announce: (from_user: bool) -> void
+
+      def sync_notice_timer: () -> void
 
       # Fired with a {BadInputChangeEvent} whenever the **showable** report
       # changes — see the class doc for what that is and why it is not
@@ -14246,6 +14418,8 @@ module Tuile
       # typed through, however the characters arrive.
       class Field < Tuile::Component::TextField
         TYPEABLE: Regexp
+        MODES: ::Array[Symbol]
+        DEFAULT_TIMEOUT: Float
 
         # Accepts the insertion only if the whole resulting buffer is still
         # typeable, so a pasted `"$19.99"` is dropped rather than sieved into
@@ -14484,8 +14658,10 @@ module Tuile
     # characters in through a paste (`D_input_filters`, book ch7).
     # 
     # The mutation pipeline is a template method: {#set_value} and {#caret=}
-    # detect no-ops, mutate state, fire {HasValue#on_value_change}, and invalidate.
-    # Typing, a paste and the deleting keys write with `from_user: true`, every
+    # detect no-ops, mutate state, and invalidate. {#set_value} fires
+    # {HasValue#on_value_change} at once, while typing, a paste and the deleting
+    # keys fire it per {HasValueChangeMode#value_change_mode} — at a commit
+    # gesture by default. Those edits write with `from_user: true`, every
     # other write with `false` ({HasValue::ValueChangeEvent#from_user?}).
     # Subclasses inject their own behavior via four protected hooks:
     # 
@@ -14500,6 +14676,7 @@ module Tuile
     #   keep the caret visible).
     class AbstractStringField < Component
       include Tuile::Component::HasValue
+      include Tuile::Component::HasValueChangeMode
 
       def initialize: () -> void
 
@@ -14510,7 +14687,9 @@ module Tuile
       # sord duck - #to_s looks like a duck type with an equivalent RBS interface, replacing with _ToS
       # Replaces the text. Runs {#preprocess_text} first, then clamps the caret
       # to the new text and snaps it onto a cluster boundary of it. Fires
-      # {HasValue#on_value_change} only on a real change — never on {#caret=}.
+      # {HasValue#on_value_change} at once, whatever the
+      # {HasValueChangeMode#value_change_mode}, and only on a real change —
+      # never on {#caret=}.
       # 
       #   field.value = "admin"
       #   field.caret = field.text.length   # the caret is clamped, never moved to the end
@@ -14519,6 +14698,11 @@ module Tuile
       # 
       # _@param_ `from_user` — see {HasValue#set_value}.
       def set_value: ((String | _ToS) new_value, from_user: bool) -> void
+
+      # Releases a held notice when the field leaves the focus chain.
+      # 
+      # _@param_ `flag`
+      def active=: (bool flag) -> void
 
       # `""` (not `nil`): a text field is empty when its buffer is blank.
       def empty_value: () -> String
@@ -14586,8 +14770,9 @@ module Tuile
       # 
       # {#set_value} does *not* pass through here: only user input is filtered,
       # so a programmatic write may still hold what no key types. The same line
-      # decides the origin: an insertion is the user's, so it writes with
-      # `from_user: true`.
+      # decides the origin: an insertion is the user's edit, so it writes with
+      # `from_user: true` and its notice follows
+      # {HasValueChangeMode#value_change_mode}.
       # 
       # _@param_ `str`
       # 
@@ -14644,8 +14829,8 @@ module Tuile
       def delete_before_caret: () -> void
 
       # Removes the text between `index` and the caret, leaving the caret at
-      # `index` — one mutation, so {HasValue#on_value_change} fires once, as the
-      # user's: every caller is a deleting key.
+      # `index` — one mutation, so {HasValue#on_value_change} fires at most
+      # once, as the user's edit: every caller is a deleting key.
       # 
       # `index` is snapped forward onto a grapheme-cluster boundary, so a
       # caller may compute it by counting characters.
@@ -14655,6 +14840,25 @@ module Tuile
 
       # Removes the whole grapheme cluster at the caret.
       def delete_at_caret: () -> void
+
+      # The edit route every key and paste takes: writes the buffer, then
+      # announces or holds the notice ({HasValueChangeMode}).
+      # 
+      # _@param_ `new_text`
+      def edit_text: (String new_text) -> void
+
+      # sord duck - #to_s looks like a duck type with an equivalent RBS interface, replacing with _ToS
+      # _@param_ `new_text` — run through {#preprocess_text} first.
+      # 
+      # _@return_ — true if the buffer changed.
+      def write_text: ((String | _ToS) new_text) -> bool
+
+      # Fires {HasValue#on_value_change} unless the buffer still reads what was
+      # last announced — so a held edit typed and then deleted again stays
+      # silent.
+      # 
+      # _@param_ `from_user`
+      def fire_if_changed: (from_user: bool) -> void
 
       # _@param_ `index` — a {#text} index in `0..text.length`.
       # 
@@ -14683,8 +14887,53 @@ module Tuile
       # end of the text if no further word exists.
       def word_right: () -> Integer
 
-      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set.
+      # When {HasValue#on_value_change} fires for an edit:
+      # 
+      # - `:eager` — on every edit;
+      # - `:commit` (the default) — on a commit gesture: leaving the focus
+      #   chain, or ENTER. A {TextArea} commits on leaving only, since ENTER
+      #   types a newline there, and so does a subclass that claims ENTER itself;
+      # - `:lazy` — once edits pause for {#value_change_timeout}, or at a
+      #   commit gesture if that comes first.
+      # 
+      # _@return_ — one of {MODES}.
+      def value_change_mode: () -> Symbol
+
+      # A held notice goes out at once on a switch to `:eager`, which never
+      # holds one.
+      # 
+      # _@param_ `mode` — one of {MODES}.
+      def value_change_mode=: (Symbol mode) -> void
+
+      # _@return_ — how long `:lazy` waits after the last edit, in seconds.
+      def value_change_timeout: () -> Numeric
+
+      # Takes effect from the next edit.
+      # 
+      # _@param_ `seconds` — zero or positive.
+      def value_change_timeout=: (Numeric seconds) -> void
+
+      def handle_detached: () -> void
+
+      # _@return_ — whether an edit announces now rather than being held.
+      def notify_on_edit?: () -> bool
+
+      # Holds the notice for an edit {#notify_on_edit?} declined, restarting a
+      # `:lazy` wait.
+      def hold_edit: () -> void
+
+      # Announces the current value, if it differs from the last one announced,
+      # and ends any hold.
+      # 
+      # _@param_ `from_user` — what the write declared; `true` at a commit gesture, which only releases the user's own edits.
+      def announce: (from_user: bool) -> void
+
+      def sync_notice_timer: () -> void
+
+      # Fired with a {ValueChangeEvent} when {#value} actually changes —
+      # never on a no-op set. A write fires at once; a typed edit in a
+      # {HasValueChangeMode} field fires when its mode says, by default once
+      # the user leaves the field or presses ENTER.
       def on_value_change: () -> Listeners
 
       # A programmatic write: {#set_value} with `from_user: false`. Defined
@@ -14791,6 +15040,80 @@ module Tuile
       end
     end
 
+    # When a text-like field tells its app the value changed. Typing is
+    # *held* until the user is done with the field, per {#value_change_mode}:
+    # 
+    #   search = Component::TextField.new
+    #   search.value_change_mode                                 # => :commit, the default
+    #   search.value_change_mode = :lazy                         # a filter box:
+    #   search.on_value_change { |e| filter_results(e.value) }  # 0.4 s after the last key
+    # 
+    # Only the *notice* waits: {HasValue#value} is live whatever the mode, so a
+    # Save handler reading it gets what is on screen. Held are **edits** — keys
+    # and a paste, while the field is on the focus chain; a write through
+    # {HasValue#set_value} (a program, an Up/Down step, `Testing.set_value`)
+    # announces at once, and so does an edit reaching a field that isn't
+    # focused, which has no commit gesture coming.
+    # 
+    # Included by the string fields and the number fields. The date and time
+    # fields carry no knob: they always hold, because a prefix of a date can
+    # parse into a wrong one (`design/decisions.md` `D_value_change_mode`).
+    # 
+    # == Implementation details
+    # The includer supplies `fire_if_changed(from_user:)` — the notice with its
+    # diff guard, so a release that changed nothing stays silent — and calls
+    # the three private hooks from its own paths: `notify_on_edit?` then
+    # `hold_edit` on an edit, `announce` on a write and on each commit gesture.
+    # The `:lazy` timer is owned by one sync over "an edit is held, the mode
+    # is lazy, the field is attached", its sole writer.
+    module HasValueChangeMode
+      MODES: ::Array[Symbol]
+      DEFAULT_TIMEOUT: Float
+
+      # When {HasValue#on_value_change} fires for an edit:
+      # 
+      # - `:eager` — on every edit;
+      # - `:commit` (the default) — on a commit gesture: leaving the focus
+      #   chain, or ENTER. A {TextArea} commits on leaving only, since ENTER
+      #   types a newline there, and so does a subclass that claims ENTER itself;
+      # - `:lazy` — once edits pause for {#value_change_timeout}, or at a
+      #   commit gesture if that comes first.
+      # 
+      # _@return_ — one of {MODES}.
+      def value_change_mode: () -> Symbol
+
+      # A held notice goes out at once on a switch to `:eager`, which never
+      # holds one.
+      # 
+      # _@param_ `mode` — one of {MODES}.
+      def value_change_mode=: (Symbol mode) -> void
+
+      # _@return_ — how long `:lazy` waits after the last edit, in seconds.
+      def value_change_timeout: () -> Numeric
+
+      # Takes effect from the next edit.
+      # 
+      # _@param_ `seconds` — zero or positive.
+      def value_change_timeout=: (Numeric seconds) -> void
+
+      def handle_detached: () -> void
+
+      # _@return_ — whether an edit announces now rather than being held.
+      def notify_on_edit?: () -> bool
+
+      # Holds the notice for an edit {#notify_on_edit?} declined, restarting a
+      # `:lazy` wait.
+      def hold_edit: () -> void
+
+      # Announces the current value, if it differs from the last one announced,
+      # and ends any hold.
+      # 
+      # _@param_ `from_user` — what the write declared; `true` at a commit gesture, which only releases the user's own edits.
+      def announce: (from_user: bool) -> void
+
+      def sync_notice_timer: () -> void
+    end
+
     # Abstract base for a field that **wraps one editor completely**: it carries
     # a typed {HasValue#value} but paints nothing itself, handing the whole UI to
     # a single {AbstractStringField} it owns and hides. Subclass it by passing
@@ -14851,10 +15174,12 @@ module Tuile
     # consumes it, which is {TextField#on_enter}'s existing contract.
     # 
     # == When the value notice fires
-    # Per edit by default. A field whose grammar is not prefix-closed sets
-    # {#notify_on_edit?} to `false` and lets the notice settle onto those same
-    # two gestures, so a form is never handed a half-typed date that happens to
-    # parse ({DateField}, {TimeField}).
+    # Per edit here. A number field includes {HasValueChangeMode}, which
+    # holds an edit's notice until those same two gestures by default. A field
+    # whose grammar is not prefix-closed holds it for good — {#notify_on_edit?}
+    # answers `false` — so a form is never handed a half-typed date that
+    # happens to parse ({DateField}, {TimeField}). Either way a *write* is not
+    # an edit: `set_value` announces its own change at once.
     # 
     # == Who made the change
     # The editor's own event says whether the user moved the buffer, and this
@@ -14953,17 +15278,16 @@ module Tuile
       def commit: () -> void
 
       # Whether an edit of the buffer fires {HasValue#on_value_change} as it
-      # happens. `true` here, which is right wherever every buffer state is a
-      # value the user might mean: an {IntegerField} passing through `4` on the
-      # way to `42` really does hold 4 for that keystroke. A field whose
-      # grammar is **not prefix-closed** answers `false` and lets the notice
-      # settle onto the commit gestures instead ({DateField}, `D_date_field`).
+      # happens. `true` here, and {HasValueChangeMode} answers it from the
+      # mode. A field whose grammar is **not prefix-closed** answers `false`
+      # and lets the notice settle onto the commit gestures instead
+      # ({DateField}, `D_date_field`).
       # 
       # Only the *push* settles: {HasValue#value} stays a live parse of the
-      # buffer either way. And overriding this is half the job — {#commit} is
-      # covered here, but the field must fire from its own `set_value` too, or a
-      # programmatic write and an Up/Down step go unannounced until the next
-      # commit.
+      # buffer either way. And a field that can answer `false` owes the other
+      # half — {#commit} is covered here, but its `set_value` must call
+      # `announce` too, or a programmatic write and an Up/Down step go
+      # unannounced until the next commit.
       def notify_on_edit?: () -> bool
 
       # Called whenever the editor's buffer changes, however the characters
@@ -14983,6 +15307,17 @@ module Tuile
       # diff guard makes the call free for a field that fired on the way in.
       def commit_and_notify: () -> void
 
+      # Announces the value, if it changed; {HasValueChangeMode} extends it to
+      # end a hold.
+      # 
+      # _@param_ `from_user`
+      def announce: (from_user: bool) -> void
+
+      # Called for an edit {#notify_on_edit?} declined; no-op here, since every
+      # commit gesture announces anyway. {HasValueChangeMode} starts its
+      # `:lazy` wait from it.
+      def hold_edit: () -> void
+
       # Re-emits {HasValue#on_value_change}, but only when {#value} differs from
       # the last one fired — so a buffer edit that leaves the value alone
       # (`"7"`→`"07"`) stays silent.
@@ -14993,8 +15328,10 @@ module Tuile
       # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
       def inspect_details: () -> ::Array[String]
 
-      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set.
+      # Fired with a {ValueChangeEvent} when {#value} actually changes —
+      # never on a no-op set. A write fires at once; a typed edit in a
+      # {HasValueChangeMode} field fires when its mode says, by default once
+      # the user leaves the field or presses ENTER.
       def on_value_change: () -> Listeners
 
       # A programmatic write: {#set_value} with `from_user: false`. Defined

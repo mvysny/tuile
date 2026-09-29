@@ -38,9 +38,10 @@ are `Box`'s rdoc and `D_box_layouts`.
 - **A composite relays its guilty child's message *and* that child's latch**, and answers
   `wears_bad_input_ink?` `false` while the child holds the fault, so the well reddens where the fault
   happened. See `D_date_time_field`.
-- **One not prefix-closed settles its *value* notice on those gestures too** — `notify_on_edit? = false`,
-  since a prefix that *parses* (`1.1.2` for `1.1.2024`) is a value no `bad_input?` can flag; fire
-  from your own `set_value` as well. Gate the **push**, never the pull. See `D_date_field`.
+- **A string or number field's notice follows {Component::HasValueChangeMode}; one not prefix-closed
+  holds it for good** — `notify_on_edit? = false`, since a prefix that *parses* (`1.1.2` for
+  `1.1.2024`) is a value no `bad_input?` can flag. Hold *edits*, never writes: `set_value` calls
+  `announce`. Gate the **push**, never the pull. See `D_value_change_mode`, `D_date_field`.
 - **A field paints no caption and no message**, so it must not include {Component::HasCaption} —
   the container owning those cells owns both ({Component::FormItem}), and the message notice is
   load-bearing because the field never invalidates them. See `D_caption_ownership`.

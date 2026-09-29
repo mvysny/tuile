@@ -6,10 +6,12 @@
 ## [Unreleased]
 
 - Add `EventQueue#after(seconds)` — runs a block once on the event-loop thread after a delay (zero queues it at once, like `submit`), returning an `EventQueue::Timer` whose `cancel` drops it even once queued; the fake's `after` fires only on `FakeEventQueue#fire_timers`, never on `tick_once`.
+- Add `Component::HasValueChangeMode` — `value_change_mode` (`:eager` / `:commit` / `:lazy`) and `value_change_timeout` on `TextField`, `PasswordField`, `TextArea` and the number fields, choosing when a typed edit fires `on_value_change`; a write through `set_value` still fires at once. See `design/decisions.md` `D_value_change_mode`.
 - Add `Tuile::Binder` — `Binder::Buffered` (`read` / `write?` / `write!` / `changed?`) and `Binder::Unbuffered` (`model=`, writing each valid edit through) bind fields to a model's attributes through a `bind(field, :attr)` chain of `required` / `validate` / `convert`, with `add_validator` for the whole model and a frozen `last_validation` map. See `design/decisions.md` `D_binder_modes`.
 - Add `Component::Layout#constraints` — a protected, lazily built `Layout::ConstraintMap` of where each child wants to be: a changed write marks the layout, a non-child raises, and `Layout#remove` prunes it, so a custom layout keeps per-child settings as `Box`, `FormLayout` and `Absolute` now do.
 - Fix `run_event_loop(capture_mouse: :drag)` and `:hover` leaving no mouse at all on a terminal without mode 1002 or 1003: each level now also requests the rungs beneath it, so such a terminal falls back to the highest one it knows. See `design/research.md` `R_mouse_reporting`.
 - **Breaking:** `Screen#run_event_loop`'s default, `capture_mouse: true`, now means `:drag` instead of `:clicks`, so a scrollbar's handle drags without the app asking. Pass `capture_mouse: :clicks` to keep the old reporting. See `design/decisions.md` `D_draggable_scrollbar`.
+- **Breaking:** a string or number field now fires `on_value_change` for typing only when the user leaves it or presses ENTER, the `:commit` default, instead of per keystroke. Set `value_change_mode = :eager` to keep the old cadence, or `:lazy` for a search box. See `design/decisions.md` `D_value_change_mode`.
 
 ## [0.17.0] - 2026-09-23
 

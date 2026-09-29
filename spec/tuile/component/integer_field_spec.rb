@@ -188,6 +188,7 @@ module Tuile
       it "fires once per real value change, with an Integer or nil (never a String)" do
         seen = []
         f = field
+        f.value_change_mode = :eager
         f.on_value_change { |e| seen << e.value }
         type("42")
         key(Keys::BACKSPACE) # "42" -> "4"
@@ -199,6 +200,7 @@ module Tuile
       it "does not fire while a transient '-' leaves the value nil" do
         seen = []
         f = field
+        f.value_change_mode = :eager
         f.on_value_change { |e| seen << e.value }
         type("-")  # value still nil -> silent
         type("5")  # now -5 -> fires
@@ -355,6 +357,7 @@ module Tuile
     describe "from_user? on on_value_change" do
       it "relays the editor's flag for typing, and a step is the user's" do
         f = Component::IntegerField.new
+        f.value_change_mode = :eager
         mount_at(f, Rect.new(0, 0, 10, 1))
         Screen.instance.focused = f
         seen = []

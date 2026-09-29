@@ -25,8 +25,10 @@ module Tuile
     # "New person" form doesn't open red. The chain, the empty/`nil` policy and
     # how the model validators use the model as scratch space are {Binder}'s.
     #
-    # Fields fire {Component::HasValue#on_value_change} per keystroke, so a
-    # string or number field's verdict updates as the user types.
+    # A verdict updates when its field announces an edit: for a string or
+    # number field that is when the user leaves it or presses ENTER, the
+    # {Component::HasValueChangeMode#value_change_mode} default — set a field
+    # `:eager` for a verdict that follows every keystroke.
     #
     # == Implementation details
     # Each edit runs its own binding only; the model validators run in
@@ -40,6 +42,7 @@ module Tuile
         super { |binding, edit| edited(binding, edit) }
         @model = nil
         @changed = Set.new
+        @baseline = {}
       end
 
       # Shows `model` in the fields and remembers it for {#validate}; a `nil`
@@ -52,6 +55,7 @@ module Tuile
         @model = model
         @changed.clear
         @engine.populate(model)
+        take_baseline
         @engine.run(@engine.bindings, model:, write: [], keep: false, show: [])
         nil
       end
@@ -74,7 +78,10 @@ module Tuile
 
         all = @engine.bindings
         written = @engine.run(all, model:, write: all, keep: true, show: :all)
-        @changed.clear if written
+        if written
+          @changed.clear
+          take_baseline
+        end
         written
       end
 
@@ -87,11 +94,26 @@ module Tuile
       end
 
       # @return [Boolean] whether the user edited a field since {#read} or the
-      #   last successful {#write?} — edited, not differing: typing a letter and
-      #   deleting it counts.
-      def changed? = !@changed.empty?
+      #   last successful {#write?} — edited, not differing, so a `""` shown for
+      #   a `nil` attribute is no change. An edit counts once its field
+      #   announces it; the field that still has focus is compared live against
+      #   what {#read} showed instead, since a Save *shortcut* leaves it
+      #   holding its notice.
+      def changed?
+        return true unless @changed.empty?
+
+        @engine.bindings.any? do |b|
+          b.field.active? && @baseline.key?(b.attr) && b.field.value != @baseline[b.attr]
+        end
+      end
 
       private
+
+      # Records what every field shows, for {#changed?}'s live compare.
+      # @return [void]
+      def take_baseline
+        @baseline = @engine.bindings.to_h { [_1.attr, _1.field.value] }
+      end
 
       # @param binding [Binder::Binding]
       # @param edit [Boolean]
