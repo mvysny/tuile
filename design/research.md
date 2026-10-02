@@ -148,6 +148,9 @@ the index. The first entry is the ruler: every later one trims to its length.
   whatever cell it was last sampled in. Mode 1004 does fire (four FocusOut/FocusIn pairs per run),
   on a genuine pointer exit *and* on an alt-tab with the pointer still inside. **[verified
   2026-09-03, tmux 3.6]**
+- **tmux passes 1004 through only with `focus-events on`, and the default is off** — that run's
+  config set it, so a default tmux delivers no FocusIn/FocusOut at all. **[verified 2026-10-02, tmux
+  3.6, `show -gv focus-events` under `-f /dev/null`]**
 - **Nothing upstream coalesces** — ~2.1 events per read, in batches of 1–3 and up to 8; ssh and tmux
   drop no intermediate reports. **[verified 2026-09-03, tmux 3.6]**
 - **Reads do not align to event boundaries**: mostly 12.0 bytes/event per read, but four reads came
