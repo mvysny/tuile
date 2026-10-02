@@ -161,14 +161,25 @@ module Tuile
         # Read up to 5 bytes: that's the maximum tail length of any *fixed*-
         # length escape sequence Tuile recognizes after the initial \e (X10
         # mouse `[Mbxy`, CTRL+arrow `[1;5D`, etc.); the variable-length ones
-        # are drained below. Reading 6 here would over-read into the next
-        # sequence on tight mouse-event bursts — we'd silently steal the next
-        # event's leading \e and the rest of it would surface as individual
-        # printable keypresses in focused inputs.
+        # are drained below. A gulp running into the next sequence is undone
+        # just below, but one running into a typed character cannot be.
         char += $stdin.read_nonblock(5)
       rescue IO::EAGAINWaitReadable
         # The "ESC" key pressed => only the \e char is emitted.
         return char
+      end
+
+      # A short sequence arriving back-to-back with the next — a 3-byte FocusIn
+      # `\e[I` right before a mouse report — gulps that one's head, and its tail
+      # would leak as keypresses: hand everything from the second \e back to
+      # stdin for the next getkey. Index 1 is spared because `\e\e…` is a
+      # Meta-prefixed key (urxvt's Alt+Up is `\e\e[A`), and splitting it
+      # surfaces a bare ESC, which quits the app. An OSC is spared because its
+      # ST terminator *is* `\e\\`.
+      tail = char.index(Keys::ESC, 2) unless char.start_with?("\e]")
+      unless tail.nil?
+        $stdin.ungetbyte(char.byteslice(tail..))
+        char = char.byteslice(0...tail)
       end
 
       # If `read_nonblock` returned a partial X10 mouse-report prefix (the
@@ -179,9 +190,9 @@ module Tuile
 
       # SGR mouse reports (`\e[<Cb;x;yM`, mode 1006) are variable-length and do
       # not align to read boundaries, so no gulp width fits: drain to the final
-      # `M`/`m` a byte at a time. The gulp above cannot over-read one — the
-      # shortest report is 8 bytes after the `\e` — and only digits and `;`
-      # precede the terminator, so this stops at the first event's end.
+      # `M`/`m` a byte at a time. The shortest report is 8 bytes after the `\e`,
+      # so the gulp never holds a whole one, and only digits and `;` precede
+      # the terminator, so this stops at the first event's end.
       # Keyboard sequences never start with `\e[<`, so this eats no real key.
       char += $stdin.read(1) while char.start_with?("\e[<") && !char.end_with?("M", "m")
 

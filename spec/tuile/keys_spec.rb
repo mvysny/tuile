@@ -281,6 +281,46 @@ module Tuile
         $stdin = fake_stdin("\e", rest: "[<0;1", tail: ";1m")
         assert_equal "\e[<0;1;1m", Keys.getkey
       end
+
+      describe "a gulp running into the next sequence" do
+        # A real stream rather than fake_stdin: the bytes handed back must
+        # reach the *next* getkey, through getch and read_nonblock alike.
+        def stream_stdin(bytes)
+          StringIO.new(+bytes).tap { |io| io.define_singleton_method(:getch) { getc } }
+        end
+
+        it "hands the next sequence back instead of leaking its tail as keys" do
+          # FocusIn is 3 bytes, so the gulp takes `[I\e[<`; the SGR drain never
+          # ran on the report, and `35;1;1M` would have reached a focused input.
+          $stdin = stream_stdin("\e[I\e[<35;1;1M")
+          assert_equal "\e[I", Keys.getkey
+          assert_equal "\e[<35;1;1M", Keys.getkey
+        end
+
+        it "splits a burst of two arrows into two keys" do
+          $stdin = stream_stdin("\e[B\e[B")
+          assert_equal Keys::DOWN_ARROW, Keys.getkey
+          assert_equal Keys::DOWN_ARROW, Keys.getkey
+        end
+
+        it "hands back an X10 report whole, for its own drain" do
+          $stdin = stream_stdin("\e[O\e[M !\"")
+          assert_equal "\e[O", Keys.getkey
+          assert_equal "\e[M !\"", Keys.getkey
+        end
+
+        it "keeps a Meta-prefixed sequence whole" do
+          # urxvt's Alt+Up: split, the leading \e would be a bare ESC — which
+          # quits the app when nothing handles it.
+          $stdin = stream_stdin("\e\e[A")
+          assert_equal "\e\e[A", Keys.getkey
+        end
+
+        it "keeps an OSC reply's ST terminator" do
+          $stdin = stream_stdin("\e]11;\e\\")
+          assert_equal "\e]11;\e\\", Keys.getkey
+        end
+      end
     end
   end
 end

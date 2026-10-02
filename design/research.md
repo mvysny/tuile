@@ -80,16 +80,20 @@ the index. The first entry is the ruler: every later one trims to its length.
   distinguishes them** — only arrival timing does, which is why terminal libraries either gulp a
   fixed tail or wait on a timeout. **[docs]**
 - A human types with millisecond gaps, so bytes written in one burst are read as one gulp: a test
-  that writes `"\e[B\e[B"` in a single `write` produces one bogus key, not two Down arrows. This
-  bites tests and pasted input, never a real user. **[verified 2026-08-23, `spec/examples/`]**
+  that writes `"\e[B\e[B"` in a single `write` hands a fixed-tail reader both arrows in one read.
+  This bites tests and pasted input, never a real user. **[verified 2026-08-23, `spec/examples/`]**
+- **Terminal reports burst where keys don't**: a 3-byte FocusIn `\e[I` and a mouse report can land
+  in one read, so a 5-byte gulp takes `[I\e[<` and the report's tail is left as bare bytes.
+  Splitting at the second `\e` recovers both; `\e` then `j` cannot be split that way, being
+  byte-identical to Alt+J. **[verified 2026-10-02, PTY in raw mode]**
 - Raw-mode entry **discards typeahead**, so a key written before the reader reaches its first
   `getch` is silently dropped. Measured against `examples/file_commander.rb`: a 0 ms gap fails,
   50 ms is enough. **[verified 2026-08-23, `file_commander_spec`]**
 - An X10 mouse report is fixed-length: `\e[M` plus exactly three bytes. **[docs]**
 - **A fixed 5-byte tail after `\e` fits most keys and not all of them**: `\e[29~` (Menu/Apps) and
   plain F1–F12 fit, while xterm's Shift+F10 is `\e[21;2~` — six tail bytes, so the `~` surfaces as a
-  printable keypress. Six would over-read the next event on a mouse burst, so the limit binds
-  anything wanting an exotic key. **[docs]**
+  printable keypress. A wider gulp running into the next `\e` is recoverable by splitting there; one
+  running into a typed character is not. **[docs]**
 - **No terminal sends a context-menu event.** A browser hands a web framework `contextmenu` from
   Shift+F10 *and* the Menu key, so a web context menu needs no keyboard code at all; a terminal app
   has to invent the keyboard route. Terminal emulators also routinely keep the right button for

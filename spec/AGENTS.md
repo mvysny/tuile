@@ -81,7 +81,8 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   `StandardError`, and not a `Tuile::Error`) for the reason `Minitest::Assertion` is one: nobody
   should be catching it.
 - **Pace the keys in a PTY test — never write a burst.** `Keys.getkey` gulps a fixed 5 bytes after a
-  leading `\e`, so bytes arriving in one read merge into a bogus key; send one key at a time and
+  leading `\e` and hands back only a following `\e`-led sequence, so a bare ESC, or a printable
+  behind a sequence, merges into a bogus key; send one key at a time and
   force a round-trip between them. This is inherent ESC ambiguity, not a bug to fix in `getkey`.
 - **The *first* key needs the same gap** — the raw-mode flip discards typeahead, so a key written
   before the reader's first `getch` is silently dropped and the test hangs. 50 ms is enough
