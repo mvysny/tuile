@@ -35,15 +35,21 @@ module Tuile
     #
     # == Implementation details
     #
-    # **The grab has three releases and no relinquishing**: the up, the next
-    # down (the up was lost — ssh and tmux do lose them), and any key
-    # ({#release_grab}). None of the last two tells the grabbed component. Hiding
-    # or detaching it does not end the grab either; the router just stops
-    # delivering to it until the release (`D_mouse_dispatch`).
+    # **The grab has four releases and no relinquishing**: the up, the next
+    # down (the up was lost — ssh and tmux do lose them), any key, and the
+    # terminal losing focus ({#release_grab}). None of the last three tells the
+    # grabbed component. Hiding or detaching it does not end the grab either;
+    # the router just stops delivering to it until the release
+    # (`D_mouse_dispatch`).
     #
-    # **The hovered chain is synced, not toggled**: a move re-resolves it and
-    # diffs, and {#sync_hover} — run by {Screen#repaint} — drops members that
-    # were detached, hidden or reparented since, firing their exits.
+    # **The hovered chain is derived, never toggled**: it is the path under the
+    # last reported pointer position, or empty while that position is unknown —
+    # since the terminal lost focus, or since a key or a paste, after which the
+    # pointer may be anywhere, the terminal never reporting it leaving.
+    # {#sync_hover} is its sole writer, run after every event and every repaint,
+    # so a popup opening over the pointer or a pane scrolling under it moves the
+    # hover with no motion at all. While a press is grabbed, hover is suspended:
+    # the chain only loses members that were detached, hidden or reparented.
     class Router
       # One step of a resolved path: a component, and the event point in *its*
       # coordinates. The walk down is the only place that conversion is cheap —
@@ -57,6 +63,7 @@ module Tuile
       def initialize(screen)
         @screen = screen
         @level = :hover
+        @pointer = nil
         @hovered = []
         @grabbed = nil
         @grab_button = nil
@@ -68,14 +75,23 @@ module Tuile
       # terminal reports one only while a button nobody claimed is held, and
       # enter/exit that fire *sometimes* are worse than none.
       # @return [Symbol, nil]
-      attr_accessor :level
+      attr_reader :level
+
+      # A new level starts with the pointer unknown: one a previous level
+      # reported is no longer being tracked.
+      # @param level [Symbol, nil]
+      # @return [void]
+      def level=(level)
+        @level = level
+        forget_pointer
+      end
 
       # @return [Component, nil] the component whose {Component#handle_mouse_down?}
       #   claimed the press currently held.
       attr_reader :grabbed
 
       # @return [Component, nil] the innermost component under the pointer, as of
-      #   the last move under `:hover`.
+      #   the last {#sync_hover}; nil below `:hover`.
       def hovered = @hovered.last
 
       # @param event [Mouse::Event]
@@ -84,7 +100,9 @@ module Tuile
         case event
         when DownEvent then press(event)
         when UpEvent then release(event)
-        when ScrollEvent then bubble(extent_path(event.point), :handle_mouse_scroll?, event)
+        when ScrollEvent
+          track(event.point)
+          bubble(extent_path(event.point), :handle_mouse_scroll?, event)
         when MoveEvent then move(event)
         when DragEvent
           # No route of its own: it is manufactured here from a move while
@@ -104,26 +122,44 @@ module Tuile
         @grab_button = nil
       end
 
-      # Drops the hovered-chain members that are no longer attached, shown, or
-      # children of the member before them, firing
-      # {Component#handle_mouse_exit} innermost first. Idempotent.
+      # Marks the pointer's position unknown, so the next {#sync_hover} clears
+      # the hover until a report says where it is.
+      # @return [void]
+      def forget_pointer
+        @pointer = nil
+      end
+
+      # Brings the hovered chain up to date with the pointer and the tree,
+      # firing {Component#handle_mouse_exit} innermost first, then
+      # {Component#handle_mouse_enter} root first. Idempotent.
       # @return [void]
       def sync_hover
-        valid = @hovered.each_with_index.take_while do |c, i|
-          c.attached? && c.visible? && (i.zero? || c.parent.equal?(@hovered[i - 1]))
-        end.size
-        return if valid == @hovered.size
-
-        rehover(@hovered.take(valid))
+        chain = if @pointer.nil? then []
+                elsif @grabbed.nil? then extent_path(@pointer).map(&:component)
+                else
+                  @hovered.each_with_index.take_while do |c, i|
+                    c.attached? && c.visible? && (i.zero? || c.parent.equal?(@hovered[i - 1]))
+                  end.map(&:first)
+                end
+        rehover(chain) unless chain == @hovered
       end
 
       private
+
+      # Records where a report put the pointer. Below `:hover` the pointer is
+      # left unknown, or a press would light a hover no move ever clears.
+      # @param point [Point] in screen coordinates.
+      # @return [void]
+      def track(point)
+        @pointer = point if @level == :hover
+      end
 
       # @param event [DownEvent]
       # @return [void]
       def press(event)
         release_grab
         point = event.point
+        track(point)
         pane = @screen.pane
         root = pane.mouse_root_at(point)
         path = rect_path(root, point)
@@ -151,6 +187,7 @@ module Tuile
       # @param event [MoveEvent]
       # @return [void]
       def move(event)
+        track(event.point)
         unless @grabbed.nil?
           if ComponentUtil.effectively_visible?(@grabbed)
             local = @grabbed.to_local(event.point)
@@ -160,9 +197,10 @@ module Tuile
         end
         return unless @level == :hover
 
-        path = extent_path(event.point)
-        rehover(path.map(&:component))
-        bubble(path, :handle_mouse_move?, event)
+        # Synced here rather than left to the settle, so the enters precede the
+        # move they announce.
+        sync_hover
+        bubble(extent_path(event.point), :handle_mouse_move?, event)
       end
 
       # A non-modal overlay is never focused into: it sits outside the key scope,

@@ -339,8 +339,8 @@ handle follow the pointer.
 `handle_mouse_enter` / `handle_mouse_exit` pair, along with
 {Tuile::Screen#hovered}. Ask for it only if something uses it: a terminal
 reports up to ~84 moves a second. And keep whatever hover does *cosmetic* —
-no terminal reports the pointer leaving the window, so an exit may arrive
-very late, or never.
+no terminal reports the pointer leaving the window, so the exit waits for
+the terminal to lose focus or for the next key, and may arrive very late.
 
 The rung is one app-wide choice, made here and nowhere else — so a component
 that overrides a hover hook under a lower rung simply never hears from it, with

@@ -82,10 +82,12 @@ through shown children whose `rect` contains the point — converting the point 
 every component is handed the event in its own coordinates. A left press focuses the innermost
 `focusable?` on that path *before* any handler runs, then `handle_mouse_down?` bubbles back up the
 prefix whose `local_extent_rect` contains the point until one component claims it — and the claimant is
-**grabbed**, so this button's drags and its up go to it alone until the release, any key, or the next
-press. A wheel notch and a move bubble the same way and grab nothing; enter and exit are the
-difference between the last hovered chain and the new one, and `Screen#repaint` re-syncs that chain
-so a hidden or detached component gets its exit (`D_mouse_dispatch`).
+**grabbed**, so this button's drags and its up go to it alone until the release, any key, the next
+press, or the terminal losing focus. A wheel notch and a move bubble the same way and grab nothing;
+enter and exit are the difference between the last hovered chain and the new one. The router keeps
+the last reported pointer position — forgotten on a key, a paste or a FocusOut — and `Screen#settle`
+re-resolves the chain from it after every event, so a hidden, detached or covered component gets its
+exit (`D_mouse_dispatch`).
 
 **A resize** rides the same queue rather than the signal handler: `SIGWINCH` → `TTYSizeEvent` →
 `Screen#size =` and `layout`, which resizes the pane and invalidates the whole tree; each parent

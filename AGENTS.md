@@ -204,8 +204,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   discipline, no hit test of its own, and a container hand-rolls nothing. See `D_mouse_dispatch`.
 - **A press bubbles from the innermost component under the pointer until one claims it, and the
   claimant is grabbed** — its `handle_mouse_up` / `handle_mouse_drag` then reach it wherever the
-  pointer goes, until the up, any key or the next press. A wheel notch and a move bubble the same
-  way and grab nothing.
+  pointer goes, until the up, any key, the next press or the terminal losing focus. A wheel notch
+  and a move bubble the same way and grab nothing.
 - **The router focuses the innermost `focusable?` on the path before any handler runs** — ungated by
   geometry, so a press on a widget's dead tail focuses it; the handlers bubble only along the prefix
   whose `local_extent_rect` contains the point, which is why no widget hit-tests any more. See `D_extent`.
@@ -215,8 +215,12 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **Activate on the press: no click is synthesized, and an `UpEvent` carries no button** — a release
   is losable over ssh and tmux, and the grab it reaches already knows its button. See `D_mouse_dispatch`.
 - **Enter/exit and `handle_mouse_move?` need `capture_mouse: :hover`, and hover is suspended while
-  grabbed** — `handle_mouse_exit` may arrive thirty seconds late or never (no terminal reports the
-  pointer leaving), so it must stay cosmetic and never become a commit point.
+  grabbed** — `handle_mouse_exit` may arrive thirty seconds late (no terminal reports the pointer
+  leaving; a key or the terminal losing focus is what clears it), so it must stay cosmetic and
+  never become a commit point.
+- **The hovered chain is derived from the last reported pointer position, and `sync_hover` is its
+  sole writer** — run after every event, so a popup opening over a still pointer moves the hover; a
+  hook toggling it from an event would miss that. See `D_mouse_dispatch`.
 - **The mouse is additive: no capability may be reachable only through it.** Every gesture owes a
   key that already does the job. See `D_mouse`.
 - **Chrome the pointer grabs is a child component, never a column test in its owner** — the child

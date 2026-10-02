@@ -398,6 +398,19 @@ module Tuile
     end
   end
 
+  describe EventQueue::TerminalFocusEvent do
+    it "parses FocusIn and FocusOut" do
+      assert EventQueue::TerminalFocusEvent.parse("\e[I").focused
+      refute EventQueue::TerminalFocusEvent.parse("\e[O").focused
+    end
+
+    it "returns nil for regular keys" do
+      assert_nil EventQueue::TerminalFocusEvent.parse("I")
+      assert_nil EventQueue::TerminalFocusEvent.parse(Keys::DOWN_ARROW)
+      assert_nil EventQueue::TerminalFocusEvent.parse("\eOP") # F1's SS3, not CSI O
+    end
+  end
+
   describe EventQueue::BackgroundColorEvent do
     it "parses an OSC 11 reply into a color" do
       e = EventQueue::BackgroundColorEvent.parse("\e]11;rgb:1e1e/1e1e/2e2e\a")

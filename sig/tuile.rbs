@@ -838,21 +838,27 @@ module Tuile
     # 
     # == Implementation details
     # 
-    # **The grab has three releases and no relinquishing**: the up, the next
-    # down (the up was lost — ssh and tmux do lose them), and any key
-    # ({#release_grab}). None of the last two tells the grabbed component. Hiding
-    # or detaching it does not end the grab either; the router just stops
-    # delivering to it until the release (`D_mouse_dispatch`).
+    # **The grab has four releases and no relinquishing**: the up, the next
+    # down (the up was lost — ssh and tmux do lose them), any key, and the
+    # terminal losing focus ({#release_grab}). None of the last three tells the
+    # grabbed component. Hiding or detaching it does not end the grab either;
+    # the router just stops delivering to it until the release
+    # (`D_mouse_dispatch`).
     # 
-    # **The hovered chain is synced, not toggled**: a move re-resolves it and
-    # diffs, and {#sync_hover} — run by {Screen#repaint} — drops members that
-    # were detached, hidden or reparented since, firing their exits.
+    # **The hovered chain is derived, never toggled**: it is the path under the
+    # last reported pointer position, or empty while that position is unknown —
+    # since the terminal lost focus, or since a key or a paste, after which the
+    # pointer may be anywhere, the terminal never reporting it leaving.
+    # {#sync_hover} is its sole writer, run after every event and every repaint,
+    # so a popup opening over the pointer or a pane scrolling under it moves the
+    # hover with no motion at all. While a press is grabbed, hover is suspended:
+    # the chain only loses members that were detached, hidden or reparented.
     class Router
       # _@param_ `screen`
       def initialize: (Screen screen) -> void
 
       # _@return_ — the innermost component under the pointer, as of
-      # the last move under `:hover`.
+      # the last {#sync_hover}; nil below `:hover`.
       def hovered: () -> Component?
 
       # _@param_ `event`
@@ -861,10 +867,20 @@ module Tuile
       # Ends the grab without telling the grabbed component.
       def release_grab: () -> void
 
-      # Drops the hovered-chain members that are no longer attached, shown, or
-      # children of the member before them, firing
-      # {Component#handle_mouse_exit} innermost first. Idempotent.
+      # Marks the pointer's position unknown, so the next {#sync_hover} clears
+      # the hover until a report says where it is.
+      def forget_pointer: () -> void
+
+      # Brings the hovered chain up to date with the pointer and the tree,
+      # firing {Component#handle_mouse_exit} innermost first, then
+      # {Component#handle_mouse_enter} root first. Idempotent.
       def sync_hover: () -> void
+
+      # Records where a report put the pointer. Below `:hover` the pointer is
+      # left unknown, or a press would light a hover no move ever clears.
+      # 
+      # _@param_ `point` — in screen coordinates.
+      def track: (Point point) -> void
 
       # _@param_ `event`
       def press: (DownEvent event) -> void
@@ -3362,7 +3378,7 @@ module Tuile
     # For the duration this thread owns the UI ({#state} is `:running`);
     # ownership reverts to the creating thread once it returns.
     # 
-    # _@param_ `capture_mouse` — how much mouse tracking to ask the terminal for — each level unlocking one tier of {Mouse}'s events, and costing what that tier reports:  - `false` — none. The terminal keeps its native click handling, which is   what you want if the app benefits more from select-to-copy. - `:clicks` — presses, releases and the wheel. A scrollbar's handle   then doesn't drag; its track still pages. - `true` (default), `:drag` — plus motion while a button is held, as   {Component#handle_mouse_drag}. Silent until a button goes down, and   no faster than `:hover` while one is. - `:hover` — plus motion with no button, as   {Component#handle_mouse_move?} and the enter/exit hooks. ~84 reports a   second (`R_mouse_reporting`), so ask for it only if something uses it.
+    # _@param_ `capture_mouse` — how much mouse tracking to ask the terminal for — each level unlocking one tier of {Mouse}'s events, and costing what that tier reports:  - `false` — none. The terminal keeps its native click handling, which is   what you want if the app benefits more from select-to-copy. - `:clicks` — presses, releases and the wheel. A scrollbar's handle   then doesn't drag; its track still pages. - `true` (default), `:drag` — plus motion while a button is held, as   {Component#handle_mouse_drag}. Silent until a button goes down, and   no faster than `:hover` while one is. - `:hover` — plus motion with no button, as   {Component#handle_mouse_move?} and the enter/exit hooks. ~84 reports a   second (`R_mouse_reporting`), so ask for it only if something uses it.   Also asks for focus reports, which clear the hover when the terminal   loses focus — except under tmux with `focus-events` off, its default,   where only a key clears a hover the pointer left the window on.
     # 
     # _@param_ `bracketed_paste` — when true (default), enables DEC private mode 2004 so pasted text arrives whole, as {Component#handle_paste}, instead of as one keystroke per character — which is the only way a pasted line break can be told from a typed Enter. When false, a paste streams in as keys again and a component that gives ENTER a meaning fires it once per pasted line. Turn it off only for a terminal that mishandles the mode.
     def run_event_loop: (?capture_mouse: (bool | Symbol), ?bracketed_paste: bool) -> void
@@ -3520,8 +3536,9 @@ module Tuile
     def handle_mouse: (Mouse::Event event) -> void
 
     # _@return_ — the innermost component the pointer is over, as
-    # of the last move. Always nil below `capture_mouse: :hover`, and frozen
-    # at its last value while a press is grabbed.
+    # of the last settle. Always nil below `capture_mouse: :hover`; nil after
+    # a key, a paste or the terminal losing focus, until the pointer next
+    # moves; frozen at its last value while a press is grabbed.
     def hovered: () -> Component?
 
     # _@return_ — the component holding the mouse grab — the one
@@ -3693,7 +3710,7 @@ module Tuile
     # The `rescue` stays in {#event_loop}: only a *loop* has an `on_error` slot
     # to divert into, and a spec driving one event wants the raise.
     # 
-    # _@param_ `event` — a {EventQueue::KeyEvent}, {Mouse::Event}, {EventQueue::PasteEvent}, {EventQueue::TTYSizeEvent}, {EventQueue::ColorSchemeEvent}, {EventQueue::BackgroundColorEvent}, {EventQueue::EmptyQueueEvent}, or a `Proc` from {EventQueue#submit}.
+    # _@param_ `event` — a {EventQueue::KeyEvent}, {Mouse::Event}, {EventQueue::PasteEvent}, {EventQueue::TTYSizeEvent}, {EventQueue::ColorSchemeEvent}, {EventQueue::BackgroundColorEvent}, {EventQueue::TerminalFocusEvent}, {EventQueue::EmptyQueueEvent}, or a `Proc` from {EventQueue#submit}.
     # 
     # _@return_ — what the handler returned — a paste's is the Boolean
     # {ScreenPane#handle_paste} answers with; most are unspecified.
@@ -3704,7 +3721,8 @@ module Tuile
     # The sequence point between "a handler mutated the tree" and "the next
     # event reads it": whatever a handler *marks*, this is where it is *done*,
     # so a queued mouse press never routes against what the key before it left
-    # half-finished.
+    # half-finished. The hover follows the settled tree here, which is what
+    # moves it when a popup opens over a still pointer.
     def settle: () -> void
 
     def event_loop: () -> void
@@ -4645,8 +4663,8 @@ module Tuile
 
     # Called on the component that claimed a press when the button comes up,
     # ending the grab. For press feedback and for ending a drag — never for
-    # activation: a release may never arrive, and any key or the next press
-    # ends the grab without it.
+    # activation: a release may never arrive, and any key, the next press or
+    # the terminal losing focus ends the grab without it.
     # 
     # _@param_ `_event`
     def handle_mouse_up: (Mouse::UpEvent _event) -> void
@@ -4660,16 +4678,20 @@ module Tuile
 
     # Called when the pointer comes over this component or any of its
     # descendants — down the chain, root first, and after every
-    # {#handle_mouse_exit} the same move fires. Needs `capture_mouse: :hover`,
-    # and is suspended while a press is grabbed.
+    # {#handle_mouse_exit} the same change fires. Needs `capture_mouse: :hover`,
+    # and is suspended while a press is grabbed. May fire with no motion: a
+    # popup closing can uncover this component under a still pointer.
     # 
     # **Never a commit point**: no terminal reports the pointer leaving the
-    # window, so the matching {#handle_mouse_exit} may arrive late or not at
-    # all. Anything done here must be cosmetic and survive that.
+    # window, so the matching {#handle_mouse_exit} waits for a key or the
+    # terminal losing focus, and may arrive late. Anything done here must be
+    # cosmetic and survive that.
     def handle_mouse_enter: () -> void
 
-    # The other half of {#handle_mouse_enter}; also fires when this component is
-    # detached or hidden while hovered, innermost first.
+    # The other half of {#handle_mouse_enter}, innermost first; also fires when
+    # this component is detached, hidden or covered while hovered, and on any
+    # key, paste or loss of terminal focus — after which the pointer is
+    # unknown until it moves.
     def handle_mouse_exit: () -> void
 
     # _@return_ — true if the component is on the active chain — i.e. it
@@ -16030,6 +16052,28 @@ module Tuile
       attr_reader color: Color
     end
 
+    # The terminal gained or lost keyboard focus — mode 1004's `\e[I` / `\e[O`,
+    # which {Screen#run_event_loop} asks for at `capture_mouse: :hover` only.
+    # A lost focus clears the hover, since no terminal reports the pointer
+    # leaving the window; it also fires on an alt-tab with the pointer still
+    # inside (`R_mouse_reporting`).
+    # 
+    # @!attribute [r] focused
+    #   @return [Boolean] true for FocusIn, false for FocusOut.
+    class TerminalFocusEvent
+      include Tuile::Event
+      REPORTING_ON: String
+      REPORTING_OFF: String
+
+      # _@param_ `key` — key read via {Keys.getkey}.
+      # 
+      # _@return_ — nil when `key` is not a focus report.
+      def self.parse: (String key) -> TerminalFocusEvent?
+
+      # _@return_ — true for FocusIn, false for FocusOut.
+      attr_reader focused: bool
+    end
+
     # Emitted once when the queue is cleared, all messages are processed and the
     # event loop will block waiting for more messages. Perfect time for
     # repainting windows.
@@ -16242,6 +16286,15 @@ module Tuile
     # 
     # _@param_ `button` — the button held while moving, if any.
     def move: (Integer x, Integer y, ?button: Symbol?) -> void
+
+    # The terminal reporting it lost or regained keyboard focus, routed as its
+    # own report would be — a loss clears the hover and ends the grab:
+    # 
+    #   screen.move(3, 1)
+    #   screen.terminal_focus(false)   # screen.hovered => nil
+    # 
+    # _@param_ `focused` — false for FocusOut, true for FocusIn.
+    def terminal_focus: (bool focused) -> void
 
     # Plays a whole drag: the press at the first point, one move per point
     # after it, and the release at the last.

@@ -610,8 +610,8 @@ module Tuile
 
     # Called on the component that claimed a press when the button comes up,
     # ending the grab. For press feedback and for ending a drag — never for
-    # activation: a release may never arrive, and any key or the next press
-    # ends the grab without it.
+    # activation: a release may never arrive, and any key, the next press or
+    # the terminal losing focus ends the grab without it.
     # @param _event [Mouse::UpEvent]
     # @return [void]
     def handle_mouse_up(_event); end
@@ -625,17 +625,21 @@ module Tuile
 
     # Called when the pointer comes over this component or any of its
     # descendants — down the chain, root first, and after every
-    # {#handle_mouse_exit} the same move fires. Needs `capture_mouse: :hover`,
-    # and is suspended while a press is grabbed.
+    # {#handle_mouse_exit} the same change fires. Needs `capture_mouse: :hover`,
+    # and is suspended while a press is grabbed. May fire with no motion: a
+    # popup closing can uncover this component under a still pointer.
     #
     # **Never a commit point**: no terminal reports the pointer leaving the
-    # window, so the matching {#handle_mouse_exit} may arrive late or not at
-    # all. Anything done here must be cosmetic and survive that.
+    # window, so the matching {#handle_mouse_exit} waits for a key or the
+    # terminal losing focus, and may arrive late. Anything done here must be
+    # cosmetic and survive that.
     # @return [void]
     def handle_mouse_enter; end
 
-    # The other half of {#handle_mouse_enter}; also fires when this component is
-    # detached or hidden while hovered, innermost first.
+    # The other half of {#handle_mouse_enter}, innermost first; also fires when
+    # this component is detached, hidden or covered while hovered, and on any
+    # key, paste or loss of terminal focus — after which the pointer is
+    # unknown until it moves.
     # @return [void]
     def handle_mouse_exit; end
 

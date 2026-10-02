@@ -179,6 +179,12 @@ module Tuile
         assert_empty(r.log.select { _1.is_a?(Array) && _1.first == :drag })
       end
 
+      it "is released by the terminal losing focus, as on an alt-tab mid-drag" do
+        grabbed_recorder
+        screen.terminal_focus(false)
+        assert_nil screen.grabbed
+      end
+
       it "is released by the next press" do
         r = grabbed_recorder
         r.claims = false
@@ -211,7 +217,7 @@ module Tuile
         assert_equal [[:down, Mouse::DownEvent.new(:left, 1, 1)],
                       [:drag, Mouse::DragEvent.new(:left, 2, 2)],
                       [:drag, Mouse::DragEvent.new(:left, 5, 4)],
-                      [:up, Mouse::UpEvent.new(5, 4)]], r.log
+                      [:up, Mouse::UpEvent.new(5, 4)]], r.log.grep(Array)
         assert_nil screen.grabbed
       end
 
@@ -319,6 +325,83 @@ module Tuile
         screen.repaint
         assert_equal %i[enter exit], r.log.grep(Symbol)
         assert_equal layout, screen.hovered
+      end
+
+      it "re-enters a component shown again under the still pointer" do
+        r = recorder
+        content_with(r)
+        screen.move(1, 1)
+        r.visible = false
+        screen.repaint
+        r.visible = true
+        screen.repaint
+        assert_equal %i[enter exit enter], r.log.grep(Symbol)
+      end
+
+      it "moves off a component a popup opens over, with no motion" do
+        r = recorder
+        content_with(r)
+        screen.move(1, 1)
+        overlay = Component::Overlay.new(content: Component::List.new.tap { _1.lines = ["a"] })
+        overlay.open(Component::Overlay::At[Rect.new(0, 0, 5, 3)])
+        screen.repaint
+        assert_equal %i[enter exit], r.log.grep(Symbol)
+        assert_equal overlay, screen.hovered.parent
+      end
+
+      describe "with the pointer unknown" do
+        def hovered_recorder
+          r = recorder
+          content_with(r)
+          screen.move(1, 1)
+          r
+        end
+
+        it "clears when the terminal loses focus" do
+          r = hovered_recorder
+          screen.terminal_focus(false)
+          assert_nil screen.hovered
+          assert_equal %i[enter exit], r.log.grep(Symbol)
+        end
+
+        it "stays clear when focus returns, until the pointer moves" do
+          # The pointer may have come back anywhere; only a report says where.
+          r = hovered_recorder
+          screen.terminal_focus(false)
+          screen.terminal_focus(true)
+          assert_nil screen.hovered
+          screen.move(2, 2)
+          assert_equal r, screen.hovered
+        end
+
+        it "clears on any key" do
+          r = hovered_recorder
+          screen.send(:dispatch, EventQueue::KeyEvent.new("x"))
+          assert_nil screen.hovered
+          assert_equal :exit, r.log.grep(Symbol).last
+        end
+
+        it "clears on a paste" do
+          hovered_recorder
+          screen.send(:dispatch, EventQueue::PasteEvent.new("x"))
+          assert_nil screen.hovered
+        end
+      end
+
+      it "catches up with the pointer once the grab's release lands" do
+        r = recorder(claims: true)
+        layout = content_with(r)
+        screen.move(1, 1)
+        screen.drag([1, 1], [80, 40])
+        assert_equal layout, screen.hovered
+        assert_equal %i[enter exit], r.log.grep(Symbol)
+      end
+
+      it "lights nothing from a press below the :hover level" do
+        content_with(recorder)
+        screen.instance_variable_get(:@mouse_router).level = :drag
+        screen.press(1, 1)
+        assert_nil screen.hovered
       end
     end
 

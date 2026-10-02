@@ -302,6 +302,34 @@ module Tuile
       end
     end
 
+    # The terminal gained or lost keyboard focus — mode 1004's `\e[I` / `\e[O`,
+    # which {Screen#run_event_loop} asks for at `capture_mouse: :hover` only.
+    # A lost focus clears the hover, since no terminal reports the pointer
+    # leaving the window; it also fires on an alt-tab with the pointer still
+    # inside (`R_mouse_reporting`).
+    #
+    # @!attribute [r] focused
+    #   @return [Boolean] true for FocusIn, false for FocusOut.
+    class TerminalFocusEvent < Data.define(:focused)
+      include Tuile::Event
+
+      # Enables focus reporting (DEC private mode 1004).
+      # @return [String]
+      REPORTING_ON = "\e[?1004h"
+      # Disables focus reporting. See {REPORTING_ON}.
+      # @return [String]
+      REPORTING_OFF = "\e[?1004l"
+
+      # @param key [String] key read via {Keys.getkey}.
+      # @return [TerminalFocusEvent, nil] nil when `key` is not a focus report.
+      def self.parse(key)
+        case key
+        when "\e[I" then new(true)
+        when "\e[O" then new(false)
+        end
+      end
+    end
+
     # Emitted once when the queue is cleared, all messages are processed and the
     # event loop will block waiting for more messages. Perfect time for
     # repainting windows.
@@ -449,7 +477,8 @@ module Tuile
                     PasteEvent.new(Keys.read_paste)
                   else
                     Mouse.parse(key) || ColorSchemeEvent.parse(key) ||
-                      BackgroundColorEvent.parse(key) || KeyEvent.new(key)
+                      BackgroundColorEvent.parse(key) || TerminalFocusEvent.parse(key) ||
+                      KeyEvent.new(key)
                   end
           post event
         end

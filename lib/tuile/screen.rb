@@ -665,6 +665,9 @@ module Tuile
     #   - `:hover` — plus motion with no button, as
     #     {Component#handle_mouse_move?} and the enter/exit hooks. ~84 reports a
     #     second (`R_mouse_reporting`), so ask for it only if something uses it.
+    #     Also asks for focus reports, which clear the hover when the terminal
+    #     loses focus — except under tmux with `focus-events` off, its default,
+    #     where only a key clears a hover the pointer left the window on.
     # @param bracketed_paste [Boolean] when true (default), enables DEC private
     #   mode 2004 so pasted text arrives whole, as {Component#handle_paste},
     #   instead of as one keystroke per character — which is the only way a
@@ -687,6 +690,7 @@ module Tuile
         $stdin.echo = false
         @mouse_router.level = level
         print Mouse.start_tracking(level) if level
+        print EventQueue::TerminalFocusEvent::REPORTING_ON if level == :hover
         print Keys::BRACKETED_PASTE_ON if bracketed_paste
         # Follow OS light/dark flips live: terminals supporting mode 2031
         # push color-scheme reports that the key thread turns into
@@ -698,6 +702,7 @@ module Tuile
       ensure
         print TerminalBackground::NOTIFY_OFF
         print Keys::BRACKETED_PASTE_OFF if bracketed_paste
+        print EventQueue::TerminalFocusEvent::REPORTING_OFF if level == :hover
         print Mouse.stop_tracking(level) if level
         # Back to delivering everything a spec posts once no loop owns the wire.
         @mouse_router.level = :hover
@@ -908,10 +913,9 @@ module Tuile
     # @return [void]
     def repaint
       check_locked
-      flush_layout
-      # The one site that runs after every mutation, so a component hidden,
-      # detached or reparented while hovered gets its exit exactly once.
-      @mouse_router.sync_hover
+      # Settles too, not only flushes: a spec mutates outside any dispatch, and
+      # the hover must follow it before the paint.
+      settle
       # This simple TUI framework doesn't support window clipping since tiled
       # windows are not expected to overlap. If there rarely is a popup, we
       # just repaint all windows in correct order — sure they will paint over
@@ -1041,8 +1045,9 @@ module Tuile
     end
 
     # @return [Component, nil] the innermost component the pointer is over, as
-    #   of the last move. Always nil below `capture_mouse: :hover`, and frozen
-    #   at its last value while a press is grabbed.
+    #   of the last settle. Always nil below `capture_mouse: :hover`; nil after
+    #   a key, a paste or the terminal losing focus, until the pointer next
+    #   moves; frozen at its last value while a press is grabbed.
     def hovered = @mouse_router&.hovered
 
     # @return [Component, nil] the component holding the mouse grab — the one
@@ -1287,8 +1292,11 @@ module Tuile
     # @return [Boolean] true if the key was handled by some window.
     def handle_key?(key)
       # A key is one of the grab's releases: a terminal loses a release over ssh
-      # and tmux, and a stuck grab would swallow every later drag.
+      # and tmux, and a stuck grab would swallow every later drag. It also
+      # clears the hover — the one belt left where FocusOut never arrives (tmux
+      # by default, `R_mouse_reporting`).
       @mouse_router.release_grab
+      @mouse_router.forget_pointer
       case key
       when Keys::TAB
         focus_next
@@ -1317,7 +1325,10 @@ module Tuile
     # alternative delivery, no verdict to carry either.
     # @param text [String]
     # @return [void]
-    def handle_paste(text) = @pane.handle_paste(text)
+    def handle_paste(text)
+      @mouse_router.forget_pointer
+      @pane.handle_paste(text)
+    end
 
     # Routes one event to its handler, then {#settle}s.
     #
@@ -1331,7 +1342,8 @@ module Tuile
     # @param event [Object] a {EventQueue::KeyEvent}, {Mouse::Event},
     #   {EventQueue::PasteEvent}, {EventQueue::TTYSizeEvent},
     #   {EventQueue::ColorSchemeEvent}, {EventQueue::BackgroundColorEvent},
-    #   {EventQueue::EmptyQueueEvent}, or a `Proc` from {EventQueue#submit}.
+    #   {EventQueue::TerminalFocusEvent}, {EventQueue::EmptyQueueEvent}, or a
+    #   `Proc` from {EventQueue#submit}.
     # @return [Object] what the handler returned — a paste's is the Boolean
     #   {ScreenPane#handle_paste} answers with; most are unspecified.
     def dispatch(event)
@@ -1353,6 +1365,12 @@ module Tuile
           handle_color_scheme(event.scheme)
         when EventQueue::BackgroundColorEvent
           handle_background_color(event.color)
+        when EventQueue::TerminalFocusEvent
+          # A FocusIn says nothing of where the pointer is; the next move does.
+          unless event.focused
+            @mouse_router.release_grab
+            @mouse_router.forget_pointer
+          end
         when EventQueue::EmptyQueueEvent
           repaint
         when Proc
@@ -1367,9 +1385,15 @@ module Tuile
     # The sequence point between "a handler mutated the tree" and "the next
     # event reads it": whatever a handler *marks*, this is where it is *done*,
     # so a queued mouse press never routes against what the key before it left
-    # half-finished.
+    # half-finished. The hover follows the settled tree here, which is what
+    # moves it when a popup opens over a still pointer.
     # @return [void]
     def settle
+      flush_layout
+      return if @mouse_router.nil?
+
+      @mouse_router.sync_hover
+      # An enter or exit hook may have marked the layout.
       flush_layout
     end
 

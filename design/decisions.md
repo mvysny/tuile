@@ -6267,8 +6267,16 @@ would have fired every `event.button == :left` handler on every cell crossed dur
 up goes only to the grab, which already knows its button, and an unclaimed press grabs nothing so its
 up is dropped. The field would be write-only, and dropping it stops the encoding's degradation at the
 router. Activation stays **on the press**, with no click synthesis: a release is losable over ssh and
-tmux, and "buttons stop working" is the wrong failure. So the grab has three ends — the up, the next
-press, and any key — and neither of the last two tells the grabbed component.
+tmux, and "buttons stop working" is the wrong failure. So the grab has four ends — the up, the next
+press, any key, and the terminal losing focus (an alt-tab mid-drag loses the up the same way) — and
+none of the last three tells the grabbed component.
+
+**The hovered chain is derived from the last reported pointer position**, re-resolved after every
+event, rather than toggled by moves. A pointer leaving the window sends nothing (`R_mouse_reporting`),
+so the position is *forgotten* on the evidence that it may be stale — a FocusOut (mode 1004), a key, a
+paste — and the hover stays clear until the next report. Re-resolving rather than pruning also moves
+the hover off a component a popup opens over, or a pane scrolls away, under a still pointer; the price
+is an enter with no motion behind it, which GTK's synthesized crossings pay too.
 
 **Click-to-focus moved into the router**, ahead of every handler, so a widget cannot opt out by
 accident; Textual's order exactly. It stays ungated by geometry (`D_extent`): the walk descends by
@@ -6296,6 +6304,10 @@ Why not:
 - **Sync the grab from hide and detach**, the way the hovered chain is synced. A drag whose target
   goes hidden mid-gesture is not a stranded resource: the router simply stops delivering to it, and
   the ordinary releases still end it.
+- **Infer the pointer's exit from a report on an edge cell** — column 0 is a common hover target (a
+  scrollbar, a sidebar, `MenuBar`'s first item), so the hover would flicker under a stationary
+  pointer; and at ~84 reports/s a fast flick out leaves no edge report at all. Under tmux with
+  `focus-events` off, its default, a key is therefore the only thing that clears a stranded hover.
 - **Drag *and drop*** — sources, targets, payloads, feedback. It needs the grab first, a terminal
   gives no cursor to paint feedback with, and no widget in the set has a drop target, so it would
   ship unexercised. It may come back as a layer over the grab, never as a reason to reshape it.

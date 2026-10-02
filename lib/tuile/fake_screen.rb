@@ -163,6 +163,15 @@ module Tuile
     # @return [void]
     def move(x, y, button: nil) = dispatch(Mouse::MoveEvent.new(button, x, y))
 
+    # The terminal reporting it lost or regained keyboard focus, routed as its
+    # own report would be — a loss clears the hover and ends the grab:
+    #
+    #   screen.move(3, 1)
+    #   screen.terminal_focus(false)   # screen.hovered => nil
+    # @param focused [Boolean] false for FocusOut, true for FocusIn.
+    # @return [void]
+    def terminal_focus(focused) = dispatch(EventQueue::TerminalFocusEvent.new(focused))
+
     # Plays a whole drag: the press at the first point, one move per point
     # after it, and the release at the last.
     #
