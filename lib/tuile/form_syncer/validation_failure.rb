@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 module Tuile
-  class Binder
-    # One entry of a binder's verdict map, `{attr => [ValidationFailure]}`:
+  class FormSyncer
+    # One entry of a form syncer's verdict map, `{attr => [ValidationFailure]}`:
     # why a field's value, or the model as a whole, cannot be written.
     #
-    #   binder.last_validation.each do |attr, failures|
+    #   syncer.last_validation.each do |attr, failures|
     #     failures.each { |f| puts "#{attr || "form"}: #{f.message}" }
     #   end
     #

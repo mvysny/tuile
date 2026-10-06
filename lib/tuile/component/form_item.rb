@@ -114,8 +114,8 @@ module Tuile
       # @param caption [String, StyledString, nil] the text above it; omit it
       #   for a widget painting its own, such as a {Checkbox} or a {Button}.
       # @param required [Boolean] whether to paint {.required_marker} beside
-      #   the caption. Paint only: the check is a {Binder::Binding#required},
-      #   said to the binder separately.
+      #   the caption. Paint only: the check is a {FormSyncer::Pipeline#required},
+      #   said to the form syncer separately.
       # @param caption_position [Symbol] `:above` or `:left`; see {#caption_position=}.
       # @param caption_width [Integer, nil] see {#caption_width=}.
       # @raise [ArgumentError] when `required` is true and there is no caption

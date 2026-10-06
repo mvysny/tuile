@@ -571,7 +571,7 @@ module SamplerExample
                             Entry.new("DateTimeField", :build_date_time_field, "m"),
                             Entry.new("Bad input", :build_bad_input, "a"),
                             Entry.new("Validation", :build_validation, "v"),
-                            Entry.new("Binder", :build_binder, "n")
+                            Entry.new("FormSyncer", :build_form_syncer, "n")
                           ]),
                  Menu.new("Choose", "c", [
                             Entry.new("Checkbox", :build_checkboxes, "c"),
@@ -1058,22 +1058,22 @@ module SamplerExample
       end
     end
 
-    # The model both Binder columns edit — a plain Struct, since a binder needs
+    # The model both FormSyncer columns edit — a plain Struct, since a form syncer needs
     # nothing but attribute readers and writers.
     Booking = Struct.new(:name, :check_in, :check_out)
 
-    # The two binders side by side, over the same form. Left is
-    # Binder::Buffered: the fields are a copy until Save, and Revert reads the
-    # model back over them. Right is Binder::Unbuffered: every valid edit lands
+    # The two form syncers side by side, over the same form. Left is
+    # FormSyncer::Buffered: the fields are a copy until Save, and Revert reads the
+    # model back over them. Right is FormSyncer::Unbuffered: every valid edit lands
     # in its model at once, which the echo under it shows. Neither pane writes
-    # a verdict itself — the binder does, and each FormItem paints it.
-    def build_binder
+    # a verdict itself — the form syncer does, and each FormItem paints it.
+    def build_form_syncer
       prompt = Tuile::Component::Label.new
       prompt.text = "Left writes its model on Save; right writes every valid edit at once.\n" \
                     "Try a 2-letter name, or a check-out before check-in. Verdicts show once\n" \
                     "you edit a field, and on every field after Save or Check."
       booked = Booking.new("Ann", Date.today + 7, Date.today + 9)
-      buffered = Tuile::Binder::Buffered.new
+      buffered = Tuile::FormSyncer::Buffered.new
       left_echo = Tuile::Component::Label.new
       show_left = -> { left_echo.text = "#{booking_text(booked)}\nchanged?: #{buffered.changed?}" }
       left_form = booking_form(buffered, &show_left)
@@ -1088,7 +1088,7 @@ module SamplerExample
       end
 
       draft = Booking.new
-      unbuffered = Tuile::Binder::Unbuffered.new
+      unbuffered = Tuile::FormSyncer::Unbuffered.new
       right_echo = Tuile::Component::Label.new
       show_right = -> { right_echo.text = booking_text(draft) }
       right_form = booking_form(unbuffered, &show_right)
@@ -1097,8 +1097,10 @@ module SamplerExample
       check = Tuile::Component::Button.new("Check") { unbuffered.validate }
 
       columns = row do |r|
-        r.add(binder_column("Binder::Buffered", left_form, [save, revert], left_echo), Fixed[BINDER_COLUMN_WIDTH])
-        r.add(binder_column("Binder::Unbuffered", right_form, [check], right_echo), Fixed[BINDER_COLUMN_WIDTH])
+        r.add(form_syncer_column("FormSyncer::Buffered", left_form, [save, revert], left_echo),
+              Fixed[FORM_SYNCER_COLUMN_WIDTH])
+        r.add(form_syncer_column("FormSyncer::Unbuffered", right_form, [check], right_echo),
+              Fixed[FORM_SYNCER_COLUMN_WIDTH])
       end
       form do |f|
         f.add(prompt, Fixed[3])
@@ -1107,28 +1109,28 @@ module SamplerExample
     end
 
     # Two columns and the row's gap still fit an 80-column terminal.
-    BINDER_COLUMN_WIDTH = 34
+    FORM_SYNCER_COLUMN_WIDTH = 34
 
     # Three bound fields and a model validator across two of them, blamed on
     # Check-out.
-    # `on_edit` is registered after the binder's own listener, so it runs after
-    # the binder has validated — and, unbuffered, written.
-    # @param binder [Tuile::Binder] either mode: this only binds.
+    # `on_edit` is registered after the form syncer's own listener, so it runs after
+    # the form syncer has validated — and, unbuffered, written.
+    # @param syncer [Tuile::FormSyncer] either mode: this only binds.
     # @return [Tuile::Component::FormLayout]
-    def booking_form(binder, &on_edit)
+    def booking_form(syncer, &on_edit)
       name = Tuile::Component::TextField.new
       check_in = Tuile::Component::DateField.new
       check_out = Tuile::Component::DateField.new
-      binder.bind(name, :name).required("Name is required")
+      syncer.bind(name, :name).required("Name is required")
             .validate { |v| "At least 3 characters" if v.length < 3 }
-      binder.bind(check_in, :check_in).required("Pick a date")
-      binder.bind(check_out, :check_out).required("Pick a date")
-      binder.add_validator do |b|
+      syncer.bind(check_in, :check_in).required("Pick a date")
+      syncer.bind(check_out, :check_out).required("Pick a date")
+      syncer.add_validator do |b|
         { check_out: "Must be after check-in" } if b.check_in && b.check_out && b.check_out <= b.check_in
       end
       [name, check_in, check_out].each { _1.on_value_change(&on_edit) }
       # The ∙ markers are the FormItem's, told separately: `required` on the
-      # binding tells the field nothing.
+      # pipeline tells the field nothing.
       Tuile::Component::FormLayout.new.tap do |f|
         f.add(name, caption: "Name", required: true)
         f.add(check_in, caption: "Check-in", required: true)
@@ -1139,9 +1141,9 @@ module SamplerExample
     # @param title [String]
     # @param fields [Tuile::Component::FormLayout]
     # @param buttons [Array<Tuile::Component::Button>]
-    # @param echo [Tuile::Component::Label] the model, as the binder left it.
+    # @param echo [Tuile::Component::Label] the model, as the form syncer left it.
     # @return [Tuile::Component::Layout::Vertical]
-    def binder_column(title, fields, buttons, echo)
+    def form_syncer_column(title, fields, buttons, echo)
       actions = row { |r| buttons.each { r.add(_1, Fixed[button_width(_1)]) } }
       group do |g|
         g.add(Tuile::Component::Label.new(title), Fixed[1])
@@ -1159,9 +1161,9 @@ module SamplerExample
 
     # The Save gate's other half: `write?` said no, and `last_validation` says
     # why — form-level failures would sit under the `nil` key.
-    # @param binder [Tuile::Binder::Buffered]
-    def alert_failures(binder)
-      lines = binder.last_validation.flat_map do |attr, failures|
+    # @param syncer [Tuile::FormSyncer::Buffered]
+    def alert_failures(syncer)
+      lines = syncer.last_validation.flat_map do |attr, failures|
         failures.map { "#{attr || "form"}: #{_1.message}" }
       end
       Tuile::Component::ConfirmWindow.alert("Cannot save", lines.join("\n"))
@@ -1700,7 +1702,7 @@ module SamplerExample
     end
 
     # FormLayout: hand it fields and captions, and it stacks the FormItems it
-    # builds. No binder here — the two name fields validate themselves from
+    # builds. No form syncer here — the two name fields validate themselves from
     # their own `on_value_change`, and `error_message=` is what puts the text
     # in the item's message row. That row is also the gap, so a field going
     # invalid while you type into the one below it moves nothing.

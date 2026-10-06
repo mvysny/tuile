@@ -367,12 +367,12 @@ module Tuile
       assert_includes painted, "Welcome, abc."
     end
 
-    # The Binder pane shows both modes over one form: the buffered column holds
+    # The FormSyncer pane shows both modes over one form: the buffered column holds
     # its edits until Save, the unbuffered one writes each valid edit through
     # and keeps out the one its rule refuses.
-    it "holds the Binder pane's buffered edits until Save, and writes the unbuffered ones at once" do
+    it "holds the FormSyncer pane's buffered edits until Save, and writes the unbuffered ones at once" do
       sampler = build_sampler
-      sampler.select_entry(entries.find { _1.caption == "Binder" })
+      sampler.select_entry(entries.find { _1.caption == "FormSyncer" })
       left, right = Testing.find(Component::FormLayout, in: sampler.demo_window)
       left_name = left.children.first.content
       right_name, right_in, right_out = right.children.map(&:content)

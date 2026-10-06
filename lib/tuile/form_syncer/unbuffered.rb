@@ -1,20 +1,20 @@
 # frozen_string_literal: true
 
 module Tuile
-  class Binder
+  class FormSyncer
     # Binds fields to a model and writes every valid edit through at once — the
-    # binder for a settings panel or a live filter, where the model *is* what
+    # form syncer for a settings panel or a live filter, where the model *is* what
     # the user sees:
     #
-    #   binder = Binder::Unbuffered.new
-    #   binder.bind(query_field, :query)
-    #   binder.bind(max_field, :max).validate { |v| "Must be positive" unless v.positive? }
-    #   binder.model = filter
+    #   syncer = FormSyncer::Unbuffered.new
+    #   syncer.bind(query_field, :query)
+    #   syncer.bind(max_field, :max).validate { |v| "Must be positive" unless v.positive? }
+    #   syncer.model = filter
     #
     # An invalid edit never reaches the model; the field shows why, and the
     # other fields keep writing through around it. The chain, the empty/`nil`
     # policy and how the model validators use the model as scratch space are
-    # {Binder}'s.
+    # {FormSyncer}'s.
     #
     # == A complex form: bind a draft
     # A form whose model holds lists of models, each edited in a sub-editor
@@ -23,18 +23,18 @@ module Tuile
     #
     #   draft = person.dup                        # deep enough that the sub-editors can't reach `person`
     #   draft.addresses = person.addresses.map(&:dup)
-    #   binder.model = draft
+    #   syncer.model = draft
     #   # …on Save — applying the draft is the app's own code:
-    #   copy_person(from: draft, to: person) if binder.validate.empty?
+    #   copy_person(from: draft, to: person) if syncer.validate.empty?
     #
     # Both copying and applying are the app's: only it knows how deep a copy its
     # model needs (`dup` shares `addresses`; `Marshal` breaks on ActiveRecord),
-    # and the lists the sub-editors write are exactly what no binding covers.
+    # and the lists the sub-editors write are exactly what no pipeline covers.
     #
     # == Implementation details
-    # Each edit writes every binding the user changed and the model doesn't yet
+    # Each edit writes every pipeline the user changed and the model doesn't yet
     # hold, not only its own — so an edit that fixes a model validation
-    # failure another field caused writes both. A binding with a field
+    # failure another field caused writes both. A pipeline with a field
     # validation failure sits out and stays pending, its attribute keeping the
     # last value that passed; the model validators judge the model with the
     # rest written in, and a model validation failure reverts the whole batch.
@@ -45,12 +45,12 @@ module Tuile
     # its fields `:lazy`, and an `:eager` field passes every valid prefix
     # through the model and its setters. A Save the user reaches takes focus,
     # which announces the field being left, so the model has it by then.
-    class Unbuffered < Binder
+    class Unbuffered < FormSyncer
       # @return [Object, nil] the model edits write into.
       attr_reader :model
 
       def initialize
-        super { |binding, edit| edited(binding, edit) }
+        super { |pipeline, edit| edited(pipeline, edit) }
         @model = nil
         @changed = Set.new
       end
@@ -64,30 +64,30 @@ module Tuile
         @model = model
         @changed.clear
         @engine.populate(model)
-        @engine.run(@engine.bindings, model:, write: [], keep: false, show: [])
+        @engine.run(@engine.pipelines, model:, write: [], keep: false, show: [])
       end
 
-      # Runs every binding and every model validator, showing every verdict,
+      # Runs every pipeline and every model validator, showing every verdict,
       # and writes nothing.
       # @return [Hash{Symbol, nil => Array<ValidationFailure>}] {#last_validation}.
       def validate
-        @engine.run(@engine.bindings, model: @model, write: pending, keep: false, show: :all)
+        @engine.run(@engine.pipelines, model: @model, write: pending, keep: false, show: :all)
         last_validation
       end
 
       private
 
-      # @return [Array<Binder::Binding>] the bindings edited and not yet written.
-      def pending = @engine.bindings.select { @changed.include?(_1.attr) }
+      # @return [Array<FormSyncer::Pipeline>] the pipelines edited and not yet written.
+      def pending = @engine.pipelines.select { @changed.include?(_1.attr) }
 
-      # @param binding [Binder::Binding]
+      # @param pipeline [FormSyncer::Pipeline]
       # @param edit [Boolean]
       # @return [void]
-      def edited(binding, edit)
-        @changed << binding.attr if edit
+      def edited(pipeline, edit)
+        @changed << pipeline.attr if edit
         set = pending
-        set << binding unless set.include?(binding)
-        kept = @engine.run(set, model: @model, write: set, keep: true, show: [binding.attr], partial: true)
+        set << pipeline unless set.include?(pipeline)
+        kept = @engine.run(set, model: @model, write: set, keep: true, show: [pipeline.attr], partial: true)
         @changed.subtract(set.select { @engine.passed?(_1) }.map(&:attr)) if kept
       end
     end

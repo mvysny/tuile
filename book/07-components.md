@@ -733,7 +733,7 @@ thing shown another way, extend one.
 
 Turning a field's value into a domain model — validation, the
 field-holds-a-`Date` ⟷ model-holds-an-ISO-`String` conversion, "required" — is
-deliberately *not* the field's job; it belongs to the binder that sits above
+deliberately *not* the field's job; it belongs to the form syncer that sits above
 the fields, which is chapter 8. So the seam is kept thin on purpose:
 `on_value_change` carries just the new value and who made it, and a field
 has no required flag of its own.

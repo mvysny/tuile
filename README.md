@@ -273,20 +273,20 @@ write your own; chapter 7's "value seam" section is the walkthrough.
 
 ## Binding a form — [book ch8](book/08-forms.md)
 
-`Tuile::Binder` is not a component. It binds the fields to a model's
+`Tuile::FormSyncer` is not a component. It binds the fields to a model's
 attributes (`attr_accessor`, `Struct`, ActiveRecord) and writes each verdict to
 the field's `error_message`, where a `FormItem` paints it:
 
 ```ruby
-binder = Binder::Buffered.new
-binder.bind(name, :name).required("Name is required")
-binder.bind(age, :age).validate { |v| "Must be positive" unless v.positive? }
-binder.read(person)                                    # model → fields
-save.on_click { popup.close if binder.write?(person) } # fields → model, only if valid
+syncer = FormSyncer::Buffered.new
+syncer.bind(name, :name).required("Name is required")
+syncer.bind(age, :age).validate { |v| "Must be positive" unless v.positive? }
+syncer.read(person)                                    # model → fields
+save.on_click { popup.close if syncer.write?(person) } # fields → model, only if valid
 ```
 
-`Binder::Buffered` suits an OK/Cancel popup: nothing reaches the model until
-`write?` succeeds. `Binder::Unbuffered` suits a settings panel or a live
+`FormSyncer::Buffered` suits an OK/Cancel popup: nothing reaches the model until
+`write?` succeeds. `FormSyncer::Unbuffered` suits a settings panel or a live
 filter: it writes each valid edit through. `convert` handles a model that
 stores a different type, and `add_validator` checks the model as a whole.
 

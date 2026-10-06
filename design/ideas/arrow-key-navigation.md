@@ -36,7 +36,7 @@ opts in. A layout without it **declines** the arrow, which bubbles to the next n
 so a nested `Absolute` inside a navigating `Vertical` is one opaque slot at any depth.
 
 **Rejected: a `Layout::Form < Layout::Vertical` carrying the key behavior.**
-- Coupling a binder to layouting has shipped before and been abandoned for it; this couples a layout
+- Coupling a form syncer to layouting has shipped before and been abandoned for it; this couples a layout
   algorithm to a key behavior — the same mistake, smaller.
 - A real form nests a `Horizontal` row or an `Absolute`; policy carried by a class is inherited by
   every subclass and unavailable to every non-subclass, so "does this container navigate?" stops

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Tuile
-  describe Binder::Unbuffered do
+  describe FormSyncer::Unbuffered do
     before { Screen.fake }
     after { Screen.close }
 
@@ -17,8 +17,8 @@ module Tuile
       end
     end
     let(:plan) { model_class.new("Trip", 1, 5) }
-    let(:binder) do
-      Binder::Unbuffered.new.tap do |b|
+    let(:syncer) do
+      FormSyncer::Unbuffered.new.tap do |b|
         b.bind(name, :name).required("Name is required")
         b.bind(start_day, :start_day).required("Pick a start")
         b.bind(end_day, :end_day).required("Pick an end")
@@ -29,25 +29,25 @@ module Tuile
     before { mount_at(form, Rect.new(0, 0, 40, 12)) }
 
     # @return [Hash{Symbol, nil => Array<String>}]
-    def messages = binder.last_validation.transform_values { |list| list.map(&:message) }
+    def messages = syncer.last_validation.transform_values { |list| list.map(&:message) }
 
     context "model=" do
       it "shows the model and writes nothing, even over the \"\"-for-nil drift" do
         blank = model_class.new(nil, 1, 5)
-        binder.model = blank
+        syncer.model = blank
         assert_equal "", name.value
         assert_nil blank.name
       end
 
       it "computes last_validation but shows no verdict" do
-        binder.model = model_class.new(nil, 1, 5)
+        syncer.model = model_class.new(nil, 1, 5)
         assert_equal({ name: ["Name is required"] }, messages)
         assert_nil name.error_message
       end
     end
 
     context "an edit" do
-      before { binder.model = plan }
+      before { syncer.model = plan }
 
       it "writes a valid value through at once" do
         Testing.set_value(name, "Holiday")
@@ -71,7 +71,7 @@ module Tuile
         Testing.set_value(start_day, 9)
         Testing.set_value(end_day, 20)
         assert_equal [9, 20], [plan.start_day, plan.end_day]
-        assert_empty binder.last_validation
+        assert_empty syncer.last_validation
         assert_nil end_day.error_message
       end
 
@@ -89,7 +89,7 @@ module Tuile
         assert_equal "Trip", plan.name
         Testing.set_value(name, "Holiday")
         assert_equal ["Holiday", 2, 7], [plan.name, plan.start_day, plan.end_day]
-        assert_empty binder.last_validation
+        assert_empty syncer.last_validation
       end
 
       it "runs the model validators with the model's value in place of the failing field" do
@@ -113,7 +113,7 @@ module Tuile
 
     context "no model" do
       it "validates edits and writes nothing" do
-        binder.model = nil
+        syncer.model = nil
         Testing.set_value(name, "x")
         Testing.set_value(name, "")
         assert_equal "Name is required", name.error_message.to_s
@@ -122,8 +122,8 @@ module Tuile
 
     context "validate" do
       it "shows every verdict and writes nothing" do
-        binder.model = model_class.new(nil, 1, 5)
-        assert_equal({ name: ["Name is required"] }, binder.validate.transform_values { _1.map(&:message) })
+        syncer.model = model_class.new(nil, 1, 5)
+        assert_equal({ name: ["Name is required"] }, syncer.validate.transform_values { _1.map(&:message) })
         assert_equal "Name is required", name.error_message.to_s
       end
     end

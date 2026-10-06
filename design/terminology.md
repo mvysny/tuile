@@ -103,12 +103,12 @@ content-space.
 | term | means |
 |---|---|
 | **field** | the widget a user edits — a {Tuile::Component::HasValue}. Never "an input", which is what the user put *in* it. |
-| **input** | what the user put into a field: the glyphs typed, a calendar click, a mask's partial fill. The field's; a binder may only ask. |
-| **value** | what a field holds, typed — `HasValue#value`, a `Date` or `nil`. The one layer field and binder both speak, which is why `HasValue` is the seam. |
-| **model** | the object a binder binds to, and the attribute on it (`Person#birth_date`). Never a field concept. |
-| **transformation** | one step between value and model — a binding's `convert` pair. A binding may chain several. |
+| **input** | what the user put into a field: the glyphs typed, a calendar click, a mask's partial fill. The field's; a form syncer may only ask. |
+| **value** | what a field holds, typed — `HasValue#value`, a `Date` or `nil`. The one layer field and form syncer both speak, which is why `HasValue` is the seam. |
+| **model** | the object a form syncer binds to, and the attribute on it (`Person#birth_date`). Never a field concept. |
+| **transformation** | one step between value and model — a pipeline's `convert` pair. A pipeline may chain several. |
 | **parse** / **format** | input → value (partial; its failure is **bad input**) and value → input (total). Together, the field's private **converter**. |
-| **binding** | one field bound to one model attribute, and the chain of steps between them ({Tuile::Binder::Binding}). |
-| **field validation failure** | one binding's chain rejecting its field's value — the field's own bad input, `required`, a `validate` step or a failed `convert`. Lands on that field. |
-| **model validator** | a block added with {Tuile::Binder#add_validator}, judging the whole model; never "rule", which names no level. |
+| **pipeline** | one field bound to one model attribute, and the chain of steps between them ({Tuile::FormSyncer::Pipeline}). |
+| **field validation failure** | one pipeline rejecting its field's value — the field's own bad input, `required`, a `validate` step or a failed `convert`. Lands on that field. |
+| **model validator** | a block added with {Tuile::FormSyncer#add_validator}, judging the whole model; never "rule", which names no level. |
 | **model validation failure** | a model validator rejecting the model: a bare String is form-level (the `nil` key of `last_validation`), a `{attr => message}` hash blames fields. Reverts every candidate written with it. |

@@ -62,5 +62,5 @@ Up/Down in `DateField`/`TimeField` (`D_time_field`); form helper text and a requ
 
 ## Related
 
-`D_binder_modes` (the forms layer; converters and `required` are binding steps, `D_binder_chain`), `design/ideas/form-layout.md`, `design/ideas/composite-field.md`, `design/ideas/hover.md`,
+`D_form_syncer_modes` (the forms layer; converters and `required` are pipeline steps, `D_form_syncer_chain`), `design/ideas/form-layout.md`, `design/ideas/composite-field.md`, `design/ideas/hover.md`,
 `D_color_slots` (Slider and a Badge bind to it; Badge's promotion trigger is written there).

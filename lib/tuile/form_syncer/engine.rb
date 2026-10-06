@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 module Tuile
-  class Binder
-    # The machinery every {Binder} holds: the bindings, the model validators,
+  class FormSyncer
+    # The machinery every {FormSyncer} holds: the pipelines, the model validators,
     # the verdict map, the write-validate-revert, and which fields show their
     # verdicts. The two modes differ only in *when* they call {#run} and with
     # what — each passes a block the engine calls on every field edit.
     #
     # == Implementation details
     # The verdict map has two halves with two lifetimes: field validation
-    # failures are replaced per binding whenever that binding runs, model
+    # failures are replaced per pipeline whenever that pipeline runs, model
     # validation failures only when the model validators run (or are skipped,
     # which clears them). So a model validation failure outlives the edit that
     # fixed it until the next model validation — the "last" in
@@ -21,15 +21,15 @@ module Tuile
     # field red.
     # @api private
     class Engine
-      # @return [Array<Binder::Binding>] in `bind` order.
-      attr_reader :bindings
+      # @return [Array<FormSyncer::Pipeline>] in `bind` order.
+      attr_reader :pipelines
 
-      # @yieldparam binding [Binder::Binding] the binding whose field changed.
+      # @yieldparam pipeline [FormSyncer::Pipeline] the pipeline whose field changed.
       # @yieldparam edit [Boolean] `true` for a user's value change, `false`
       #   for a bad-input notice, which moves no value.
       def initialize(&on_edit)
         @notify = on_edit
-        @bindings = []
+        @pipelines = []
         @model_validators = []
         @field_failures = {}
         @model_failures = {}
@@ -39,7 +39,7 @@ module Tuile
 
       # @param field [Component::HasValue]
       # @param attr [Symbol]
-      # @return [Binder::Binding]
+      # @return [FormSyncer::Pipeline]
       # @raise [ArgumentError] unless `field` is a field, or when `field` or
       #   `attr` is already bound — the verdict map is keyed by attribute, and a
       #   field's `error_message` has room for one writer.
@@ -48,15 +48,15 @@ module Tuile
           raise ArgumentError, "#{field.inspect} is not a field: bind needs a Component::HasValue"
         end
         raise ArgumentError, "bind needs an attribute Symbol, got #{attr.inspect}" unless attr.is_a?(Symbol)
-        raise ArgumentError, ":#{attr} is already bound" if @bindings.any? { _1.attr == attr }
-        raise ArgumentError, "#{field.inspect} is already bound" if @bindings.any? { _1.field.equal?(field) }
+        raise ArgumentError, ":#{attr} is already bound" if @pipelines.any? { _1.attr == attr }
+        raise ArgumentError, "#{field.inspect} is already bound" if @pipelines.any? { _1.field.equal?(field) }
 
-        binding = Binding.new(field, attr)
-        @bindings << binding
-        field.on_value_change { |e| edited(binding, true) if e.from_user? }
+        pipeline = Pipeline.new(field, attr)
+        @pipelines << pipeline
+        field.on_value_change { |e| edited(pipeline, true) if e.from_user? }
         # Bad input can move no value: `-` typed into an empty IntegerField goes nil → nil.
-        field.on_bad_input_change { edited(binding, false) } if field.respond_to?(:on_bad_input_change)
-        binding
+        field.on_bad_input_change { edited(pipeline, false) } if field.respond_to?(:on_bad_input_change)
+        pipeline
       end
 
       # @return [void]
@@ -73,7 +73,7 @@ module Tuile
       def last_validation
         @last_validation ||= begin
           map = {}
-          @bindings.each do |b|
+          @pipelines.each do |b|
             outcome = @field_failures[b.attr]
             map[b.attr] = [outcome.failure] if outcome
           end
@@ -83,37 +83,37 @@ module Tuile
       end
 
       # Shows `model` in every field (a `nil` model clears them) and hides every
-      # verdict. Fires no edit: the binder's own writes are not the user's.
+      # verdict. Fires no edit: the form syncer's own writes are not the user's.
       # @param model [Object, nil]
       # @return [void]
       def populate(model)
         @shown.clear
         @populating = true
-        @bindings.each { _1.populate(model) }
+        @pipelines.each { _1.populate(model) }
       ensure
         @populating = false
       end
 
-      # Runs `bindings`, then — only if every one passed and there is a model —
+      # Runs `pipelines`, then — only if every one passed and there is a model —
       # writes the candidates of `write` into it and runs the model validators,
       # keeping the write only when `keep` and every model validator passed.
       # Skipped model validators clear their failures, since they would judge a
       # mix of new and stale values.
-      # @param bindings [Array<Binder::Binding>] whose field steps to run.
+      # @param pipelines [Array<FormSyncer::Pipeline>] whose field steps to run.
       # @param model [Object, nil]
-      # @param write [Array<Binder::Binding>] a subset of `bindings` whose candidates
+      # @param write [Array<FormSyncer::Pipeline>] a subset of `pipelines` whose candidates
       #   to write.
       # @param keep [Boolean] whether a passing write stays in the model.
       # @param show [Array<Symbol>, :all] the attributes whose verdicts become
       #   shown; unless empty, the attributes the model validators blamed are
       #   shown too.
       # @param partial [Boolean] write the passing candidates of `write` and run
-      #   the model validators even when another binding failed — its attribute
+      #   the model validators even when another pipeline failed — its attribute
       #   keeps the value the model holds.
       # @return [Boolean] whether the model validators ran and passed, which
       #   with `keep` means the passing candidates stayed in the model.
-      def run(bindings, model:, write:, keep:, show:, partial: false)
-        outcomes = run_fields(bindings)
+      def run(pipelines, model:, write:, keep:, show:, partial: false)
+        outcomes = run_fields(pipelines)
         passed = false
         if model && (partial || outcomes.values.all?(&:ok?))
           candidates = write.select { outcomes.fetch(_1).ok? }.to_h { [_1.attr, outcomes.fetch(_1).candidate] }
@@ -126,17 +126,17 @@ module Tuile
         passed
       end
 
-      # @param binding [Binder::Binding]
-      # @return [Boolean] whether `binding` passed the last time it ran.
-      def passed?(binding) = !@field_failures.key?(binding.attr)
+      # @param pipeline [FormSyncer::Pipeline]
+      # @return [Boolean] whether `pipeline` passed the last time it ran.
+      def passed?(pipeline) = !@field_failures.key?(pipeline.attr)
 
-      # Runs each binding's field steps and records its outcome, touching no
+      # Runs each pipeline's field steps and records its outcome, touching no
       # model validation failure.
-      # @param bindings [Array<Binder::Binding>]
-      # @return [Hash{Binder::Binding => Binder::Binding::Outcome}]
-      def run_fields(bindings)
+      # @param pipelines [Array<FormSyncer::Pipeline>]
+      # @return [Hash{FormSyncer::Pipeline => FormSyncer::Pipeline::Outcome}]
+      def run_fields(pipelines)
         @last_validation = nil
-        bindings.to_h do |b|
+        pipelines.to_h do |b|
           outcome = b.run
           outcome.ok? ? @field_failures.delete(b.attr) : @field_failures[b.attr] = outcome
           [b, outcome]
@@ -149,30 +149,30 @@ module Tuile
       # @param attrs [Array<Symbol>, :all]
       # @return [void]
       def reveal(attrs)
-        @shown.merge(attrs == :all ? @bindings.map(&:attr) : attrs)
-        @bindings.each { _1.field.error_message = (verdict(_1) if @shown.include?(_1.attr)) }
+        @shown.merge(attrs == :all ? @pipelines.map(&:attr) : attrs)
+        @pipelines.each { _1.field.error_message = (verdict(_1) if @shown.include?(_1.attr)) }
       end
 
       private
 
-      # @param binding [Binder::Binding]
+      # @param pipeline [FormSyncer::Pipeline]
       # @param edit [Boolean]
       # @return [void]
-      def edited(binding, edit)
-        @notify.call(binding, edit) unless @populating
+      def edited(pipeline, edit)
+        @notify.call(pipeline, edit) unless @populating
       end
 
       # One message per field: its own failure first, then the model
       # validators' blame.
       # Bad input writes `nil` — the field shows its own report already, and a
       # copy would go stale the moment the input is fixed.
-      # @param binding [Binder::Binding]
+      # @param pipeline [FormSyncer::Pipeline]
       # @return [String, nil]
-      def verdict(binding)
-        own = @field_failures[binding.attr]
+      def verdict(pipeline)
+        own = @field_failures[pipeline.attr]
         return nil if own&.bad_input
 
-        (own&.failure || @model_failures[binding.attr]&.first)&.message
+        (own&.failure || @model_failures[pipeline.attr]&.first)&.message
       end
 
       # @param model [Object]
@@ -228,7 +228,7 @@ module Tuile
       # @param message [String]
       # @return [void]
       def blame(model, attr, message)
-        field = attr && @bindings.find { _1.attr == attr }&.field
+        field = attr && @pipelines.find { _1.attr == attr }&.field
         value = model.public_send(attr) if attr && model.respond_to?(attr)
         (@model_failures[attr] ||= []) << ValidationFailure.new(field, message, value)
       end

@@ -205,7 +205,7 @@ of `value` / `value=` / `empty?` / `clear` + an `on_value_change` listener
 (the new value and its origin, `D_from_user`). `value` holds whatever the component holds — `String` for a
 text field (its value *is* its text, read back as `text`), a
 domain object for a `ComboBox`. Model-mapping (value ⟷ model, the layers
-`D_field_layers` names) is the `Binder`'s, a layer *above* the field, never
+`D_field_layers` names) is the `FormSyncer`'s, a layer *above* the field, never
 baked into field state.
 
 **Why typed, not String-only.** The pull toward String-only is the fear of
@@ -226,14 +226,14 @@ Why not:
   would fight. Kept only as a theoretical fallback.
 - *A full-featured `HasValue`* (read-only, required-indicator, an
   old-value event payload, a from-the-client flag, converters): each answers a
-  forms problem, and the `Binder` landed needing none of them on the field —
-  converters and `required` are binding steps (`D_binder_chain`), and it skips
+  forms problem, and the `FormSyncer` landed needing none of them on the field —
+  converters and `required` are pipeline steps (`D_form_syncer_chain`), and it skips
   its own writes by `from_user?` rather than an old value. The from-the-client
   flag is the one that grew back, as `from_user?`, because two guards already
   needed it (`D_from_user`).
 - *Naming — `Field` / `Valued` / `Bindable` / `Input` / `HoldsValue` /
   `Editable`:* each names an *adjacent* capability (focus/editing, esteem,
-  a binder's job, a role, a wrapper class, the deferred read-only axis)
+  a form syncer's job, a role, a wrapper class, the deferred read-only axis)
   rather than "holds a value." `HasValue` is brutally literal and matches its
   own method names.
 
@@ -245,7 +245,7 @@ The cost we carry:
 - Still deferred: `read_only`, and an old-value payload on the listener, which
   waits for a reader. A required flag *on the field* stays refused — the marker
   beside the caption ships on the wrapper (`D_form_item`) and the validation on
-  the binding (`D_binder_chain`), and the field never learns of either.
+  the pipeline (`D_form_syncer_chain`), and the field never learns of either.
 
 ---
 
@@ -351,7 +351,7 @@ since its inner field carries the stop and a tab-stop wrapper around a tab-stop 
 double-stop Tab.
 
 **The converter stays private and hardcoded**, exactly as `TextField` hardcodes identity-String. No
-public `converter=` strategy: that is a binding's `convert` step (`D_binder_chain`), and `D_has_value` keeps converters
+public `converter=` strategy: that is a pipeline's `convert` step (`D_form_syncer_chain`), and `D_has_value` keeps converters
 *above* the field. **Value is a derived parse** — recomputed from the buffer on read, with
 `on_value_change` firing only on a real *value* change, so `"7"` → `"07"` is silent, and at the
 cadence `D_value_change_mode` gives it. No normalization in v1: rewriting the buffer under the caret while typing is worse than an
@@ -367,7 +367,7 @@ existing seam, not a new abstraction. A bespoke `AbstractComposedField` or unive
 **class** was rejected as machinery for shallow commonality, and because the submit callback lives
 only on `TextField` (Enter is a newline in `TextArea`), so no single field class can own one.
 `HasValue` is the Ruby-idiomatic `AbstractField` — a mixin is how Ruby shares what Java needs a class
-for, and `is_a?(HasValue)` is the Binder's marker. (The shell later became deep enough to earn a
+for, and `is_a?(HasValue)` is the form syncer's marker. (The shell later became deep enough to earn a
 real base, on a fourth copy and six shared obligations — `D_wrapping_field`; `content` / `content=`
 came back off the typed fields' public face at the same time, `D_has_content`.)
 
@@ -2554,7 +2554,7 @@ Why not:
   segment selects and reveals it anyway; free scrolling needs a second "user scrolled, stop
   following" state with a resume rule — `List#auto_scroll`'s machinery for one row.
 - **A `Tab#data` slot** handing `on_tab_selected` a domain object: the pane owns its data (COP — the
-  pane *is* the handle), or a binder does, and this keeps `Tab` from becoming the items API
+  pane *is* the handle), or a form syncer does, and this keeps `Tab` from becoming the items API
   just refused.
 - **`Tab` including `HasCaption`**, which would be DRY-only: `HasCaption` earns its place as a
   **test-locator seam** (a locator matches `is_a?(HasCaption)` with no class list), and a `Tab` is
@@ -4367,7 +4367,7 @@ over one expression — and a `DateField` does not share the shape anyway, a mas
 | | **bad input** — this entry | a rule's verdict — `D_has_validation` |
 |---|---|---|
 | example | `"xyz"` is not a date; a lone `"-"` | must be in the past; age ≥ 18 |
-| authority | **the field, and only the field** (it owns the format) | the app / a binder (it owns the domain) |
+| authority | **the field, and only the field** (it owns the format) | the app / a form syncer (it owns the domain) |
 | when known | on every input mutation | when the rules run |
 | the field's role | **it is the fact** | a mailbox it cannot fill, defend, or recompute |
 
@@ -4470,7 +4470,7 @@ sufficient:
   caption column aligned across a form — all three are legitimate, all three
   are the container's arithmetic, and storing the string on the field implies a
   rendering it never performs.
-- **Nothing above needs it there.** A binder binds values and writes verdicts;
+- **Nothing above needs it there.** A form syncer binds values and writes verdicts;
   a caption is presentation. `D_has_value` already parks model-mapping above the
   field.
 
@@ -4560,7 +4560,7 @@ quotes: its own report is `bad_input?`, derived on read, while `error_message` i
 outside, the two differing in authority, population and lifetime (`D_bad_input`'s table). That
 leaves one writer, whose whole discipline is **set *or clear* it on every validate pass**.
 Both facts carry a change notice now, and what differs is what each had to settle first: a verdict is
-discrete, asserted at a click or a binder pass, so `on_error_message_change` fires straight off the
+discrete, asserted at a click or a form syncer pass, so `on_error_message_change` fires straight off the
 write, while `bad_input?` is continuous and its notice had to be gated on `bad_input_settled?` before
 it could fire at all (`D_bad_input`). Both are load-bearing, since the message paints in cells the
 field does not invalidate.
@@ -4594,13 +4594,13 @@ well ORs the two and needs no order; a cell showing one string does. The field's
 is the more immediate fault, the field is its only authority (`D_bad_input`'s table), and a verdict
 is stale by construction — written a pass ago by something that cannot recompute between keystrokes.
 Saying it once on the field is the argument that put `error_ink?` there too: a form item, an app's own
-`Label` and a binder's own reporting would each re-derive the order otherwise, and drift. So
+`Label` and a form syncer's own reporting would each re-derive the order otherwise, and drift. So
 `shown_message` reads `error_message` here and `HasBadInput` widens it to prefer a *showable* report,
 the merge sitting beside the ink's — and a consumer registers on both notices, either of which moves it.
 
 **A separate mixin, included by `HasValue`, not members on it.** The **authorities differ**
 (`HasValue` is the field's own state, kept thin and self-owned by `D_has_value`; `error_message`
-comes from outside); **lookup** — a binder or test locator iterating "everything that can carry a
+comes from outside); **lookup** — a form syncer or test locator iterating "everything that can carry a
 verdict" walks `is_a?(HasValidation)`; **a non-field can be invalid** (a composite field, a form
 section) and includes it alone. Cost
 ~12 lines, the trade `HasCaption` made. Population is every `HasValue` and nothing else — unlike
@@ -4610,7 +4610,7 @@ terms"); `ProgressBar` stays out for the reason it stays out of `HasValue`.
 Why not:
 
 - **The container stores the message in its per-child map**, the shape `D_box_layouts` uses for
-  constraints. It dies on the binder, which is handed *fields* and holds no reference to the layout
+  constraints. It dies on the form syncer, which is handed *fields* and holds no reference to the layout
   they sit in, so the only thing that computes a verdict could not report one (a click handler
   likewise holds `username` and `password`, not `form`); and a field outside a `FormLayout` could
   show nothing at all.
@@ -6126,7 +6126,7 @@ Roads not taken:
 - **A structural notice** — `error_message=` telling `parent` through a
   protected hook, mirroring `handle_child_visibility_changed`. Refused on the
   merits: an error message is a *logical* fact, so the tree is the wrong channel
-  to carry it; it fails outright for the `Binder`, which is not a `Component`
+  to carry it; it fails outright for the `FormSyncer`, which is not a `Component`
   and has no position in the tree to be notified at; and coupling validation to
   form *structure* is a known anti-pattern.
 - **Growing just the one slot into a list.** Then every reader has to check
@@ -6162,7 +6162,7 @@ deleting keys, a step, a commit, Space, a click, a pick. So does
 `Testing.set_value`, whose reachability checks keep the claim honest. The
 wrapping fields relay the editor event's flag. A forgotten `true` makes a real
 edit look programmatic, which is the side that fails safe; the opposite
-mistake is a binder's write-back loop.
+mistake is a form syncer's write-back loop.
 
 Why not:
 - *Derive it from dispatch state* (a "within input dispatch" window). About
@@ -6178,7 +6178,7 @@ Why not:
 - *The flag on every slot, or on the `Event` marker.* A member goes where
   something reads it (`D_bad_input`); only `on_value_change` has readers, and
   adding it elsewhere later is additive. Same for `old_value`, the other
-  usual payload member: no reader yet — the `Binder` shipped without one — so it waits.
+  usual payload member: no reader yet — the `FormSyncer` shipped without one — so it waits.
 
 The cost we carry:
 - An includer's override moves from `value=` to `set_value`; the contract
@@ -6438,27 +6438,27 @@ Why not:
 - **A form-level status row for the full text of the first error** — the app's to build from the
   same data, `D_status_bar` from the other side. That is the escape hatch for the item's one-row,
   ellipsized message.
-- **A structural notice a Binder could subscribe to** — an error message is a logical fact, not a
-  structural one, the Binder is not a Component, and coupling validation to form structure is a
+- **A structural notice a form syncer could subscribe to** — an error message is a logical fact, not a
+  structural one, the form syncer is not a Component, and coupling validation to form structure is a
   known anti-pattern.
 - **A wrapped left caption, or a narrow-terminal fallback to captions above** — the first reflows
   (above); the second is argued with v3's columns, which face the same question.
 
 ## D_field_layers — Why are a bound field's layers called model, transformation, value and input, rather than presentation and model?
 
-Settled while designing `HasBadInput`, before the Binder existed, because the channel needed a name
+Settled while designing `HasBadInput`, before the form syncer existed, because the channel needed a name
 that said which layer it reported on. A `Date` field bound to `Person#birth_date` has four layers:
 
 | layer | example | spoken by |
 |---|---|---|
-| **model** | `Person#birth_date` | the Binder |
-| **transformation** | `year` + `month` + `day` → `Date`; an ISO string → `Date` | the Binder |
+| **model** | `Person#birth_date` | the form syncer |
+| **transformation** | `year` + `month` + `day` → `Date`; an ISO string → `Date` | the form syncer |
 | **value** | the `Date` or `nil`, `HasValue#value` | both — why `HasValue` is *the* seam |
-| **input** | the glyphs typed, a calendar click, a mask's partial fill | the field; the Binder may *ask* |
+| **input** | the glyphs typed, a calendar click, a mask's partial fill | the field; the form syncer may *ask* |
 
 Input → value is a **parse** (partial; its failure is **bad input**, `D_bad_input`), value → input
 a **format** (total), the pair inside a field its private **converter** (`D_integer_field`), and
-model ⟷ value a chain of **transformations** — a binding's `convert` steps. The definitions are
+model ⟷ value a chain of **transformations** — a pipeline's `convert` steps. The definitions are
 `design/terminology.md`'s.
 
 Why not:
@@ -6472,20 +6472,20 @@ Why not:
 **Reserved** for the layers above `value`: `model`, `transformation`, `presentation`, `domain` —
 none is spent on a field concept.
 
-## D_binder_modes — Why does the binder come in two classes that validate against the real model, rather than one mode-switched class validating a copy?
+## D_form_syncer_modes — Why does the form syncer come in two classes that validate against the real model, rather than one mode-switched class validating a copy?
 
-A binder can have both modes on one class — `readBean` / `writeBean` buffered, `setBean`
-write-through (`R_web_binder`) — and each has its use: **`Binder::Buffered`** is the OK/Cancel
-popup, where Cancel is free because nothing was written; **`Binder::Unbuffered`** is the settings
+A form syncer can have both modes on one class — `readBean` / `writeBean` buffered, `setBean`
+write-through (`R_web_binder`) — and each has its use: **`FormSyncer::Buffered`** is the OK/Cancel
+popup, where Cancel is free because nothing was written; **`FormSyncer::Unbuffered`** is the settings
 panel, the live filter, and the complex form whose sub-editors write as they go, bound as a draft
 the app copied. Both ship, **as two classes**: the split deletes the mode-switch questions outright
 (`read` after `model=`, `model=` after `read`), and each API stays small — `changed?` is
 `Buffered`'s alone, since unbuffered every valid edit is already in the model.
 
-**`Tuile::Binder` is their abstract base, holding one composed `Engine` — a deliberate exception
+**`Tuile::FormSyncer` is their abstract base, holding one composed `Engine` — a deliberate exception
 to `cop` rule 2, the owner's call.** The base is the shared surface and nothing else: `bind`,
 `add_validator`, `last_validation` and their rdoc, which the two classes would otherwise repeat
-word for word; and it names a real type, so a form that only binds takes a `Binder` and serves
+word for word; and it names a real type, so a form that only binds takes a `FormSyncer` and serves
 either mode. No template method: a subclass hands its edit handler up as the block to `super`, so
 the base never calls down. The first cut had no base and four one-line delegators per class, and
 top-level `BufferedBinder` / `UnbufferedBinder` constants; the namespace reads as the mode it is.
@@ -6494,44 +6494,44 @@ top-level `BufferedBinder` / `UnbufferedBinder` constants; the namespace reads a
 An invalid value never *stays* in the model, which matters more here than on the
 web: a Tuile model may be the in-memory source of truth, not a request-scoped copy about to die.
 The cost is in the rdoc — on a failure each written setter fires twice, and only bound attributes
-come back. **The binder ships no copy capability, and applying a draft back is the app's**: only
-the app knows how deep its model copies, and the draft exists *because* of nested lists no binding
+come back. **The form syncer ships no copy capability, and applying a draft back is the app's**: only
+the app knows how deep its model copies, and the draft exists *because* of nested lists no pipeline
 covers, so "copy the bound attributes back" would miss exactly them.
 
 **Buffered, model validators wait for every field to pass**, since they would judge a mix of new and
 stale values; `validate` runs them against the model `read` was handed, where a buffered
 `validate()` with no bean skips them (`R_web_binder`), so a Check button sees cross-field errors
-before Save. **Unbuffered, an edit writes every pending binding whose field steps pass, and a
+before Save. **Unbuffered, an edit writes every pending pipeline whose field steps pass, and a
 failing one sits out** — its attribute keeps the last value that passed, and a model validation
 failure reverts the whole batch, since a model validator can't say which attributes it read. Writing
-only the edited binding diverges silently: `start_date` → 10 fails against `end_date` 5 and reverts,
+only the edited pipeline diverges silently: `start_date` → 10 fails against `end_date` 5 and reverts,
 `end_date` → 20 then passes against the *old* start, and the 10 on screen never reaches the model.
 `Unbuffered#validate` is a draft's Save gate and is as strict as the buffered one.
 
 Why not:
-- *A write-through that writes nothing while any changed binding fails* (`R_web_binder`):
+- *A write-through that writes nothing while any changed pipeline fails* (`R_web_binder`):
   in a settings panel or a live filter it freezes the whole form on one bad box.
-- *Validating a `dup`*: it needs a copy the binder can't do right for every model — a shallow
+- *Validating a `dup`*: it needs a copy the form syncer can't do right for every model — a shallow
   `dup` leaks through in-place setters, ActiveRecord's has `id == nil` — so a customizable copy,
   the capability refused above.
 - *ActiveModel or dry-validation underneath* (`R_ruby_validation`): `activemodel` drags in
   `activesupport` and `i18n`, a validator is just a proc, and ActiveModel assigns first and
   validates after, leaving the invalid value in the object.
-- *`binder.read(draft); binder.write?(original)`*, an early sketch for the complex form: the
+- *`syncer.read(draft); syncer.write?(original)`*, an early sketch for the complex form: the
   two-class split removes it, and it was wrong for the case anyway.
 
-## D_binder_chain — Why is a binding a chain begun by `bind(field, :attr)`, rather than a builder ending in `bind()`, or keyword arguments?
+## D_form_syncer_chain — Why is a pipeline a chain begun by `bind(field, :attr)`, rather than a builder ending in `bind()`, or keyword arguments?
 
 **A chain, because converters make order semantic**: a validator before a `convert` sees the
 field's value, one after it the model form, and keyword arguments can't say order. **`bind` comes
 first and registers at once**, each step appending and returning `self`, so there is never an
-unfinished binding — a terminal `bind()` leaves one possible (`R_web_binder`) — and the
+unfinished pipeline — a terminal `bind()` leaves one possible (`R_web_binder`) — and the
 chain still reads field → model. The common case, `bind(f, :name)` with no steps, is complete.
 
 - **`bind(field, :name)` is `public_send(:name)` / `public_send(:name=, v)`** — `attr_accessor`,
   `Struct` and ActiveRecord with no adapter; `Data` is immutable and out. No getter/setter lambda
   pair: the symbol is what keys `last_validation` and what a model validator blames, so a lambda
-  binding, additive later, owes an answer for both. An attribute or field bound twice raises —
+  pipeline, additive later, owes an answer for both. An attribute or field bound twice raises —
   the map is keyed by attribute, and an `error_message` has room for one writer.
 - **A converter is a pair**, since `read` needs model → value too, and **fails by raising
   `ArgumentError`**, the stdlib's convention — `Integer("x")`, `Float`, `BigDecimal`,
@@ -6557,16 +6557,16 @@ chain still reads field → model. The common case, `bind(f, :name)` with no ste
 
 Why not:
 - *Validators seeing `""` and each converter handling empty itself*: a library converter can do it
-  for you (`R_web_binder`); ours are procs, so the binder does.
+  for you (`R_web_binder`); ours are procs, so the form syncer does.
 - *`required` lighting `FormItem`'s marker*, by `bind` walking up the tree for an enclosing item:
-  the binder would depend on a layout it was never given, and on the field being attached at bind
+  the form syncer would depend on a layout it was never given, and on the field being attached at bind
   time. The app says "required" twice, and both rdocs say so.
 - *`rule { }`*, the first name: "at least 3 characters" is a rule too, so it names no level.
-  *`validate { }`*: `binder.validate` already runs everything. *`with_validator`*: in Ruby
-  `with_x { }` reads as a scoped block. A binding keeps `.validate { }`, where the imperative reads
+  *`validate { }`*: `syncer.validate` already runs everything. *`with_validator`*: in Ruby
+  `with_x { }` reads as a scoped block. A pipeline keeps `.validate { }`, where the imperative reads
   as the step it appends.
 
-## D_binder_verdicts — Why does a binder open a form showing no verdict, keep one frozen map, and gate Save at the click?
+## D_form_syncer_verdicts — Why does a form syncer open a form showing no verdict, keep one frozen map, and gate Save at the click?
 
 **`read` and `model=` recompute the whole `last_validation` but write `nil` to every
 `error_message`** — so `last_validation.empty?` means something from the first frame, while a
@@ -6574,31 +6574,31 @@ blank "New person" dialog doesn't open with every required field red. A field's 
 once the user edits it, and every field's on `write?` / `validate` — errors show late on purpose
 (`R_web_binder`).
 
-**Bindings run on every value change, at whatever cadence the field fires; the binder owns no blur
-hook.** An edit is a `from_user?` change (`D_from_user`), so the binder's own writes don't echo
+**Pipelines run on every value change, at whatever cadence the field fires; the form syncer owns no blur
+hook.** An edit is a `from_user?` change (`D_from_user`), so the form syncer's own writes don't echo
 back, and it needs no `old_value`. It subscribes `on_bad_input_change` beside `on_value_change`,
 because typing `-` into an empty `IntegerField` goes `nil` → `nil` and fires no value change. A
 bad-input verdict writes `nil`, not the report: `shown_message` already prefers the field's own
 (`D_has_validation`), and a copy would go stale the moment the input is fixed. The cadence is
 the field's (`D_value_change_mode`): by default a string or number field announces on leaving or
 ENTER, so its verdict shows then and `Unbuffered` writes the finished value, not every prefix; an
-`:eager` field brings both back per keystroke, and the binder changes for neither.
+`:eager` field brings both back per keystroke, and the form syncer changes for neither.
 
 **The verdict is one map, `{attr => [ValidationFailure]}`, frozen** — field steps and model
 validators fill it alike, every key holds an array, and **form-level failures sit under the `nil`
 key** (a `Hash` takes it; Rails' `:base` was the fallback that wasn't needed). **One message per
 field** reaches `error_message`, its own failure first — a `FormItem` has one message row
 (`D_form_item`) — while all stay in the map for the Save alert. **Its staleness is the "last"**: a
-binding run replaces only its own attribute's entry, the model validators' only in a pass that runs
+pipeline run replaces only its own attribute's entry, the model validators' only in a pass that runs
 or skips them, so buffered, a fixed cross-field error stays until the next `write?`. **A failure is
 a value, an error is raised**: `ValidationFailure` is the entry, `ValidationError < Tuile::Error`
 what `write!` raises carrying the map, and `write?` / `write!` are ActiveRecord's `save` / `save!`
 (`R_ruby_validation`), `?` in the `Set#add?` sense.
 
-**Save asks the binder when pressed**, and on "no" `ConfirmWindow.alert` names the problems, rather
+**Save asks the form syncer when pressed**, and on "no" `ConfirmWindow.alert` names the problems, rather
 than enabling the button from a status listener (`R_web_binder`). **`changed?` counts user
 edits** since `read` or the last successful `write?`, not `==`, so the `""`-over-`nil` drift doesn't
-read as a change. **The binder honors only announced values**: an edit counts once its field
+read as a change. **The form syncer honors only announced values**: an edit counts once its field
 announces it, and a Save the user reaches — a click, Tab, a shortcut — takes focus first, which
 announces the field being left (`D_value_change_mode`). `write?` and `validate` read `value` live.
 
@@ -6611,11 +6611,11 @@ Why not:
   `D_bad_input`). `on_bad_input_change` is not that listener renamed: it reaches cells the field
   doesn't own.
 - *`ValidationResult`*: a result may be ok, and every entry here is a failure — it is an
-  ok-or-error sum type, the ceremony `D_binder_chain` deletes.
+  ok-or-error sum type, the ceremony `D_form_syncer_chain` deletes.
 - *Escape hatches* — `setValidatorsDisabled`, `withDefaultValidator(false)`,
   `setIsAppliedPredicate`: deferred and unnamed, each additive with no asker. Whoever re-grows
   `withDefaultValidator(false)` owes an answer for skipping the bad-input check.
-- *The binder releasing a field's held notice*: new public API on every field for one reader.
+- *The form syncer releasing a field's held notice*: new public API on every field for one reader.
 - *A live compare of the focused field in `changed?`*: built, then removed — it guards a Save that
   runs without taking focus, and the answer to that is that Save takes focus. If a delayed value
   outlives a Save in practice, revisit it then.
@@ -6642,9 +6642,9 @@ mode, so a Save handler reads what is on screen. A *write* — `set_value`, an U
 `Testing.set_value` — announces at once, as does an edit reaching a field off the focus chain,
 which has no commit gesture coming. A wrapping field pins its editor `:eager`, because bad-input
 sync and `ComboBox`'s refill need every edit, and holds its own notice instead. **The hold is the
-field's own business**: no flush, no `pending?`. The Binder honors only announced values, relying
+field's own business**: no flush, no `pending?`. The FormSyncer honors only announced values, relying
 on a Save the user reaches taking focus first, which announces the field being left
-(`D_binder_verdicts`).
+(`D_form_syncer_verdicts`).
 
 **Claiming ENTER opts out of its release.** The release is part of the field's own ENTER handling,
 so a subclass that takes ENTER first — a `TextArea` rebound to submit — releases on leaving only,

@@ -958,7 +958,7 @@ Surveyed 2026-09-21 for `D_deferred_layout`: the mark, when the pass runs, and t
 ## R_web_binder — What the Java web toolkit's `Binder` does in each mode, and where its docs stop
 
 Checked 2026-09-29 against its 25.2 docs, the 25.2 javadoc and `flow-data` 25.2.6 sources,
-while designing `Tuile::Binder`.
+while designing `Tuile::FormSyncer`.
 
 | | buffered (`readBean` / `writeBean…`) | write-through (`setBean`) |
 |---|---|---|

@@ -15,8 +15,8 @@ No `enabled` or `read_only` in `lib/`. The axes that exist:
 | `active?` | on the focus chain; paint-time, a `ComponentBackground::STATES` key | — |
 
 Two places park the axis on purpose:
-- `D_has_value` keeps read-only deferred; the Binder landed without it.
-- `D_binder_verdicts` refuses the Save-button case, the usual motivation for `enabled`: the
+- `D_has_value` keeps read-only deferred; the form syncer landed without it.
+- `D_form_syncer_verdicts` refuses the Save-button case, the usual motivation for `enabled`: the
   gate goes at the click, because a disabled control can't say why (no tooltip; hover is
   opt-in and cosmetic).
 
@@ -33,7 +33,7 @@ ancestor-inclusive, so it is a precedent for `Q_disabled_focus`, not the axis.
   `HasValue`. The one the forms layer asks about.
 
 Some toolkits ship both, Swing only `enabled`. If only one: **read-only**, which has a named
-future caller (the binder); `enabled`'s was argued down.
+future caller (the form syncer); `enabled`'s was argued down.
 
 ## Where the gate lives
 
@@ -67,7 +67,7 @@ working, so it lands in the widget's edit path (`insert_text`, the editing
   foreground, and `D_bg_surface` allows no foreground knob — so a dim *well*, or re-argue.
 - **`Q_readonly_ink`** — web toolkits commonly drop the well on read-only; dropping `INPUT_WELL` costs
   no new token.
-- **`Q_who_asks`** — nobody. The binder refused Save, #64 was served by a widget flag,
+- **`Q_who_asks`** — nobody. The form syncer refused Save, #64 was served by a widget flag,
   and the gestures only inherit the axis. Don't build ahead of a caller.
 
 ## Graduation owes
@@ -84,5 +84,5 @@ working, so it lands in the widget's edit path (`insert_text`, the editing
 ## Related
 
 `D_visibility`, `D_has_value`, `D_color_slots`, `D_bg_surface`, `D_input_filters`,
-`D_key_dispatch` (no gates in the ladder), `D_test_gestures`, `D_binder_verdicts`,
+`D_key_dispatch` (no gates in the ladder), `D_test_gestures`, `D_form_syncer_verdicts`,
 GitHub #64.

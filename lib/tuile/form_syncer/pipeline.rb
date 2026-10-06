@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 module Tuile
-  class Binder
+  class FormSyncer
     # One field bound to one model attribute, and the steps between them —
-    # what {Binder#bind} returns. Each step appends and returns `self`, so the
-    # binding is complete from the `bind` onward and the chain reads
+    # what {FormSyncer#bind} returns. Each step appends and returns `self`, so the
+    # pipeline is complete from the `bind` onward and the chain reads
     # field → model:
     #
-    #   binder.bind(birth_field, :birth_iso)                                  # the model stores an ISO string
+    #   syncer.bind(birth_field, :birth_iso)                                  # the model stores an ISO string
     #         .validate { |d| "Can't be in the future" if d > Date.today }   # value side: a Date
     #         .convert(->(d) { d.iso8601 }, ->(s) { Date.iso8601(s) })       # value → model, model → value
     #         .validate { |s| "Already taken" if taken?(s) }                 # model side: a String
@@ -30,7 +30,7 @@ module Tuile
     # input, then {#required}, then the chain — wherever `required` was
     # written. Bad input blocks even an optional field: optional means "may be
     # empty", not "may be garbage".
-    class Binding
+    class Pipeline
       # The result of one {#run}: `failure` is `nil` on a pass, and `bad_input`
       # says the failure is the field's own report rather than a verdict.
       # @api private
@@ -42,7 +42,7 @@ module Tuile
       # @return [Component::HasValue] the bound field.
       attr_reader :field
 
-      # @return [Symbol] the model attribute, and this binding's key in the
+      # @return [Symbol] the model attribute, and this pipeline's key in the
       #   verdict map.
       attr_reader :attr
 
@@ -57,7 +57,7 @@ module Tuile
         @steps = []
       end
 
-      # Fails the binding while the field is {Component::HasValue#empty?}.
+      # Fails the pipeline while the field is {Component::HasValue#empty?}.
       #
       # Tells the field nothing: a {Component::FormItem} wrapping it shows its
       # required marker only when built with `required: true` as well.
@@ -87,7 +87,7 @@ module Tuile
       end
 
       # Appends a converter, a pair of callables: `to_model` on every run,
-      # `to_value` when the binder reads the model into the field.
+      # `to_value` when the form syncer reads the model into the field.
       #
       #   .convert(->(s) { Integer(s) }, ->(i) { i.to_s }, error: "Not a number")
       #
@@ -95,7 +95,7 @@ module Tuile
       # convention, so `Integer`, `Float`, `BigDecimal` and `Date.iso8601`
       # work as they are — and its message becomes the verdict unless `error:`
       # overrides it. Nothing else is rescued, so a bug still surfaces, and a
-      # `to_value` raising while the binder reads propagates: a malformed stored
+      # `to_value` raising while the form syncer reads propagates: a malformed stored
       # value is the app's data, and blanking the field would write `nil` over
       # it on the next Save.
       # @param to_model [#call] value → model form.

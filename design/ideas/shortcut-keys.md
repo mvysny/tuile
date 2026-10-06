@@ -17,8 +17,8 @@ should support.
   widget shortcut must not be a second unrelated answer.
 - **Activating a shortcut moves focus to its target first, then activates it** (owner's
   ruling, 2026-09-29). A text or number field holds its `on_value_change` until it is left
-  (`D_value_change_mode`), and the Binder honors only announced values
-  (`D_binder_verdicts`), relying on a Save the user reaches taking focus — as a click and
+  (`D_value_change_mode`), and the form syncer honors only announced values
+  (`D_form_syncer_verdicts`), relying on a Save the user reaches taking focus — as a click and
   Tab already do. A shortcut that fires Save's action with focus still in the edited field
   saves the right data (`write?` reads `value` live) but leaves `Buffered#changed?` blind
   to that last edit and an `Unbuffered` model without it. So `register_global_shortcut`
