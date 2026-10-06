@@ -28,7 +28,7 @@ module Tuile
     end
 
     describe "the knob" do
-      it "defaults to :commit, and to Vaadin's 400 ms wait" do
+      it "defaults to :commit, and to a 400 ms wait" do
         f = Component::TextField.new
         assert_equal :commit, f.value_change_mode
         assert_in_delta 0.4, f.value_change_timeout

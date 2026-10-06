@@ -32,7 +32,7 @@ ancestor-inclusive, so it is a precedent for `Q_disabled_focus`, not the axis.
 - **Read-only** = reachable, not mutable: focusable, caret, copyable; edits declined →
   `HasValue`. The one the forms layer asks about.
 
-Vaadin ships both, Swing only `enabled`. If only one: **read-only**, which has a named
+Some toolkits ship both, Swing only `enabled`. If only one: **read-only**, which has a named
 future caller (the binder); `enabled`'s was argued down.
 
 ## Where the gate lives
@@ -65,7 +65,7 @@ working, so it lands in the widget's edit path (`insert_text`, the editing
   `D_bg_surface` records as **closed**; disabled has a better claim than error had (a
   per-component state, like `active`), but the claim must be made. Greying *text* is
   foreground, and `D_bg_surface` allows no foreground knob — so a dim *well*, or re-argue.
-- **`Q_readonly_ink`** — Vaadin drops the well on read-only; dropping `INPUT_WELL` costs
+- **`Q_readonly_ink`** — web toolkits commonly drop the well on read-only; dropping `INPUT_WELL` costs
   no new token.
 - **`Q_who_asks`** — nobody. The binder refused Save, #64 was served by a widget flag,
   and the gestures only inherit the axis. Don't build ahead of a caller.

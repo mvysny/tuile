@@ -2,8 +2,8 @@
 
 **Status:** v1 shipped (`Component::FormLayout`: a column of `FormItem`s, captions above, `rows:`
 per child, no scrolling, overflow clipped), and v2 with it — `spacing:`, and left captions in a
-column the form sizes. Their choices are `D_form_layout`, usage the rdoc and book ch7, Vaadin's
-behaviour `R_form_items`. This note is only the staging still deferred and re-argues none of it.
+column the form sizes. Their choices are `D_form_layout`, usage the rdoc and book ch7, the prior
+art `R_form_items`. This note is only the staging still deferred and re-argues none of it.
 
 ## v3 — multiple columns
 
@@ -13,14 +13,14 @@ behaviour `R_form_items`. This note is only the staging still deferred and re-ar
 - **Equal column widths, not configurable** — that is what makes row breaks unnecessary
   (`D_form_layout`).
 - **Colspan** (a `TextArea` across both) rides the `Layout#constraints` entry `rows:` already uses.
-- **Row-major fill**, as Vaadin's: `children`, add, Tab and reading order agree.
+- **Row-major fill**: `children`, add, Tab and reading order agree.
 - **Row height = max over the row's items** — resolves a captionless item beside a captioned one.
-- **The narrow-terminal fallback is argued here too** — Vaadin drops side labels back above the
+- **The narrow-terminal fallback is argued here too** — side labels elsewhere drop back above the
   field when the layout gets too narrow (`R_form_items`), the same width-driven switch as an auto
   `columns`. v2 shipped without it; its caption yields to keep the field's minimum instead.
 
-v3 is in tension with left captions by design: Vaadin doesn't recommend side captions with multiple
-columns (`R_form_items`), so a left-caption column per form column is a question, not a given.
+v3 is in tension with left captions by design: side captions with multiple columns are a documented
+bad pairing (`R_form_items`), so a left-caption column per form column is a question, not a given.
 
 ## Not here
 

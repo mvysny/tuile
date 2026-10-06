@@ -27,7 +27,7 @@ edges.
 | FTXUI | yes — `Container::Vertical` *is* "navigated with up/down"; child asked first, container sees what it declined; arrows don't wrap (`MoveSelector`), Tab does (`MoveSelectorWrap`) |
 | Midnight Commander | yes, arrows or Tab (the ncurses dialog lineage; only MC verified) |
 | Bubble Tea | app-side only (`examples/textinputs`); no framework focus model |
-| Textual, ratatui, Ink, Vaadin | no — the web/ARIA position: Tab between widgets, arrows within one |
+| Textual, ratatui, Ink | no — the web/ARIA position: Tab between widgets, arrows within one |
 
 ## Shape: a knob on `Layout`, off by default
 
@@ -36,7 +36,7 @@ opts in. A layout without it **declines** the arrow, which bubbles to the next n
 so a nested `Absolute` inside a navigating `Vertical` is one opaque slot at any depth.
 
 **Rejected: a `Layout::Form < Layout::Vertical` carrying the key behavior.**
-- Vaadin's `FormGroup` coupled `Binder` to layouting and was abandoned for it; this couples a layout
+- Coupling a binder to layouting has shipped before and been abandoned for it; this couples a layout
   algorithm to a key behavior — the same mistake, smaller.
 - A real form nests a `Horizontal` row or an `Absolute`; policy carried by a class is inherited by
   every subclass and unavailable to every non-subclass, so "does this container navigate?" stops
@@ -109,7 +109,7 @@ break it (`Q_arrow_stepping_fields`).
 
 - Book ch5 (the key and Enter tables): the user-facing half.
 - AGENTS.md's *Focus, keys and paste*: the invariants.
-- A `decisions.md` entry recording the `Layout::Form` rejection and the Vaadin `FormGroup`
+- A `decisions.md` entry recording the `Layout::Form` rejection and the form-group
   precedent — the reasoning most likely to be relitigated.
 
 ## Related

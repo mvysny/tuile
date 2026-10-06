@@ -289,7 +289,7 @@ module Tuile
         assert_equal 60, f.step
       end
 
-      it "takes a stride that divides no hour, unlike Vaadin's" do
+      it "takes a stride that divides no hour" do
         f = field
         f.step = 7
         assert_equal 7, f.step

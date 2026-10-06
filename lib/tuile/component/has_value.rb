@@ -32,11 +32,10 @@ module Tuile
     # `error_message` a validator writes and paints its own error ink.
     #
     # == Implementation details
-    # Deliberately smaller than Vaadin's `HasValue`: read-only,
-    # required-indicator and converters belong to the not-yet-built form layer,
-    # not here. Of Vaadin's event payload, `isFromClient` is carried (as
-    # {ValueChangeEvent#from_user?}) and `getOldValue` is not, until something
-    # reads it (`D_from_user`).
+    # Deliberately small: read-only, required-indicator and converters belong
+    # to the form layer, not here, and the event carries
+    # {ValueChangeEvent#from_user?} but no old value until something reads it
+    # (`D_from_user`).
     module HasValue
       include HasValidation
       extend Listeners::Declare

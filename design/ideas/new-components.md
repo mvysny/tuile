@@ -1,6 +1,6 @@
-# Components Vaadin has and Tuile doesn't
+# Components a form toolkit has and Tuile doesn't
 
-**Status:** a roadmap, surveyed against Vaadin 25.2 (54 OSS components). Each component we decide to
+**Status:** a roadmap, surveyed against a 54-component web form toolkit. Each component we decide to
 build gets its own idea file; retire this one once what's left is built or rejected. Shipped
 entries are gone — their `D_` entries are their home.
 

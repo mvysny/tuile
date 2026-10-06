@@ -7,7 +7,8 @@ built on it says so). A claim is earned by its provenance, or by having cost rea
 out. Terminals are not one product and do not move together, so a version-sensitive claim names
 what it was seen on; package availability is the fastest-rotting fact here and its entry is a
 dated snapshot. Cite by slug, `R_<slug>`, never by position; `grep '^## R_' design/research.md` is
-the index. The first entry is the ruler: every later one trims to its length.
+the index. The first entry is the ruler: every later one trims to its length. One Java
+web-component toolkit is surveyed often enough to be called *the Java web toolkit* throughout.
 
 ---
 
@@ -398,7 +399,7 @@ another project, as distinct from **[verified]**, which means run in this repo's
 
 | Toolkit | Default precision | Seconds available | Precision knob |
 |---|---|---|---|
-| Vaadin `TimePicker` | `hh:mm` | yes | `step` (`Duration`), default 1 hour |
+| the Java web toolkit's `TimePicker` | `hh:mm` | yes | `step` (`Duration`), default 1 hour |
 | HTML `<input type="time">` | `hh:mm` | yes | `step`, default `60` |
 | MUI X `TimePicker` | hours + minutes (+ meridiem) | yes | `views:` array |
 | Qt `QTimeEdit` | locale **ShortFormat** (en_US `h:mm AP`) | yes | `displayFormat` string |
@@ -412,19 +413,19 @@ another project, as distinct from **[verified]**, which means run in this repo's
   clock-display format used as a form-field format, which is `R_glibc_locale`'s `t_fmt` failure
   shipped. **[surveyed]**
 - **The two knob shapes have a cause, not a style.** Precision is either a property of the format
-  string (Qt, Ant Design, WinForms) or a selector orthogonal to spelling (Vaadin/HTML `step`, MUI
-  `views`, Taiga `mode`) — and **every toolkit that fuses precision into `step` is one where the app
-  cannot write a format at all**: Vaadin's Java API has `setLocale()` and `setStep()` and no format
-  setter, HTML has no `format` attribute. Every toolkit exposing a format string leaves `step`
-  alone. Zero exceptions either way. **[surveyed]**
+  string (Qt, Ant Design, WinForms) or a selector orthogonal to spelling (the Java web toolkit's and
+  HTML's `step`, MUI `views`, Taiga `mode`) — and **every toolkit that fuses precision into `step`
+  is one where the app cannot write a format at all**: the Java web toolkit's API has `setLocale()`
+  and `setStep()` and no format setter, HTML has no `format` attribute. Every toolkit exposing a
+  format string leaves `step` alone. Zero exceptions either way. **[surveyed]**
 - MUI documents `format` as *"Defaults to localized format based on the used `views`"* — the
   two-knob shape with the derivation spelled out. **[surveyed]**
-- **Stepping adds rather than snaps**: Vaadin "accepts values that don't align with the specified
-  step", and HTML's snap is to a `min` base. **[surveyed]**
-- Vaadin's dropdown is `vaadin-time-picker` wrapping `vaadin-combo-box-light`, and it **hides the
-  list below a 15-minute step** — a density gate of roughly `SECONDS_PER_DAY / step <= 96`.
-  **[unverified]** — from recollection of `__generateDropdownList`; re-read the source before citing
-  it further.
+- **Stepping adds rather than snaps**: the Java web toolkit "accepts values that don't align with
+  the specified step", and HTML's snap is to a `min` base. **[surveyed]**
+- The Java web toolkit's dropdown is its time-picker element wrapping a light combo box, and it
+  **hides the list below a 15-minute step** — a density gate of roughly
+  `SECONDS_PER_DAY / step <= 96`. **[unverified]** — from recollection of `__generateDropdownList`;
+  re-read the source before citing it further.
 - Qt seeds `QDateTimeEdit` with `loc.timeFormat(QLocale::ShortFormat)` (en_US `h:mm AP`, where the
   long form is `h:mm:ss AP t`), so it gets the seconds-less default free from CLDR rather than
   computing it. **[surveyed]**
@@ -447,14 +448,14 @@ memory and want checking before anyone acts on them; the rest is **[docs]**.
 | **Turbo Vision** | `phPreProcess` → `phFocused` → `phPostProcess` | opt-in per view (`ofPreProcess`) | ordering; hotkeys are Alt-ish | `bfDefault` button, **dialog**-scoped | `~H~` hotkeys | dialog handles `kbTab` | event/command constants; a separate `TStatusLine` |
 | **GTK4** | controllers with `CAPTURE`/`TARGET`/`BUBBLE`, chosen per controller | either — the *controller* picks | app accels use Ctrl | ⚠ `default-widget` on `GtkWindow`, window-scoped | `_`+Alt via mnemonic labels | ⚠ focus-chain, widget-overridable | `GtkShortcutController` with `LOCAL`/`MANAGED`/`GLOBAL` scope |
 | **DOM / web** | capture → target → bubble, per-listener | whatever the app writes | **nothing** — every app hand-rolls `if (target is input)` | app-written form `submit` | `accesskey` (widely regarded a failure) | browser-owned, `preventDefault`-able | none |
-| **Vaadin Flow** | shortcut registry (UI-scoped by default) → component | ⚠ registry wins unless scoped/modified — the known gotcha | `.listenOn(scope)` + modifiers | `button.addClickShortcut(ENTER).listenOn(form)` | ⚠ `Shortcuts.addFocusShortcut(focusable, key, mods)` | browser | fluent `ShortcutRegistration`, `bindLifecycleTo` |
+| **the Java web toolkit** | shortcut registry (UI-scoped by default) → component | ⚠ registry wins unless scoped/modified — the known gotcha | `.listenOn(scope)` + modifiers | `button.addClickShortcut(ENTER).listenOn(form)` | ⚠ `Shortcuts.addFocusShortcut(focusable, key, mods)` | browser | fluent `ShortcutRegistration`, `bindLifecycleTo` |
 | **Textual** | priority bindings → focused widget → bubble to App | priority-first, else **focus wins** | `Input` consumes printables and stops propagation | ⚠ `Input.Submitted` message, per-screen | none built in | ⚠ `TextArea#tab_behavior` opt-in | **`BINDINGS` tables whose descriptions feed the `Footer`** |
 | **Bubbletea / Ratatui** | none — one `Update` match | n/a | nothing; apps write an explicit `mode` enum | app-written | none | app-written | none |
 
 - **Focus-first is the majority position** (Swing, Textual), and the two frameworks that put an
   accelerator first each pay for it — Win32 with `WM_GETDLGCODE`, a declared "I want characters"
-  predicate; Vaadin with a documented gotcha where a UI-scoped unmodified shortcut fires while a
-  field has focus ⚠. **[docs]**
+  predicate; the Java web toolkit with a documented gotcha where a UI-scoped unmodified shortcut
+  fires while a field has focus ⚠. **[docs]**
 - **The default button is scoped everywhere** — window, dialog or screen, never global. Nobody
   disagrees. **[docs]**
 - **A capture-like phase, where it exists, is opt-in per participant** (Turbo Vision's
@@ -478,9 +479,9 @@ memory and want checking before anyone acts on them; the rest is **[docs]**.
 Surveyed across 24 toolkits while designing a hide-a-field flag; **[docs]** unless a source was
 read.
 
-- **Where a single boolean exists, it means *gone*** — the component takes no space: Qt, GTK4,
-  Vaadin, Lanterna, WinForms, AppKit stack views, Flutter's `Visibility`, Textual's `display`,
-  FTXUI's `Maybe`, Tk's `grid remove`. **[docs]**
+- **Where a single boolean exists, it means *gone*** — the component takes no space: Qt, GTK4, the
+  Java web toolkit, Lanterna, WinForms, AppKit stack views, Flutter's `Visibility`, Textual's
+  `display`, FTXUI's `Maybe`, Tk's `grid remove`. **[docs]**
 - **Keep-the-space is everywhere the opt-in**, never the default: `retainSizeWhenHidden`,
   `maintainSize`, `setHonorsVisibility(false)`, `detachesHiddenViews = false`. Android is the one
   lineage naming both states in one enum (`GONE` / `INVISIBLE`). **[docs]**
@@ -504,13 +505,15 @@ read.
 - **Every toolkit that models *both* concepts reserves *fill* for cross-axis stretch, not for
   claiming slack.** GTK's `pack_start(child, expand, fill, padding)` takes them as separate booleans
   and `fill` only acts when `expand` is already true; Swing splits them as `weightx` vs `fill`;
-  JavaFX as `setHgrow` vs `fillHeight`. Vaadin 8 names only the first and calls it
-  `setExpandRatio`. ratatui does call its main-axis constraint `Fill`, and CSS calls it `flex-grow`;
-  neither models the stretch concept separately, so neither had the collision to avoid. **[docs]**
+  JavaFX as `setHgrow` vs `fillHeight`. The Java web toolkit's version 8 names only the first and
+  calls it `setExpandRatio`. ratatui does call its main-axis constraint `Fill`, and CSS calls it
+  `flex-grow`; neither models the stretch concept separately, so neither had the collision to
+  avoid. **[docs]**
 - **Leftmost-first remainder distribution is the ecosystem convention** — CSS `flex-grow`, ratatui
   `Fill`, urwid `weight`. **[docs]**
 - **JavaFX defaults a vertical box to fill-width and top-left alignment** (`VBox.fillWidth` is
-  `true`, alignment `Pos.TOP_LEFT`), and Vaadin 8 likewise bumps everything to the top. **[docs]**
+  `true`, alignment `Pos.TOP_LEFT`), and the Java web toolkit's version 8 likewise bumps everything
+  to the top. **[docs]**
 - **`Insets` is a live migration bug between two toolkits in the same language**: `java.awt.Insets`
   orders the four numbers top-left-bottom-right, `javafx.geometry.Insets` top-right-bottom-left —
   same class name, same four numbers, silently different. **[docs]**
@@ -518,9 +521,9 @@ read.
   `HBox.setHgrow(node, …)` puts the constraint on the node — hence `HBox.clearConstraints` — so a
   caller must recall which container's static setter applies, and a reparented node silently keeps
   stale constraints. **[docs]**
-- **Vaadin 8's perennial support question is "`setExpandRatio` does nothing"**, answered by "the
-  child also needs `setSizeFull()`" — because a Vaadin 8 component has **both** its own size and an
-  expand ratio, two size channels that must agree. **[docs]**
+- **The Java web toolkit's version 8 has a perennial support question, "`setExpandRatio` does
+  nothing"**, answered by "the child also needs `setSizeFull()`" — because a component there has
+  **both** its own size and an expand ratio, two size channels that must agree. **[docs]**
 - **Swing's glue, struts and rigid areas are invisible filler *components***, needed only because
   `BoxLayout` has no per-child weight and does not pack from the start. **[docs]**
 - `GridBagConstraints` carries per-child `ipadx` / `ipady` among eleven fields, and is the layout
@@ -534,9 +537,9 @@ read.
 - Swing's `anchor` has `BASELINE` and friends, a text-*rendering* concept: every row of a character
   grid shares one baseline, so it has no meaning on a TTY. **[docs]**
 
-## R_overlay_dismissal — How Vaadin dismisses an overlay, and why the mechanism does not port
+## R_overlay_dismissal — How the Java web toolkit dismisses an overlay, and why it does not port
 
-Verified against the Vaadin 24 docs while designing outside-click dismissal.
+Verified against the Java web toolkit's version 24 docs while designing outside-click dismissal.
 
 - **"Modal dialogs are closable in three ways: by pressing Esc; clicking outside the Dialog; or
   programmatically"**, and **"Dialogs are modal by default"** — so light dismiss applies to modals
@@ -545,10 +548,10 @@ Verified against the Vaadin 24 docs while designing outside-click dismissal.
 - **The thing catching the outside click is the modality curtain**, a DOM element that is part of
   the overlay — which is why light dismiss is nearly free there. A framework whose modality is a
   *routing rule* has nothing to click on, so the same notice has to be manufactured. **[docs]**
-- **A non-modal Vaadin Dialog does not light-dismiss; its ComboBox overlay does** — so Vaadin's
-  non-modal behaviour is no precedent either way. **[docs]**
-- Vaadin's ComboBox closes its list when the field is clicked to reposition the caret, and reopens
-  it on the next keystroke. **[docs]**
+- **A non-modal Dialog there does not light-dismiss; its ComboBox overlay does** — so its non-modal
+  behaviour is no precedent either way. **[docs]**
+- Its ComboBox closes its list when the field is clicked to reposition the caret, and reopens it on
+  the next keystroke. **[docs]**
 
 ## R_confirm_dialogs — How other toolkits shape a confirm dialog
 
@@ -556,13 +559,14 @@ Verified against the Vaadin 24 docs while designing outside-click dismissal.
   `askyesno`, `tty-prompt`'s `yes?`, GTK3's `dialog.run`. It is unavailable to a single-threaded
   event loop without a nested loop re-entering raw mode. **[docs]**
 - **Five distinct API shapes ship in the wild**: ~20 blocking overloads (Swing); setters plus
-  booleans (Vaadin's `cancelable` / `rejectable`); a builder object (Android); flags plus an
-  `addButton` escape hatch (Qt); buttons-as-data with a result index (Electron, Turbo Vision,
-  prompt_toolkit). Textual ships no dialog component at all. **[docs]**
+  booleans (the Java web toolkit's `cancelable` / `rejectable`); a builder object (Android); flags
+  plus an `addButton` escape hatch (Qt); buttons-as-data with a result index (Electron, Turbo
+  Vision, prompt_toolkit). Textual ships no dialog component at all. **[docs]**
 - **The button sets toolkits ship** are OK · OK/Cancel · Yes/No · Yes/No/Cancel · Retry/Cancel ·
   Abort/Retry/Ignore. Windows enumerates them as a six-value `MessageBoxButtons`. **[docs]**
-- **Vaadin's ESC triggers the Cancel action**, and its docs carve out the don't-ask-again checkbox as
-  the one thing a confirm dialog's body legitimately holds beyond prose. **[docs]**
+- **The Java web toolkit's ESC triggers the Cancel action**, and its docs carve out the
+  don't-ask-again checkbox as the one thing a confirm dialog's body legitimately holds beyond prose.
+  **[docs]**
 - Browsers used to hide a text input's placeholder on focus; **HTML5 stopped**, and the hint now
   persists while the user types. **[docs]**
 
@@ -616,8 +620,8 @@ year 2 to a form while its user was still typing `1.1.2024`.
 
 | toolkit | per-edit notice | commit notice | timing knob |
 |---|---|---|---|
-| Vaadin `TextField` etc. | `ValueChangeEvent` | — | `ValueChangeMode`: EAGER / LAZY / TIMEOUT / ON_BLUR / ON_CHANGE |
-| Vaadin `DatePicker`, `TimePicker` | **none** | `ValueChangeEvent` | **none** — no `HasValueChangeMode` |
+| the Java web toolkit's `TextField` etc. | `ValueChangeEvent` | — | `ValueChangeMode`: EAGER / LAZY / TIMEOUT / ON_BLUR / ON_CHANGE |
+| its `DatePicker`, `TimePicker` | **none** | `ValueChangeEvent` | **none** — no `HasValueChangeMode` |
 | Swing `JFormattedTextField` | document listener | the `value` property, `commitEdit` | `focusLostBehavior`, default `COMMIT_OR_REVERT` |
 | Textual `Input` | `Input.Changed` | `Input.Submitted`, `Input.Blurred` | `validate_on`, gating *validation* only |
 | tview `InputField` | `SetChangedFunc` | `SetDoneFunc` (Enter/Esc/Tab) | — |
@@ -625,23 +629,23 @@ year 2 to a form while its user was still typing `1.1.2024`.
 
 Rows are the *notice*, not the widget: a "commit notice" fires on Enter or on leaving the field.
 
-- **Vaadin's `ValueChangeMode` reaches only the string-ish fields.** Its javadoc lists the
-  implementors of `HasValueChangeMode` as `AbstractNumberField`, `BigDecimalField`, `EmailField`,
-  `Input`, `IntegerField`, `NumberField`, `PasswordField`, `RichTextEditor`, `TextArea` and
-  `TextField`; `DatePicker` and `TimePicker` are absent, and fire on commit unconditionally.
-  **[docs]**
+- **The Java web toolkit's `ValueChangeMode` reaches only the string-ish fields.** Its javadoc lists
+  the implementors of `HasValueChangeMode` as `AbstractNumberField`, `BigDecimalField`,
+  `EmailField`, `Input`, `IntegerField`, `NumberField`, `PasswordField`, `RichTextEditor`,
+  `TextArea` and `TextField`; `DatePicker` and `TimePicker` are absent, and fire on commit
+  unconditionally. **[docs]**
 - **The knob is about a network, not about semantics**: `HasValueChangeMode` is documented as
   changing *"the way its value on the client side is synchronized with the server side"*, and
   LAZY/TIMEOUT are described in terms of a scheduling interval. **[docs]**
-- **Vaadin's default is `ON_CHANGE`**, syncing on the DOM `change` event "when the component value
-  is committed"; `LAZY` restarts its wait on every change, and the wait defaults to **400 ms**
-  (`HasValueChangeMode.DEFAULT_CHANGE_TIMEOUT`) — the 25.2 text-field and text-area pages.
-  **[docs]**
+- **The Java web toolkit's default is `ON_CHANGE`**, syncing on the DOM `change` event "when the
+  component value is committed"; `LAZY` restarts its wait on every change, and the wait defaults to
+  **400 ms** (`HasValueChangeMode.DEFAULT_CHANGE_TIMEOUT`) — the 25.2 text-field and text-area
+  pages. **[docs]**
 - **The enum has five constants, the docs page four**: `ON_BLUR` is in the 25.2.8 javadoc but
   missing from the 25.2 text-field page's table. **[docs]**
-- **Debounce and commit are different clocks, and Vaadin ships the bug**: under LAZY or TIMEOUT the
-  value syncs after a delay, so a blur handler can read the *old* value (vaadin/flow#14090).
-  **[docs]**
+- **Debounce and commit are different clocks, and the Java web toolkit ships the bug**: under LAZY
+  or TIMEOUT the value syncs after a delay, so a blur handler can read the *old* value (its upstream
+  issue 14090). **[docs]**
 - **Swing's formatted field latches the last valid content**: `getValue()` is documented as "the
   most recent valid content of the field", which may not be what is displayed, so the docs advise
   calling `commitEdit()` before reading it — the precedent for on-commit semantics, and for the
@@ -773,9 +777,9 @@ Surveyed 2026-09-17 from docs and source; cells marked ⚠ are from memory.
 - **tview synthesizes `MouseLeftClick` only if the pointer did not move** between down and up, and
   its `Button` reacts to the click, never capturing. **[src]**
 
-## R_form_items — What Vaadin's Form Layout puts around a field
+## R_form_items — What the Java web toolkit's Form Layout puts around a field
 
-Verified against the Vaadin 25.2 docs, 2026-09-19, while designing `FormItem` and the layout above it.
+Verified against its 25.2 docs, 2026-09-19, while designing `FormItem` and the layout above it.
 
 - **The caption belongs to the wrapper, not the field**: *"The field label must be applied on the
   Form Item rather than the field itself."* A field wrapped in a Form Item renders its label to the
@@ -790,20 +794,17 @@ Verified against the Vaadin 25.2 docs, 2026-09-19, while designing `FormItem` an
   to the fields can be confusing if fields are rendered in multiple columns … this combination is
   not recommended."* **[docs]**
 - **Side-caption position and width are the layout's, not the item's** — `FormLayout#setLabelsAside`
-  and `FormLayout#setLabelWidth` (the `--vaadin-form-layout-label-width` property), one width for
-  every item. Rechecked against the 25.2 docs, 2026-09-29. **[docs]**
+  and `FormLayout#setLabelWidth` (a CSS custom property), one width for every item. Rechecked against the 25.2 docs, 2026-09-29. **[docs]**
 - **Side labels fall back above the field when the layout is too narrow** — automatically in
   auto-responsive mode, and below `20em` in the default responsive steps. **[docs]**
 - **Both fill orders ship.** Responsive-steps mode fills row-major into the columns a breakpoint
   declares (default one column below `40em`, two above); auto-responsive mode puts every field in
   one column until `FormRow` groups some onto a row, and a row too wide for the column count wraps.
   A feature flag decides which mode is the default. **[docs]**
-- **The required indicator is a theme choice, not a semantic one**: the glyph is
-  `--vaadin-input-field-required-indicator` and its color
-  `--vaadin-input-field-required-indicator-color`, both distinct from
-  `--vaadin-input-field-error-color`. **[docs]**
-- **Even Vaadin does not consider the marker self-explanatory**: *"An instruction text at the top of
-  the form explaining the required indicator is recommended."* **[docs]**
+- **The required indicator is a theme choice, not a semantic one**: the glyph and its color are
+  two CSS custom properties, both distinct from the error color's. **[docs]**
+- **Even the Java web toolkit does not consider the marker self-explanatory**: *"An instruction text
+  at the top of the form explaining the required indicator is recommended."* **[docs]**
 
 ## R_paint_context — How other toolkits carry paint state, and where they put the target
 
@@ -954,9 +955,9 @@ Surveyed 2026-09-21 for `D_deferred_layout`: the mark, when the pass runs, and t
 - Not checked: Qt (`QEvent::LayoutRequest`) and GTK4 (`gtk_widget_queue_allocate`); both are
   believed deferred and neither would change the tally. **[unverified]**
 
-## R_vaadin_binder — What Vaadin's `Binder` does in each mode, and where its docs stop
+## R_web_binder — What the Java web toolkit's `Binder` does in each mode, and where its docs stop
 
-Checked 2026-09-29 against the Vaadin 25.2 docs, the 25.2 javadoc and `flow-data` 25.2.6 sources,
+Checked 2026-09-29 against its 25.2 docs, the 25.2 javadoc and `flow-data` 25.2.6 sources,
 while designing `Tuile::Binder`.
 
 | | buffered (`readBean` / `writeBean…`) | write-through (`setBean`) |
@@ -973,7 +974,7 @@ while designing `Tuile::Binder`.
   is in error, then runs the bean validators and restores the bean state on a failure;
   `changedBindings` clears on success. The docs say only *"validators are triggered whenever a
   field value changes"*. **[src]** An empty required name keeps a valid edit of another field out of
-  the bean. **[verified 2026-09-25, Vaadin 25.2.7, Karibu test]**
+  the bean. **[verified 2026-09-25, 25.2.7, Karibu test]**
 - **Since 25, `validate()` no longer fails** *"when bean level validators have been configured but
   no bean is currently set (i.e. Binder is used in buffered mode)"*; the javadoc: *"Bean level
   validators are ignored if there is no bound bean"*. `validation.md` still says such methods

@@ -41,10 +41,9 @@ module Tuile
     # the sibling a rule compares against — so it has nothing to write, and that
     # is what leaves exactly one writer: whoever validates. The discipline that
     # writer owes is one sentence: **set *or clear* it on every validate pass**,
-    # as the example above does with its `: nil` branches. Vaadin's custom-field
-    # guide warns that sharing one `invalid` cell between internal and external
-    # validation ends with each overriding the other; Tuile's answer is that the
-    # field's *own* report is a different member ({HasBadInput#bad_input?} —
+    # as the example above does with its `: nil` branches. One cell shared
+    # between internal and external validation ends with each overriding the
+    # other, so the field's *own* report is a different member ({HasBadInput#bad_input?} —
     # derived on read, never stored), so the two never share a cell.
     #
     # There is deliberately **no `invalid?`**: a second predicate beside

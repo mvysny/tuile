@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 module Tuile
-  # Binds form fields to a model's attributes, with validation — Vaadin's
-  # `Binder`, the Ruby way. Abstract; build one of its two modes:
+  # Binds form fields to a model's attributes, with validation. Abstract;
+  # build one of its two modes:
   #
   # - {Buffered} — `read` the model into the fields, `write?` it back on
   #   Save; nothing reaches the model until every validator passes. An

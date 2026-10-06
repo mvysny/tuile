@@ -383,13 +383,13 @@ alarm.step = 60    # shows "07:30";    Up walks a minute — the default
 One knob doing both jobs looks like a shortcut and is the opposite. Precision is
 a property of the format the buffer is written in, and the buffer is the single
 source of truth for the value — so a second knob for it could disagree with the
-first. Vaadin's `TimePicker` and the HTML `<input type="time">` both tie
-precision to `step` for the same reason. The cost, since it is real: you cannot
-ask for seconds *and* a minute-long stride.
+first. The HTML `<input type="time">` ties precision to `step` for the same
+reason. The cost, since it is real: you cannot ask for seconds *and* a
+minute-long stride.
 
 Up and Down walk that stride; PageUp and PageDown walk an hour whatever the
 stride is; either pair on an empty field lands on *now*. That is the whole
-picker. There is deliberately no dropdown of times the way Vaadin's `TimePicker`
+picker. There is deliberately no dropdown of times the way a web `TimePicker`
 has one — a list of times tells you nothing you did not already know (a
 calendar is different: it answers what weekday the 17th is), and with your hands
 already on the keys, typing `1345` beats scrolling to it. Tuile is
@@ -1181,9 +1181,9 @@ label.text = "#{bar.percent}% — #{done}/#{files.size} files"
 
 Now the app words it. "Scanning…", a filename, two lines, a count — none of
 which a formatting knob on the bar could have produced. This is the
-composition argument from chapter 1 in miniature, and the frameworks Tuile
-takes after land in the same place: Vaadin's `ProgressBar` has no text API
-either, and its own docs tell you to put a label beside it.
+composition argument from chapter 1 in miniature, and the component
+frameworks land in the same place: JavaFX's `ProgressBar` has no text API
+either.
 
 That leaves `fraction` and `percent` as real API rather than conveniences,
 since they're what the label reads. Both scale the same way, and it's worth
@@ -1567,8 +1567,8 @@ the bar, never into a menu. And nothing about menus needed adding to the
 framework's key handling: a menu is not a mode.
 
 The keyboard map is the one every menu bar has had since Turbo Vision, and
-it's worth learning once because Vaadin, the web's ARIA pattern and every
-other TUI toolkit agree on it:
+it's worth learning once because the web's ARIA pattern and every other TUI
+toolkit agree on it:
 
 | While the bar has focus | |
 |---|---|

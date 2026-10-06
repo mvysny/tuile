@@ -215,7 +215,7 @@ baked into field state.
 the generic) and a renderer is a one-line proc defaulting to `:to_s`. So
 String-only buys almost nothing here while costing the ergonomics of
 date/int/combo inputs and re-introducing "pick a `Person`, get back a
-`"Alice"` you must re-resolve" bugs. A survey of Vaadin / Swing / Android /
+`"Alice"` you must re-resolve" bugs. A survey of Swing / Android /
 Textual / React / Flutter / SwiftUI found **no** toolkit that holds
 "String everywhere"; the dynamically-typed ones (Ruby's camp) get typed
 values *and* a uniform seam for free.
@@ -224,17 +224,18 @@ Why not:
 - *String-only value on every input:* fails "pick a domain object, get the
   object," and bakes a `String` assumption a future `IntegerField`/`DateField`
   would fight. Kept only as a theoretical fallback.
-- *A full Vaadin-shaped `HasValue`* (read-only, required-indicator, an
-  old-value event payload, converters): each answers a forms problem, and the
-  `Binder` landed needing none of them on the field — converters and `required`
-  are binding steps (`D_binder_chain`), and it skips its own writes by
-  `from_user?` rather than an old value. `isFromClient` is the one that grew
-  back, as `from_user?`, because two guards already needed it (`D_from_user`).
+- *A full-featured `HasValue`* (read-only, required-indicator, an
+  old-value event payload, a from-the-client flag, converters): each answers a
+  forms problem, and the `Binder` landed needing none of them on the field —
+  converters and `required` are binding steps (`D_binder_chain`), and it skips
+  its own writes by `from_user?` rather than an old value. The from-the-client
+  flag is the one that grew back, as `from_user?`, because two guards already
+  needed it (`D_from_user`).
 - *Naming — `Field` / `Valued` / `Bindable` / `Input` / `HoldsValue` /
   `Editable`:* each names an *adjacent* capability (focus/editing, esteem,
   a binder's job, a role, a wrapper class, the deferred read-only axis)
-  rather than "holds a value." `HasValue` is brutally literal, matches its own
-  method names, and carries the Vaadin lineage the project already wears.
+  rather than "holds a value." `HasValue` is brutally literal and matches its
+  own method names.
 
 The cost we carry:
 - `AbstractStringField#empty_value` is `""`; the mixin default is `nil`.
@@ -306,7 +307,7 @@ Why not:
 - *`Window`-framed dropdown:* the border is redundant chrome once a tint
   separates the panel, and costs 2 rows + 2 cols; the tint is what
   `D_bg_inherit` was built to make solid.
-- *`allow_custom_value`* (Vaadin's "typed text not in the list" escape hatch):
+- *`allow_custom_value`* (a "typed text not in the list" escape hatch):
   deferred — a custom value is a `String`, reintroducing the String/`T` tension
   at the value boundary; no use case needs it yet.
 
@@ -476,7 +477,7 @@ focused `TextField` consumes the key at delivery and returns true, so the ancest
 via a proxy but because the field genuinely handled it — `handle_key?` returning true *is* the per-key
 "I am in text-entry mode" declaration. It is scoped, not global: the bubble stops at the scope root,
 so an open modal popup owns its own `1` and two popups get two different defaults. There is no
-lifecycle bookkeeping, nothing to unregister, where Vaadin needs `bindLifecycleTo`. And one mechanism
+lifecycle bookkeeping and nothing to unregister. And one mechanism
 per job: the registry runs an app-wide *action*, an ancestor's `handle_key?` claims a *scope-wide
 key*.
 
@@ -523,7 +524,7 @@ Why not:
   widget is focused) — reintroduces the deleted proxy one rung higher, and fails *silently*, the
   binding just ceasing to work, where a reservation fails loudly at registration.
 - **Not stolen from the survey**: capture phases (Win32 / Turbo Vision / GTK4 — all cost a gate or an
-  opt-in flag), child-declared window-wide bindings (Swing / Vaadin — the trade this entry made,
+  opt-in flag), child-declared window-wide bindings (Swing — the trade this entry made,
   costed below), and per-binding priority flags (Textual — they collide with the registry's
   key-*refusal* duty, which has nowhere to live on a per-binding flag).
 
@@ -546,14 +547,14 @@ The first boolean input: one row, `[x] Enable syslog forwarding`, Space or click
 near-copy of `Button`'s single-row shell, and the moment to settle the vocabulary `CheckboxGroup` and
 `RadioGroup` follow.
 
-**`value` is `true`/`false`, never `nil`**, with `empty_value == false` — unchecked *is* empty, as in
-Vaadin. `checked?` / `checked=` / `toggle` are the domain-word face over that one piece of state, each
+**`value` is `true`/`false`, never `nil`**, with `empty_value == false` — unchecked *is* empty.
+`checked?` / `checked=` / `toggle` are the domain-word face over that one piece of state, each
 a thin **delegator** rather than an `alias`: an alias binds to the body present when it runs, so a
 subclass overriding `value=` would not be reached through `checked=`. **`caption`, not `label`** —
 this is app-authored chrome, and `HasCaption`'s split says chrome is `caption`; when a field-label
 seam lands, a checkbox's caption stays the clickable target, not a caption *for* another widget.
 
-**Space and Enter both toggle.** Space is the native gesture and Vaadin is Space-only; what tipped
+**Space and Enter both toggle.** Space is the native gesture; what tipped
 Enter in is the group components, where a checkable row toggles on Enter because Enter is `List`'s
 choose-the-item gesture — so `[ ] Verbose` flipped inside a `CheckboxGroup` and did nothing alone in a
 form, a distinction the user cannot see and one that reads as a bug rather than as restraint. The
@@ -592,7 +593,7 @@ Why not:
   `ListDropdown::Menu` shape — a non-focusable `List` subclass plus hand-forwarded movement keys — to
   protect a guarantee nothing relied on.
 - **Hit-test the whole `rect`** — `Rect#contains?` spans every row, so a click two rows below a
-  visible `[ ]` would toggle it. Vaadin agrees: a 100%-wide checkbox ignores clicks right of its label.
+  visible `[ ]` would toggle it.
 - **Let the extent follow `bg_color`** — with a tint the dead tail is visibly painted, so the hit test
   arguably widens. It must not: a target that silently changes when an ancestor gains a background is
   an invisible mode switch, untestable by inspection.
@@ -609,18 +610,17 @@ Why not:
   not report itself non-empty.
 - **A read-only flag** — parked with the rest of the forms-layer axes by `D_has_value`.
 
-**Tri-state (indeterminate) — settled, not built**, and this entry is its only home. It adopts
-**Vaadin's orthogonal flag**: `indeterminate` as a display override painting `[-] `, `value` staying
-boolean — which keeps `empty_value == false`, the boolean coercion and a group's set arithmetic
-intact, and models mixed as a *reflection* of children rather than a value. Two deviations from
-Vaadin: **any statement about the value clears the flag**, so `checked && indeterminate` —
-representable in Vaadin and meaningless — cannot be expressed; and if the flag needs observing it gets
-a plain `on_indeterminate_change`, not a second channel on the value seam. Rejected: a **`nil`-able
-`value`**, which breaks every property above, and a separate **`TriStateCheckbox`**, which duplicates
-the whole single-row shell for one flag. The flag is **computed, never typed** — Space or a click
-*from* mixed lands on **checked**, clearing the flag then toggling, firing one change (the HTML
-activation steps Vaadin inherits). Deferred for want of a consumer: the first would be a
-`CheckboxGroup` header row, which `D_checkbox_group` declined to build.
+**Tri-state (indeterminate) — settled, not built**, and this entry is its only home. It adopts **an
+orthogonal flag**: `indeterminate` as a display override painting `[-] `, `value` staying boolean —
+which keeps `empty_value == false`, the boolean coercion and a group's set arithmetic intact, and
+models mixed as a *reflection* of children rather than a value. **Any statement about the value
+clears the flag**, so `checked && indeterminate` — meaningless — cannot be expressed; and if the
+flag needs observing it gets a plain `on_indeterminate_change`, not a second channel on the value
+seam. Rejected: a **`nil`-able `value`**, which breaks every property above, and a separate
+**`TriStateCheckbox`**, which duplicates the whole single-row shell for one flag. The flag is
+**computed, never typed** — Space or a click *from* mixed lands on **checked**, clearing the flag
+then toggling, firing one change (the HTML activation steps). Deferred for want of a consumer: the
+first would be a `CheckboxGroup` header row, which `D_checkbox_group` declined to build.
 
 ## D_checkbox_group — Why does `CheckboxGroup` compose a `List` and hold a `Set` rather than own its rows?
 
@@ -684,7 +684,7 @@ Why not:
 
 The cost we carry: a bare `List` has **no cursor**, so a future `List`-composer must install one or
 arrows, Enter and the row highlight are silently dead. Items need stable `#hash` / `#eql?` — the
-constraint Vaadin's `HashSet`-backed group carries too — so an item mutated after selection becomes
+constraint any `HashSet`-backed group carries — so an item mutated after selection becomes
 unfindable, and two `==`-equal items share one selection while two *distinct* items rendering the
 same label stay independent.
 
@@ -696,7 +696,7 @@ composed-field taxonomy), `D_checkbox_group` (the `List`-composing shape it copi
 desktop convention and this note's own first design.
 
 Single-select from a handful of typed items, one `(*) label` row each — `ComboBox`'s job when the
-set is small enough to show at once. Every graphical radio group ever built (HTML, Vaadin, Windows
+set is small enough to show at once. Every graphical radio group ever built (HTML, Windows
 dialogs, GTK) moves the *selection* with the arrow keys: focus and choice are one thing. The design
 note originally adopted that, calling it "the one real design call."
 
@@ -1135,7 +1135,7 @@ window.
 Two `protected` no-op hooks on `Component`, fired from the protected `parent=` writer — the sole
 reparenting choke point, provably so now that `add_child` / `detach_child` are its only callers.
 `parent=` measures `attached?` either side of the pointer write and fires across the whole subtree
-only on a genuine transition. Past-tense names follow local convention rather than Vaadin's
+only on a genuine transition. Past-tense names follow local convention rather than an
 imperative `onAttach`. The contract: **`handle_attached` starts what `handle_detached` stops; both cheap and
 idempotent** — whatever a hook acquires it must release in the mirror, because nothing else will.
 
@@ -1160,13 +1160,13 @@ Why not:
   four members when two are unproven is a seam wider than its need. **Re-grow rule:** add them the
   first time an assembly-style app needs a subscription without subclassing.
 - **Leaving `Screen#close` silent**, the shape shipped for one commit and lifted the same day. A
-  Tuile screen dies with the process, unlike Vaadin's UI inside a long-lived JVM where a missed
+  Tuile screen dies with the process, unlike a web UI inside a long-lived server where a missed
   detach leaks into a *surviving* process — still true, and why this was never urgent; what overrode
   it is that `attached?` became a type test (`D_tree_api`), so a tree rooted at a nilled pane claimed
   attachment forever and raised when touched.
 - **Swallowing a raise during teardown** (rescue-and-log), as the deferred design specified on the
   grounds that teardown must not be abortable. A raising `handle_detached` is a programming error and a
-  guard would hide it; Vaadin does not guard either. The concern survives via an **`ensure`** around
+  guard would hide it. The concern survives via an **`ensure`** around
   the teardown flags: the exception propagates loudly, but the closed flag and the singleton slot
   still clear, so one buggy hook stays one failure instead of cascading through every later example
   that inherits a half-closed screen.
@@ -1205,10 +1205,10 @@ bookkeeping, each in its own order.
 
 Model the tree as a tree, and keep the runtime out of it.
 
-- **`Screen` stays machinery and stays out of the tree** — Vaadin's
-  `VaadinService`, roughly. It may remain a process-singleton; nothing here
+- **`Screen` stays machinery and stays out of the tree** — a service, not
+  a node. It may remain a process-singleton; nothing here
   required killing it.
-- **`ScreenPane` is the tree root and defines attachedness** — Vaadin's `UI`.
+- **`ScreenPane` is the tree root and defines attachedness**.
   `attached?` became `root.is_a?(ScreenPane)`: one axis, no `Screen`
   reference, so it never raises and a tree can be assembled with no screen in
   the process. What such a tree does *not* get by itself is geometry: layout is
@@ -1347,18 +1347,16 @@ Why not:
 
 - *`HasValue`, since it has a `value`.* That mixin is the *input-field* seam: it carries
   `focusable? = true`, so a display widget would include it only to override that back, and it would
-  put a read-only report into the seam a future forms layer iterates over. Vaadin's `ProgressBar`
-  likewise has `setValue` without implementing `HasValue`.
+  put a read-only report into the seam a future forms layer iterates over.
 - *A `caption` slot* (`:percentage | :fraction | String | nil`, centered and overlaid on the fill),
   which an earlier draft had. The overlay is the entire complexity budget — slicing a {StyledString}
   at the fill boundary and merging per-span fg so the text stays legible on both sides, centering
   through `display_width`, specs at every fill level: more code than the bar it decorates, all of it
-  formatting. A sibling {Component::Label} instead gets styling, theming and `handle_theme_changed` free
-  and can put any words anywhere, where an overlay is only ever "centered, one line, clipped to the
-  bar". The component-oriented toolkits agree: Vaadin 25.2's `ProgressBar` has no text API and its
-  docs compose a label beside it, JavaFX exposes only `progressProperty()`, and the older ones carry
-  a boolean plus an override string (Swing `setStringPainted`, GTK `show_text`) or a printf template
-  (Qt `setFormat("%p%")`) — nobody ships a closure.
+  formatting. A sibling {Component::Label} instead gets styling, theming and `handle_theme_changed`
+  free and can put any words anywhere, where an overlay is only ever "centered, one line, clipped to
+  the bar". The component-oriented toolkits agree: JavaFX exposes only `progressProperty()`, and the
+  older ones carry a boolean plus an override string (Swing `setStringPainted`, GTK `show_text`) or
+  a printf template (Qt `setFormat("%p%")`) — nobody ships a closure.
 - *`min=` / `max=` writers beside `range=`.* Pairwise validation makes two setters order-dependent,
   rejecting an intermediate state the app never intended: `bar.min = 10` raises while `max` is still
   the default `1.0`, and the same two lines reversed work. That coin-flip is why Swing and GTK both
@@ -1469,8 +1467,8 @@ not an axis question.
 The `Float` half of `D_integer_field`'s "derived parse" case — same wrapper shape, same taxonomy
 slot, so only what *differs* is recorded here.
 
-Vaadin calls this a *Number Field*; the survey in
-`design/ideas/new-components.md` filed it as an "`IntegerField` twin". A second numeric
+The survey in `design/ideas/new-components.md` filed this as an
+"`IntegerField` twin". A second numeric
 field is where the naming rule and the shared-base temptation both had to be
 settled, because a third (`BigDecimalField`) is foreseeable.
 
@@ -1479,7 +1477,7 @@ settled, because a third (`BigDecimalField`) is foreseeable.
 `Integer`. The name is then derivable rather than remembered, it says the
 precision out loud at the call site (`Float` is a binary double — the wrong type
 for money), and it leaves the obvious room for `BigDecimalField` /
-`RationalField`. `NumberField` was rejected: it names Vaadin's *widget*
+`RationalField`. `NumberField` was rejected: it names a *widget*
 category, not this field's value, and it would force the eventual sibling to be
 "the other number field."
 
@@ -1703,11 +1701,12 @@ Why not:
   because their author never obtains a rect any other way; Tuile hands out coordinates, so **once
   `rect=` exists a layout is optional sugar**, declinable per component (`R_box_layouts`).
 
-The cost we carry: Vaadin 8's perennial "`setExpandRatio` does nothing" exists because a component
-there has both its own size and an expand ratio, two channels that must agree (`R_box_layouts`) —
-Tuile has no component-side size to disagree, so the commonest confusion in the toolkit we took
-`Expand` from is a consequence of the channel v0.9.0 deleted. A future `Layout::Grid` should reuse
-`Fixed` / `Percent` / `Expand` verbatim per row and column rather than invent a second vocabulary.
+The cost we carry: the Java web toolkit's perennial "`setExpandRatio` does nothing" exists because a
+component there has both its own size and an expand ratio, two channels that must agree
+(`R_box_layouts`) — Tuile has no component-side size to disagree, so the commonest confusion in the
+toolkit we took `Expand` from is a consequence of the channel v0.9.0 deleted. A future
+`Layout::Grid` should reuse `Fixed` / `Percent` / `Expand` verbatim per row and column rather than
+invent a second vocabulary.
 
 ## D_wrap_leading_space — Why does a wrap treat a leading indent as content, with no flag and no hanging indent?
 
@@ -2191,7 +2190,7 @@ gem already did (`examples/sampler.rb`'s unfocused `List` is the house idiom).
 
 ## D_notification — Why is `Notification` one corner toast draining N messages on a single ticker?
 
-Vaadin's `Notification`, on a TTY: it must not interrupt (no focus, no keys, no click blocking), be
+A toast on a TTY: it must not interrupt (no focus, no keys, no click blocking), be
 raisable from one line of app code, and cope with *several* raised at once — a batch job reporting
 five results, a burst of failures.
 
@@ -2471,12 +2470,12 @@ Why not:
 
 ## D_tabs — Why are `Tabs` a bare strip and `TabSheet` the pane-swapper, rather than one component?
 
-Because the strip is useful alone — Vaadin documents that case ("content switching without Tab
-Sheet"), and an app whose strip lives structurally elsewhere needs it.
+Because the strip is useful alone — switching content without a sheet — and an app whose strip
+lives structurally elsewhere needs it.
 
 **Neither is `HasValue`, because a selection is not a value.** The test: **would a form save it?** A
 `RadioGroup`'s selection *is* the datum edited; a tab's is where the user is looking
-(`D_progress_bar` made the same call one step out, and Vaadin's `Tabs` is not a field either). Cost:
+(`D_progress_bar` made the same call one step out). Cost:
 no `empty?` / `clear` / `on_value_change` and no free `focusable?`, so `Tabs` declares `focusable?`
 and `tab_stop?` itself like `Checkbox`. Asked for `tabs.value`, the answer is `selected_index`.
 
@@ -2493,7 +2492,7 @@ a feature.
 **One tab stop for the whole strip, and arrows activate immediately.** A component per tab breaks
 "exactly one stop per widget" (`D_has_value`), costs n Tab presses before the content, and makes the
 *Tab key* walk between *tabs*, which the key ladder forbids since Tab means "leave this widget"; no
-prior art does it. Immediate activation is what every lineage but Vaadin does, but the deciding
+prior art does it. Immediate activation is what nearly every lineage does, but the deciding
 reason is narrower: **auto-activation means only one thing is ever highlighted.** Manual activation
 needs two states on one row — selection and roam — so two visual channels, on a strip that spends
 both on the selection (bold always, plus `active_bg_color` while focused; bold is the one surviving
@@ -2524,7 +2523,7 @@ buys the browser's strip-then-pane Tab order out of pre-order traversal, and `Ha
 for three reasons: `content=` would be public API meaning "the visible pane", misleading when the
 pane is *derived* from the selection; `HasContent#handle_mouse` forwards only into `content`, so the
 strip would never see a click; and `HasContent#handle_focus` forwards focus into the content, which
-switching a tab must not do, as in the browser and Vaadin. `D_tree_api`'s slot-swap recipe is
+switching a tab must not do, as in the browser. `D_tree_api`'s slot-swap recipe is
 reused, its hook landing focus on **the strip**, the user's last action having been a tab switch.
 
 Why not:
@@ -2569,16 +2568,16 @@ Why not:
 - **A framework key switching tabs from inside a pane** (`Ctrl+PageUp` / `PageDown`), not v1 and not
   later: **a global shortcut in disguise**, and app policy already has two homes. Nested sheets make
   it ambiguous *and* silent — the bubble hits the innermost sheet first, so the outer goes
-  keyboard-unreachable with nothing explaining why. Vaadin apps never needed it, and the editors that
+  keyboard-unreachable with nothing explaining why. The editors that
   have it each use their own scheme; Tuile owes the *verbs*, `select_next` / `select_previous` being
   public so an app writes two lines and owns the "which sheet" question.
-- **Vertical orientation** (out of scope; Vaadin disallows it in a TabSheet too, and a vertical strip
-  is a `List` with a renderer), **a border around the strip** (compose with `Window`; the Turbo
-  Vision / Terminal.Gui notched look would couple `Tabs` to `Window` chrome), and **prefix/suffix
-  slots** (a caption is a `StyledString`, so `Open [24]` is just text).
+- **Vertical orientation** (out of scope; a vertical strip is a `List` with a renderer), **a border
+  around the strip** (compose with `Window`; the Turbo Vision / Terminal.Gui notched look would
+  couple `Tabs` to `Window` chrome), and **prefix/suffix slots** (a caption is a `StyledString`, so
+  `Open [24]` is just text).
 
 Deferred and additive — the payoff of the `Tab`-object ruling, each being an attribute plus a branch
-in paint and in arrowing: those three, and lazy panes, built on first selection as Vaadin does it.
+in paint and in arrowing: those three, and lazy panes, built on first selection.
 
 The cost we carry: selection is view state, so no forms layer will enumerate a strip; a pane's
 `handle_attached` / `handle_detached` fire on every switch, so it cannot own a resource outliving its
@@ -2595,7 +2594,7 @@ is not: the widget needs a *second placement*, not a second kind of overlay.
 `MenuBar#handle_key?`, which offers it to a `Cascade` first. That is `Select`'s architecture
 (`D_select`) at N levels, so **nothing in the key-dispatch ladder changes** and the widget is
 additive: two placement helpers on `ListDropdown`, one callback pass-through, no change to `Popup`,
-`ScreenPane` or `Component`. The keyboard map is Vaadin's, which is also the ARIA menubar pattern
+`ScreenPane` or `Component`. The keyboard map is the ARIA menubar pattern
 and what every TUI lineage surveyed does; there was nothing to invent.
 
 **Deliberately not like `Tabs`.** The strip reuses `Tabs`' *hit testing* — an `extent` plus one
@@ -2643,14 +2642,14 @@ Why not:
   a date-picker grid). The third-placement half went dormant when `ContextMenu` was declined
   (`D_no_context_menu`).
 - **A command-code bus** (Turbo Vision's `cmOpen` + `handleEvent`) instead of per-item callables:
-  Ruby has closures, and Vaadin, Terminal.Gui and ratatui's `tui-menu` all landed on per-item
+  Ruby has closures, and Terminal.Gui and ratatui's `tui-menu` both landed on per-item
   listeners.
-- **`item.submenu` as a separate object** (Vaadin's `getSubMenu()`) exists only because a Vaadin
+- **`item.submenu` as a separate object** (a web toolkit's `getSubMenu()`) exists only because a web
   `MenuItem` is a DOM component; a Tuile item is a handle, so `item.add_item` is one hop shorter and
   makes depth free. **`Component::MenuItem` as a top-level constant** was priced against a breaking
   rename once `ContextMenu` named the type, and icing that widget removed the counterparty, so the
   house default (`Tabs::Tab`, `List::Cursor`) wins; a revival pays a **Breaking:** line or aliases
-  `MenuBar::Item`. **A `HasMenuItems` mixin** (Vaadin's shared `MenuBar` / `ContextMenu` / `SubMenu`
+  `MenuBar::Item`. **A `HasMenuItems` mixin** (a shared `MenuBar` / `ContextMenu` / `SubMenu`
   interface) is not needed yet and stays cheap: `MenuBar` delegates `add_item` / `items` to a
   captionless root `Item`, so the method exists exactly *once* and a future sharing exercise starts
   from one implementation rather than two that drifted.
@@ -2706,7 +2705,7 @@ The cost we carry:
   cursor by key, mouse and search, but not by index — a hole independent of menus.
 - **Deferred, each additive:** checkable and disabled items, removal and reordering, dynamically
   computed items, open-on-hover (needs `capture_mouse: :hover`), and
-  Vaadin's collapse-into-an-overflow-menu. The costly one is global-shortcut activation, which needs
+  collapse-into-an-overflow-menu. The costly one is global-shortcut activation, which needs
   `Keys` to grow function keys first: with no Alt, the only way to *reach* the bar is Tab, which is
   what separates `Alt+F, X` from a Tab-hunt.
 
@@ -2726,9 +2725,9 @@ second delivery this project rejects for a `Screen`-level broadcast. Under the f
 delivered twice: `ScreenPane` closes popups that asked in advance to be closed. **The popup receives
 a fate, not an event.** The price is expressiveness, paid once by `ComboBox`: clicking your own
 input to reposition the caret closes the list you are filtering — transient, since the next
-keystroke reopens it, and Vaadin behaves the same way (`R_overlay_dismissal`). If per-click nuance
-is ever needed, widen the reader to take the event — a pure widening — rather than reaching for a
-notice or a veto.
+keystroke reopens it, and the Java web toolkit behaves the same way (`R_overlay_dismissal`). If
+per-click nuance is ever needed, widen the reader to take the event — a pure widening — rather than
+reaching for a notice or a veto.
 
 **The ordering rule, both halves load-bearing.** Snapshot the open popups *before* routing, close
 the opted-in misses *after*. *Snapshot before*, or a popup the delivered click **opened** is in the
@@ -2782,8 +2781,9 @@ The cost we carry:
   out of. Level 0 owns nothing on purpose — a click on a dialog hosting the bar *should* close the
   whole menu and keep the dialog.
 - **Every dismissable popup closes, not just the topmost**, so a cascade vanishes whole rather than
-  peeling a panel per click, and two *unrelated* stacked modals both close where Vaadin's curtain
-  would close only the top — arguably Vaadin-consistent anyway (`R_overlay_dismissal`).
+  peeling a panel per click, and two *unrelated* stacked modals both close where a modality curtain
+  would close only the top — though closing a modal there closes those opened after it too
+  (`R_overlay_dismissal`).
 - **The modal/non-modal split dissolves.** The flag applies identically to both and needs no routing
   change, because nothing is *delivered* to the modal — it is just closed. An outside click on a
   modal both dismisses it and is swallowed: click once to dismiss, again to act.
@@ -2848,7 +2848,7 @@ Why not:
 - **A `Component#context_menu=` slot** checked inside `Component#handle_key?`, so any component gets
   one by assignment. Half a feature: almost no widget calls `super` from its own `handle_key?`, so it
   would work for ancestors that do not override and silently not for focused leaves.
-- **Vaadin's `setTarget(component)`** — attach the menu to a target and let the framework route the
+- **A `setTarget(component)`** — attach the menu to a target and let the framework route the
   right-click to it. Nothing to build that on: `handle_mouse` returns `void`, and a right-click
   already reaches *every* component along the rect chain, ancestor first and deepest last, so "which
   target owns this click" has no answer. (That ordering *would* give deepest-wins free, if a revival
@@ -2933,10 +2933,9 @@ The cost we carry:
   `ComboBox`'s keys must hardcode them, duplicating knowledge that lived in the widget. No app has
   ever done this, but the duplication is real if one starts.
 - **A modal `Popup` no longer shows how to close itself** — only the advertisement is gone, ruled
-  acceptable on the Vaadin precedent that a `Dialog` closes on ESC and no Vaadin *app* documents it:
-  ESC-dismisses-an-overlay is a convention the user brings. The `q`/ESC quit fallback stays
-  unadvertised for the same reason (`D_quit_key`) — the same baked app policy as `"q quit"`, but it
-  is *dispatch*, not presentation.
+  acceptable because ESC-dismisses-an-overlay is a convention the user brings. The `q`/ESC quit
+  fallback stays unadvertised for the same reason (`D_quit_key`) — the same baked app policy as
+  `"q quit"`, but it is *dispatch*, not presentation.
 
 ## D_quit_key — Why do an unhandled `q` and ESC quit the loop, unadvertised?
 
@@ -3250,8 +3249,7 @@ clamp. Two lesser counts: clamping spreads the surprise to every reader of any
 `rect` (with `extent` only the six widgets that *have* a quirk carry it), and it
 solves only the height axis — every width clamp here is content-derived
 (`caption.display_width + 4`), so it would need the parent told to re-lay-out on
-`caption=`, which is `on_child_content_size_changed`, deleted in 0.9.0. Vaadin 8's
-slot negotiation is the prior art, and Vaadin 10 dropped it for CSS.
+`caption=`, which is `on_child_content_size_changed`, deleted in 0.9.0.
 
 **The default is `nil`, not `rect.size`, and that is what lets `repaint` decide.**
 The first cut defaulted to `rect.size` and had the base branch on `extent ==
@@ -3502,7 +3500,7 @@ prose in a `TextView` the dialog owns, which is what makes scrolling *reachable*
 acts on the key alone, so the dialog hand-feeds scroll keys while a button keeps focus), keeps the
 sizing rule to one mode, and rides `StyledString` for icons, colour and emphasis; storing as given
 is what keeps `message` and its rendering from disagreeing, and handing the `TextView` back would
-hand back machinery. The casualty, priced: the don't-ask-again checkbox Vaadin's docs carve out.
+hand back machinery. The casualty, priced: the don't-ask-again checkbox.
 Everything else people put in a dialog body is not a confirm dialog, and
 `Popup.new(content: your_layout)` remains the escape hatch. **Re-grow rule:** don't-ask-again
 returns as a named `remember:` seam whose state reaches the callback, never as a reopened content
@@ -4347,8 +4345,7 @@ would be a constructor-injected component, not a proc slot.
 unrepresentable input collapses onto the same `nil`, so the parse destroyed the fact before the diff
 ran. With a *derived* parse (`D_integer_field`) three of the four transitions fire nothing, and the
 one that does says *empty*, not *bad*, so a form reading that as "the user cleared it" saves `nil`
-over a value they believe they typed. Vaadin named it: *"This behavior can create the illusion for
-the user that they were able to save an invalid value."*
+over a value they believe they typed — the illusion of having saved an invalid value.
 
 **A mixin with one override point, `bad_input_message`, returning a message or `nil`;** `bad_input?`
 is its presence. A message rather than a boolean because the *reason* differs per field kind and the
@@ -4431,11 +4428,10 @@ Why not:
   accents, `bg_color`, `TextArea#@wrap`), and deriving makes notice *order* immaterial. The residual
   trap is a consumer reacting to `on_value_change` without re-asking: it concludes "the user cleared
   the field", the illusion above.
-- **Vaadin-faithful: one shared flag, plus a pull seam (`getDefaultValidator`) and a push event
-  (`ValidationStatusChangeEvent`) to stop it lying.** Rejected on Vaadin's own warning — *"Do not rely
-  on the same `invalid` and `errorMessage` properties for internal validation. Otherwise… external
-  validation is likely to override or ignore the internal state."* — since both repairs exist
-  *because* the flag is shared.
+- **One shared flag, plus a pull seam (a default validator) and a push event (a validation-status
+  change) to stop it lying.** Rejected because internal and external validation sharing one
+  `invalid` / `errorMessage` cell end with each overriding or ignoring the other — and both repairs
+  exist *because* the flag is shared.
 - **Do nothing; bad input reads as empty.** The prior behaviour, defensible once prevention was in
   place, indefensible under a text-input date field where no filter can shrink the residue; shipping
   the seam early kept that field from inventing an ad-hoc `parse_error` accessor.
@@ -4455,10 +4451,10 @@ The code side is a **non-change** — no field has ever included `HasCaption`, a
 what keeps it that way. The container half is `Component::FormItem`, which ships the chrome around
 one field (`D_form_item`); the `FormLayout` stacking them is `D_form_layout`.
 
-Vaadin shipped both answers, which is what made this a real fork
-rather than a preference. Vaadin 8: `field.setCaption("Name")`, the component
-renders its own label. Vaadin 25: `formLayout.addFormItem(field, "Name")`, the
-form item owns the geometry. Tuile had to pick before a `FormLayout` could
+Both answers have shipped, which is what made this a real fork
+rather than a preference: `field.setCaption("Name")`, the component
+renders its own label, or `formLayout.addFormItem(field, "Name")`, the
+form item owns the geometry (`R_form_items`). Tuile had to pick before a `FormLayout` could
 exist, and the answer decides whether `HasCaption` reaches `HasValue`.
 
 **Decision — the caption is the container's.** Three reasons, any one
@@ -4516,7 +4512,7 @@ Why not:
   authorship of the same text.
 - *A caption that grows the field a row.* The deleted bottom-up channel, and
   `D_status_bar` refuses the framework-placed row from the other side.
-- *Vaadin 8 wholesale (caption **and** error ink on the field).* Half of it
+- *Caption **and** error ink on the field, wholesale.* Half of it
   survived on the merits — see `D_has_validation`, which keeps the *verdict* on
   the field for a reason that does not apply to the caption: a field can paint
   invalidity inside its rect without displacing the value, because ink is a
@@ -4606,7 +4602,7 @@ the merge sitting beside the ink's — and a consumer registers on both notices,
 (`HasValue` is the field's own state, kept thin and self-owned by `D_has_value`; `error_message`
 comes from outside); **lookup** — a binder or test locator iterating "everything that can carry a
 verdict" walks `is_a?(HasValidation)`; **a non-field can be invalid** (a composite field, a form
-section) and includes it alone; and **it is Vaadin's split**, so a binder port reads familiar. Cost
+section) and includes it alone. Cost
 ~12 lines, the trade `HasCaption` made. Population is every `HasValue` and nothing else — unlike
 `HasBadInput`, any field can be the subject of a rule, including a `Checkbox` ("you must accept the
 terms"); `ProgressBar` stays out for the reason it stays out of `HasValue`.
@@ -4618,9 +4614,10 @@ Why not:
   they sit in, so the only thing that computes a verdict could not report one (a click handler
   likewise holds `username` and `password`, not `form`); and a field outside a `FormLayout` could
   show nothing at all.
-- **Vaadin 25 read as "the container owns errors too"** — recorded because it nearly settled this the
-  other way: Vaadin 25 moved the *caption* to the form item but kept `invalid` / `errorMessage` on the
-  field, so even the container-owns precedent leaves the error on the field.
+- **A form item read as "the container owns errors too"** — recorded because it nearly settled this
+  the other way: the Java web toolkit moved the *caption* to the form item but kept `invalid` /
+  `errorMessage` on the field (`R_form_items`), so even the container-owns precedent leaves the
+  error on the field.
 - **An `invalid?` boolean plus a separate message** — two members for one fact, and the predicate
   collides with `bad_input?`.
 - **A red foreground on the glyphs.** The first cut, argued from the co-occurrence of `invalid` and
@@ -4732,10 +4729,11 @@ ignorant of which mixins a component includes — the rule that rejected a leaf 
 type (`D_bg_surface`).
 
 **It ships in `lib/`, not as a separate gem.** Zeitwerk loads it on first reference, so an app that
-never names `Tuile::Testing` pays nothing. Karibu is separate from Vaadin because Vaadin was someone
-else's project; here one author owns both sides, and a suite that must add a gem to locate a
-component keeps hand-rolling tree walks instead. `Testing` signals intent, not a hard boundary: an
-app needing the id walk in production is a re-grow onto `Component`, not a rename.
+never names `Tuile::Testing` pays nothing. Karibu-Testing is a separate library because the
+framework it tests was someone else's project; here one author owns both sides, and a suite that
+must add a gem to locate a component keeps hand-rolling tree walks instead. `Testing` signals
+intent, not a hard boundary: an app needing the id walk in production is a re-grow onto `Component`,
+not a rename.
 
 **Additive to the assertion channel:** a spec asserting what a component *shows* still asserts
 against the buffer; the locator replaces the *driving* half, plus about a dozen
@@ -5030,7 +5028,7 @@ no stdlib type to defer to and inherits every ruling here it does not question. 
 Up/Down from an unparseable buffer steps to today/now, changeable only in both fields at once.
 
 **A list of strftime formats: parse in order, first whole match wins, `formats.first` writes back** —
-Vaadin's `i18n.setDateFormats`, lenient in and strict out, with no mode flag and no ambiguity about
+lenient in and strict out, with no mode flag and no ambiguity about
 which format is *the* format. Two corollaries: **the list belongs to the app**, which makes leniency
 configurable without a second concept and is not the `converter=` strategy `D_integer_field` refused,
 since it configures the field's own parse/format pair rather than replacing it; and **strftime, not
@@ -5041,7 +5039,7 @@ grammar to own.
 `04/09/2026` and disagree, and **no validator can detect that** — only the app knows which reading was
 meant, so shipping the pair hands a European who typed 4 September a silent April 9: a *wrong value
 that saves cleanly*, worse than bad input, which is at least visible. The list's order is therefore
-the disambiguation and the app's call. (Vaadin's three-format example is *app* code, not its default.)
+the disambiguation and the app's call.
 `formats=` validates at **assignment** by round-tripping against one pre-1969 reference date — a
 canary, not a proof, and one that deliberately misses order ambiguity, since which reading was meant
 is the app's call. `%x` / `%X` / `%c` are rejected by name rather than left to it, Ruby's being not
@@ -5050,8 +5048,8 @@ locale-aware (`R_glibc_locale`) and otherwise passing while silently meaning "Am
 **`%y` is out of a format list entirely; the app writes `%Y`.** The primary is the write-back format
 and canonicalize-on-commit makes the rendered text *be* the value, so a `%y` primary turns
 `field.value = Date.new(2100, 9, 4)` into a field holding 2000 — the same wrong value that saves
-cleanly — and Ruby's window is wrong in both directions (`R_glibc_locale`). Vaadin's `referenceDate`,
-a 100-year window centred on today, is therefore not declined but *moot*: nothing left to centre.
+cleanly — and Ruby's window is wrong in both directions (`R_glibc_locale`). A reference date with
+a 100-year window centred on today is therefore not declined but *moot*: nothing left to centre.
 Cost, accepted and reversible: `04.09.26` is untypeable.
 
 **The placeholder is derived from the primary format, exactly or not at all.** `HasBadInput` mandates
@@ -5131,17 +5129,15 @@ Why not:
   itself and purely additive to re-allow.
 - **A mask** (`dd/mm/yyyy` with per-field ranges): a format declaration by another route that
   manufactures a third state, `"__/05/2026"` being neither garbage nor a value but **incomplete**,
-  which Vaadin models separately (`setIncompleteInputErrorMessage`); a field that grows one owes a
+  which deserves a message of its own; a field that grows one owes a
   ruling on which it is, and rides the same `error_ink?` hook either way.
 - **Designs that make bad input impossible** rather than reportable: a calendar-grid-only picker (no
   parse at all, but ~30 keystrokes for a birth date) and text entry behind a modal commit (a
   `ConfirmWindow`-shaped dialog that will not close on garbage — heavy in a form with six dates).
-- **Vaadin's `ValueChangeMode` on the date fields**, where the notice ruling started. The knob now
-  exists on the string and number fields (`D_value_change_mode`), and stays off these: Vaadin
-  doesn't apply it here either — `DatePicker` and `TimePicker` implement no `HasValueChangeMode`
-  and are on-commit unconditionally (`R_value_change_timing`) — and on a date field `:eager` would
-  mean announcing the year 2, a *wrong* value rather than a noisy one. Purely additive to re-grow
-  the day a consumer wants an eager date field.
+- **A value-change mode on the date fields**, where the notice ruling started. The knob now exists
+  on the string and number fields (`D_value_change_mode`), and stays off these: on a date field
+  `:eager` would mean announcing the year 2, a *wrong* value rather than a noisy one. Purely
+  additive to re-grow the day a consumer wants an eager date field.
 - **A latched last-good value**, Swing's `JFormattedTextField`, whose `getValue()` is the most
   recent *valid* content until `commitEdit` (`R_value_change_timing`): it makes the field hold bad
   input **and** a value at once, which `D_bad_input` forbids, and ends `value` being a pure
@@ -5183,7 +5179,7 @@ line start, **Ctrl+W** the previous word, Ctrl+K to the line end. bash, zsh, fzf
 (`clear-query`), Textual's `Input` (`delete_left_all` / `delete_left_word`),
 prompt_toolkit, the ratatui ecosystem's `tui-input` and vim's insert mode all
 agree, and have since the 1980s. The GUI toolkits have no keyboard equivalent at
-all — Vaadin's combo ships a clear `×` and browsers rely on the mouse; macOS's
+all — web combo boxes ship a clear `×` and browsers rely on the mouse; macOS's
 Cmd+Delete is the closest cousin.
 
 **Decision — Ctrl+W on `AbstractStringField`, Ctrl+U on each subclass, both
@@ -5627,24 +5623,24 @@ Why not:
   pattern the author wrote, letting `formats` win makes it a silent no-op, and there is an author to
   tell. **Qt** is the other reading of the same survey and the one declined: a format writer *and* a
   locale default, with the spelling gap that implies and no fix.
-- **A fused `step` *with* `formats=`** imports Vaadin's workaround into an API that already has the
-  thing it works around: two writers for one fact.
-- **A Vaadin-style dropdown of times spaced by `step`**, because a list of times computes nothing —
-  the calendar grid `DateField` will grow answers questions the user cannot (which weekday is the
-  17th), while every row of a time list is derivable from its neighbour and typing `1345` beats
-  scrolling to it. Vaadin's own is hidden below a 15-minute step (`R_time_pickers`), so at this
-  field's default stride a faithful port shows nothing, and no gesture is left to open it with. What
-  the keyboard actually lacked was the hour jump, and that is a key: **PageUp/PageDown step an hour
+- **A fused `step` *with* `formats=`** imports a format-less API's workaround into an API that
+  already has the thing it works around: two writers for one fact.
+- **A dropdown of times spaced by `step`**, because a list of times computes nothing — the calendar
+  grid `DateField` will grow answers questions the user cannot (which weekday is the 17th), while
+  every row of a time list is derivable from its neighbour and typing `1345` beats scrolling to it.
+  One shipped dropdown hides itself below a 15-minute step (`R_time_pickers`), so at this field's
+  default stride a faithful port shows nothing, and no gesture is left to open it with. What the
+  keyboard actually lacked was the hour jump, and that is a key: **PageUp/PageDown step an hour
   whatever `step` is**. **Re-grow rule:** only as a mouse affordance, only if a mouse-driven use
-  appears, in `Select`'s shape with Vaadin's density gate (`SECONDS_PER_DAY / step <= 96`) — never
-  with a density knob of its own.
+  appears, in `Select`'s shape with a density gate (`SECONDS_PER_DAY / step <= 96`) — never with a
+  density knob of its own.
 - **Segment-aware Up/Down** (Up in the hour segment steps an hour, in the minute segment a minute) is
   the keyboard lineage of every toolkit built for hands-on-keys (`R_time_pickers`) and the honest
   phase 2, buildable since the `Locale::Formats` lexer already yields a caret → directive map.
   Deferred until PageUp/PageDown proves insufficient, because it makes `step` mean something different
   depending on where the caret sits.
-- **Snapping a step to the grid** silently moves a value the user did not ask to change; Vaadin adds
-  too, and HTML's snap is to a `min` base this field lacks.
+- **Snapping a step to the grid** silently moves a value the user did not ask to change; HTML's snap
+  is to a `min` base this field lacks.
 - **Honouring `t_fmt`'s precision** puts `:00` in every form field in the world; **reading
   `t_fmt_ampm`** carries `%Z` and `%l`, two directives this field rejects (`R_glibc_locale`).
 - **A `precision` reader** squats a second name for one fact and invites "where is the writer?".
@@ -5702,7 +5698,7 @@ only argument is "so a mouse user can…".
 Why not:
 
 - **The mouse as an equal peer** — every field gets a picker, every enumeration a clickable face.
-  That is a GUI toolkit's rule, and it produces Vaadin's `TimePicker`: a dropdown that exists
+  That is a GUI toolkit's rule, and it produces a web `TimePicker`: a dropdown that exists
   because the widget is a `ComboBox` skin, hidden below a 15-minute step because it stops being
   useful. A TUI user's hands are on the keys; typing `1345` beats scrolling to it.
 - **A blanket "no mouse value entry"** — the first phrasing, and literally false of shipped code
@@ -6131,12 +6127,11 @@ Roads not taken:
   protected hook, mirroring `handle_child_visibility_changed`. Refused on the
   merits: an error message is a *logical* fact, so the tree is the wrong channel
   to carry it; it fails outright for the `Binder`, which is not a `Component`
-  and has no position in the tree to be notified at; and it is Vaadin 6's `Form`
-  / `FieldGroup`, whose coupling of validation to form *structure* was
-  demonstrated an anti-pattern over a whole major version.
+  and has no position in the tree to be notified at; and coupling validation to
+  form *structure* is a known anti-pattern.
 - **Growing just the one slot into a list.** Then every reader has to check
   which kind it holds. If the reasoning is right it is right for all 23.
-- **A `Signal`** — a reactive cell, Vaadin 25's `validationStatusSignal()`. No `Signal`s in
+- **A `Signal`** — a reactive cell holding the validation status. No `Signal`s in
   Tuile, framework-wide, until someone asks: the listener idiom is a proc, and a signal would be a
   second notification idiom beside it.
 - **stdlib `observer` or an ecosystem pub/sub.** Nothing in Ruby offers typed,
@@ -6182,8 +6177,8 @@ Why not:
 - *A second `on_user_change` slot* (#61). One bit should not cost a slot per field.
 - *The flag on every slot, or on the `Event` marker.* A member goes where
   something reads it (`D_bad_input`); only `on_value_change` has readers, and
-  adding it elsewhere later is additive. Same for `old_value`, the other half
-  of Vaadin's payload: no reader yet — the `Binder` shipped without one — so it waits.
+  adding it elsewhere later is additive. Same for `old_value`, the other
+  usual payload member: no reader yet — the `Binder` shipped without one — so it waits.
 
 The cost we carry:
 - An includer's override moves from `value=` to `set_value`; the contract
@@ -6326,7 +6321,7 @@ The cost we carry:
 `D_caption_ownership` settled that the caption is the container's and `D_has_validation` that the
 message is too. Both left the same question open: *which* container. Two shapes — the layout paints
 the chrome itself, from strings it keeps in a per-child map; or a wrapper component holds one field
-and paints around it, which is Vaadin 25's Form Item (`R_form_items`).
+and paints around it, the shape of the Java web toolkit's Form Item (`R_form_items`).
 
 **Decision — a wrapper component, `Component::FormItem`.** Four reasons:
 
@@ -6339,8 +6334,8 @@ and paints around it, which is Vaadin 25's Form Item (`R_form_items`).
   through the layout holding the map — the consequence `D_caption_ownership` records.
 - **One populatable child means one choke point.** `HasContent#content=` is where the item
   subscribes to `on_error_message_change` and `on_bad_input_change` and unsubscribes the outgoing
-  occupant (`D_has_content`, `D_has_validation`, `D_bad_input`). Vaadin wraps one input per item
-  too, and puts several behind one caption in a custom field.
+  occupant (`D_has_content`, `D_has_validation`, `D_bad_input`). The Java web toolkit wraps one
+  input per item too, and puts several behind one caption in a custom field (`R_form_items`).
 
 **Three rows, and the message row *is* the gap row** — which is why the pitch is a flat three and
 nothing ever reflows. Why not:
@@ -6361,9 +6356,9 @@ nothing ever reflows. Why not:
 `Theme` member is breaking — every member is validated `is_a?(Color)`, so a hand-rolled `Theme.new`
 has to pass all of them — and `D_color_slots`' test refuses one anyway: a chrome token is for a
 color built-in chrome paints in *more than one place*, and this one is painted by a single widget.
-But **a required field is not yet invalid**, and Vaadin keeps the two apart as separate style
-properties (`R_form_items`) — so if the shared red ever reads as "already wrong", that is the half
-of this entry to rewrite. The glyph, and why it is not `•`, is the rdoc's.
+But **a required field is not yet invalid**, and the Java web toolkit keeps the two apart as
+separate style properties (`R_form_items`) — so if the shared red ever reads as "already wrong",
+that is the half of this entry to rewrite. The glyph, and why it is not `•`, is the rdoc's.
 
 **`required: true` without a caption raises**, because the marker rides the caption and a
 captionless item reserves no caption row for it to sit in.
@@ -6383,15 +6378,15 @@ available with the right receiver.
 
 **Captions go above the field by default**: the caption spans the form's full width, so there is
 no caption-column width policy, and it is the shape that survives a narrow terminal. Multiple
-equal-width columns with colspan are the staged v3 — and Vaadin's docs put side captions and
-multiple columns in tension on purpose (`R_form_items`).
+equal-width columns with colspan are the staged v3 — and side captions and multiple columns
+are in tension on purpose (`R_form_items`).
 
 **`caption_position: :left` is the form's, and so is `caption_width:`** — the knobs exist on
 `FormItem` too, since an item composes without a form, but alignment is a property of the column:
 per-item widths zigzag the fields, mixed positions look ragged. So the form is the sole writer of
 its items' settings, on every pass, before placing any child — which is what lets the marks those
-writes put back on the form be dropped rather than re-run. Vaadin puts both on the layout as well,
-with one width for every item (`R_form_items`). The rules:
+writes put back on the form be dropped rather than re-run. The Java web toolkit puts both on the
+layout as well, with one width for every item (`R_form_items`). The rules:
 
 - **The column is the widest caption, marker included, clamped to half the form's width**; an
   Integer fixes it. A percentage knob earns nothing the clamp doesn't already give. The widest counts
@@ -6444,12 +6439,12 @@ Why not:
   same data, `D_status_bar` from the other side. That is the escape hatch for the item's one-row,
   ellipsized message.
 - **A structural notice a Binder could subscribe to** — an error message is a logical fact, not a
-  structural one, the Binder is not a Component, and Vaadin 6's `Form` / `FieldGroup` demonstrated
-  what coupling validation to form structure costs.
+  structural one, the Binder is not a Component, and coupling validation to form structure is a
+  known anti-pattern.
 - **A wrapped left caption, or a narrow-terminal fallback to captions above** — the first reflows
-  (above); the second is Vaadin's, and is argued with v3's columns, which face the same question.
+  (above); the second is argued with v3's columns, which face the same question.
 
-## D_field_layers — Why are a bound field's layers called model, transformation, value and input, rather than Vaadin's presentation and model?
+## D_field_layers — Why are a bound field's layers called model, transformation, value and input, rather than presentation and model?
 
 Settled while designing `HasBadInput`, before the Binder existed, because the channel needed a name
 that said which layer it reported on. A `Date` field bound to `Person#birth_date` has four layers:
@@ -6467,8 +6462,9 @@ model ⟷ value a chain of **transformations** — a binding's `convert` steps. 
 `design/terminology.md`'s.
 
 Why not:
-- **`presentation`**: Vaadin's `Converter<PRESENTATION, MODEL>` spends it on the *value* layer (a
-  `Date` is "the presentation", `R_vaadin_binder`); it never names glyphs, so the channel is `bad_input`, not `presentation_error`.
+- **`presentation`**: a `Converter<PRESENTATION, MODEL>` spends it on the *value* layer (a `Date`
+  is "the presentation", `R_web_binder`); it never names glyphs, so the channel is `bad_input`, not
+  `presentation_error`.
 - **A pair of words**: model → value may be several transformations, and a pair can't name a chain.
 - **`input` for the widget**: `input` is what the user put in; the widget is always a **field**.
   `Theme#input_bg_color` is grandfathered, and English ("a renderer whose inputs changed") is left alone.
@@ -6478,8 +6474,8 @@ none is spent on a field concept.
 
 ## D_binder_modes — Why does the binder come in two classes that validate against the real model, rather than one mode-switched class validating a copy?
 
-Vaadin's `Binder` has both modes on one class — `readBean` / `writeBean` buffered, `setBean`
-write-through (`R_vaadin_binder`) — and each has its use: **`Binder::Buffered`** is the OK/Cancel
+A binder can have both modes on one class — `readBean` / `writeBean` buffered, `setBean`
+write-through (`R_web_binder`) — and each has its use: **`Binder::Buffered`** is the OK/Cancel
 popup, where Cancel is free because nothing was written; **`Binder::Unbuffered`** is the settings
 panel, the live filter, and the complex form whose sub-editors write as they go, bound as a draft
 the app copied. Both ship, **as two classes**: the split deletes the mode-switch questions outright
@@ -6494,26 +6490,26 @@ either mode. No template method: a subclass hands its edit handler up as the blo
 the base never calls down. The first cut had no base and four one-line delegators per class, and
 top-level `BufferedBinder` / `UnbufferedBinder` constants; the namespace reads as the mode it is.
 
-**Model validators judge the real model: write the candidates, validate, revert on a failure** —
-Vaadin's way. An invalid value never *stays* in the model, which matters more here than on the
+**Model validators judge the real model: write the candidates, validate, revert on a failure**.
+An invalid value never *stays* in the model, which matters more here than on the
 web: a Tuile model may be the in-memory source of truth, not a request-scoped copy about to die.
 The cost is in the rdoc — on a failure each written setter fires twice, and only bound attributes
 come back. **The binder ships no copy capability, and applying a draft back is the app's**: only
 the app knows how deep its model copies, and the draft exists *because* of nested lists no binding
 covers, so "copy the bound attributes back" would miss exactly them.
 
-**Buffered, model validators wait for every field to pass** (Vaadin), since they would judge a mix
-of new and stale values; `validate` runs them against the model `read` was handed, where Vaadin's
-buffered `validate()` has no bean and skips them, so a Check button sees cross-field errors before
-Save. **Unbuffered, an edit writes every pending binding whose field steps pass, and a failing one
-sits out** — its attribute keeps the last value that passed, and a model validation failure
-reverts the whole batch, since a model validator can't say which attributes it read. Writing only
-the edited binding diverges silently: `start_date` → 10 fails against `end_date` 5 and reverts,
+**Buffered, model validators wait for every field to pass**, since they would judge a mix of new and
+stale values; `validate` runs them against the model `read` was handed, where a buffered
+`validate()` with no bean skips them (`R_web_binder`), so a Check button sees cross-field errors
+before Save. **Unbuffered, an edit writes every pending binding whose field steps pass, and a
+failing one sits out** — its attribute keeps the last value that passed, and a model validation
+failure reverts the whole batch, since a model validator can't say which attributes it read. Writing
+only the edited binding diverges silently: `start_date` → 10 fails against `end_date` 5 and reverts,
 `end_date` → 20 then passes against the *old* start, and the 10 on screen never reaches the model.
 `Unbuffered#validate` is a draft's Save gate and is as strict as the buffered one.
 
 Why not:
-- *Vaadin's `setBean`, which writes nothing while any changed binding fails* (`R_vaadin_binder`):
+- *A write-through that writes nothing while any changed binding fails* (`R_web_binder`):
   in a settings panel or a live filter it freezes the whole form on one bad box.
 - *Validating a `dup`*: it needs a copy the binder can't do right for every model — a shallow
   `dup` leaks through in-place setters, ActiveRecord's has `id == nil` — so a customizable copy,
@@ -6524,12 +6520,12 @@ Why not:
 - *`binder.read(draft); binder.write?(original)`*, an early sketch for the complex form: the
   two-class split removes it, and it was wrong for the case anyway.
 
-## D_binder_chain — Why is a binding a chain begun by `bind(field, :attr)`, rather than Vaadin's builder ending in `bind()`, or keyword arguments?
+## D_binder_chain — Why is a binding a chain begun by `bind(field, :attr)`, rather than a builder ending in `bind()`, or keyword arguments?
 
 **A chain, because converters make order semantic**: a validator before a `convert` sees the
 field's value, one after it the model form, and keyword arguments can't say order. **`bind` comes
 first and registers at once**, each step appending and returning `self`, so there is never an
-unfinished binding — Vaadin's terminal `bind()` leaves one possible (`R_vaadin_binder`) — and the
+unfinished binding — a terminal `bind()` leaves one possible (`R_web_binder`) — and the
 chain still reads field → model. The common case, `bind(f, :name)` with no steps, is complete.
 
 - **`bind(field, :name)` is `public_send(:name)` / `public_send(:name=, v)`** — `attr_accessor`,
@@ -6549,34 +6545,34 @@ chain still reads field → model. The common case, `bind(f, :name)` with no ste
 - **`required` is not positional**: bad input, then `required`, then the chain, wherever it was
   written. **Bad input fails even an optional field** — optional means "may be empty", not "may be
   garbage", and `empty?` can't tell, being `true` for a field full of unparseable glyphs.
-- **Empty and `nil` copy Vaadin**: `read` shows a `nil` attribute as `field.empty_value`, and the
-  write passes the value through, so a blank `TextField` writes `""` over a `nil` — Vaadin's drift,
-  accepted. **Validators skip `nil`, and a converter maps `nil` and the empty value to `nil`
-  itself** (Rails' `allow_nil`, `R_ruby_validation`), or every validator opens with `v &&` and
-  `Integer("")` fails a blank optional field. The rdoc states the consequence: a `TextField` with no
-  converter hands its validators `""`.
+- **Empty and `nil` drift**: `read` shows a `nil` attribute as `field.empty_value`, and the write
+  passes the value through, so a blank `TextField` writes `""` over a `nil` — accepted. **Validators
+  skip `nil`, and a converter maps `nil` and the empty value to `nil` itself** (Rails' `allow_nil`,
+  `R_ruby_validation`), or every validator opens with `v &&` and `Integer("")` fails a blank
+  optional field. The rdoc states the consequence: a `TextField` with no converter hands its
+  validators `""`.
 - **Two levels, named as such — field validation and model validation**, the second added with
   `add_validator { |model| … }`. A model validator returns `nil`, a String (form-level) or
   `{attr => message}` to blame fields.
 
 Why not:
-- *Pure Vaadin on empty*, validators seeing `""` and each converter handling empty itself: Vaadin's
-  `StringToIntegerConverter` does it for you (`R_vaadin_binder`); ours are procs, so the binder does.
+- *Validators seeing `""` and each converter handling empty itself*: a library converter can do it
+  for you (`R_web_binder`); ours are procs, so the binder does.
 - *`required` lighting `FormItem`'s marker*, by `bind` walking up the tree for an enclosing item:
   the binder would depend on a layout it was never given, and on the field being attached at bind
   time. The app says "required" twice, and both rdocs say so.
 - *`rule { }`*, the first name: "at least 3 characters" is a rule too, so it names no level.
-  *`validate { }`*: `binder.validate` already runs everything. *`with_validator`* (Vaadin's): in
-  Ruby `with_x { }` reads as a scoped block, and Vaadin's returns `this` for a chain ours doesn't
-  offer. A binding keeps `.validate { }`, where the imperative reads as the step it appends.
+  *`validate { }`*: `binder.validate` already runs everything. *`with_validator`*: in Ruby
+  `with_x { }` reads as a scoped block. A binding keeps `.validate { }`, where the imperative reads
+  as the step it appends.
 
 ## D_binder_verdicts — Why does a binder open a form showing no verdict, keep one frozen map, and gate Save at the click?
 
 **`read` and `model=` recompute the whole `last_validation` but write `nil` to every
 `error_message`** — so `last_validation.empty?` means something from the first frame, while a
 blank "New person" dialog doesn't open with every required field red. A field's verdict appears
-once the user edits it, and every field's on `write?` / `validate`: Vaadin's rule, that errors
-"only display after the user has edited each field and submitted" (`R_vaadin_binder`).
+once the user edits it, and every field's on `write?` / `validate` — errors show late on purpose
+(`R_web_binder`).
 
 **Bindings run on every value change, at whatever cadence the field fires; the binder owns no blur
 hook.** An edit is a `from_user?` change (`D_from_user`), so the binder's own writes don't echo
@@ -6592,15 +6588,15 @@ ENTER, so its verdict shows then and `Unbuffered` writes the finished value, not
 validators fill it alike, every key holds an array, and **form-level failures sit under the `nil`
 key** (a `Hash` takes it; Rails' `:base` was the fallback that wasn't needed). **One message per
 field** reaches `error_message`, its own failure first — a `FormItem` has one message row
-(`D_form_item`) — while all stay in the map for the Save alert. **Its staleness is the "last"**:
-a binding run replaces only its own attribute's entry, the model validators' only in a pass that
-runs or skips them, so buffered, a fixed cross-field error stays until the next `write?`. Vaadin behaves
-the same. **A failure is a value, an error is raised**: `ValidationFailure` is the entry,
-`ValidationError < Tuile::Error` what `write!` raises carrying the map, and `write?` / `write!`
-are ActiveRecord's `save` / `save!` (`R_ruby_validation`), `?` in the `Set#add?` sense.
+(`D_form_item`) — while all stay in the map for the Save alert. **Its staleness is the "last"**: a
+binding run replaces only its own attribute's entry, the model validators' only in a pass that runs
+or skips them, so buffered, a fixed cross-field error stays until the next `write?`. **A failure is
+a value, an error is raised**: `ValidationFailure` is the entry, `ValidationError < Tuile::Error`
+what `write!` raises carrying the map, and `write?` / `write!` are ActiveRecord's `save` / `save!`
+(`R_ruby_validation`), `?` in the `Set#add?` sense.
 
-**Save asks the binder when pressed**, and on "no" `ConfirmWindow.alert` names the problems. Vaadin
-enables the button from a status listener instead (`R_vaadin_binder`). **`changed?` counts user
+**Save asks the binder when pressed**, and on "no" `ConfirmWindow.alert` names the problems, rather
+than enabling the button from a status listener (`R_web_binder`). **`changed?` counts user
 edits** since `read` or the last successful `write?`, not `==`, so the `""`-over-`nil` drift doesn't
 read as a change. **The binder honors only announced values**: an edit counts once its field
 announces it, and a Save the user reaches — a click, Tab, a shortcut — takes focus first, which
@@ -6614,9 +6610,9 @@ Why not:
   invalid-and-message cell, and Tuile keeps the two facts in two places (`D_has_validation`,
   `D_bad_input`). `on_bad_input_change` is not that listener renamed: it reaches cells the field
   doesn't own.
-- *`ValidationResult`*: a result may be ok, and every entry here is a failure — it is Vaadin's
+- *`ValidationResult`*: a result may be ok, and every entry here is a failure — it is an
   ok-or-error sum type, the ceremony `D_binder_chain` deletes.
-- *Vaadin's escape hatches* — `setValidatorsDisabled`, `withDefaultValidator(false)`,
+- *Escape hatches* — `setValidatorsDisabled`, `withDefaultValidator(false)`,
   `setIsAppliedPredicate`: deferred and unnamed, each additive with no asker. Whoever re-grows
   `withDefaultValidator(false)` owes an answer for skipping the bad-input check.
 - *The binder releasing a field's held notice*: new public API on every field for one reader.
@@ -6633,8 +6629,8 @@ done with the field, not a red well after the first letter of a `length < 3` nam
 the query once typing pauses, not a refetch per letter; a slash palette wants every edit. One
 per-keystroke notice served only the last.
 
-**`value_change_mode` is `:eager`, `:commit` or `:lazy`, and `:commit` is the default** — Vaadin's
-three that matter, with Vaadin's default (`R_value_change_timing`). A commit gesture is leaving the
+**`value_change_mode` is `:eager`, `:commit` or `:lazy`, and `:commit` is the default**
+(`R_value_change_timing`). A commit gesture is leaving the
 focus chain or ENTER; `:lazy` waits `value_change_timeout` (0.4 s) after the last edit, on
 `EventQueue#after`, and a commit gesture releases it early. The knob is `HasValueChangeMode`, on
 the string fields and the number fields only: the date and time fields hold unconditionally, since
@@ -6655,11 +6651,11 @@ so a subclass that takes ENTER first — a `TextArea` rebound to submit — rele
 and loses nothing, since its submit handler reads `value` live.
 
 Why not:
-- *Vaadin's name, `:on_change`*: beside `on_value_change` it reads as "every change", which is
+- *`:on_change`*: beside `on_value_change` it reads as "every change", which is
   `:eager`, and the `on_` prefix is the listener slots' (`D_handler_naming`). "Commit" is already
   the house word for exactly these two gestures, and stays true for `TextArea`'s leave-only set.
-- *`:on_blur`*: Vaadin's `ON_BLUR` excludes ENTER, so the name would mislead anyone who knows it
-  and squat the name that mode would need; it would also hide the ENTER release.
+- *`:on_blur`*: an `ON_BLUR` mode elsewhere excludes ENTER, so the name would mislead anyone who
+  knows it and squat the name that mode would need; it would also hide the ENTER release.
 - *An `:eager` default*: it makes every form paint verdicts mid-word, where a filter silent until
   blur is obvious on first use and a one-line fix.
 - *Pushing the mode down into a wrapped editor*: the editor's notice is internal plumbing that

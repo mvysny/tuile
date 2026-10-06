@@ -32,8 +32,7 @@ module Tuile
       # @return [Array<Symbol>] the accepted {#value_change_mode}s.
       MODES = %i[eager commit lazy].freeze
 
-      # @return [Float] {#value_change_timeout}'s default, in seconds —
-      #   Vaadin's `LAZY` default.
+      # @return [Float] {#value_change_timeout}'s default, in seconds.
       DEFAULT_TIMEOUT = 0.4
 
       # When {HasValue#on_value_change} fires for an edit:

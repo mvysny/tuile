@@ -8,9 +8,9 @@ the fields, copy the fields back on Save, and make sure an invalid value never
 reaches the model on the way. This chapter hands that job to a
 {Tuile::Binder}.
 
-A binder is Vaadin's `Binder` with the ceremony Ruby doesn't need removed.
-There is no `Validator` interface and no `ValidationResult`. A validator is a
-block that returns a message, or `nil` when the value is fine.
+A binder carries none of the ceremony Ruby doesn't need. There is no
+`Validator` interface and no `ValidationResult`. A validator is a block that
+returns a message, or `nil` when the value is fine.
 
 ## A binder, and the two jobs it does
 
@@ -89,8 +89,9 @@ Three conventions keep the common case short:
 
 **One wrinkle to know about: `""` and `nil` drift.** A `nil` attribute shows
 as the field's empty value, which for a text field is `""`. Save that form
-untouched and the model's `nil` becomes `""`. Vaadin has the same drift, and
-nobody has solved it better. If your model cares, normalize in the setter.
+untouched and the model's `nil` becomes `""`. Binders elsewhere drift the same
+way, and nobody has solved it better. If your model cares, normalize in the
+setter.
 
 ## Validating the whole model
 
@@ -165,9 +166,9 @@ verdict follows along as the user types.
 A model validation failure is a snapshot. In the buffered mode the model
 validators run only on `read`, `validate` and `write?`. So once the user fixes
 the check-in date, "Must be after check-in" stays on the check-out field until
-the next Save. That is the "last" in `last_validation`, and Vaadin behaves the
-same way. The unbuffered mode runs its model validators on every edit, so
-there the message is always current.
+the next Save. That is the "last" in `last_validation`. The unbuffered mode
+runs its model validators on every edit, so there the message is always
+current.
 
 ## Gating Save at the click
 

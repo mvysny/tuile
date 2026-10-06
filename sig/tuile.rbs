@@ -1345,8 +1345,8 @@ module Tuile
     end
   end
 
-  # Binds form fields to a model's attributes, with validation — Vaadin's
-  # `Binder`, the Ruby way. Abstract; build one of its two modes:
+  # Binds form fields to a model's attributes, with validation. Abstract;
+  # build one of its two modes:
   # 
   # - {Buffered} — `read` the model into the fields, `write?` it back on
   #   Save; nothing reaches the model until every validator passes. An
@@ -1776,8 +1776,7 @@ module Tuile
     # validation failure sits out and stays pending, its attribute keeping the
     # last value that passed; the model validators judge the model with the
     # rest written in, and a model validation failure reverts the whole batch.
-    # Vaadin's `setBean` differs here: one invalid field holds every other edit
-    # back. The model validators run on every edit, so {#last_validation} is
+    # The model validators run on every edit, so {#last_validation} is
     # always current. An edit writes through when its field announces it — for
     # a string or number field, on leaving it or on ENTER by default
     # ({Component::HasValueChangeMode#value_change_mode}), so a live filter sets
@@ -9356,11 +9355,10 @@ module Tuile
     # `error_message` a validator writes and paints its own error ink.
     # 
     # == Implementation details
-    # Deliberately smaller than Vaadin's `HasValue`: read-only,
-    # required-indicator and converters belong to the not-yet-built form layer,
-    # not here. Of Vaadin's event payload, `isFromClient` is carried (as
-    # {ValueChangeEvent#from_user?}) and `getOldValue` is not, until something
-    # reads it (`D_from_user`).
+    # Deliberately small: read-only, required-indicator and converters belong
+    # to the form layer, not here, and the event carries
+    # {ValueChangeEvent#from_user?} but no old value until something reads it
+    # (`D_from_user`).
     module HasValue
       include Tuile::Component::HasValidation
       extend Tuile::Listeners::Declare
@@ -13858,10 +13856,9 @@ module Tuile
     # the sibling a rule compares against — so it has nothing to write, and that
     # is what leaves exactly one writer: whoever validates. The discipline that
     # writer owes is one sentence: **set *or clear* it on every validate pass**,
-    # as the example above does with its `: nil` branches. Vaadin's custom-field
-    # guide warns that sharing one `invalid` cell between internal and external
-    # validation ends with each overriding the other; Tuile's answer is that the
-    # field's *own* report is a different member ({HasBadInput#bad_input?} —
+    # as the example above does with its `: nil` branches. One cell shared
+    # between internal and external validation ends with each overriding the
+    # other, so the field's *own* report is a different member ({HasBadInput#bad_input?} —
     # derived on read, never stored), so the two never share a cell.
     # 
     # There is deliberately **no `invalid?`**: a second predicate beside

@@ -38,8 +38,7 @@ module Tuile
     # validation failure sits out and stays pending, its attribute keeping the
     # last value that passed; the model validators judge the model with the
     # rest written in, and a model validation failure reverts the whole batch.
-    # Vaadin's `setBean` differs here: one invalid field holds every other edit
-    # back. The model validators run on every edit, so {#last_validation} is
+    # The model validators run on every edit, so {#last_validation} is
     # always current. An edit writes through when its field announces it — for
     # a string or number field, on leaving it or on ENTER by default
     # ({Component::HasValueChangeMode#value_change_mode}), so a live filter sets
