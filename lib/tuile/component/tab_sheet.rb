@@ -65,10 +65,10 @@ module Tuile
       #   {Tabs#separator=}.
       def initialize(separator: Tabs::DEFAULT_SEPARATOR)
         super()
-        @panes = {}.compare_by_identity
-        @strip = Tabs.new(separator:)
-        add_child(@strip)
-        @strip.on_tab_selected do |e|
+        @_panes = {}.compare_by_identity
+        @_strip = Tabs.new(separator:)
+        add_child(@_strip)
+        @_strip.on_tab_selected do |e|
           sync_pane
           on_tab_selected.fire(Tabs::TabSelectedEvent.new(source: self, index: e.index, tab: e.tab))
         end
@@ -79,11 +79,11 @@ module Tuile
       #   register on (the sheet's own listener is wired first, so the pane is
       #   already swapped), but {#on_tab_selected} is the one that names this
       #   sheet as the event's source.
-      attr_reader :strip
+      def strip = @_strip
 
       # @return [Component, nil] the pane currently in the tree — the selected
       #   tab's, `nil` while the sheet has no tabs.
-      attr_reader :pane
+      def pane = @_pane
 
       # Adds a tab and the pane to show while it is selected. The first tab
       # added becomes the selection, so its pane is shown immediately.
@@ -99,12 +99,12 @@ module Tuile
         raise TypeError, "expected Component, got #{pane.inspect}" unless pane.is_a?(Component)
 
         forget_removed_tabs
-        if @panes.each_value.any? { |existing| existing.equal?(pane) }
+        if @_panes.each_value.any? { |existing| existing.equal?(pane) }
           raise ArgumentError, "#{pane} is already a pane of this TabSheet"
         end
 
-        tab = @strip.add_tab(caption)
-        @panes[tab] = pane
+        tab = @_strip.add_tab(caption)
+        @_panes[tab] = pane
         sync_pane
         tab
       end
@@ -116,9 +116,9 @@ module Tuile
       # @raise [ArgumentError] when the tab isn't on this sheet's strip.
       # @return [Component, nil] the pane that tab owned.
       def remove_tab(tab)
-        pane = @panes[tab] # read first: the strip's own removal may prune the entry
-        @strip.remove_tab(tab)
-        @panes.delete(tab)
+        pane = @_panes[tab] # read first: the strip's own removal may prune the entry
+        @_strip.remove_tab(tab)
+        @_panes.delete(tab)
         pane
       end
 
@@ -128,44 +128,44 @@ module Tuile
       def pane_for(tab)
         return nil unless tab&.attached?
 
-        @panes[tab]
+        @_panes[tab]
       end
 
       # @return [Array<Tabs::Tab>] the strip's tabs, in order.
-      def tabs = @strip.tabs
+      def tabs = @_strip.tabs
 
       # @return [Tabs::Tab, nil] the selected tab.
-      def selected = @strip.selected
+      def selected = @_strip.selected
 
       # @param tab [Tabs::Tab] one of this sheet's tabs.
       # @return [void]
       def selected=(tab)
-        @strip.selected = tab
+        @_strip.selected = tab
       end
 
       # @return [Integer, nil] the selected tab's position.
-      def selected_index = @strip.selected_index
+      def selected_index = @_strip.selected_index
 
       # @param index [Integer] a position in `0...tabs.size`.
       # @return [void]
       def selected_index=(index)
-        @strip.selected_index = index
+        @_strip.selected_index = index
       end
 
       # Selects the next tab, clamping at the last one.
       # @return [Boolean] `false` only when there are no tabs.
-      def select_next = @strip.select_next
+      def select_next = @_strip.select_next
 
       # Selects the previous tab, clamping at the first one.
       # @return [Boolean] `false` only when there are no tabs.
-      def select_previous = @strip.select_previous
+      def select_previous = @_strip.select_previous
 
       # Sends focus to the strip: a sheet is a container, and the strip is where
       # a tab switch is driven from. The pane is a Tab press away.
       # @return [void]
       def handle_focus
         super
-        screen.focused = @strip
+        screen.focused = @_strip
       end
 
       # Lands focus on the strip rather than on `self` when the focused pane is
@@ -175,24 +175,24 @@ module Tuile
       # @return [void]
       def handle_child_removed(child)
         super
-        screen.focused = @strip if attached? && screen.focused.equal?(self)
+        screen.focused = @_strip if attached? && screen.focused.equal?(self)
       end
 
       private
 
       # Makes the visible pane match `strip.selected`, swapping if it doesn't.
-      # Idempotent and the sole writer of `@pane`: it derives everything from
+      # Idempotent and the sole writer of `@_pane`: it derives everything from
       # current state, so {#add_tab} can register a pane after the strip has
       # already selected its tab.
       # @return [void]
       def sync_pane
         forget_removed_tabs
-        wanted = @panes[@strip.selected]
-        return if wanted.equal?(@pane)
+        wanted = @_panes[@_strip.selected]
+        return if wanted.equal?(@_pane)
 
-        old = @pane
+        old = @_pane
         detach_child(old) unless old.nil?
-        @pane = wanted
+        @_pane = wanted
         unless wanted.nil?
           add_child(wanted) # appended: the strip stays at index 0
           wanted.invalidate
@@ -210,14 +210,14 @@ module Tuile
       # one code path.
       # @return [void]
       def forget_removed_tabs
-        @panes.delete_if { |tab, _pane| !tab.attached? }
+        @_panes.delete_if { |tab, _pane| !tab.attached? }
       end
 
       # The strip takes the top row, the selected pane everything under it.
       # @return [void]
       def relayout
-        @strip.rect = Rect.new(0, 0, rect.width, [rect.height, 1].min)
-        @pane&.rect = Rect.new(0, 1, rect.width, [rect.height - 1, 0].max)
+        @_strip.rect = Rect.new(0, 0, rect.width, [rect.height, 1].min)
+        @_pane&.rect = Rect.new(0, 1, rect.width, [rect.height - 1, 0].max)
       end
     end
   end

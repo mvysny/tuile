@@ -112,11 +112,11 @@ module Tuile
         # that one stays free for the app.
         editor.on_key_up { step(1) }
         editor.on_key_down { step(-1) }
-        @settled = false
-        @placeholder_override = nil
+        @_settled = false
+        @_placeholder_override = nil
         # Both nil: follow the screen's locale until an app overrides them.
-        @formats = nil
-        @calendar_start = nil
+        @_formats = nil
+        @_calendar_start = nil
         sync_placeholder
       end
 
@@ -164,7 +164,7 @@ module Tuile
       # Frozen either way: assign a new list rather than pushing onto this one,
       # or the validator and the derived {#placeholder} are both bypassed.
       # @return [Array<String>]
-      def formats = @formats || locale.date_formats
+      def formats = @_formats || locale.date_formats
 
       # Sets the formats, re-derives the {#placeholder}, and fires
       # {HasValue#on_value_change} if the buffer now parses differently.
@@ -188,7 +188,7 @@ module Tuile
       #   carrying `%y`, which cannot carry a century — or any entry `strptime`
       #   cannot use.
       def formats=(list)
-        @formats = list.nil? ? nil : Locale::DateFormats.validate(list)
+        @_formats = list.nil? ? nil : Locale::DateFormats.validate(list)
         sync_placeholder
         fire_if_changed(from_user: false)
       end
@@ -208,7 +208,7 @@ module Tuile
       # reader falls back to:
       # `screen.locale = Locale::ISO.with(calendar_start: Date::ITALY)`.
       # @return [Numeric]
-      def calendar_start = @calendar_start || locale.calendar_start
+      def calendar_start = @_calendar_start || locale.calendar_start
 
       # Sets the calendar and fires {HasValue#on_value_change} if the buffer now
       # parses to a different date; the buffer itself is left alone.
@@ -222,7 +222,7 @@ module Tuile
           raise TypeError, "expected a Numeric day of calendar reform or nil, got #{start.inspect}"
         end
 
-        @calendar_start = start
+        @_calendar_start = start
         fire_if_changed(from_user: false)
       end
 
@@ -239,7 +239,7 @@ module Tuile
       def placeholder=(text)
         # The editor validates the type, so a bad one raises before it is stored.
         editor.placeholder = text || derived_placeholder
-        @placeholder_override = text
+        @_placeholder_override = text
       end
 
       # Nothing a format parses is bad input, and an *empty* buffer is empty
@@ -255,7 +255,7 @@ module Tuile
       # field cannot parse reddens the moment the user leaves the field or
       # presses ENTER ({HasBadInput}).
       # @return [Boolean]
-      def bad_input_settled? = @settled
+      def bad_input_settled? = @_settled
 
       protected
 
@@ -292,7 +292,7 @@ module Tuile
       def handle_locale_changed
         super
         # Both overridden: this field follows no session convention.
-        return if @formats && @calendar_start
+        return if @_formats && @_calendar_start
 
         sync_placeholder
         date = value
@@ -305,9 +305,9 @@ module Tuile
       # @param flag [Boolean]
       # @return [void]
       def settle(flag)
-        return if @settled == flag
+        return if @_settled == flag
 
-        @settled = flag
+        @_settled = flag
         # Nothing else painted: an ENTER on an untouched buffer writes no cells,
         # and neither does leaving the field with bad input in it.
         invalidate
@@ -342,7 +342,7 @@ module Tuile
 
       # @return [void]
       def sync_placeholder
-        editor.placeholder = @placeholder_override || derived_placeholder
+        editor.placeholder = @_placeholder_override || derived_placeholder
       end
 
       # @return [String, nil] the hint for the primary format, or `nil` when it

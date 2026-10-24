@@ -113,14 +113,14 @@ module Tuile
         raise ArgumentError, "invalid color: #{value.inspect}"
       end
 
-      @value = value.is_a?(Array) ? value.dup.freeze : value
+      @_value = value.is_a?(Array) ? value.dup.freeze : value
       freeze
     end
 
     # The underlying raw representation — a Symbol, Integer, or frozen
     # Array<Integer>.
     # @return [Symbol, Integer, Array<Integer>]
-    attr_reader :value
+    def value = @_value
 
     # This color's red, green and blue, for an app doing color math — a
     # contrast check, a tint derived from {Screen#background_color}:
@@ -137,9 +137,9 @@ module Tuile
     #
     # @return [Array<Integer>, nil] frozen, each channel 0..255.
     def rgb
-      case @value
-      when Array then @value
-      when Integer then PALETTE_RGB[@value]
+      case @_value
+      when Array then @_value
+      when Integer then PALETTE_RGB[@_value]
       end
     end
 
@@ -156,12 +156,12 @@ module Tuile
                   when :bg then [40, 48]
                   else raise ArgumentError, "target must be :fg or :bg, got #{target.inspect}"
                   end
-      case @value
+      case @_value
       when Symbol
-        idx = COLOR_SYMBOLS.index(@value)
+        idx = COLOR_SYMBOLS.index(@_value)
         idx < 8 ? [base + idx] : [base + 60 + (idx - 8)]
-      when Integer then [ext, 5, @value]
-      when Array then [ext, 2, *@value]
+      when Integer then [ext, 5, @_value]
+      when Array then [ext, 2, *@_value]
       end
     end
 
@@ -199,9 +199,9 @@ module Tuile
       case depth
       when :truecolor then self
       when :palette256
-        @value.is_a?(Array) ? PALETTE_COLORS[nearest_palette(@value)] : self
+        @_value.is_a?(Array) ? PALETTE_COLORS[nearest_palette(@_value)] : self
       when :ansi16
-        @value.is_a?(Symbol) ? self : ANSI16_COLORS[nearest_ansi16(rgb_triple)]
+        @_value.is_a?(Symbol) ? self : ANSI16_COLORS[nearest_ansi16(rgb_triple)]
       else raise ArgumentError, "invalid color depth: #{depth.inspect}"
       end
     end
@@ -219,18 +219,18 @@ module Tuile
     # @param other [Object]
     # @return [Boolean]
     def ==(other)
-      other.is_a?(Color) && @value == other.value
+      other.is_a?(Color) && @_value == other.value
     end
     alias eql? ==
 
     # @return [Integer]
     def hash
-      [self.class, @value].hash
+      [self.class, @_value].hash
     end
 
     # @return [String]
     def inspect
-      "#<#{self.class.name} #{@value.inspect}>"
+      "#<#{self.class.name} #{@_value.inspect}>"
     end
 
     private
@@ -240,7 +240,7 @@ module Tuile
     # must not hand out. Only ever asked of a non-Symbol value.
     # @return [Array<Integer>] red, green and blue, each 0..255.
     def rgb_triple
-      rgb || ANSI16_RGB[@value]
+      rgb || ANSI16_RGB[@_value]
     end
 
     # Written flat — destructured rather than splatted, `x * x` rather than

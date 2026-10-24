@@ -45,9 +45,9 @@ module Tuile
 
       def initialize
         super
-        @placeholder = nil
-        @left_column = 0
-        @max_text_length = nil
+        @_placeholder = nil
+        @_left_column = 0
+        @_max_text_length = nil
       end
 
       # Optional cap on {#text}'s length **in characters** — a wide glyph counts
@@ -56,7 +56,7 @@ module Tuile
       # Deliberately does not police {#value=}: lowering the cap under an existing
       # value leaves that value intact rather than silently trimming it.
       # @return [Integer, nil] maximum characters, or nil for unbounded (default).
-      attr_reader :max_text_length
+      def max_text_length = @_max_text_length
 
       # @param max [Integer, nil]
       # @return [void]
@@ -66,7 +66,7 @@ module Tuile
         raise TypeError, "expected Integer or nil, got #{max.inspect}" unless max.nil? || max.is_a?(Integer)
         raise ArgumentError, "expected a non-negative max, got #{max}" if max&.negative?
 
-        @max_text_length = max
+        @_max_text_length = max
       end
 
       # What {#on_key_up} fires.
@@ -117,7 +117,7 @@ module Tuile
         # Scrolling already keeps the caret inside the rect, so the cap is a
         # guard rather than a policy: a cursor parked one past the last column
         # reads as column 0 of the next row on an auto-wrapping terminal.
-        Point.new((column_at(@caret) - @left_column).clamp(0, rect.width - 1), 0)
+        Point.new((column_at(@_caret) - @_left_column).clamp(0, rect.width - 1), 0)
       end
 
       # Places the caret at the pressed column. A press on the right half of a
@@ -127,7 +127,7 @@ module Tuile
       def handle_mouse_down?(event)
         return false unless event.button == :left
 
-        self.caret = index_at(event.x + @left_column)
+        self.caret = index_at(event.x + @_left_column)
         true
       end
 
@@ -150,7 +150,7 @@ module Tuile
       def handle_text_input_key?(key)
         case key
         when *Keys::HOMES then self.caret = 0
-        when *Keys::ENDS_ then self.caret = @text.length
+        when *Keys::ENDS_ then self.caret = @_text.length
         when Keys::CTRL_U then delete_back_to(0)
         when *Keys::BACKSPACES then delete_before_caret
         when Keys::DELETE then delete_at_caret
@@ -190,9 +190,9 @@ module Tuile
       # @return [String]
       def preprocess_paste(text)
         first_line = super[/\A[^\n]*/]
-        return first_line if @max_text_length.nil?
+        return first_line if @_max_text_length.nil?
 
-        first_line[0, [@max_text_length - @text.length, 0].max] || ""
+        first_line[0, [@_max_text_length - @_text.length, 0].max] || ""
       end
 
       # @return [void]
@@ -219,7 +219,7 @@ module Tuile
       # count — or reorders — desynchronizes the caret from the display. Nothing
       # enforces it at runtime; a subclass pins it with a spec.
       # @return [String] {#text} itself, unless a subclass substitutes.
-      def display_text = @text
+      def display_text = @_text
 
       private
 
@@ -230,7 +230,7 @@ module Tuile
       #   or that rejected the character, swallows the key rather than declining
       #   it, so typing can never fall through to a scope-wide binding.
       def insert(char)
-        return true if @max_text_length && @text.length >= @max_text_length
+        return true if @_max_text_length && @_text.length >= @_max_text_length
 
         insert_text(char)
         true
@@ -260,7 +260,7 @@ module Tuile
 
       # @return [Boolean] true when the empty field should paint its
       #   {HasPlaceholder#placeholder} instead of its (blank) contents.
-      def show_placeholder? = @text.empty? && !placeholder.to_s.empty?
+      def show_placeholder? = @_text.empty? && !placeholder.to_s.empty?
 
       # {#repaint} does not call `super`, so this padded row is the only thing
       # that clears the rect: it *is* the well.
@@ -271,24 +271,24 @@ module Tuile
       end
 
       # @return [Integer] total display width of {#text}.
-      def text_columns = column_at(@text.length)
+      def text_columns = column_at(@_text.length)
 
       # @return [String] the windowed text, padded with spaces to `rect.width`.
       #   A wide glyph straddling the right edge is dropped rather than painted
       #   as a half glyph.
       def visible_text
-        right = @left_column + rect.width
+        right = @_left_column + rect.width
         visible = +""
         width = 0
         col = 0
         display_text.each_grapheme_cluster do |g|
           start = col
           col += Buffer.display_width(g)
-          next if start < @left_column
+          next if start < @_left_column
           break if col > right
 
           visible << g
-          width = col - @left_column
+          width = col - @_left_column
         end
         visible << (" " * (rect.width - width))
       end
@@ -299,19 +299,19 @@ module Tuile
       # scrolling through `send`.
       # @return [Integer] text column drawn in the field's leftmost cell — the
       #   horizontal scroll offset. Follows {#caret}, always on a glyph boundary.
-      attr_reader :left_column
+      def left_column = @_left_column
 
       # Scrolls the minimum needed to keep the caret's column visible.
       # @return [void]
       def adjust_left_column
         return unless rect.width.positive?
 
-        col = column_at(@caret)
-        @left_column = col if col < @left_column
-        @left_column = col - rect.width + 1 if col > @left_column + rect.width - 1
+        col = column_at(@_caret)
+        @_left_column = col if col < @_left_column
+        @_left_column = col - rect.width + 1 if col > @_left_column + rect.width - 1
         # The caret may park one column past the last glyph, so the scrollable
         # range runs one column past the text.
-        @left_column = snap_to_glyph_start(@left_column.clamp(0, [text_columns - rect.width + 1, 0].max))
+        @_left_column = snap_to_glyph_start(@_left_column.clamp(0, [text_columns - rect.width + 1, 0].max))
       end
 
       # @param column [Integer]

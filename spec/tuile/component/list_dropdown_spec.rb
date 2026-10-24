@@ -18,7 +18,7 @@ module Tuile
       d
     end
 
-    def list(drop) = drop.instance_variable_get(:@list)
+    def list(drop) = drop.instance_variable_get(:@_list)
 
     describe "construction" do
       it "wraps a non-focusable, non-tab-stop list" do
@@ -167,7 +167,7 @@ module Tuile
       end
 
       it "clamps the height when neither side has room" do
-        Screen.instance.instance_variable_set(:@size, Size.new(60, 8))
+        Screen.instance.instance_variable_set(:@_size, Size.new(60, 8))
         # 5 rows below, 2 above: below wins, and the list scrolls within them.
         assert_equal Rect.new(0, 3, 20, 5), anchored(rows: 30, top: 2).rect
       end
@@ -186,7 +186,7 @@ module Tuile
       end
 
       it "never slides past the left edge" do
-        Screen.instance.instance_variable_set(:@size, Size.new(6, 20))
+        Screen.instance.instance_variable_set(:@_size, Size.new(6, 20))
         assert_equal 0, anchored(rows: 4, left: 3, width: 6).rect.left
       end
 
@@ -273,14 +273,14 @@ module Tuile
       end
 
       it "prefers the right when the left has no room either, clamping on screen" do
-        Screen.instance.instance_variable_set(:@size, Size.new(14, 20))
+        Screen.instance.instance_variable_set(:@_size, Size.new(14, 20))
         assert_equal 6, beside(rows: 3, left: 2, anchor_width: 4, width: 8).rect.left
       end
 
       it "slides up to keep a tall panel on screen, never past the top" do
         # 50 rows tall: a 10-row panel anchored at row 45 slides to 40.
         assert_equal 40, beside(rows: 10, top: 45).rect.top
-        Screen.instance.instance_variable_set(:@size, Size.new(60, 4))
+        Screen.instance.instance_variable_set(:@_size, Size.new(60, 4))
         assert_equal 0, beside(rows: 10, top: 3).rect.top
       end
 
@@ -355,7 +355,7 @@ module Tuile
       end
 
       it "appears when the screen clamps the height below max_rows too" do
-        Screen.instance.instance_variable_set(:@size, Size.new(60, 8))
+        Screen.instance.instance_variable_set(:@_size, Size.new(60, 8))
         # 6 rows, 5 rows of room: it scrolls well short of max_rows, so it says so.
         assert_equal "█", painted(6, top: 2).first[-1]
       end

@@ -47,8 +47,8 @@ module Tuile
     #   valid date"`, never `"'xyz' is not a valid date"`. It is read per call,
     #   the error ink reads it per paint, and the push diffs it per edit.
     #
-    # The status is never stored: `@last_bad_input` is the diff guard the push
-    # needs and nothing reads it back, as {AbstractWrappingField}'s `@last_value`
+    # The status is never stored: `@_last_bad_input` is the diff guard the push
+    # needs and nothing reads it back, as {AbstractWrappingField}'s `@_last_value`
     # is for the value notice. Which fields *can* answer is a class fact worth
     # caching; what they answer is not.
     #
@@ -144,14 +144,14 @@ module Tuile
       private
 
       # Fires {#on_bad_input_change} when the showable report has really
-      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # changed — the sole writer of `@_last_bad_input`, called from wherever an
       # input of that expression moves.
       # @return [void]
       def sync_bad_input
         showable = bad_input_settled? ? bad_input_message : nil
-        return if showable == @last_bad_input
+        return if showable == @_last_bad_input
 
-        @last_bad_input = showable
+        @_last_bad_input = showable
         on_bad_input_change.fire(BadInputChangeEvent.new(source: self, message: showable))
       end
     end

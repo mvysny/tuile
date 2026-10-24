@@ -40,21 +40,21 @@ module Tuile
       end
 
       # @return [Component::HasValue] the bound field.
-      attr_reader :field
+      def field = @_field
 
       # @return [Symbol] the model attribute, and this pipeline's key in the
       #   verdict map.
-      attr_reader :attr
+      def attr = @_attr
 
       # @param field [Component::HasValue]
       # @param attr [Symbol]
       # @api private
       def initialize(field, attr)
-        @field = field
-        @attr = attr
-        @parses = field.respond_to?(:bad_input?)
-        @required = nil
-        @steps = []
+        @_field = field
+        @_attr = attr
+        @_parses = field.respond_to?(:bad_input?)
+        @_required = nil
+        @_steps = []
       end
 
       # Fails the pipeline while the field is {Component::HasValue#empty?}.
@@ -64,7 +64,7 @@ module Tuile
       # @param message [String] the verdict an empty field gets.
       # @return [self]
       def required(message)
-        @required = message
+        @_required = message
         self
       end
 
@@ -82,7 +82,7 @@ module Tuile
       def validate(&validator)
         raise ArgumentError, "validate needs a block" if validator.nil?
 
-        @steps << [:validate, validator]
+        @_steps << [:validate, validator]
         self
       end
 
@@ -103,7 +103,7 @@ module Tuile
       # @param error [String, nil] the verdict for any failed `to_model`.
       # @return [self]
       def convert(to_model, to_value, error: nil)
-        @steps << [:convert, to_model, to_value, error]
+        @_steps << [:convert, to_model, to_value, error]
         self
       end
 
@@ -113,12 +113,12 @@ module Tuile
       # @api private
       def run
         value = field.value
-        if @parses && field.bad_input?
+        if @_parses && field.bad_input?
           return Outcome.new(nil, ValidationFailure.new(field, field.bad_input_message, value), true)
         end
-        return fail_with(@required, value) if @required && field.empty?
+        return fail_with(@_required, value) if @_required && field.empty?
 
-        @steps.each do |kind, fn, _to_value, error|
+        @_steps.each do |kind, fn, _to_value, error|
           if kind == :validate
             next if value.nil?
 
@@ -143,7 +143,7 @@ module Tuile
       # @api private
       def populate(model)
         value = model&.public_send(attr)
-        @steps.reverse_each do |kind, _to_model, to_value|
+        @_steps.reverse_each do |kind, _to_model, to_value|
           value = to_value.call(value) if kind == :convert && !value.nil?
         end
         if value.nil? || value == field.empty_value

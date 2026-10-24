@@ -70,50 +70,50 @@ module Tuile
 
     def initialize
       @@instance = self # rubocop:disable Style/ClassVars
-      @event_queue = EventQueue.new
-      @size = EventQueue::TTYSizeEvent.create.size
-      @invalidated = Set.new
+      @_event_queue = EventQueue.new
+      @_size = EventQueue::TTYSizeEvent.create.size
+      @_invalidated = Set.new
       # Whether some container may owe a {Component#relayout} — the O(1) gate
       # that lets a no-op {#flush_layout} skip the walk; the containers' own
       # flags are the queue.
-      @layout_pending = false
+      @_layout_pending = false
       # A {#focused=} made inside a pass whose scroll and notice wait for the
       # drain, and what was focused before the first such call.
-      @focus_deferred = false
-      @focus_deferred_from = nil
+      @_focus_deferred = false
+      @_focus_deferred_from = nil
       # Components being repainted right now. A component may invalidate its
       # children during its repaint phase; this prevents double-draw.
-      @repainting = Set.new
+      @_repainting = Set.new
       # The thread that owns the UI whenever no event loop is running — i.e.
       # during :idle, at both ends of the screen's life. See {#check_locked}.
-      @ui_thread = Thread.current
-      @closed = false
+      @_ui_thread = Thread.current
+      @_closed = false
       background = detect_background
-      @color_scheme = background.scheme
-      @background_color = background.color
-      @color_depth = detect_color_depth
-      @locale = detect_locale
-      @theme_def = ThemeDef.default
+      @_color_scheme = background.scheme
+      @_background_color = background.color
+      @_color_depth = detect_color_depth
+      @_locale = detect_locale
+      @_theme_def = ThemeDef.default
       # The theme as assigned, derivation Procs and all; {#theme} is this
       # resolved against {#background_color}, re-resolved when either changes.
-      @theme_source = @theme_def.for(@color_scheme)
-      @theme = @theme_source.resolve(@background_color)
+      @_theme_source = @_theme_def.for(@_color_scheme)
+      @_theme = @_theme_source.resolve(@_background_color)
       # Structural root of the component tree: holds tiled content and the
       # popup stack. Sized here rather than waiting for the first {#resize},
       # for the same reason {#size} is seeded from {EventQueue::TTYSizeEvent}:
       # an empty pane rect is an *ancestor* empty rect, and {#repaint}'s drain
       # filter would take the whole tree with it.
-      @pane = ScreenPane.new
+      @_pane = ScreenPane.new
       size_pane
-      @mouse_router = Mouse::Router.new(self)
+      @_mouse_router = Mouse::Router.new(self)
       # App-level keyboard shortcuts dispatched by {#handle_key?} before keys
       # reach the pane. See {#register_global_shortcut}.
-      @global_shortcuts = {}
+      @_global_shortcuts = {}
       # The back buffer components paint into. {#repaint} flushes its diff to
       # the terminal, so only changed cells are emitted (flicker-free on any
       # terminal). Sized to the current viewport; {#resize} resizes it.
-      @buffer = Buffer.new(@size, color_depth: @color_depth)
-      @canvas = Canvas.new(@buffer)
+      @_buffer = Buffer.new(@_size, color_depth: @_color_depth)
+      @_canvas = Canvas.new(@_buffer)
     end
 
     # Entry in the global shortcut registry: the block to run, and whether it
@@ -142,10 +142,10 @@ module Tuile
     ].freeze
 
     # @return [ScreenPane] the structural root of the component tree.
-    attr_reader :pane
+    def pane = @_pane
 
     # @return [Symbol] `:light` or `:dark`
-    attr_reader :color_scheme
+    def color_scheme = @_color_scheme
 
     # How many colors this terminal can show ({ColorDepth::DEPTHS}), detected
     # at construction. {Buffer#flush} degrades every color it emits to this,
@@ -156,18 +156,18 @@ module Tuile
     # mid-session. Override a terminal that reports itself wrong through
     # {ColorDepth::OVERRIDE_ENV} instead.
     # @return [Symbol]
-    attr_reader :color_depth
+    def color_depth = @_color_depth
 
     # @return [Buffer] the back buffer components paint into
     #   ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
-    attr_reader :buffer
+    def buffer = @_buffer
 
     # The untinted root canvas over {#buffer}, at the buffer's own origin,
     # which {#canvas_for} derives every component's from. Nothing in `lib/`
     # paints through it: a component paints onto the canvas it is *given*,
     # never this one by name (`D_canvas`).
     # @return [Canvas]
-    attr_reader :canvas
+    def canvas = @_canvas
 
     # The canvas `component` paints onto: one over {#buffer} carrying that
     # component's resolved background, positioned where it sits on screen and
@@ -193,7 +193,7 @@ module Tuile
     # @param root [Component, nil] `component` itself or one of its ancestors;
     #   `nil` is the screen.
     # @return [Canvas]
-    def canvas_for(component, backend: @buffer, root: nil)
+    def canvas_for(component, backend: @_buffer, root: nil)
       # Built rather than derived from #canvas, since {Canvas#with} is
       # block-only. __send__ because Component#bg is protected: the
       # framework paints with it, an app never asks (`D_bg_surface`).
@@ -283,7 +283,7 @@ module Tuile
     def self.instance? = !@@instance.nil?
 
     # @return [Component, nil] tiled content (forwarded to {ScreenPane}).
-    def content = @pane.content
+    def content = @_pane.content
 
     # @param content [Component]
     # @return [void]
@@ -291,12 +291,12 @@ module Tuile
       # Not left to ScreenPane#content='s own checks: after #close there's no
       # pane to forward to, and NoMethodError-for-nil is a poor error.
       check_locked
-      @pane.content = content
+      @_pane.content = content
       resize
     end
 
     # @return [Size] current screen size.
-    attr_reader :size
+    def size = @_size
 
     # The color {Theme} built-in components read at paint time: the member
     # of {#theme_def} matching the terminal background detected at
@@ -308,7 +308,7 @@ module Tuile
     # Always resolved ({Theme#resolve}): a derived token is recomputed from
     # {#background_color} whenever that changes, so no token here is a Proc.
     # @return [Theme]
-    attr_reader :theme
+    def theme = @_theme
 
     # The app's {ThemeDef} — the dark/light {Theme} pair the screen picks
     # {#theme} from, at startup and on every OS appearance flip. Starts as
@@ -317,7 +317,7 @@ module Tuile
     # durable way to theme an app: unlike a bare {#theme=}, it survives
     # the user toggling the OS appearance.
     # @return [ThemeDef]
-    attr_reader :theme_def
+    def theme_def = @_theme_def
 
     # The terminal's own background, as it reported it — for deriving a
     # color *from* the background rather than picking one against it. A pane
@@ -338,7 +338,7 @@ module Tuile
     # theme swap does — even when no token is derived, since a component may
     # read this directly.
     # @return [Color, nil]
-    attr_reader :background_color
+    def background_color = @_background_color
 
     # Replaces the theme definition and immediately applies the member
     # matching the current color scheme (via {#theme=}, so the whole UI
@@ -350,8 +350,8 @@ module Tuile
       raise TypeError, "expected ThemeDef, got #{theme_def.inspect}" unless theme_def.is_a?(ThemeDef)
 
       check_locked
-      @theme_def = theme_def
-      self.theme = @theme_def.for(@color_scheme)
+      @_theme_def = theme_def
+      self.theme = @_theme_def.for(@_color_scheme)
     end
 
     # Replaces the theme and restyles the whole UI: fires
@@ -366,11 +366,11 @@ module Tuile
       raise TypeError, "expected Theme, got #{new_theme.inspect}" unless new_theme.is_a?(Theme)
 
       check_locked
-      @theme_source = new_theme
-      resolved = new_theme.resolve(@background_color)
-      return if @theme == resolved
+      @_theme_source = new_theme
+      resolved = new_theme.resolve(@_background_color)
+      return if @_theme == resolved
 
-      @theme = resolved
+      @_theme = resolved
       restyle
     end
 
@@ -382,7 +382,7 @@ module Tuile
     # Read it at paint or parse time and never cache it in an ivar, for the
     # same reason {#theme} says so: {#locale=} can replace it mid-session.
     # @return [Locale]
-    attr_reader :locale
+    def locale = @_locale
 
     # Replaces the locale: fires {Component#handle_locale_changed} across the
     # attached tree and invalidates every attached component. No-op when
@@ -400,22 +400,22 @@ module Tuile
       raise TypeError, "expected Locale, got #{new_locale.inspect}" unless new_locale.is_a?(Locale)
 
       check_locked
-      return if @locale == new_locale
+      return if @_locale == new_locale
 
-      @locale = new_locale
+      @_locale = new_locale
       # `__send__` for the same reason `theme=` uses it: the hook is protected
       # (`D_hook_visibility`).
-      @pane&.walk_tree { _1.__send__(:handle_locale_changed) }
+      @_pane&.walk_tree { _1.__send__(:handle_locale_changed) }
       needs_full_repaint
     end
 
     # @return [Array<Component::Overlay>] the open overlay stack — both
     #   {Component::Popup} modals and bare {Component::Overlay}s — in stacking
     #   order (forwarded to {ScreenPane}). The array must not be modified!
-    def popups = @pane.popups
+    def popups = @_pane.popups
 
     # @return [EventQueue] the event queue.
-    attr_reader :event_queue
+    def event_queue = @_event_queue
 
     # `:idle` covers *both* ends of the screen's life — before the first
     # {#run_event_loop} and after it returns — and a screen may cycle
@@ -423,9 +423,9 @@ module Tuile
     # @return [Symbol] `:idle` (no event loop running), `:running` (a
     #   {#run_event_loop} is in progress) or `:closed` (after {#close}).
     def state
-      return :closed if @closed
+      return :closed if @_closed
 
-      @event_queue.running? ? :running : :idle
+      @_event_queue.running? ? :running : :idle
     end
 
     # Raises unless the calling thread currently owns the UI (see the
@@ -442,17 +442,17 @@ module Tuile
     #   isn't the current owner.
     # @return [void]
     def check_locked
-      raise Tuile::Error, "Screen is closed: no UI mutation is possible after Screen#close" if @closed
-      return if @event_queue.running? ? @event_queue.in_loop_thread? : Thread.current.equal?(@ui_thread)
+      raise Tuile::Error, "Screen is closed: no UI mutation is possible after Screen#close" if @_closed
+      return if @_event_queue.running? ? @_event_queue.in_loop_thread? : Thread.current.equal?(@_ui_thread)
 
       # `submit` is the wrong remedy with no loop running — nothing would drain
       # the queue, so the block silently never fires.
-      message = if @event_queue.running?
+      message = if @_event_queue.running?
                   "UI lock not held: UI mutations must run on the event-loop thread; " \
                   "marshal via screen.event_queue.submit { ... }"
                 else
                   "UI not owned by #{Thread.current}: no event loop is running, so UI mutations must " \
-                  "come from #{@ui_thread}, the thread that created this screen " \
+                  "come from #{@_ui_thread}, the thread that created this screen " \
                   "(or start the event loop first)"
                 end
       raise Tuile::Error, message
@@ -472,7 +472,7 @@ module Tuile
       check_locked
       raise TypeError, "expected Component, got #{component.inspect}" unless component.is_a? Component
 
-      @invalidated << component unless @repainting.include? component
+      @_invalidated << component unless @_repainting.include? component
     end
 
     # Marks a container as owing a {Component#relayout}, run by the next
@@ -483,7 +483,7 @@ module Tuile
       check_locked
       raise TypeError, "expected Component, got #{component.inspect}" unless component.is_a? Component
 
-      @layout_pending = true
+      @_layout_pending = true
     end
 
     # Runs every pending {Component#relayout}, so rects are current again.
@@ -513,30 +513,30 @@ module Tuile
     def flush_layout
       check_locked
       LayoutPass.refuse_nested
-      return if @pane.nil?
+      return if @_pane.nil?
 
       rounds = 0
       loop do
-        if @layout_pending
-          rounds = LayoutPass.drain(@pane, rounds)
+        if @_layout_pending
+          rounds = LayoutPass.drain(@_pane, rounds)
           # Only once the drain returns: a raise leaves the gate open, so the
           # next settle reports the same cycle rather than skipping the walk.
-          @layout_pending = false
+          @_layout_pending = false
         end
         # One round shared with the drain: an anchor chain that never settles
         # hits the same cap.
-        next if @pane.__send__(:remark_moved_anchors)
-        break unless @focus_deferred
+        next if @_pane.__send__(:remark_moved_anchors)
+        break unless @_focus_deferred
 
         # Last, so the scroll sees popups at their final place; and looped, so
         # what an on_focus_changed callback marks is settled before we return.
-        @focus_deferred = false
-        follow_up_focus(@focus_deferred_from)
+        @_focus_deferred = false
+        follow_up_focus(@_focus_deferred_from)
       end
     end
 
     # @return [Component, nil] currently focused component.
-    attr_reader :focused
+    def focused = @_focused
 
     # Sets the focused {Component}. Focused component receives keyboard events.
     # All focusable components live under {#pane}, so this is a single uniform
@@ -566,6 +566,7 @@ module Tuile
     # {Tuile.logger} rather than raising: a terminal shrunk to nothing causes it
     # legitimately.
     # @param focused [Component, nil] the new component to be focused.
+    # @return [void]
     def focused=(focused)
       unless focused.nil? || focused.is_a?(Component)
         raise TypeError, "expected Component or nil, got #{focused.inspect}"
@@ -578,24 +579,24 @@ module Tuile
       # from tripping over a layout that never settles; inside a pass the
       # request waits for the drain instead (#fire_focus_hooks).
       flush_layout unless focused.nil? || LayoutPass.running?
-      previous = @focused
+      previous = @_focused
       if focused.nil?
-        @focused = nil
-        @pane.walk_tree { _1.active = false }
+        @_focused = nil
+        @_pane.walk_tree { _1.active = false }
       else
-        raise Tuile::Error, "#{focused} is not attached to this screen" if focused.root != @pane
+        raise Tuile::Error, "#{focused} is not attached to this screen" if focused.root != @_pane
         unless ComponentUtil.effectively_visible?(focused)
           raise Tuile::Error, "#{focused} is hidden, or sits under a hidden ancestor"
         end
 
-        @focused = focused
+        @_focused = focused
         active = Set[focused]
         cursor = focused.parent
         until cursor.nil?
           active << cursor
           cursor = cursor.parent
         end
-        @pane.walk_tree { _1.active = active.include?(_1) }
+        @_pane.walk_tree { _1.active = active.include?(_1) }
       end
       fire_focus_hooks(previous, focused)
     end
@@ -638,7 +639,7 @@ module Tuile
     # @return [void]
     def add_popup(window, placement = nil)
       check_locked
-      @pane.add_popup(window, placement)
+      @_pane.add_popup(window, placement)
       # No need to fully repaint the scene: a popup simply paints over the
       # current screen contents.
     end
@@ -679,7 +680,7 @@ module Tuile
     # @raise [ArgumentError] on an unknown `capture_mouse:` level.
     # @return [void]
     def run_event_loop(capture_mouse: true, bracketed_paste: true)
-      raise Tuile::Error, "Screen is closed: cannot run the event loop" if @closed
+      raise Tuile::Error, "Screen is closed: cannot run the event loop" if @_closed
 
       level = Mouse.level(capture_mouse)
 
@@ -688,7 +689,7 @@ module Tuile
       # real error.
       begin
         $stdin.echo = false
-        @mouse_router.level = level
+        @_mouse_router.level = level
         print Mouse.start_tracking(level) if level
         print EventQueue::TerminalFocusEvent::REPORTING_ON if level == :hover
         print Keys::BRACKETED_PASTE_ON if bracketed_paste
@@ -705,7 +706,7 @@ module Tuile
         print EventQueue::TerminalFocusEvent::REPORTING_OFF if level == :hover
         print Mouse.stop_tracking(level) if level
         # Back to delivering everything a spec posts once no loop owns the wire.
-        @mouse_router.level = :hover
+        @_mouse_router.level = :hover
         print TTY::Cursor.show
         $stdin.echo = true
       end
@@ -772,7 +773,7 @@ module Tuile
               "button, handle ENTER in the form's own handle_key? instead — a focused " \
               "TextArea/TextField gets first refusal there."
       end
-      @global_shortcuts[key] = Shortcut.new(block: block, over_popups: over_popups)
+      @_global_shortcuts[key] = Shortcut.new(block: block, over_popups: over_popups)
     end
 
     # Removes a shortcut previously installed by {#register_global_shortcut}.
@@ -780,7 +781,7 @@ module Tuile
     # @param key [String]
     # @return [void]
     def unregister_global_shortcut(key)
-      @global_shortcuts.delete(key)
+      @_global_shortcuts.delete(key)
     end
 
     # Internal — use {Component::Overlay#close} instead. Removes the overlay
@@ -792,9 +793,9 @@ module Tuile
     # @return [void]
     def remove_popup(window)
       check_locked
-      return unless @pane.has_popup?(window)
+      return unless @_pane.has_popup?(window)
 
-      @pane.remove_popup(window)
+      @_pane.remove_popup(window)
       needs_full_repaint
     end
 
@@ -808,7 +809,7 @@ module Tuile
     # @api private
     # @return [void]
     def needs_full_repaint
-      @pane&.walk_tree { invalidate _1 }
+      @_pane&.walk_tree { invalidate _1 }
     end
 
     # Internal — use {Component::Overlay#open?} instead.
@@ -817,7 +818,7 @@ module Tuile
     # @return [Boolean] true if this overlay is currently mounted.
     def has_popup?(window) # rubocop:disable Naming/PredicatePrefix
       check_locked
-      @pane.has_popup?(window)
+      @_pane.has_popup?(window)
     end
 
     # Testing only — creates new screen, locks the UI, and prevents any
@@ -840,21 +841,21 @@ module Tuile
     #   doesn't own the UI.
     # @return [void]
     def close
-      return if @closed
+      return if @_closed
 
       raise Tuile::Error, "Screen is running: stop the event loop before closing" if state == :running
 
       check_locked
       begin
-        @pane.detach_all
+        @_pane.detach_all
       ensure
         # A raising handle_detached propagates — it's a bug to fix, not something the
         # framework guards — but teardown still has to finish, or one such bug
         # leaves a half-closed screen behind and every later example fails with it.
         clear
-        @pane = nil
-        @mouse_router = nil
-        @closed = true
+        @_pane = nil
+        @_mouse_router = nil
+        @_closed = true
         @@instance = nil # rubocop:disable Style/ClassVars
       end
     end
@@ -869,7 +870,7 @@ module Tuile
     # background re-probe, cursor-show on teardown. Component painting does
     # *not* go through here anymore — it writes into {#buffer}, which
     # {#repaint} diffs and {#emit}s. {FakeScreen} overrides this (and
-    # {#emit}) to capture into `@prints` instead of the test runner's stdout.
+    # {#emit}) to capture into `@_prints` instead of the test runner's stdout.
     #
     # Flushed, like {#emit}: none of these escapes ends in a newline, and a
     # buffered stdout would hold a *query* — one whose reply the app is
@@ -924,7 +925,7 @@ module Tuile
       # simple and very fast in common cases.
 
       did_paint = false
-      until @invalidated.empty?
+      until @_invalidated.empty?
         # Defensive filter, two ways a queued component has no place on the
         # screen by the time we drain it. It became *detached* since (popup
         # close, sibling removed mid-event-handling, focus repair) — which
@@ -947,17 +948,17 @@ module Tuile
         # A scrolled-out component is *not* dropped here, though its empty
         # clip would say so: measured, the clip already makes its paint near
         # free (`D_clip`).
-        @invalidated.delete_if do |c|
+        @_invalidated.delete_if do |c|
           next true unless c.attached?
 
           blocked = c
           blocked = blocked.parent while blocked && !blocked.rect.empty? && blocked.visible?
           !blocked.nil?
         end
-        break if @invalidated.empty?
+        break if @_invalidated.empty?
 
         did_paint = true
-        popups = @pane.popups
+        popups = @_pane.popups
 
         # Build the repaint list in z-order, leaning on the tree itself rather
         # than a depth sort. The pane's pre-order traversal already orders the
@@ -970,9 +971,9 @@ module Tuile
         # Tiled layer: invalidated non-popup components, in tree order.
         repaint = []
         tiled_invalidated = false
-        @pane.walk_tree do |c|
+        @_pane.walk_tree do |c|
           next if popup_members.include?(c)
-          next unless @invalidated.include?(c)
+          next unless @_invalidated.include?(c)
 
           repaint << c
           tiled_invalidated = true
@@ -991,22 +992,22 @@ module Tuile
         below_repainted = tiled_invalidated
         popups.each do |p|
           layer_invalidated = false
-          p.walk_tree { |c| layer_invalidated ||= @invalidated.include?(c) }
-          p.walk_tree { |c| repaint << c if below_repainted || @invalidated.include?(c) }
+          p.walk_tree { |c| layer_invalidated ||= @_invalidated.include?(c) }
+          p.walk_tree { |c| repaint << c if below_repainted || @_invalidated.include?(c) }
           below_repainted ||= layer_invalidated
         end
 
-        @repainting = repaint.to_set
-        @invalidated.clear
+        @_repainting = repaint.to_set
+        @_invalidated.clear
 
         repaint.each { _1.repaint(canvas_for(_1)) }
-        @repainting.clear
+        @_repainting.clear
       end
       return unless did_paint
 
       # Flush only the changed cells, then reposition the cursor — all inside
       # one synchronized-output batch so the terminal composites it atomically.
-      emit("#{Ansi::SYNC_BEGIN}#{@buffer.flush}#{cursor_sequence}#{Ansi::SYNC_END}")
+      emit("#{Ansi::SYNC_BEGIN}#{@_buffer.flush}#{cursor_sequence}#{Ansi::SYNC_END}")
     end
 
     # Where the hardware cursor should sit in **screen** coordinates, or nil if
@@ -1022,7 +1023,7 @@ module Tuile
     # reach, since the terminal draws it itself (`D_clip`).
     # @return [Point, nil]
     def cursor_position
-      focused = @focused
+      focused = @_focused
       local = focused&.cursor_position
       return nil if local.nil?
 
@@ -1041,18 +1042,18 @@ module Tuile
     # @return [void]
     def handle_mouse(event)
       check_locked
-      @mouse_router.dispatch(event)
+      @_mouse_router.dispatch(event)
     end
 
     # @return [Component, nil] the innermost component the pointer is over, as
     #   of the last settle. Always nil below `capture_mouse: :hover`; nil after
     #   a key, a paste or the terminal losing focus, until the pointer next
     #   moves; frozen at its last value while a press is grabbed.
-    def hovered = @mouse_router&.hovered
+    def hovered = @_mouse_router&.hovered
 
     # @return [Component, nil] the component holding the mouse grab — the one
     #   whose {Component#handle_mouse_down?} claimed the press still held.
-    def grabbed = @mouse_router&.grabbed
+    def grabbed = @_mouse_router&.grabbed
 
     private
 
@@ -1060,7 +1061,7 @@ module Tuile
     # so the screen places it itself.
     # @return [void]
     def size_pane
-      LayoutPass.run(self) { @pane.__send__(:rect=, Rect.new(0, 0, @size.width, @size.height)) }
+      LayoutPass.run(self) { @_pane.__send__(:rect=, Rect.new(0, 0, @_size.width, @_size.height)) }
     end
 
     # Whether anything on `component`'s ancestor chain actually cuts it — the
@@ -1110,15 +1111,15 @@ module Tuile
       # Recorded before the hooks, which may reassign focus themselves: the
       # first deferral in a drain keeps its `previous`, so the one notice fired
       # later compares against where focus stood before any of them.
-      if deferred && !@focus_deferred
-        @focus_deferred = true
-        @focus_deferred_from = previous
+      if deferred && !@_focus_deferred
+        @_focus_deferred = true
+        @_focus_deferred_from = previous
       end
       unless focused.equal?(previous)
         previous&.__send__(:handle_blur)
-        return unless @focused.equal?(focused)
+        return unless @_focused.equal?(focused)
       end
-      @focused&.__send__(:handle_focus)
+      @_focused&.__send__(:handle_focus)
       follow_up_focus(previous) unless deferred
     end
 
@@ -1130,9 +1131,9 @@ module Tuile
       # Level-triggered like `handle_focus`, not edge-triggered like the notice
       # below: re-focusing what already has focus is how an app says "bring it
       # back into view", and an already-satisfied request scrolls by zero.
-      @focused&.scroll_to_visible
-      warn_if_unseen(@focused) unless @focused.nil?
-      on_focus_changed.fire(FocusChangedEvent.new(source: self)) unless @focused.equal?(previous)
+      @_focused&.scroll_to_visible
+      warn_if_unseen(@_focused) unless @_focused.nil?
+      on_focus_changed.fire(FocusChangedEvent.new(source: self)) unless @_focused.equal?(previous)
     end
 
     # Unguarded on purpose: a container forwarding focus re-enters {#focused=},
@@ -1183,8 +1184,8 @@ module Tuile
     # @param scheme [Symbol] `:dark` or `:light`.
     # @return [void]
     def handle_color_scheme(scheme)
-      @color_scheme = scheme
-      self.theme = @theme_def.for(@color_scheme)
+      @_color_scheme = scheme
+      self.theme = @_theme_def.for(@_color_scheme)
       print TerminalBackground::QUERY
     end
 
@@ -1197,10 +1198,10 @@ module Tuile
     # @param color [Color]
     # @return [void]
     def handle_background_color(color)
-      return if @background_color == color
+      return if @_background_color == color
 
-      @background_color = color
-      @theme = @theme_source.resolve(color)
+      @_background_color = color
+      @_theme = @_theme_source.resolve(color)
       restyle
     end
 
@@ -1210,7 +1211,7 @@ module Tuile
     def restyle
       # `__send__`, not `&:handle_theme_changed`: the hook is protected, and an app
       # subclass may narrow it further (`D_hook_visibility`).
-      @pane&.walk_tree { _1.__send__(:handle_theme_changed) }
+      @_pane&.walk_tree { _1.__send__(:handle_theme_changed) }
       needs_full_repaint
     end
 
@@ -1223,20 +1224,20 @@ module Tuile
     # @return [Boolean] true if focus moved.
     def cycle_focus(forward:)
       check_locked
-      scope = @pane.key_scope
+      scope = @_pane.key_scope
       return false if scope.nil?
 
       stops = []
       scope.walk_shown_tree { |c| stops << c if c.tab_stop? }
       return false if stops.empty?
 
-      idx = @focused.nil? ? nil : stops.index(@focused)
+      idx = @_focused.nil? ? nil : stops.index(@_focused)
       target = if idx.nil?
                  forward ? stops.first : stops.last
                else
                  stops[(idx + (forward ? 1 : -1)) % stops.size]
                end
-      return false if target.equal?(@focused)
+      return false if target.equal?(@_focused)
 
       self.focused = target
       true
@@ -1268,7 +1269,7 @@ module Tuile
     # @return [void]
     def resize
       check_locked
-      @buffer.resize(size) unless @buffer.size == size
+      @_buffer.resize(size) unless @_buffer.size == size
       needs_full_repaint
       size_pane
       repaint
@@ -1295,8 +1296,8 @@ module Tuile
       # and tmux, and a stuck grab would swallow every later drag. It also
       # clears the hover — the one belt left where FocusOut never arrives (tmux
       # by default, `R_mouse_reporting`).
-      @mouse_router.release_grab
-      @mouse_router.forget_pointer
+      @_mouse_router.release_grab
+      @_mouse_router.forget_pointer
       case key
       when Keys::TAB
         focus_next
@@ -1305,12 +1306,12 @@ module Tuile
         focus_previous
         true
       else
-        shortcut = @global_shortcuts[key]
-        if !shortcut.nil? && (shortcut.over_popups || @pane.modal_popup.nil?)
+        shortcut = @_global_shortcuts[key]
+        if !shortcut.nil? && (shortcut.over_popups || @_pane.modal_popup.nil?)
           shortcut.block.call
           true
         else
-          @pane.handle_key?(key)
+          @_pane.handle_key?(key)
         end
       end
     end
@@ -1326,8 +1327,8 @@ module Tuile
     # @param text [String]
     # @return [void]
     def handle_paste(text)
-      @mouse_router.forget_pointer
-      @pane.handle_paste(text)
+      @_mouse_router.forget_pointer
+      @_pane.handle_paste(text)
     end
 
     # Routes one event to its handler, then {#settle}s.
@@ -1352,14 +1353,14 @@ module Tuile
         when EventQueue::KeyEvent
           key = event.key
           handled = handle_key?(key)
-          @event_queue.stop if !handled && ["q", Keys::ESC].include?(key)
+          @_event_queue.stop if !handled && ["q", Keys::ESC].include?(key)
           handled
         when EventQueue::PasteEvent
           handle_paste(event.text)
         when Mouse::Event
           handle_mouse(event)
         when EventQueue::TTYSizeEvent
-          @size = event.size
+          @_size = event.size
           resize
         when EventQueue::ColorSchemeEvent
           handle_color_scheme(event.scheme)
@@ -1368,8 +1369,8 @@ module Tuile
         when EventQueue::TerminalFocusEvent
           # A FocusIn says nothing of where the pointer is; the next move does.
           unless event.focused
-            @mouse_router.release_grab
-            @mouse_router.forget_pointer
+            @_mouse_router.release_grab
+            @_mouse_router.forget_pointer
           end
         when EventQueue::EmptyQueueEvent
           repaint
@@ -1390,16 +1391,16 @@ module Tuile
     # @return [void]
     def settle
       flush_layout
-      return if @mouse_router.nil?
+      return if @_mouse_router.nil?
 
-      @mouse_router.sync_hover
+      @_mouse_router.sync_hover
       # An enter or exit hook may have marked the layout.
       flush_layout
     end
 
     # @return [void]
     def event_loop
-      @event_queue.run_loop do |event|
+      @_event_queue.run_loop do |event|
         dispatch(event)
       rescue StandardError => e
         # Empty means re-raise: the generic fire cannot know that, so the one

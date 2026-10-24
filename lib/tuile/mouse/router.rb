@@ -61,12 +61,12 @@ module Tuile
 
       # @param screen [Screen]
       def initialize(screen)
-        @screen = screen
-        @level = :hover
-        @pointer = nil
-        @hovered = []
-        @grabbed = nil
-        @grab_button = nil
+        @_screen = screen
+        @_level = :hover
+        @_pointer = nil
+        @_hovered = []
+        @_grabbed = nil
+        @_grab_button = nil
       end
 
       # The tracking level {Screen#run_event_loop} asked the terminal for, one of
@@ -75,24 +75,24 @@ module Tuile
       # terminal reports one only while a button nobody claimed is held, and
       # enter/exit that fire *sometimes* are worse than none.
       # @return [Symbol, nil]
-      attr_reader :level
+      def level = @_level
 
       # A new level starts with the pointer unknown: one a previous level
       # reported is no longer being tracked.
       # @param level [Symbol, nil]
       # @return [void]
       def level=(level)
-        @level = level
+        @_level = level
         forget_pointer
       end
 
       # @return [Component, nil] the component whose {Component#handle_mouse_down?}
       #   claimed the press currently held.
-      attr_reader :grabbed
+      def grabbed = @_grabbed
 
       # @return [Component, nil] the innermost component under the pointer, as of
       #   the last {#sync_hover}; nil below `:hover`.
-      def hovered = @hovered.last
+      def hovered = @_hovered.last
 
       # @param event [Mouse::Event]
       # @return [void]
@@ -118,15 +118,15 @@ module Tuile
       # Ends the grab without telling the grabbed component.
       # @return [void]
       def release_grab
-        @grabbed = nil
-        @grab_button = nil
+        @_grabbed = nil
+        @_grab_button = nil
       end
 
       # Marks the pointer's position unknown, so the next {#sync_hover} clears
       # the hover until a report says where it is.
       # @return [void]
       def forget_pointer
-        @pointer = nil
+        @_pointer = nil
       end
 
       # Brings the hovered chain up to date with the pointer and the tree,
@@ -134,14 +134,14 @@ module Tuile
       # {Component#handle_mouse_enter} root first. Idempotent.
       # @return [void]
       def sync_hover
-        chain = if @pointer.nil? then []
-                elsif @grabbed.nil? then extent_path(@pointer).map(&:component)
+        chain = if @_pointer.nil? then []
+                elsif @_grabbed.nil? then extent_path(@_pointer).map(&:component)
                 else
-                  @hovered.each_with_index.take_while do |c, i|
-                    c.attached? && c.visible? && (i.zero? || c.parent.equal?(@hovered[i - 1]))
+                  @_hovered.each_with_index.take_while do |c, i|
+                    c.attached? && c.visible? && (i.zero? || c.parent.equal?(@_hovered[i - 1]))
                   end.map(&:first)
                 end
-        rehover(chain) unless chain == @hovered
+        rehover(chain) unless chain == @_hovered
       end
 
       private
@@ -151,7 +151,7 @@ module Tuile
       # @param point [Point] in screen coordinates.
       # @return [void]
       def track(point)
-        @pointer = point if @level == :hover
+        @_pointer = point if @_level == :hover
       end
 
       # @param event [DownEvent]
@@ -160,15 +160,15 @@ module Tuile
         release_grab
         point = event.point
         track(point)
-        pane = @screen.pane
+        pane = @_screen.pane
         root = pane.mouse_root_at(point)
         path = rect_path(root, point)
         pane.dismissing_popups_outside(point, left: event.button == :left) do
           focus_innermost(root, path) if event.button == :left
           claimant = bubble(within_extent(path), :handle_mouse_down?, event)
           unless claimant.nil?
-            @grabbed = claimant
-            @grab_button = event.button
+            @_grabbed = claimant
+            @_grab_button = event.button
           end
         end
       end
@@ -176,7 +176,7 @@ module Tuile
       # @param event [UpEvent]
       # @return [void]
       def release(event)
-        grabbed = @grabbed
+        grabbed = @_grabbed
         release_grab
         return if grabbed.nil? || !ComponentUtil.effectively_visible?(grabbed)
 
@@ -188,14 +188,14 @@ module Tuile
       # @return [void]
       def move(event)
         track(event.point)
-        unless @grabbed.nil?
-          if ComponentUtil.effectively_visible?(@grabbed)
-            local = @grabbed.to_local(event.point)
-            @grabbed.__send__(:handle_mouse_drag, DragEvent.new(@grab_button, local.x, local.y))
+        unless @_grabbed.nil?
+          if ComponentUtil.effectively_visible?(@_grabbed)
+            local = @_grabbed.to_local(event.point)
+            @_grabbed.__send__(:handle_mouse_drag, DragEvent.new(@_grab_button, local.x, local.y))
           end
           return
         end
-        return unless @level == :hover
+        return unless @_level == :hover
 
         # Synced here rather than left to the settle, so the enters precede the
         # move they announce.
@@ -212,7 +212,7 @@ module Tuile
         return if root.is_a?(Component::Overlay) && !root.modal?
 
         target = path.reverse_each.map(&:component).find(&:focusable?)
-        @screen.focused = target unless target.nil? || target.active?
+        @_screen.focused = target unless target.nil? || target.active?
       end
 
       # @param path [Array<Hit>] root first.
@@ -233,7 +233,7 @@ module Tuile
       # @param point [Point] in screen coordinates.
       # @return [Array<Hit>] the shown components under `point` whose extent
       #   contains it, root first.
-      def extent_path(point) = within_extent(rect_path(@screen.pane.mouse_root_at(point), point))
+      def extent_path(point) = within_extent(rect_path(@_screen.pane.mouse_root_at(point), point))
 
       # @param path [Array<Hit>]
       # @return [Array<Hit>] the prefix whose extent contains the point — the
@@ -261,8 +261,8 @@ module Tuile
       # @param chain [Array<Component>] the new hovered chain, root first.
       # @return [void]
       def rehover(chain)
-        old = @hovered
-        @hovered = chain
+        old = @_hovered
+        @_hovered = chain
         (old - chain).reverse_each { _1.__send__(:handle_mouse_exit) }
         (chain - old).each { _1.__send__(:handle_mouse_enter) }
       end

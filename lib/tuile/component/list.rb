@@ -67,22 +67,22 @@ module Tuile
 
       def initialize
         super
-        @items = []
-        @renderer = DEFAULT_RENDERER
-        @row_cache = {}
-        @row_cache_width = nil
-        @blank_row = nil
-        @auto_scroll = false
-        @follow = true
-        @scroll_top_row = 0
-        @cursor = Cursor::None.new
-        @scrollbar_visibility = :gone
-        @show_cursor_when_inactive = false
-        @interactive = true
-        @last_cursor_state = cursor_state
-        @scrollbar = VerticalScrollBar.new
-        @scrollbar.on_scroll_request { self.scroll_top_row = _1.scroll_top_row }
-        add_child(@scrollbar) # chrome, appended: a List has no content children
+        @_items = []
+        @_renderer = DEFAULT_RENDERER
+        @_row_cache = {}
+        @_row_cache_width = nil
+        @_blank_row = nil
+        @_auto_scroll = false
+        @_follow = true
+        @_scroll_top_row = 0
+        @_cursor = Cursor::None.new
+        @_scrollbar_visibility = :gone
+        @_show_cursor_when_inactive = false
+        @_interactive = true
+        @_last_cursor_state = cursor_state
+        @_scrollbar = VerticalScrollBar.new
+        @_scrollbar.on_scroll_request { self.scroll_top_row = _1.scroll_top_row }
+        add_child(@_scrollbar) # chrome, appended: a List has no content children
       end
 
       # What {#on_item_chosen} fires.
@@ -130,36 +130,37 @@ module Tuile
       #   row (see {#following?}). Scroll up to read older content and
       #   incoming rows stop yanking you back down; scroll back to the bottom
       #   and tailing resumes.
-      attr_reader :auto_scroll
+      def auto_scroll = @_auto_scroll
 
       # @return [Boolean] whether {#auto_scroll} is currently tailing. True
       #   while the viewport sits at the last row; flips to false the moment
       #   the user scrolls up, and back to true once they scroll to the bottom
       #   again. Only consulted when {#auto_scroll} is enabled.
-      def following? = @follow
+      def following? = @_follow
 
       # @return [Integer] top row of the viewport. 0 or positive.
-      attr_reader :scroll_top_row
+      def scroll_top_row = @_scroll_top_row
 
       # @return [Cursor] the list's cursor.
-      attr_reader :cursor
+      def cursor = @_cursor
 
       # @return [Symbol] scrollbar visibility: `:gone`, `:visible`, or `:auto`
       #   — shown only while there are more {#items} than rows. `:gone` by
       #   default.
-      attr_reader :scrollbar_visibility
+      def scrollbar_visibility = @_scrollbar_visibility
 
       # @return [Boolean] when true, the cursor highlight is painted even while
       #   the list is inactive (e.g. when focus is on a sibling search field).
       #   Defaults to false.
-      attr_reader :show_cursor_when_inactive
+      def show_cursor_when_inactive = @_show_cursor_when_inactive
 
       # @param value [Boolean]
+      # @return [void]
       def show_cursor_when_inactive=(value)
         value = value ? true : false
-        return if @show_cursor_when_inactive == value
+        return if @_show_cursor_when_inactive == value
 
-        @show_cursor_when_inactive = value
+        @_show_cursor_when_inactive = value
         invalidate
       end
 
@@ -171,7 +172,7 @@ module Tuile
       # The wheel and the scrollbar still scroll it, and the app still drives
       # {#cursor} and {#scroll_top_row}. `true` by default.
       # @return [Boolean]
-      def interactive? = @interactive
+      def interactive? = @_interactive
 
       # Turning it off while focus is inside the list hands focus to the
       # parent, as hiding a focused component does.
@@ -179,9 +180,9 @@ module Tuile
       # @return [void]
       def interactive=(value)
         value = value ? true : false
-        return if @interactive == value
+        return if @_interactive == value
 
-        @interactive = value
+        @_interactive = value
         repair_focus_after_hiding unless value
         invalidate
       end
@@ -194,9 +195,9 @@ module Tuile
         unless %i[gone visible auto].include?(value)
           raise ArgumentError, "expected :gone, :visible or :auto, got #{value.inspect}"
         end
-        return if @scrollbar_visibility == value
+        return if @_scrollbar_visibility == value
 
-        @scrollbar_visibility = value
+        @_scrollbar_visibility = value
         invalidate
         invalidate_layout
       end
@@ -204,38 +205,41 @@ module Tuile
       # Sets the new auto_scroll. If true, re-engages tailing and immediately
       # scrolls to the bottom.
       # @param new_auto_scroll [Boolean]
+      # @return [void]
       def auto_scroll=(new_auto_scroll)
-        @auto_scroll = new_auto_scroll
-        @follow = true if new_auto_scroll
+        @_auto_scroll = new_auto_scroll
+        @_follow = true if new_auto_scroll
         update_scroll_top_row_if_auto_scroll
       end
 
       # Sets a new cursor.
       # @param cursor [Cursor] new cursor.
+      # @return [void]
       def cursor=(cursor)
         raise TypeError, "expected Cursor, got #{cursor.inspect}" unless cursor.is_a? Cursor
 
-        old_position = @cursor.position
-        @cursor = cursor
+        old_position = @_cursor.position
+        @_cursor = cursor
         invalidate if old_position != cursor.position
         notify_cursor_changed
       end
 
       # Sets the top row.
       # @param new_row [Integer] 0 or greater.
+      # @return [void]
       def scroll_top_row=(new_row)
         raise TypeError, "expected Integer, got #{new_row.inspect}" unless new_row.is_a? Integer
         raise ArgumentError, "scroll_top_row must not be negative, got #{new_row}" if new_row.negative?
-        return unless @scroll_top_row != new_row
+        return unless @_scroll_top_row != new_row
 
-        @scroll_top_row = new_row
-        @follow = at_bottom?
+        @_scroll_top_row = new_row
+        @_follow = at_bottom?
         invalidate
         invalidate_layout
       end
 
       # @return [Array] the items, one row each.
-      attr_reader :items
+      def items = @_items
 
       # The width is passed whether or not a renderer wants it, so a
       # one-argument callable raises when a row is rendered.
@@ -246,7 +250,7 @@ module Tuile
       #   gets, gutters and scrollbar column already deducted; it is `0` before
       #   the list has a rect, and every change to it drops the row cache, so a
       #   width-dependent row is never left over from the old width.
-      attr_reader :renderer
+      def renderer = @_renderer
 
       # Replaces the items, leaving the cursor where it is — a cursor left past
       # the last item strands off-content: no highlight, a dead Enter, and a
@@ -258,7 +262,7 @@ module Tuile
       def items=(new_items)
         raise TypeError, "expected Array, got #{new_items.inspect}" unless new_items.is_a? Array
 
-        @items = new_items
+        @_items = new_items
         drop_row_cache
         update_scroll_top_row_if_auto_scroll
         notify_cursor_changed
@@ -269,7 +273,7 @@ module Tuile
       # @param proc [Proc, Method] `(item, text_width) -> row`; see {#renderer}.
       # @return [void]
       def renderer=(proc)
-        @renderer = proc
+        @_renderer = proc
         drop_row_cache
         invalidate
       end
@@ -330,10 +334,10 @@ module Tuile
       end
 
       # @return [Boolean] {#interactive?}.
-      def focusable? = @interactive
+      def focusable? = @_interactive
 
       # @return [Boolean] {#interactive?}.
-      def tab_stop? = @interactive
+      def tab_stop? = @_interactive
 
       # @param key [String] a key.
       # @return [Boolean] true if the key was handled.
@@ -347,7 +351,7 @@ module Tuile
         elsif key == Keys::ENTER && cursor_on_item?
           fire_item_chosen
           true
-        elsif @cursor.handle_key?(key, @items.size, viewport_rows)
+        elsif @_cursor.handle_key?(key, @_items.size, viewport_rows)
           move_viewport_to_cursor
           notify_cursor_changed
           invalidate
@@ -395,9 +399,9 @@ module Tuile
       # @param index [Integer]
       # @return [Boolean] whether the cursor moved there.
       def select(index)
-        return false unless @cursor.candidate_positions(@items.size).include?(index)
+        return false unless @_cursor.candidate_positions(@_items.size).include?(index)
 
-        @cursor.go(index)
+        @_cursor.go(index)
         move_viewport_to_cursor
         notify_cursor_changed
         invalidate
@@ -410,15 +414,15 @@ module Tuile
       # @param event [Mouse::DownEvent]
       # @return [Boolean]
       def handle_mouse_down?(event)
-        return false unless @interactive && event.button == :left
+        return false unless @_interactive && event.button == :left
 
         item_index = event.y + scroll_top_row
-        if @cursor.handle_mouse_down?(item_index, event, @items.size)
+        if @_cursor.handle_mouse_down?(item_index, event, @_items.size)
           move_viewport_to_cursor
           notify_cursor_changed
           invalidate
         end
-        fire_item_chosen if item_index >= 0 && item_index < @items.size && cursor_on_item?
+        fire_item_chosen if item_index >= 0 && item_index < @_items.size && cursor_on_item?
         true
       end
 
@@ -457,7 +461,7 @@ module Tuile
         invalidate_children
         sync_row_cache_width
         (0...rect.height).each do |row|
-          canvas.set_text(0, row, paintable_row(row + @scroll_top_row))
+          canvas.set_text(0, row, paintable_row(row + @_scroll_top_row))
         end
       end
 
@@ -467,7 +471,7 @@ module Tuile
         def initialize(position: 0)
           raise "invalid position #{position}" unless position.is_a? Integer
 
-          @position = position
+          @_position = position
         end
 
         # No cursor — cursor is disabled.
@@ -511,7 +515,7 @@ module Tuile
         end
 
         # @return [Integer] 0-based item index of the current cursor position.
-        attr_reader :position
+        def position = @_position
 
         # @param item_count [Integer] number of items in the list.
         # @return [Array<Integer>] positions the cursor can land on, in
@@ -560,9 +564,9 @@ module Tuile
         # @return [Boolean] true if the position changed.
         def go(new_position)
           new_position = new_position.clamp(0, nil)
-          return false if @position == new_position
+          return false if @_position == new_position
 
-          @position = new_position
+          @_position = new_position
           true
         end
 
@@ -581,13 +585,13 @@ module Tuile
         # @param item_count [Integer]
         # @return [Boolean]
         def go_down_by(count, item_count)
-          go((@position + count).clamp(nil, item_count - 1))
+          go((@_position + count).clamp(nil, item_count - 1))
         end
 
         # @param count [Integer]
         # @return [Boolean]
         def go_up_by(count)
-          go(@position - count)
+          go(@_position - count)
         end
 
         # @return [Boolean]
@@ -603,8 +607,8 @@ module Tuile
           def initialize(positions, position: positions[0])
             raise "positions are empty" if positions.empty?
 
-            @positions = positions.sort
-            position = @positions[@positions.rindex { _1 < position } || 0] unless @positions.include?(position)
+            @_positions = positions.sort
+            position = @_positions[@_positions.rindex { _1 < position } || 0] unless @_positions.include?(position)
             super(position: position)
           end
 
@@ -614,7 +618,7 @@ module Tuile
           # @return [Boolean]
           def handle_mouse_down?(item_index, event, _item_count)
             if event.button == :left
-              prev_pos = @positions.reverse_each.find { _1 <= item_index }
+              prev_pos = @_positions.reverse_each.find { _1 <= item_index }
               return go_to_first if prev_pos.nil?
 
               go(prev_pos)
@@ -626,13 +630,13 @@ module Tuile
           # @param item_count [Integer]
           # @return [Array<Integer>]
           def candidate_positions(item_count)
-            @positions.select { _1 < item_count }
+            @_positions.select { _1 < item_count }
           end
 
           # @param _item_count [Integer]
           # @return [Boolean]
           def go_to_last(_item_count)
-            go(@positions.last)
+            go(@_positions.last)
           end
 
           protected
@@ -641,7 +645,7 @@ module Tuile
           # @param item_count [Integer]
           # @return [Boolean]
           def go_down_by(count, item_count)
-            next_pos = @positions.find { _1 >= @position + count }
+            next_pos = @_positions.find { _1 >= @_position + count }
             return go_to_last(item_count) if next_pos.nil?
 
             go(next_pos)
@@ -650,7 +654,7 @@ module Tuile
           # @param count [Integer]
           # @return [Boolean]
           def go_up_by(count)
-            prev_pos = @positions.reverse_each.find { _1 <= @position - count }
+            prev_pos = @_positions.reverse_each.find { _1 <= @_position - count }
             return go_to_first if prev_pos.nil?
 
             go(prev_pos)
@@ -658,7 +662,7 @@ module Tuile
 
           # @return [Boolean]
           def go_to_first
-            go(@positions.first)
+            go(@_positions.first)
           end
         end
       end
@@ -672,9 +676,9 @@ module Tuile
       # @return [void]
       def relayout
         update_scroll_top_row_if_auto_scroll
-        @scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
-        @scrollbar.row_count = @items.size
-        @scrollbar.scroll_top_row = @scroll_top_row
+        @_scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
+        @_scrollbar.row_count = @_items.size
+        @_scrollbar.scroll_top_row = @_scroll_top_row
       end
 
       private
@@ -718,24 +722,24 @@ module Tuile
 
       # @return [Boolean] true if the cursor sits on a real item.
       def cursor_on_item?
-        pos = @cursor.position
-        pos >= 0 && pos < @items.size
+        pos = @_cursor.position
+        pos >= 0 && pos < @_items.size
       end
 
       # Calls {#on_item_chosen} with the cursor's current `(index, item)`.
       # Caller must ensure {#cursor_on_item?}.
       # @return [void]
       def fire_item_chosen
-        pos = @cursor.position
-        on_item_chosen.fire(ItemChosenEvent.new(source: self, position: pos, item: @items[pos]))
+        pos = @_cursor.position
+        on_item_chosen.fire(ItemChosenEvent.new(source: self, position: pos, item: @_items[pos]))
       end
 
       # @return [Array((Integer, Object, nil))]
       #   `[position, item_at_position]`, with the item nil when the cursor is
       #   off-content.
       def cursor_state
-        pos = @cursor.position
-        item = pos >= 0 && pos < @items.size ? @items[pos] : nil
+        pos = @_cursor.position
+        item = pos >= 0 && pos < @_items.size ? @_items[pos] : nil
         [pos, item]
       end
 
@@ -744,9 +748,9 @@ module Tuile
       # @return [void]
       def notify_cursor_changed
         state = cursor_state
-        return if state == @last_cursor_state
+        return if state == @_last_cursor_state
 
-        @last_cursor_state = state
+        @_last_cursor_state = state
         on_cursor_changed.fire(CursorChangedEvent.new(source: self, position: state[0], item: state[1]))
       end
 
@@ -757,15 +761,15 @@ module Tuile
       def search_and_go(query, include_current:, reverse:)
         return false if query.empty?
 
-        candidates = @cursor.candidate_positions(@items.size)
+        candidates = @_cursor.candidate_positions(@_items.size)
         return false if candidates.empty?
 
-        ordered = order_for_search(candidates, @cursor.position, include_current: include_current, reverse: reverse)
+        ordered = order_for_search(candidates, @_cursor.position, include_current: include_current, reverse: reverse)
         query_lc = query.downcase
-        match = ordered.find { |idx| render(@items[idx]).to_s.downcase.include?(query_lc) }
+        match = ordered.find { |idx| render(@_items[idx]).to_s.downcase.include?(query_lc) }
         return false unless match
 
-        @cursor.go(match)
+        @_cursor.go(match)
         move_viewport_to_cursor
         notify_cursor_changed
         invalidate
@@ -801,22 +805,22 @@ module Tuile
       # Scrolls the viewport so the cursor is visible.
       # @return [void]
       def move_viewport_to_cursor
-        pos = @cursor.position
+        pos = @_cursor.position
         return unless pos >= 0
 
-        if @scroll_top_row > pos
+        if @_scroll_top_row > pos
           self.scroll_top_row = pos
-        elsif pos > @scroll_top_row + rect.height - 1
+        elsif pos > @_scroll_top_row + rect.height - 1
           self.scroll_top_row = pos - rect.height + 1
         end
       end
 
       # @return [Integer] the max value of {#scroll_top_row}.
-      def scroll_top_row_max = (@items.size - rect.height).clamp(0, nil)
+      def scroll_top_row_max = (@_items.size - rect.height).clamp(0, nil)
 
       # @return [Boolean] whether the viewport is pinned to the last row.
       #   Drives {#following?}: re-evaluated on every {#scroll_top_row=}.
-      def at_bottom? = @scroll_top_row == scroll_top_row_max
+      def at_bottom? = @_scroll_top_row == scroll_top_row_max
 
       # @return [Integer] the number of visible rows.
       def viewport_rows = rect.height
@@ -827,30 +831,30 @@ module Tuile
       # @param delta [Integer] negative scrolls up, positive scrolls down.
       # @return [void]
       def move_scroll_top_row_by(delta)
-        self.scroll_top_row = (@scroll_top_row + delta).clamp(0, scroll_top_row_max)
+        self.scroll_top_row = (@_scroll_top_row + delta).clamp(0, scroll_top_row_max)
       end
 
       # If auto-scrolling, recalculate the top row and snap the cursor to the
       # last reachable position. Without the cursor snap the viewport gets
       # yanked back to wherever the cursor sat on the next arrow press,
       # negating the auto-scroll. Skipped when {#rect} is empty: without a
-      # viewport the "items minus viewport" formula yields `@items.size`,
+      # viewport the "items minus viewport" formula yields `@_items.size`,
       # which would leave `scroll_top_row` past the last item once a real rect
       # arrives. {#relayout} re-runs it once one does.
       #
       # Gated on {#following?}: once the user scrolls up off the bottom the
       # cursor snap and viewport pin are both skipped, so reading older
       # content is not interrupted by incoming items. {#scroll_top_row=} re-arms
-      # `@follow` when the viewport returns to the bottom.
+      # `@_follow` when the viewport returns to the bottom.
       # @return [void]
       def update_scroll_top_row_if_auto_scroll
-        return unless @auto_scroll && @follow
+        return unless @_auto_scroll && @_follow
         return if rect.empty?
 
-        notify_cursor_changed if @cursor.go_to_last(@items.size)
+        notify_cursor_changed if @_cursor.go_to_last(@_items.size)
 
-        new_scroll_top_row = (@items.size - viewport_rows).clamp(0, nil)
-        return unless @scroll_top_row != new_scroll_top_row
+        new_scroll_top_row = (@_items.size - viewport_rows).clamp(0, nil)
+        return unless @_scroll_top_row != new_scroll_top_row
 
         self.scroll_top_row = new_scroll_top_row
       end
@@ -861,9 +865,9 @@ module Tuile
       def scrollbar_visible?
         return false if rect.empty?
 
-        case @scrollbar_visibility
+        case @_scrollbar_visibility
         when :visible then true
-        when :auto then @items.size > rect.height
+        when :auto then @_items.size > rect.height
         else false
         end
       end
@@ -890,8 +894,8 @@ module Tuile
       # against the current items and renderer.
       # @return [void]
       def drop_row_cache
-        @row_cache.clear
-        @blank_row = nil
+        @_row_cache.clear
+        @_blank_row = nil
       end
 
       # Drops the row cache when {#content_width} has moved off the width it
@@ -900,22 +904,22 @@ module Tuile
       # its item count takes the bar and the column with it.
       # @return [void]
       def sync_row_cache_width
-        return if @row_cache_width == content_width
+        return if @_row_cache_width == content_width
 
         drop_row_cache
-        @row_cache_width = content_width
+        @_row_cache_width = content_width
       end
 
       # @param index [Integer] 0-based index into {#items}.
       # @return [StyledString] the item's padded row, rendered on first use and
       #   memoized until {#drop_row_cache}.
       def padded_row(index)
-        @row_cache[index] ||= pad_to_row(render(@items[index]))
+        @_row_cache[index] ||= pad_to_row(render(@_items[index]))
       end
 
       # @return [StyledString] the blank row painted past the last item.
       def blank_row
-        @blank_row ||= pad_to_row(StyledString::EMPTY)
+        @_blank_row ||= pad_to_row(StyledString::EMPTY)
       end
 
       # Renders one item, *without* populating the row cache — {#search_and_go}
@@ -926,7 +930,7 @@ module Tuile
       #   {StyledString}, cut to its first line since a `\n` reaching the buffer
       #   would corrupt the frame.
       def render(item)
-        rendered = @renderer.call(item, text_width)
+        rendered = @_renderer.call(item, text_width)
         rendered = StyledString.parse(rendered.to_s) unless rendered.is_a?(StyledString)
         return rendered unless rendered.spans.any? { _1.text.include?("\n") }
 
@@ -954,8 +958,8 @@ module Tuile
       # @return [StyledString] paintable row exactly {#content_width} columns
       #   wide — the bar's column is the child's; highlighted if cursor is here.
       def paintable_row(index)
-        base = index < @items.size ? padded_row(index) : blank_row
-        is_cursor = (active? || @show_cursor_when_inactive) && index < @items.size && @cursor.position == index
+        base = index < @_items.size ? padded_row(index) : blank_row
+        is_cursor = (active? || @_show_cursor_when_inactive) && index < @_items.size && @_cursor.position == index
         is_cursor ? base.with_bg(screen.theme.active_bg_color) : base
       end
     end

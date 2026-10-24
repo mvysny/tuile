@@ -66,24 +66,24 @@ module Tuile
         # @raise [ArgumentError] on a negative `spacing` or an unusable `padding`.
         def initialize(spacing: 0, padding: 0)
           super()
-          @spacing = validate_spacing(spacing)
-          @padding = Insets.coerce(padding)
+          @_spacing = validate_spacing(spacing)
+          @_padding = Insets.coerce(padding)
         end
 
         # @return [Integer] blank cells between adjacent children.
-        attr_reader :spacing
+        def spacing = @_spacing
 
         # @return [Insets] inset from this layout's own rect.
-        attr_reader :padding
+        def padding = @_padding
 
         # @param cells [Integer] blank cells between adjacent children; `>= 0`.
         # @raise [ArgumentError] on a negative value.
         # @return [void]
         def spacing=(cells)
           cells = validate_spacing(cells)
-          return if @spacing == cells
+          return if @_spacing == cells
 
-          @spacing = cells
+          @_spacing = cells
           invalidate_layout
         end
 
@@ -92,9 +92,9 @@ module Tuile
         # @return [void]
         def padding=(insets)
           insets = Insets.coerce(insets)
-          return if @padding == insets
+          return if @_padding == insets
 
-          @padding = insets
+          @_padding = insets
           invalidate_layout
         end
 

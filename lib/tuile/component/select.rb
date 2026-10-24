@@ -67,15 +67,15 @@ module Tuile
       #   to a form helper.
       def initialize(items: [], value: nil)
         super()
-        @items = items.to_a
-        @item_label = :to_s.to_proc
-        @value = value
-        @overlay = ListDropdown.new
+        @_items = items.to_a
+        @_item_label = :to_s.to_proc
+        @_value = value
+        @_overlay = ListDropdown.new
         # Outside-click dismissal spans the owner chain, so a click on this
         # select's dropdown must not dismiss a dialog the select sits in.
-        @overlay.owner = self
-        @overlay.renderer = ->(item, _text_width) { label_for(item) }
-        @overlay.list.on_item_chosen { |e| commit(e.item) }
+        @_overlay.owner = self
+        @_overlay.renderer = ->(item, _text_width) { label_for(item) }
+        @_overlay.list.on_item_chosen { |e| commit(e.item) }
         # A Select has no caret, so the focus shade is its only indicator: an app
         # flattening it with a plain bg_color is choosing that, and can keep the
         # pair with `bg_color = { normal: …, active: … }`.
@@ -83,12 +83,12 @@ module Tuile
       end
 
       # @return [Array] the options.
-      attr_reader :items
+      def items = @_items
 
       # @return [Proc, Method] item -> shown label (a `String` or
       #   {StyledString}); `:to_s` by default. Never called with `nil` — an
       #   unselected Select renders a blank face.
-      attr_reader :item_label
+      def item_label = @_item_label
 
       def tab_stop? = true
 
@@ -100,16 +100,16 @@ module Tuile
       def items=(new_items)
         raise TypeError, "expected Array, got #{new_items.inspect}" unless new_items.is_a?(Array)
 
-        @items = new_items
-        refill if @overlay.open?
+        @_items = new_items
+        refill if @_overlay.open?
         invalidate
       end
 
       # @param proc [Proc, Method] item -> shown label.
       # @return [void]
       def item_label=(proc)
-        @item_label = proc
-        refill if @overlay.open?
+        @_item_label = proc
+        refill if @_overlay.open?
         invalidate
       end
 
@@ -132,11 +132,11 @@ module Tuile
       # @param key [String]
       # @return [Boolean]
       def handle_key?(key)
-        if @overlay.open?
-          return true if @overlay.move(key)
+        if @_overlay.open?
+          return true if @_overlay.move(key)
 
           case key
-          when Keys::ENTER, " " then @overlay.choose
+          when Keys::ENTER, " " then @_overlay.choose
           when Keys::ESC then close_menu
           else return false
           end
@@ -165,7 +165,7 @@ module Tuile
       def handle_mouse_down?(event)
         return false unless event.button == :left
 
-        @overlay.open? ? close_menu : open_menu
+        @_overlay.open? ? close_menu : open_menu
         true
       end
 
@@ -194,13 +194,13 @@ module Tuile
       # needed; closes it instead when there is nothing to show.
       # @return [void]
       def refill
-        if @items.empty?
+        if @_items.empty?
           close_menu
           return
         end
 
-        @overlay.items = @items
-        @overlay.cursor = List::Cursor.new(position: @items.index(value) || 0)
+        @_overlay.items = @_items
+        @_overlay.cursor = List::Cursor.new(position: @_items.index(value) || 0)
         anchor
       end
 
@@ -208,7 +208,7 @@ module Tuile
       def open_menu = refill
 
       # @return [void]
-      def close_menu = (@overlay.close if @overlay.open?)
+      def close_menu = (@_overlay.close if @_overlay.open?)
 
       # Adopts the chosen item as {#value} and closes the dropdown.
       # @param item [Object]
@@ -219,7 +219,7 @@ module Tuile
       end
 
       # @return [void]
-      def anchor = @overlay.anchor_to(self, width: method(:menu_width))
+      def anchor = @_overlay.anchor_to(self, width: method(:menu_width))
 
       # The dropdown's width: the widest label plus {List}'s two row gutters, plus
       # the scrollbar column when the rows can't all be shown at once — but never
@@ -233,8 +233,8 @@ module Tuile
       # one case measuring can't predict the height.
       # @return [Integer]
       def menu_width
-        widest = @items.map { |item| label_for(item).display_width }.max || 0
-        measured = widest + 2 + (@items.size > ListDropdown::MAX_VISIBLE_ROWS ? 1 : 0)
+        widest = @_items.map { |item| label_for(item).display_width }.max || 0
+        measured = widest + 2 + (@_items.size > ListDropdown::MAX_VISIBLE_ROWS ? 1 : 0)
         [measured, rect.width].max
       end
 
@@ -244,7 +244,7 @@ module Tuile
       def label_for(item)
         return StyledString::EMPTY if item.nil?
 
-        label = @item_label.call(item)
+        label = @_item_label.call(item)
         label.is_a?(StyledString) ? label : StyledString.parse(label.to_s)
       end
     end

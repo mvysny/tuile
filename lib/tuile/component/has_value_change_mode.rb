@@ -44,7 +44,7 @@ module Tuile
       # - `:lazy` — once edits pause for {#value_change_timeout}, or at a
       #   commit gesture if that comes first.
       # @return [Symbol] one of {MODES}.
-      def value_change_mode = @value_change_mode || :commit
+      def value_change_mode = @_value_change_mode || :commit
 
       # A held notice goes out at once on a switch to `:eager`, which never
       # holds one.
@@ -54,13 +54,13 @@ module Tuile
       def value_change_mode=(mode)
         raise ArgumentError, "expected one of #{MODES.inspect}, got #{mode.inspect}" unless MODES.include?(mode)
 
-        @value_change_mode = mode
-        announce(from_user: true) if @notice_held && mode == :eager
+        @_value_change_mode = mode
+        announce(from_user: true) if @_notice_held && mode == :eager
         sync_notice_timer
       end
 
       # @return [Numeric] how long `:lazy` waits after the last edit, in seconds.
-      def value_change_timeout = @value_change_timeout || DEFAULT_TIMEOUT
+      def value_change_timeout = @_value_change_timeout || DEFAULT_TIMEOUT
 
       # Takes effect from the next edit.
       # @param seconds [Numeric] zero or positive.
@@ -71,7 +71,7 @@ module Tuile
           raise ArgumentError, "expected a non-negative Numeric, got #{seconds.inspect}"
         end
 
-        @value_change_timeout = seconds
+        @_value_change_timeout = seconds
       end
 
       # @return [void]
@@ -91,9 +91,9 @@ module Tuile
       # `:lazy` wait.
       # @return [void]
       def hold_edit
-        @notice_held = true
-        @notice_timer&.cancel
-        @notice_timer = nil
+        @_notice_held = true
+        @_notice_timer&.cancel
+        @_notice_timer = nil
         sync_notice_timer
       end
 
@@ -103,22 +103,22 @@ module Tuile
       #   gesture, which only releases the user's own edits.
       # @return [void]
       def announce(from_user:)
-        @notice_held = false
+        @_notice_held = false
         sync_notice_timer
         fire_if_changed(from_user:)
       end
 
       # @return [void]
       def sync_notice_timer
-        wanted = @notice_held && value_change_mode == :lazy && attached?
-        if wanted && @notice_timer.nil?
-          @notice_timer = screen.event_queue.after(value_change_timeout) do
-            @notice_timer = nil
+        wanted = @_notice_held && value_change_mode == :lazy && attached?
+        if wanted && @_notice_timer.nil?
+          @_notice_timer = screen.event_queue.after(value_change_timeout) do
+            @_notice_timer = nil
             announce(from_user: true)
           end
-        elsif !wanted && @notice_timer
-          @notice_timer.cancel
-          @notice_timer = nil
+        elsif !wanted && @_notice_timer
+          @_notice_timer.cancel
+          @_notice_timer = nil
         end
       end
     end

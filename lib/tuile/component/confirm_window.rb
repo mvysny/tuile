@@ -77,19 +77,19 @@ module Tuile
       # @param caption [String, StyledString, nil] the border title, coerced the
       #   same way {HasCaption#caption=} coerces it.
       def initialize(caption = nil)
-        @popup = nil
-        @chosen = false
-        @message = nil
+        @_popup = nil
+        @_chosen = false
+        @_message = nil
         # Insertion-ordered; identity-keyed so equal captions stay two buttons.
-        @actions = {}.compare_by_identity
-        @mnemonics = {}
+        @_actions = {}.compare_by_identity
+        @_mnemonics = {}
         super(caption)
-        @body_slot = Slot.new
-        @button_row = Layout::Horizontal.new(spacing: 2)
-        @box = Layout::Vertical.new(spacing: 1, padding: Layout::Insets[left: 1, right: 1])
-        @box.add(@body_slot, Layout::Expand[1])
-        @box.add(@button_row, Layout::Fixed[1], cross: Layout::Fixed[0], align: :center)
-        self.content = @box
+        @_body_slot = Slot.new
+        @_button_row = Layout::Horizontal.new(spacing: 2)
+        @_box = Layout::Vertical.new(spacing: 1, padding: Layout::Insets[left: 1, right: 1])
+        @_box.add(@_body_slot, Layout::Expand[1])
+        @_box.add(@_button_row, Layout::Fixed[1], cross: Layout::Fixed[0], align: :center)
+        self.content = @_box
       end
 
       # What {#on_dismiss} fires.
@@ -108,7 +108,7 @@ module Tuile
       # @return [String, StyledString, Component, nil] whatever {#message=} was
       #   given — set a `String`, read that `String` back. The component
       #   rendering it is derived, never returned.
-      attr_reader :message
+      def message = @_message
 
       # Also re-measures the popup: the caption participates in the width.
       # @param new_caption [String, StyledString, nil]
@@ -133,8 +133,8 @@ module Tuile
           when String, StyledString then TextView.new.tap { _1.text = value }
           else raise TypeError, "expected String, StyledString, Component or nil, got #{value.inspect}"
           end
-        @message = value
-        @body_slot.content = occupant
+        @_message = value
+        @_body_slot.content = occupant
         resize_popup
       end
 
@@ -176,9 +176,9 @@ module Tuile
         cue = mnemonic == :auto ? styled.to_s.grapheme_clusters.first : mnemonic
         btn = Button.new(letter ? underline_mnemonic(styled, cue) : styled)
         btn.on_click { activate(btn) }
-        @actions[btn] = action
-        @mnemonics[letter] = btn unless letter.nil?
-        @button_row.add(btn, Layout::Fixed[btn.caption.display_width + 4])
+        @_actions[btn] = action
+        @_mnemonics[letter] = btn unless letter.nil?
+        @_button_row.add(btn, Layout::Fixed[btn.caption.display_width + 4])
         recenter_button_row
         resize_popup
         btn
@@ -191,20 +191,20 @@ module Tuile
       # @return [Popup] the mounted popup; `popup.close` closes programmatically,
       #   as {#close} also does.
       def open
-        raise Tuile::Error, "#{inspect} is already open" if @popup&.open?
+        raise Tuile::Error, "#{inspect} is already open" if @_popup&.open?
 
         # A previous popup still holds this window as its content; reclaim it.
-        @popup&.content = nil
-        @chosen = false
-        @popup = MeasuredPopup.new(self)
-        @popup.on_close { notice_dismissed }
-        @popup.open
+        @_popup&.content = nil
+        @_chosen = false
+        @_popup = MeasuredPopup.new(self)
+        @_popup.on_close { notice_dismissed }
+        @_popup.open
       end
 
       # Closes the popup {#open} mounted, which counts as a dismissal
       # ({#on_dismiss} fires). No-op when not open, or when used tiled.
       # @return [void]
-      def close = @popup&.close
+      def close = @_popup&.close
 
       # The popup box this dialog wants: wide enough for the caption, the widest
       # message line and the button row, tall enough for the wrapped message
@@ -216,9 +216,9 @@ module Tuile
       # @return [Size]
       def measured_size(reference = screen.size)
         cap = Fraction::HALF.resolve(reference)
-        return cap if @message.is_a?(Component)
+        return cap if @_message.is_a?(Component)
 
-        styled = @message.nil? ? StyledString::EMPTY : StyledString.parse(@message)
+        styled = @_message.nil? ? StyledString::EMPTY : StyledString.parse(@_message)
         widest = styled.lines.map(&:display_width).max || 0
         width = [[caption.display_width + 2, button_row_width + WIDTH_CHROME, widest + WIDTH_CHROME].max,
                  cap.width].min
@@ -232,7 +232,7 @@ module Tuile
       # the cascade this override exists to skip.
       # @return [void]
       def handle_focus
-        first = @actions.keys.first
+        first = @_actions.keys.first
         if first.nil?
           super
         else
@@ -251,10 +251,10 @@ module Tuile
         case key
         when Keys::LEFT_ARROW then return focus_button_step(-1)
         when Keys::RIGHT_ARROW then return focus_button_step(1)
-        when *BODY_SCROLL_KEYS then return @body_slot.content&.handle_key?(key) || false
+        when *BODY_SCROLL_KEYS then return @_body_slot.content&.handle_key?(key) || false
         end
 
-        target = @mnemonics[key.downcase]
+        target = @_mnemonics[key.downcase]
         return false if target.nil?
 
         activate(target)
@@ -319,13 +319,13 @@ module Tuile
       class MeasuredPopup < Popup
         # @param window [ConfirmWindow]
         def initialize(window)
-          @window = window
+          @_window = window
           super(content: window)
         end
 
         # @param screen_size [Size]
         # @return [Size] {ConfirmWindow#measured_size}.
-        def declared_size_in(screen_size) = @window.measured_size(screen_size)
+        def declared_size_in(screen_size) = @_window.measured_size(screen_size)
       end
       private_constant :MeasuredPopup
 
@@ -338,9 +338,9 @@ module Tuile
       # @param btn [Button]
       # @return [void]
       def activate(btn)
-        action = @actions[btn]
-        @chosen = true
-        @popup&.close
+        action = @_actions[btn]
+        @_chosen = true
+        @_popup&.close
         action.nil? ? fire_dismissed : action.call
       end
 
@@ -349,9 +349,9 @@ module Tuile
       # {Screen#remove_popup} and teardown all one event, fired exactly once.
       # @return [void]
       def notice_dismissed
-        return if @chosen
+        return if @_chosen
 
-        @chosen = true
+        @_chosen = true
         fire_dismissed
       end
 
@@ -361,7 +361,7 @@ module Tuile
       # @param delta [Integer] -1 or 1.
       # @return [Boolean] false when focus is not on a button (the key bubbles on).
       def focus_button_step(delta)
-        buttons = @actions.keys
+        buttons = @_actions.keys
         current = buttons.index(screen.focused)
         return false if current.nil?
 
@@ -390,7 +390,7 @@ module Tuile
         if RESERVED_MNEMONICS.include?(down)
           raise ArgumentError, "mnemonic #{down.inspect} is reserved: q dismisses the dialog, g/G scroll the message"
         end
-        raise ArgumentError, "duplicate mnemonic #{down.inspect}" if @mnemonics.key?(down)
+        raise ArgumentError, "duplicate mnemonic #{down.inspect}" if @_mnemonics.key?(down)
 
         down
       end
@@ -401,7 +401,7 @@ module Tuile
         letter = caption.to_s.grapheme_clusters.first&.downcase
         return nil if letter.nil? || letter == " "
         return nil unless Keys.printable?(letter) && StyledString.plain(letter).display_width == 1
-        return nil if RESERVED_MNEMONICS.include?(letter) || @mnemonics.key?(letter)
+        return nil if RESERVED_MNEMONICS.include?(letter) || @_mnemonics.key?(letter)
 
         letter
       end
@@ -429,20 +429,20 @@ module Tuile
       # body because both `add`s append.
       # @return [void]
       def recenter_button_row
-        @box.remove(@button_row)
-        @box.add(@button_row, Layout::Fixed[1], cross: Layout::Fixed[button_row_width], align: :center)
+        @_box.remove(@_button_row)
+        @_box.add(@_button_row, Layout::Fixed[1], cross: Layout::Fixed[button_row_width], align: :center)
       end
 
       # @return [Integer] columns of the button row at its natural width.
       def button_row_width
-        widths = @actions.keys.map { _1.caption.display_width + 4 }
-        widths.sum + (@button_row.spacing * [widths.size - 1, 0].max)
+        widths = @_actions.keys.map { _1.caption.display_width + 4 }
+        widths.sum + (@_button_row.spacing * [widths.size - 1, 0].max)
       end
 
       # Re-measures the popup while open; a no-op tiled or before {#open}.
       # @return [void]
       def resize_popup
-        @popup.reposition if @popup&.open?
+        @_popup.reposition if @_popup&.open?
       end
     end
   end

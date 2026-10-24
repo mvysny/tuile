@@ -42,12 +42,12 @@ module Tuile
         # the first paint shows up only where something repaints anyway. Why
         # app-global rather than per instance is `D_scrollbar_ink`.
         # @return [String]
-        attr_reader :handle_char
+        def handle_char = @_handle_char
 
         # The glyph drawn on the rows the handle doesn't cover, `░` by
         # default — and on every row when nothing scrolls ({#repaint}).
         # @return [String]
-        attr_reader :track_char
+        def track_char = @_track_char
 
         # @param char [String]
         # @return [String]
@@ -55,13 +55,13 @@ module Tuile
         # @raise [ArgumentError] when `char` is not exactly one grapheme
         #   cluster one column wide.
         def handle_char=(char)
-          @handle_char = StyledString.validate_glyph(char, :handle_char)
+          @_handle_char = StyledString.validate_glyph(char, :handle_char)
         end
 
         # @param char [String] see {handle_char=}.
         # @return [String]
         def track_char=(char)
-          @track_char = StyledString.validate_glyph(char, :track_char)
+          @_track_char = StyledString.validate_glyph(char, :track_char)
         end
       end
 
@@ -91,25 +91,25 @@ module Tuile
       # @param scroll_top_row [Integer] see {#scroll_top_row=}.
       def initialize(row_count: 0, scroll_top_row: 0)
         super()
-        @row_count = validate_rows(row_count, :row_count)
-        @scroll_top_row = validate_rows(scroll_top_row, :scroll_top_row)
-        @drag_origin = nil
+        @_row_count = validate_rows(row_count, :row_count)
+        @_scroll_top_row = validate_rows(scroll_top_row, :scroll_top_row)
+        @_drag_origin = nil
       end
 
       # @return [Integer] how many rows of content the bar stands for.
-      attr_reader :row_count
+      def row_count = @_row_count
 
       # @return [Integer] the content row currently at the top of the viewport.
-      attr_reader :scroll_top_row
+      def scroll_top_row = @_scroll_top_row
 
       # @param count [Integer] `>= 0`.
       # @raise [ArgumentError] unless a non-negative Integer.
       # @return [void]
       def row_count=(count)
         count = validate_rows(count, :row_count)
-        return if @row_count == count
+        return if @_row_count == count
 
-        @row_count = count
+        @_row_count = count
         invalidate
       end
 
@@ -121,15 +121,15 @@ module Tuile
       # @return [void]
       def scroll_top_row=(row)
         row = validate_rows(row, :scroll_top_row)
-        return if @scroll_top_row == row
+        return if @_scroll_top_row == row
 
-        @scroll_top_row = row
+        @_scroll_top_row = row
         invalidate
       end
 
       # @return [Boolean] whether there is content out of view — `false` also
       #   for an empty rect, and what {#repaint} asks before drawing a handle.
-      def scrollable? = rect.height >= 1 && @row_count > rect.height
+      def scrollable? = rect.height >= 1 && @_row_count > rect.height
 
       # Rows the handle covers, capped at one below the track so there is
       # always somewhere to drag to: a 10-row viewport onto 11 rows of content
@@ -139,7 +139,7 @@ module Tuile
       def handle_height
         return rect.height unless scrollable?
 
-        (rect.height**2.0 / @row_count).ceil.clamp(1, [rect.height - 1, 1].max)
+        (rect.height**2.0 / @_row_count).ceil.clamp(1, [rect.height - 1, 1].max)
       end
 
       # The handle's first row, mapped over the *free* track so that the last
@@ -150,7 +150,7 @@ module Tuile
         free = free_rows
         return 0 if free.zero?
 
-        (free * @scroll_top_row.clamp(0, max_top) / max_top.to_f).round
+        (free * @_scroll_top_row.clamp(0, max_top) / max_top.to_f).round
       end
 
       # One column wide, however wide a rect it was handed — which is also what
@@ -166,11 +166,11 @@ module Tuile
       def handle_mouse_down?(event)
         return false unless event.button == :left
 
-        @drag_origin = nil
+        @_drag_origin = nil
         if scrollable? && event.y >= handle_start && event.y < handle_start + handle_height
-          @drag_origin = [event.y, @scroll_top_row]
+          @_drag_origin = [event.y, @_scroll_top_row]
         else
-          request(@scroll_top_row + (event.y < handle_start ? -page_rows : page_rows))
+          request(@_scroll_top_row + (event.y < handle_start ? -page_rows : page_rows))
         end
         true
       end
@@ -183,9 +183,9 @@ module Tuile
       # @return [void]
       def handle_mouse_drag(event)
         super
-        return if @drag_origin.nil? || free_rows.zero?
+        return if @_drag_origin.nil? || free_rows.zero?
 
-        y_at_press, top_at_press = @drag_origin
+        y_at_press, top_at_press = @_drag_origin
         request(top_at_press + ((event.y - y_at_press) * max_top / free_rows.to_f).round)
       end
 
@@ -193,7 +193,7 @@ module Tuile
       # @return [void]
       def handle_mouse_up(event)
         super
-        @drag_origin = nil
+        @_drag_origin = nil
       end
 
       # Paints {track_char} down the column with {handle_char} over it — and
@@ -222,7 +222,7 @@ module Tuile
 
       # @return [Integer] the largest {#scroll_top_row} that still fills the
       #   viewport; `0` when the content fits.
-      def max_top = [@row_count - rect.height, 0].max
+      def max_top = [@_row_count - rect.height, 0].max
 
       # @return [Integer] track rows the handle can travel over; `0` means no
       #   drag is possible.
@@ -236,7 +236,7 @@ module Tuile
       # @return [void]
       def request(row)
         row = row.clamp(0, max_top)
-        return if row == @scroll_top_row
+        return if row == @_scroll_top_row
 
         on_scroll_request.fire(ScrollRequestEvent.new(source: self, scroll_top_row: row))
       end

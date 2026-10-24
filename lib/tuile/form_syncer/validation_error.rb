@@ -11,11 +11,11 @@ module Tuile
     class ValidationError < Error
       # @return [Hash{Symbol, nil => Array<ValidationFailure>}] the frozen
       #   verdict map, {FormSyncer#last_validation} at the time of the raise.
-      attr_reader :failures
+      def failures = @_failures
 
       # @param failures [Hash{Symbol, nil => Array<ValidationFailure>}]
       def initialize(failures)
-        @failures = failures
+        @_failures = failures
         super(failures.values.flatten.map(&:message).join("; "))
       end
     end

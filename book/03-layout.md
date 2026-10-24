@@ -196,6 +196,9 @@ class SplitPane < Tuile::Component::Layout
 end
 ```
 
+The ivars are yours: Tuile spells its own `@_foo`, so `@sidebar` and
+`@main` can never land on framework state. Leave the underscore to Tuile.
+
 Two things to note. First, a proportional split *does* use a ratio — but
 on a character grid a ratio resolves to an exact integer (`width * 4 /
 10`), and you assign the remainder explicitly rather than letting two

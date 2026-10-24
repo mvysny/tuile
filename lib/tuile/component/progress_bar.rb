@@ -60,31 +60,31 @@ module Tuile
       # @param indeterminate [Boolean] initial {#indeterminate=}.
       def initialize(range: DEFAULT_RANGE, value: nil, indeterminate: false)
         super()
-        @value = 0.0
-        @min = 0.0
-        @max = 1.0
-        @phase = 0
-        @ticker = nil
-        @indeterminate = false
-        @bar_color = nil
+        @_value = 0.0
+        @_min = 0.0
+        @_max = 1.0
+        @_phase = 0
+        @_ticker = nil
+        @_indeterminate = false
+        @_bar_color = nil
         self.range = range
         self.value = value unless value.nil?
         self.indeterminate = indeterminate
       end
 
       # @return [Float] lower bound of {#range}.
-      attr_reader :min
+      def min = @_min
 
       # @return [Float] upper bound of {#range}.
-      attr_reader :max
+      def max = @_max
 
       # @return [Color, nil] the value as set, so a {Theme::Ref} comes back
       #   unresolved. Both glyphs paint in it; `nil` (the default) is the
       #   terminal's default foreground.
-      attr_reader :bar_color
+      def bar_color = @_bar_color
 
       # @return [Range] the scale {#value} is measured against.
-      def range = @min..@max
+      def range = @_min..@_max
 
       # Replaces the scale, re-clamping {#value} into it. `min == max` is legal
       # and reads as complete — a zero-length job has nothing outstanding — so
@@ -107,15 +107,15 @@ module Tuile
           raise ArgumentError, "range endpoints must be finite (use indeterminate = true)"
         end
 
-        @min = min
-        @max = max
-        self.value = @value
+        @_min = min
+        @_max = max
+        self.value = @_value
         invalidate # the scale moved even when the clamped value did not
       end
 
       # @return [Float] the progress, clamped into {#range} when assigned — so
       #   `bar.value = 999` on a `0..250` bar reads back as `250.0`.
-      attr_reader :value
+      def value = @_value
 
       # @param new_value [Numeric] clamped into {#range}.
       # @return [void]
@@ -127,18 +127,18 @@ module Tuile
         new_value = Float(new_value)
         raise ArgumentError, "value must be a number, got NaN" if new_value.nan?
 
-        new_value = new_value.clamp(@min, @max)
-        return if @value == new_value
+        new_value = new_value.clamp(@_min, @_max)
+        return if @_value == new_value
 
-        @value = new_value
+        @_value = new_value
         invalidate
       end
 
       # @return [Float] {#value} as `0.0..1.0`. `1.0` when the range is empty.
       def fraction
-        return 1.0 if @max == @min
+        return 1.0 if @_max == @_min
 
-        (@value - @min) / (@max - @min)
+        (@_value - @_min) / (@_max - @_min)
       end
 
       # @return [Integer] {#fraction} as `0..100`, floored — `100` means done and
@@ -160,16 +160,16 @@ module Tuile
       #   lacks.
       def bar_color=(color)
         color = Color.coerce(color) unless color.is_a?(Theme::Ref)
-        return if @bar_color == color
+        return if @_bar_color == color
 
         color.resolve(screen.theme) if color.is_a?(Theme::Ref) # fail fast on a bad token
 
-        @bar_color = color
+        @_bar_color = color
         invalidate
       end
 
       # @return [Boolean] whether the sliding-block animation is showing.
-      def indeterminate? = @indeterminate
+      def indeterminate? = @_indeterminate
 
       # Switches between the fill and the sliding block. {#value} keeps working
       # while indeterminate — it is simply not painted — so switching back shows
@@ -183,9 +183,9 @@ module Tuile
       # @return [void]
       def indeterminate=(flag)
         flag = flag ? true : false
-        return if @indeterminate == flag
+        return if @_indeterminate == flag
 
-        @indeterminate = flag
+        @_indeterminate = flag
         sync_ticker
         invalidate # the picture changes now, not on the next frame
       end
@@ -235,7 +235,7 @@ module Tuile
       # @param width [Integer] columns available.
       # @return [String] the row, `width` glyphs wide.
       def glyphs(width)
-        start, length = @indeterminate ? block_at(width) : [0, scale(width)]
+        start, length = @_indeterminate ? block_at(width) : [0, scale(width)]
         [("░" * start), ("█" * length), ("░" * (width - start - length))].join
       end
 
@@ -247,7 +247,7 @@ module Tuile
       # @return [Array(Integer, Integer)] start column and length, clipped.
       def block_at(width)
         block = [width / BLOCK_DIVISOR, 1].max
-        start = (@phase % (width + block - 1)) - (block - 1)
+        start = (@_phase % (width + block - 1)) - (block - 1)
         first = [start, 0].max
         last = [start + block, width].min
         [first, last - first]
@@ -255,28 +255,28 @@ module Tuile
 
       # @return [Color, nil]
       def resolved_bar_color
-        @bar_color.is_a?(Theme::Ref) ? @bar_color.resolve(screen.theme) : @bar_color
+        @_bar_color.is_a?(Theme::Ref) ? @_bar_color.resolve(screen.theme) : @_bar_color
       end
 
       # Brings the ticker in line with "animating and on screen". The sole writer
-      # of `@ticker`, and idempotent, so the attach/detach hooks and
+      # of `@_ticker`, and idempotent, so the attach/detach hooks and
       # {#indeterminate=} are all the same call and a repeated `indeterminate =
       # true` cannot start a second one.
       # @return [void]
       def sync_ticker
-        want = attached? && @indeterminate
-        return if want == !@ticker.nil?
+        want = attached? && @_indeterminate
+        return if want == !@_ticker.nil?
 
         if want
-          @ticker = screen.event_queue.tick_fps(INDETERMINATE_FPS) do |tick|
+          @_ticker = screen.event_queue.tick_fps(INDETERMINATE_FPS) do |tick|
             # The paint that already happened is frame 0; a ticker's first
             # firing is one interval later, so it is frame 1.
-            @phase = tick + 1
+            @_phase = tick + 1
             invalidate
           end
         else
-          @ticker.cancel
-          @ticker = nil
+          @_ticker.cancel
+          @_ticker = nil
         end
       end
     end

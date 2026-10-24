@@ -67,8 +67,8 @@ module Tuile
       #   matter to a form helper.
       def initialize(items: [], value: nil)
         super()
-        @item_label = :to_s.to_proc
-        @value = coerce(value)
+        @_item_label = :to_s.to_proc
+        @_value = coerce(value)
 
         list = List.new
         # A List has no cursor at all by default (Cursor::None, position -1).
@@ -76,7 +76,7 @@ module Tuile
         list.renderer = method(:render_row)
         list.on_item_chosen { |e| toggle(e.item) }
         list.items = items.to_a
-        @list = list
+        @_list = list
         add_child(list, at: 0)
       end
 
@@ -87,7 +87,7 @@ module Tuile
       # concepts, which is why they are reached here instead of forwarded
       # (`D_wrapping_field`).
       # @return [List]
-      attr_reader :list
+      def list = @_list
 
       # @return [void]
       def relayout = list.rect = local_rect
@@ -105,7 +105,7 @@ module Tuile
 
       # @return [Proc, Method] item -> row label (a `String`, {StyledString}, or
       #   anything with `#to_s`); `:to_s` by default.
-      attr_reader :item_label
+      def item_label = @_item_label
 
       # Replaces the presented rows, leaving {#value} untouched.
       # @param new_items [Array]
@@ -118,7 +118,7 @@ module Tuile
       # @param proc [Proc, Method] item -> row label.
       # @return [void]
       def item_label=(proc)
-        @item_label = proc
+        @_item_label = proc
         list.refresh_rows
       end
 
@@ -200,7 +200,7 @@ module Tuile
       # @return [StyledString, String] whichever {StyledString#+} accepts on the
       #   right — so a styled label keeps its spans and a plain one is parsed.
       def label_for(item)
-        label = @item_label.call(item)
+        label = @_item_label.call(item)
         label.is_a?(StyledString) ? label : label.to_s
       end
     end

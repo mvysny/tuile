@@ -3368,7 +3368,7 @@ test suite was faking the tree it was asserting about. That is now real
 a literal `def` in the subclass body — it misses an override arriving through an
 `include` or a `prepend`. Resolving `instance_method(...).owner` at the first
 `new` catches all four routes uniformly, in three lines, at the cost of firing a
-moment later. It does not stop `instance_variable_set(:@children, …)`, and it
+moment later. It does not stop `instance_variable_set(:@_children, …)`, and it
 isn't meant to: the goal is catching the accident, not defeating an adversary.
 
 **Why not `Screen` holds a private tree of its own**, authoritative regardless
@@ -3386,6 +3386,41 @@ tree does nothing about a `handle_mouse` that ignores half its children.
 A container whose regions are app-swappable holds a {Component::Slot} per region
 — a logical view implemented *over* the physical tree, never beside it. See
 `D_slots`.
+
+## D_ivar_prefix — Why is every ivar in `lib/` spelled `@_foo`?
+
+Tracks [issue #69](https://github.com/mvysny/tuile/issues/69).
+
+Ruby ivars are shared by a class and its subclasses, and Tuile asks apps to subclass its
+components. virtui's `DiskResizeWindow < Window` kept a label in `@caption`, where `HasCaption`
+keeps the window title, and the first repaint died in `Window#top_border` with `undefined method
+'slice' for … Label`. Nothing in the stack trace pointed at the cause. The clash also runs the other
+way: a Tuile release that adds an ivar can break an app subclass that already uses the name, and
+neither side's code looks wrong. The names at risk are the ones a dialog reaches for first —
+`@caption`, `@content`, `@items`, `@text`, `@value`.
+
+So Tuile's own state is `@_foo`, read through an explicit `def foo = @_foo`, and an app subclass
+owns every name without the underscore. This is Rails' convention for the classes users fill with
+their own ivars (`@_request`, `@_action_name` in a controller), so a Ruby reader already knows the
+underscore means "the framework's, hands off". The rule covers all of `lib/`, value types and
+`Screen` included: one grep-able rule beats arguing which classes an app might subclass, and
+class-level ivars (`Final`'s) land on the app's class too. `nomenclature_spec` parses `lib/` and
+fails on a bare ivar or an `attr_*`, which would mint one.
+
+Why not:
+
+- **Type-checking at the read site** (`HasCaption#caption` raising when `@caption` isn't a
+  `StyledString`) — the issue's other proposal. It catches only a clash whose types differ; a
+  boolean written into `@visible` corrupts state and nothing raises.
+- **A clash detector**: in strict mode, compare the ivars an app class's methods touch
+  (`RubyVM::InstructionSequence.of`) against its `Tuile::` ancestors' and raise. Prototyped in ~20
+  lines, and it caught the #69 case. Declined because it enforces the reservation instead of lifting
+  it: every framework ivar becomes a word an app may not use, `@caption` is too good a word to ban,
+  and each new framework ivar would break some app's specs on upgrade. Also CRuby-only, blind to a
+  computed `instance_variable_set`, and silent unless a spec constructs the class.
+- **One `@tuile` struct holding all framework state.** Every access becomes `@tuile.caption`, and
+  the struct needs one central field list, so the mixins (`HasCaption`, `HasValue`, …) no longer own
+  their own state.
 
 ## D_slots — Why does a swappable region get a `Slot` of its own?
 

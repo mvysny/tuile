@@ -316,8 +316,8 @@ module Tuile
         raise ArgumentError, "#{child}'s parent is #{child.parent}, not this layout #{self}" if child.parent != self
 
         remove_child(child)
-        @constraints&.delete(child)
-        invalidate if @children.empty? # nothing left to paint over the gap
+        @_constraints&.delete(child)
+        invalidate if @_children.empty? # nothing left to paint over the gap
       end
 
       # @return [void]
@@ -337,7 +337,7 @@ module Tuile
         if first_tab_stop
           screen.focused = first_tab_stop
         else
-          first_focusable = @children.find { _1.visible? && _1.focusable? }
+          first_focusable = @_children.find { _1.visible? && _1.focusable? }
           screen.focused = first_focusable unless first_focusable.nil?
         end
       end
@@ -347,7 +347,7 @@ module Tuile
       # Where each child wants to be, for this layout's {Component#relayout} to
       # read — see {ConstraintMap}. Built on first read; {#remove} prunes it.
       # @return [ConstraintMap]
-      def constraints = @constraints ||= ConstraintMap.new(self)
+      def constraints = @_constraints ||= ConstraintMap.new(self)
     end
   end
 end

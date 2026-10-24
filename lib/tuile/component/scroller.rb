@@ -37,25 +37,25 @@ module Tuile
       # @param content_rows [Integer] see {#content_rows=}.
       def initialize(content = nil, content_rows: 0)
         super()
-        @content = nil
-        @scroll_top_row = 0
-        @content_rows = validate_rows(content_rows, :content_rows)
-        @scrollbar_visibility = :visible
-        @scrollbar = VerticalScrollBar.new(row_count: @content_rows)
-        @scrollbar.on_scroll_request { self.scroll_top_row = _1.scroll_top_row }
-        add_child(@scrollbar) # chrome, appended: the content goes in at 0
+        @_content = nil
+        @_scroll_top_row = 0
+        @_content_rows = validate_rows(content_rows, :content_rows)
+        @_scrollbar_visibility = :visible
+        @_scrollbar = VerticalScrollBar.new(row_count: @_content_rows)
+        @_scrollbar.on_scroll_request { self.scroll_top_row = _1.scroll_top_row }
+        add_child(@_scrollbar) # chrome, appended: the content goes in at 0
         self.content = content unless content.nil?
       end
 
       # @return [Integer] the content row painted at the top of the viewport.
-      attr_reader :scroll_top_row
+      def scroll_top_row = @_scroll_top_row
 
       # @return [Integer] how tall the content says it is, in rows.
-      attr_reader :content_rows
+      def content_rows = @_content_rows
 
       # @return [Symbol] `:visible` (the default), `:gone`, or `:auto` — shown
       #   only while {#content_rows} exceeds {#viewport_rows}.
-      attr_reader :scrollbar_visibility
+      def scrollbar_visibility = @_scrollbar_visibility
 
       # @return [Integer] rows of content on screen at once — {#rect}'s height,
       #   the bar taking a column rather than a row.
@@ -75,10 +75,10 @@ module Tuile
       # @return [void]
       def content_rows=(rows)
         rows = validate_rows(rows, :content_rows)
-        return if @content_rows == rows
+        return if @_content_rows == rows
 
-        @content_rows = rows
-        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
+        @_content_rows = rows
+        @_scroll_top_row = scroll_top_row_max if @_scroll_top_row > scroll_top_row_max
         invalidate_layout
       end
 
@@ -88,9 +88,9 @@ module Tuile
       # @return [void]
       def scroll_top_row=(new_row)
         new_row = validate_rows(new_row, :scroll_top_row)
-        return if @scroll_top_row == new_row
+        return if @_scroll_top_row == new_row
 
-        @scroll_top_row = new_row
+        @_scroll_top_row = new_row
         invalidate_layout
       end
 
@@ -108,9 +108,9 @@ module Tuile
         unless %i[gone visible auto].include?(value)
           raise ArgumentError, "expected :gone, :visible or :auto, got #{value.inspect}"
         end
-        return if @scrollbar_visibility == value
+        return if @_scrollbar_visibility == value
 
-        @scrollbar_visibility = value
+        @_scrollbar_visibility = value
         invalidate_layout
       end
 
@@ -134,14 +134,14 @@ module Tuile
       # @param rect [Rect] in this component's coordinates.
       # @return [void]
       def scroll_to_visible(rect = local_extent_rect)
-        before = @scroll_top_row
+        before = @_scroll_top_row
         move_scroll_top_row_by(scroll_delta_for(rect))
         # The scroll just latched moved every rect beneath this scroller, and
         # layout is deferred — so settle before the request climbs on, or a
         # second request (a {FormItem} makes two) measures the content where it
         # used to be and scrolls again to undo this one.
-        flush_layout unless before == @scroll_top_row
-        super(rect.moved_by(Point.new(0, before - @scroll_top_row)))
+        flush_layout unless before == @_scroll_top_row
+        super(rect.moved_by(Point.new(0, before - @_scroll_top_row)))
       end
 
       # Four rows a notch, and declines — so the notch bubbles to an outer
@@ -149,13 +149,13 @@ module Tuile
       # @param event [Mouse::ScrollEvent]
       # @return [Boolean]
       def handle_mouse_scroll?(event)
-        before = @scroll_top_row
+        before = @_scroll_top_row
         case event.direction
         when :down then move_scroll_top_row_by(4)
         when :up   then move_scroll_top_row_by(-4)
         else return false
         end
-        @scroll_top_row != before
+        @_scroll_top_row != before
       end
 
       # A container, so focus lands here only to be forwarded into the content
@@ -174,7 +174,7 @@ module Tuile
       # the content's rect, the bar's handle, or both.
       # @return [void]
       def relayout
-        content&.rect = Rect.new(0, -@scroll_top_row, inner_width, content_height)
+        content&.rect = Rect.new(0, -@_scroll_top_row, inner_width, content_height)
         place_scrollbar
       end
 
@@ -185,9 +185,9 @@ module Tuile
       # it asks through `on_scroll_request` and is told here.
       # @return [void]
       def place_scrollbar
-        @scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
-        @scrollbar.row_count = @content_rows
-        @scrollbar.scroll_top_row = @scroll_top_row
+        @_scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
+        @_scrollbar.row_count = @_content_rows
+        @_scrollbar.scroll_top_row = @_scroll_top_row
       end
 
       # Rows to scroll — positive down — to bring `rect` (in this component's
@@ -208,7 +208,7 @@ module Tuile
       # @return [Integer] the rows the content child is given: what it declared,
       #   or the viewport, whichever is taller. An unset {#content_rows} makes a
       #   scroller that behaves like a plain one-child container.
-      def content_height = [@content_rows, viewport_rows].max
+      def content_height = [@_content_rows, viewport_rows].max
 
       # @return [Integer] columns left for the content once the bar has its own.
       def inner_width = [rect.width - scrollbar_columns, 0].max
@@ -229,16 +229,16 @@ module Tuile
       def scrollbar_visible?
         return false if rect.empty?
 
-        case @scrollbar_visibility
+        case @_scrollbar_visibility
         when :visible then true
-        when :auto then @content_rows > viewport_rows
+        when :auto then @_content_rows > viewport_rows
         else false
         end
       end
 
       # @return [Integer] the largest {#scroll_top_row} that still shows content
       #   in every viewport row; `0` when the content fits.
-      def scroll_top_row_max = [@content_rows - viewport_rows, 0].max
+      def scroll_top_row_max = [@_content_rows - viewport_rows, 0].max
 
       # @return [Integer] half a viewport, at least one row.
       def half_page_rows = [viewport_rows / 2, 1].max
@@ -246,8 +246,8 @@ module Tuile
       # @param delta [Integer] negative scrolls up, positive down.
       # @return [void]
       def move_scroll_top_row_by(delta)
-        clamped = (@scroll_top_row + delta).clamp(0, scroll_top_row_max)
-        self.scroll_top_row = clamped unless @scroll_top_row == clamped
+        clamped = (@_scroll_top_row + delta).clamp(0, scroll_top_row_max)
+        self.scroll_top_row = clamped unless @_scroll_top_row == clamped
       end
 
       # @param rows [Integer]

@@ -89,14 +89,14 @@ module Tuile
         # policy, enlarging the inventory that keeps `D_ambiguous_width`'s bet
         # cheap to reverse. `∙` and `◦` measure one under both.
         # @return [String]
-        attr_reader :required_marker
+        def required_marker = @_required_marker
 
         # @param glyph [String] one grapheme cluster, one column wide.
         # @return [String] frozen.
         # @raise [TypeError] when `glyph` is not a String.
         # @raise [ArgumentError] when it is not exactly one cluster one column wide.
         def required_marker=(glyph)
-          @required_marker = StyledString.validate_glyph(glyph, :required_marker)
+          @_required_marker = StyledString.validate_glyph(glyph, :required_marker)
         end
       end
 
@@ -122,14 +122,14 @@ module Tuile
       #   for the marker to sit beside, or on a bad `caption_position` / `caption_width`.
       def initialize(content = nil, caption: nil, required: false, caption_position: :above, caption_width: nil)
         super()
-        @content = nil
-        @required = false
-        @caption_position = :above
-        @caption_width = nil
-        @caption_label = Label.new
-        @message_label = Label.new
-        add_child(@caption_label) # appended: HasContent forces the content to index 0
-        add_child(@message_label)
+        @_content = nil
+        @_required = false
+        @_caption_position = :above
+        @_caption_width = nil
+        @_caption_label = Label.new
+        @_message_label = Label.new
+        add_child(@_caption_label) # appended: HasContent forces the content to index 0
+        add_child(@_message_label)
         self.caption = caption
         self.required = required
         self.caption_position = caption_position
@@ -138,10 +138,10 @@ module Tuile
       end
 
       # @return [Boolean] whether the caption carries {.required_marker}.
-      def required? = @required
+      def required? = @_required
 
       # @return [Symbol] `:above` (the default) or `:left`.
-      attr_reader :caption_position
+      def caption_position = @_caption_position
 
       # Puts the caption above the field, or beside it with the message under
       # the field. Inside a {FormLayout} this is the form's to write.
@@ -152,16 +152,16 @@ module Tuile
         unless CAPTION_POSITIONS.include?(position)
           raise ArgumentError, "caption_position expects one of #{CAPTION_POSITIONS.inspect}, got #{position.inspect}"
         end
-        return if @caption_position == position
+        return if @_caption_position == position
 
-        @caption_position = position
+        @_caption_position = position
         invalidate_geometry
       end
 
       # @return [Integer, nil] the left caption's column, in cells; nil fits
       #   the caption, marker included. Ignored while {#caption_position} is
       #   `:above`.
-      attr_reader :caption_width
+      def caption_width = @_caption_width
 
       # Fixes the left caption's column, so items stacked in a {Layout::Vertical}
       # can line up. Inside a {FormLayout} this is the form's to write.
@@ -176,9 +176,9 @@ module Tuile
         unless columns.nil? || (columns.is_a?(Integer) && !columns.negative?)
           raise ArgumentError, "caption_width expects nil or a non-negative Integer, got #{columns.inspect}"
         end
-        return if @caption_width == columns
+        return if @_caption_width == columns
 
-        @caption_width = columns
+        @_caption_width = columns
         invalidate_geometry
       end
 
@@ -195,10 +195,10 @@ module Tuile
       #   rides the caption, so without one it has nowhere to go.
       def required=(flag)
         flag = flag ? true : false
-        return if @required == flag
+        return if @_required == flag
         raise ArgumentError, "a required FormItem needs a caption for the marker" if flag && caption.empty?
 
-        @required = flag
+        @_required = flag
         refresh_chrome
         invalidate_geometry
       end
@@ -266,10 +266,10 @@ module Tuile
       def relayout
         caption_rect, content_rect, message_rect = caption_position == :left ? left_rects : row_rects
         content&.rect = content_rect
-        @caption_label.rect = caption_rect
-        @message_label.rect = message_rect
+        @_caption_label.rect = caption_rect
+        @_message_label.rect = message_rect
         # The cut depends on the cells the caption was just handed.
-        @caption_columns = caption_rect.width
+        @_caption_columns = caption_rect.width
         refresh_chrome
       end
 
@@ -295,17 +295,17 @@ module Tuile
       # one of them just calls this.
       # @return [void]
       def refresh_chrome
-        @caption_label.text = fitted_caption
+        @_caption_label.text = fitted_caption
         # `shown_message` orders the two channels, and hands back a plain
         # String for a field's own report — hence the parse.
         message = StyledString.parse(content.respond_to?(:shown_message) ? content.shown_message : nil)
-        @message_label.text = message.empty? ? StyledString::EMPTY : message.with_fg(error_ink)
+        @_message_label.text = message.empty? ? StyledString::EMPTY : message.with_fg(error_ink)
       end
 
       # @return [StyledString] {#marked_caption}, ellipsized to the columns the
       #   last pass handed the caption, keeping the marker whole.
       def fitted_caption
-        columns = @caption_columns
+        columns = @_caption_columns
         full = marked_caption
         return full if columns.nil? || full.display_width <= columns
         return full.ellipsize(columns) unless required? && columns > marker.display_width

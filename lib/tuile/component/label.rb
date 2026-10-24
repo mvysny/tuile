@@ -14,15 +14,15 @@ module Tuile
       #   constructing empty and assigning {#text=}.
       def initialize(text = nil)
         super()
-        @text = StyledString::EMPTY
-        @rows = []
-        @blank_row = ""
+        @_text = StyledString::EMPTY
+        @_rows = []
+        @_blank_row = ""
         self.text = text unless text.nil?
       end
 
       # @return [StyledString] the current text. Defaults to an empty
       #   {StyledString}.
-      attr_reader :text
+      def text = @_text
 
       # Replaces the text. A `String` is parsed via {StyledString.parse}
       # (embedded ANSI is honored); a `StyledString` is used as-is; `nil` is
@@ -32,9 +32,9 @@ module Tuile
       # @return [void]
       def text=(value)
         new_text = StyledString.parse(value)
-        return if @text == new_text
+        return if @_text == new_text
 
-        @text = new_text
+        @_text = new_text
         update_rows
         invalidate
       end
@@ -53,7 +53,7 @@ module Tuile
         return if rect.empty?
 
         (0...rect.height).each do |row|
-          line = @rows[row] || @blank_row
+          line = @_rows[row] || @_blank_row
           canvas.set_text(0, row, line)
         end
       end
@@ -70,15 +70,15 @@ module Tuile
 
       private
 
-      # Recomputes {@rows} for the current text and rect width.
+      # Recomputes {@_rows} for the current text and rect width.
       # Each line is ellipsized to fit and padded with trailing spaces out to
       # the full width, so {#repaint} is just a lookup + {Buffer#set_text} per
-      # row. {@blank_row} covers rows past the last text line.
+      # row. {@_blank_row} covers rows past the last text line.
       # @return [void]
       def update_rows
         width = rect.width.clamp(0, nil)
-        @blank_row = StyledString.plain(" " * width)
-        @rows = @text.lines.map { |line| line.ellipsize(width).ljust(width) }
+        @_blank_row = StyledString.plain(" " * width)
+        @_rows = @_text.lines.map { |line| line.ellipsize(width).ljust(width) }
       end
     end
   end

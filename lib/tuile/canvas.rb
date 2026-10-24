@@ -35,18 +35,18 @@ module Tuile
   # UI-thread-confined.
   class Canvas
     # @return [Backend] where the cells land.
-    attr_reader :backend
+    def backend = @_backend
 
     # @return [Color, nil] the background painted behind content that states
     #   none; `nil` leaves the terminal default showing.
-    attr_reader :bg_color
+    def bg_color = @_bg_color
 
     # Where this canvas's `(0, 0)` sits in {#backend} coordinates — the
     # component's {Component#rect}`.top_left`, as {Screen#canvas_for} built it.
     # A component never reads it: adding the offset back by hand is the one
     # thing it exists to make unnecessary.
     # @return [Point]
-    attr_reader :origin
+    def origin = @_origin
 
     # The region of the {#backend}'s grid this canvas may write to —
     # {Screen#clip_for}'s answer moved into backend coordinates, or `nil` for a
@@ -69,7 +69,7 @@ module Tuile
     # outside. That is the terminal's physical truth, and better than the
     # dangling half-glyph the alternative leaves.
     # @return [Rect, nil]
-    attr_reader :clip
+    def clip = @_clip
 
     # @param backend [Backend]
     # @param bg_color [Color, nil] already resolved — a canvas consults no
@@ -83,11 +83,11 @@ module Tuile
     def initialize(backend, bg_color: nil, origin: Point::ZERO, clip: nil)
       raise Error, "#{backend.class} must include Tuile::Canvas::Backend" unless backend.is_a?(Backend)
 
-      @backend = backend
-      @bg_color = bg_color
-      @origin = origin
-      @clip = clip
-      @blank_style = bg_color ? StyledString::Style.new(bg: bg_color) : StyledString::Style::DEFAULT
+      @_backend = backend
+      @_bg_color = bg_color
+      @_origin = origin
+      @_clip = clip
+      @_blank_style = bg_color ? StyledString::Style.new(bg: bg_color) : StyledString::Style::DEFAULT
       freeze
     end
 
@@ -109,9 +109,9 @@ module Tuile
     #   the dangling state this shape exists to make impossible.
     def with(bg_color:)
       raise Error, "Canvas#with needs a block: with(bg_color:) { |canvas| … }" unless block_given?
-      return yield self if bg_color == @bg_color
+      return yield self if bg_color == @_bg_color
 
-      yield Canvas.new(@backend, bg_color:, origin: @origin, clip: @clip)
+      yield Canvas.new(@_backend, bg_color:, origin: @_origin, clip: @_clip)
     end
 
     # Writes a {StyledString}, filling {#bg_color} behind any span that states
@@ -122,9 +122,9 @@ module Tuile
     # @param styled [StyledString] the text of one row; newlines are not handled.
     # @return [void]
     def set_text(x, y, styled)
-      col = x + @origin.x
-      row = y + @origin.y
-      return @backend.set_text(col, row, styled.under_bg(@bg_color)) if @clip.nil?
+      col = x + @_origin.x
+      row = y + @_origin.y
+      return @_backend.set_text(col, row, styled.under_bg(@_bg_color)) if @_clip.nil?
       return unless clipped_row?(row)
 
       write_clipped_text(col, row, styled)
@@ -137,24 +137,24 @@ module Tuile
     # @param style [StyledString::Style] its `bg`, when set, wins over {#bg_color}.
     # @return [void]
     def set_char(x, y, grapheme, style = StyledString::Style::DEFAULT)
-      style = style.merge(bg: @bg_color) if @bg_color && style.bg.nil?
-      col = x + @origin.x
-      row = y + @origin.y
-      return @backend.set_char(col, row, grapheme, style) if @clip.nil?
+      style = style.merge(bg: @_bg_color) if @_bg_color && style.bg.nil?
+      col = x + @_origin.x
+      row = y + @_origin.y
+      return @_backend.set_char(col, row, grapheme, style) if @_clip.nil?
       return unless clipped_row?(row)
 
       # A zero-width cluster still lands in one cell, and that cell is what the
       # clip judges.
       width = [Buffer.display_width(grapheme), 1].max
-      from = [col, @clip.left].max
-      to = [col + width, @clip.left + @clip.width].min
+      from = [col, @_clip.left].max
+      to = [col + width, @_clip.left + @_clip.width].min
       return if to <= from
 
       # Half of a wide glyph is unrenderable, so the columns the clip keeps are
       # blanked instead — {Buffer#put_char}'s own policy at the terminal's edge.
-      return @backend.fill(Rect.new(from, row, to - from, 1), @blank_style) if to - from < width
+      return @_backend.fill(Rect.new(from, row, to - from, 1), @_blank_style) if to - from < width
 
-      @backend.set_char(col, row, grapheme, style)
+      @_backend.set_char(col, row, grapheme, style)
     end
 
     # Blanks `area` to {#bg_color}.
@@ -167,10 +167,10 @@ module Tuile
     def fill(area)
       # The early-out {#set_text} gets from `clipped_row?`: an empty clip keeps
       # no cell at all, so neither rectangle below is worth building.
-      return if @clip && @clip.empty?
+      return if @_clip && @_clip.empty?
 
-      area = area.moved_by(@origin)
-      @backend.fill(@clip.nil? ? area : area.intersect(@clip), @blank_style)
+      area = area.moved_by(@_origin)
+      @_backend.fill(@_clip.nil? ? area : area.intersect(@_clip), @_blank_style)
     end
 
     private
@@ -178,7 +178,7 @@ module Tuile
     # @param row [Integer] a row in backend coordinates.
     # @return [Boolean] whether {#clip} keeps it. Callers have already checked
     #   that there *is* a clip.
-    def clipped_row?(row) = row >= @clip.top && row < @clip.top + @clip.height
+    def clipped_row?(row) = row >= @_clip.top && row < @_clip.top + @_clip.height
 
     # {#set_text} for the case that has to think: cut `styled` to the clip's
     # columns and write what survived where it really belongs.
@@ -193,20 +193,20 @@ module Tuile
     # @param styled [StyledString] the text of one row, uncoloured as handed in.
     # @return [void]
     def write_clipped_text(col, row, styled)
-      right = @clip.left + @clip.width
+      right = @_clip.left + @_clip.width
       width = styled.display_width
-      from = [col, @clip.left].max
+      from = [col, @_clip.left].max
       to = [col + width, right].min
       return if to <= from
 
-      kept = col < @clip.left ? styled.slice(@clip.left - col, width) : styled
+      kept = col < @_clip.left ? styled.slice(@_clip.left - col, width) : styled
       start = col + width - kept.display_width
       kept = kept.slice(0, right - start) if start + kept.display_width > right
       stop = start + kept.display_width
 
-      @backend.fill(Rect.new(from, row, start - from, 1), @blank_style) if start > from
-      @backend.fill(Rect.new(stop, row, to - stop, 1), @blank_style) if to > stop
-      @backend.set_text(start, row, kept.under_bg(@bg_color)) unless kept.empty?
+      @_backend.fill(Rect.new(from, row, start - from, 1), @_blank_style) if start > from
+      @_backend.fill(Rect.new(stop, row, to - stop, 1), @_blank_style) if to > stop
+      @_backend.set_text(start, row, kept.under_bg(@_bg_color)) unless kept.empty?
     end
   end
 end

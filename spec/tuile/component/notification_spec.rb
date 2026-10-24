@@ -17,7 +17,7 @@ module Tuile
     # {Component::TextView} has no size getter — see AGENTS.md on top-down
     # layout), and a spec asserting what a notification *shows* asserts the
     # buffer below.
-    def held(notification) = notification.instance_variable_get(:@messages)
+    def held(notification) = notification.instance_variable_get(:@_messages)
 
     # The box the pane gives it, once the settle has placed it.
     def box(notification)

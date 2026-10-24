@@ -23,19 +23,19 @@ module Tuile
       # @raise [ArgumentError, TypeError] see {#char=} and {#color=}.
       def initialize(char, color: nil)
         super()
-        @char = StyledString.validate_glyph(char, :char)
-        @color = nil
+        @_char = StyledString.validate_glyph(char, :char)
+        @_color = nil
         self.color = color
       end
 
       # @return [String] the glyph painted into every cell; one grapheme
       #   cluster, one column wide.
-      attr_reader :char
+      def char = @_char
 
       # @return [Color, Theme::Ref, nil] the value as set, so a {Theme::Ref}
       #   comes back unresolved; `nil` (the default) is the terminal's default
       #   foreground.
-      attr_reader :color
+      def color = @_color
 
       # @param char [String]
       # @return [void]
@@ -44,9 +44,9 @@ module Tuile
       #   one column wide.
       def char=(char)
         char = StyledString.validate_glyph(char, :char)
-        return if @char == char
+        return if @_char == char
 
-        @char = char
+        @_char = char
         invalidate
       end
 
@@ -65,11 +65,11 @@ module Tuile
       #   lacks.
       def color=(color)
         color = Color.coerce(color) unless color.is_a?(Theme::Ref)
-        return if @color == color
+        return if @_color == color
 
         color.resolve(screen.theme) if color.is_a?(Theme::Ref) # fail fast on a bad token
 
-        @color = color
+        @_color = color
         invalidate
       end
 
@@ -80,14 +80,14 @@ module Tuile
       def repaint(canvas)
         return if rect.empty?
 
-        row = StyledString.styled(@char * rect.width, fg: resolved_color)
+        row = StyledString.styled(@_char * rect.width, fg: resolved_color)
         rect.height.times { canvas.set_text(0, _1, row) }
       end
 
       private
 
       # @return [Color, nil]
-      def resolved_color = @color.is_a?(Theme::Ref) ? @color.resolve(screen.theme) : @color
+      def resolved_color = @_color.is_a?(Theme::Ref) ? @_color.resolve(screen.theme) : @_color
     end
   end
 end

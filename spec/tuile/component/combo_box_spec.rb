@@ -18,8 +18,8 @@ module Tuile
     # drives; poke it directly to simulate typing without a real loop.
     def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key?, ch) }
     def key(code) = Screen.instance.send(:handle_key?, code)
-    def overlay(box) = box.instance_variable_get(:@overlay)
-    def menu(box) = overlay(box).instance_variable_get(:@list)
+    def overlay(box) = box.instance_variable_get(:@_overlay)
+    def menu(box) = overlay(box).instance_variable_get(:@_list)
     # No public accessor: a spec looks the private field up in the tree.
     def field(box) = Testing.get(Component::TextField, in: box)
     def field_text(box) = field(box).text
@@ -393,7 +393,7 @@ module Tuile
         combo.flush_layout
         face = combo.absolute_extent_rect
         Screen.instance.click(face.left + face.width - 1, face.top) # the ▾ cell opens it
-        [dialog, combo, combo.instance_variable_get(:@overlay)]
+        [dialog, combo, combo.instance_variable_get(:@_overlay)]
       end
 
       def click_at(x, y) = Screen.instance.click(x, y)

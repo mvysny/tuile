@@ -74,16 +74,17 @@ module Tuile
       #   Tuile::ThemeDef.default = APP_THEME   # spec_helper.rb, once
       #   before { Screen.fake }                # theme[:accent] resolves
       # @return [ThemeDef]
-      attr_reader :default
+      def default = @_default
 
       # @param theme_def [ThemeDef]
       # @raise [TypeError] when not a {ThemeDef}.
+      # @return [void]
       def default=(theme_def)
         raise TypeError, "expected ThemeDef, got #{theme_def.inspect}" unless theme_def.is_a?(ThemeDef)
 
-        @default = theme_def
+        @_default = theme_def
       end
     end
-    @default = DEFAULT
+    @_default = DEFAULT
   end
 end

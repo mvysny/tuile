@@ -14,14 +14,14 @@ module Tuile
     # populatable regions gives each one a {Slot} rather than including this
     # twice.
     #
-    # The includer initializes `@content` to nil and positions the child from
+    # The includer initializes `@_content` to nil and positions the child from
     # its own {Component#relayout}; the mixin owns the swap, and the swap marks,
     # so nothing here places anything itself:
     #
     #   class Slot < Component
     #     include Component::HasContent
     #
-    #     def initialize = (super; @content = nil)
+    #     def initialize = (super; @_content = nil)
     #
     #     protected
     #
@@ -44,9 +44,9 @@ module Tuile
     # a walk reaches only *public* contents, never a widget's private editor.
     module HasContent
       # @return [Component, nil] the current content component.
-      attr_reader :content
+      def content = @_content
 
-      # Sets the new content of this component. Updates `@content` itself;
+      # Sets the new content of this component. Updates `@_content` itself;
       # including classes may still override to add behaviour (e.g. a
       # special-cased Array input) but should call `super` to perform the
       # swap.
@@ -62,7 +62,7 @@ module Tuile
         end
 
         old = self.content
-        @content = content
+        @_content = content
         # Detached without notifying, and notified at the very end: the focus
         # repair in handle_child_removed cascades into whatever occupies the slot
         # *now*, so it has to see the new content (window_spec pins it).

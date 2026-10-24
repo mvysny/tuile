@@ -298,7 +298,7 @@ module Tuile
       it "is dropped below the :hover level, so nothing sees a drag-only move" do
         r = recorder
         content_with(r)
-        screen.instance_variable_get(:@mouse_router).level = :drag
+        screen.instance_variable_get(:@_mouse_router).level = :drag
 
         screen.move(1, 1, button: :left)
 
@@ -399,7 +399,7 @@ module Tuile
 
       it "lights nothing from a press below the :hover level" do
         content_with(recorder)
-        screen.instance_variable_get(:@mouse_router).level = :drag
+        screen.instance_variable_get(:@_mouse_router).level = :drag
         screen.press(1, 1)
         assert_nil screen.hovered
       end

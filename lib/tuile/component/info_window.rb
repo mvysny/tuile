@@ -19,7 +19,7 @@ module Tuile
       # @param body [String, StyledString, Component, Array, nil] an `Array`
       #   is assigned through {#lines=}, anything else through {#message=}.
       def initialize(caption = "", body = nil)
-        @message = nil
+        @_message = nil
         super(caption)
         if body.is_a?(Array)
           self.lines = body
@@ -31,7 +31,7 @@ module Tuile
       # @return [String, StyledString, Component, nil] whatever {#message=}
       #   was given — set a `String`, read that `String` back. After
       #   {#lines=} it is the {List} that setter mounted.
-      attr_reader :message
+      def message = @_message
 
       # Sets the prose body. Text (`String` / {StyledString}) is rendered by
       # a word-wrapping, scrollable {TextView} the window owns; a {Component}
@@ -47,7 +47,7 @@ module Tuile
           when String, StyledString then TextView.new.tap { _1.text = value }
           else raise TypeError, "expected String, StyledString, Component or nil, got #{value.inspect}"
           end
-        @message = value
+        @_message = value
         self.content = occupant
       end
 

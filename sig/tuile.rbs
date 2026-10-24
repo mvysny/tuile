@@ -5,6 +5,16 @@
 module Tuile
   VERSION: String
 
+  # The logger Tuile writes to. Defaults to a null logger, so the gem is
+  # silent unless the host app opts in via `Tuile.logger = ...`. Any object
+  # duck-typing the stdlib `Logger` interface (`debug/info/warn/error/fatal`
+  # taking a string) works — including `TTY::Logger`.
+  # 
+  # _@param_ `value`
+  def self.logger=: (Logger value) -> void
+
+  def self.logger: () -> Logger
+
   # How a pre-settle {Component#rect} read is reported: `false`, `:warn` to
   # {#logger}, or `:raise`. Unset — which is how a process starts — answers
   # the default: **`:raise` under a {FakeScreen}**, where a spec suite is the
@@ -37,14 +47,6 @@ module Tuile
   # 
   # _@return_ — the block's value.
   def self.without_strict_layout: () -> Object
-
-  def self.logger: () -> Logger
-
-  # The logger Tuile writes to. Defaults to a null logger, so the gem is
-  # silent unless the host app opts in via `Tuile.logger = ...`. Any object
-  # duck-typing the stdlib `Logger` interface (`debug/info/warn/error/fatal`
-  # taking a string) works — including `TTY::Logger`.
-  def self.logger=: (Logger value) -> Logger
 
   class Error < StandardError
   end
@@ -381,6 +383,10 @@ module Tuile
     # _@param_ `value` — see class-level docs for the three accepted forms.
     def initialize: ((Symbol | Integer | ::Array[Integer]) value) -> void
 
+    # The underlying raw representation — a Symbol, Integer, or frozen
+    # Array<Integer>.
+    def value: () -> (Symbol | Integer | ::Array[Integer])
+
     # This color's red, green and blue, for an app doing color math — a
     # contrast check, a tint derived from {Screen#background_color}:
     # 
@@ -471,10 +477,6 @@ module Tuile
     # 
     # _@return_ — index into {COLOR_SYMBOLS} of the nearest of the 16.
     def nearest_ansi16: (::Array[Integer] rgb) -> Integer
-
-    # The underlying raw representation — a Symbol, Integer, or frozen
-    # Array<Integer>.
-    attr_reader value: (Symbol | Integer | ::Array[Integer])
   end
 
   # The marker every event includes: *something happened, described by a frozen
@@ -857,6 +859,23 @@ module Tuile
       # _@param_ `screen`
       def initialize: (Screen screen) -> void
 
+      # The tracking level {Screen#run_event_loop} asked the terminal for, one of
+      # {Mouse::LEVELS}; `:hover` while no loop is running, so a spec may post
+      # anything. An ungrabbed move is dropped below `:hover` — under `:drag` the
+      # terminal reports one only while a button nobody claimed is held, and
+      # enter/exit that fire *sometimes* are worse than none.
+      def level: () -> Symbol?
+
+      # A new level starts with the pointer unknown: one a previous level
+      # reported is no longer being tracked.
+      # 
+      # _@param_ `level`
+      def level=: (Symbol? level) -> void
+
+      # _@return_ — the component whose {Component#handle_mouse_down?}
+      # claimed the press currently held.
+      def grabbed: () -> Component?
+
       # _@return_ — the innermost component under the pointer, as of
       # the last {#sync_hover}; nil below `:hover`.
       def hovered: () -> Component?
@@ -932,17 +951,6 @@ module Tuile
 
       # _@param_ `chain` — the new hovered chain, root first.
       def rehover: (::Array[Component] chain) -> void
-
-      # The tracking level {Screen#run_event_loop} asked the terminal for, one of
-      # {Mouse::LEVELS}; `:hover` while no loop is running, so a spec may post
-      # anything. An ungrabbed move is dropped below `:hover` — under `:drag` the
-      # terminal reports one only while a button nobody claimed is held, and
-      # enter/exit that fire *sometimes* are worse than none.
-      attr_accessor level: Symbol?
-
-      # _@return_ — the component whose {Component#handle_mouse_down?}
-      # claimed the press currently held.
-      attr_reader grabbed: Component?
 
       # One step of a resolved path: a component, and the event point in *its*
       # coordinates. The walk down is the only place that conversion is cheap —
@@ -1413,6 +1421,15 @@ module Tuile
     # _@return_ — grid dimensions.
     def size: () -> Size
 
+    def width: () -> Integer
+
+    def height: () -> Integer
+
+    # What the terminal can show ({ColorDepth::DEPTHS}). Cells hold whatever
+    # color a component painted — {#region_ansi} and friends report that,
+    # unchanged — and only {#flush} degrades it on the way to the wire.
+    def color_depth: () -> Symbol
+
     # _@param_ `x` — column.
     # 
     # _@param_ `y` — row.
@@ -1656,20 +1673,26 @@ module Tuile
     # _@param_ `y` — row
     def blank_right_partner: (Integer x, Integer y) -> void
 
-    attr_reader width: Integer
-
-    attr_reader height: Integer
-
-    # What the terminal can show ({ColorDepth::DEPTHS}). Cells hold whatever
-    # color a component painted — {#region_ansi} and friends report that,
-    # unchanged — and only {#flush} degrades it on the way to the wire.
-    attr_reader color_depth: Symbol
-
     # One screen cell: a single grapheme cluster, the {StyledString::Style} it's
     # drawn in, and a dirty flag. Mutable by design (see {Buffer} "Dirty
     # tracking") — the grid rewrites cells in place. A continuation cell (right
     # half of a wide glyph) carries an empty grapheme — see {#continuation?}.
     class Cell
+      # Read-only: mutate content through {#set} so dirty tracking stays correct.
+      # 
+      # _@return_ — one grapheme cluster, `" "` for blank, or `""` for a
+      # wide-glyph continuation.
+      def grapheme: () -> String
+
+      def style: () -> StyledString::Style
+
+      # _@return_ — true if this cell changed since the last {Buffer#flush}.
+      # {Buffer} flips it (off as it flushes, on via {Buffer#mark_all_dirty}).
+      def dirty: () -> bool
+
+      # _@param_ `value`
+      def dirty=: (bool value) -> void
+
       # _@param_ `grapheme`
       # 
       # _@param_ `style`
@@ -1698,18 +1721,6 @@ module Tuile
       # 
       # _@param_ `other`
       def ==: (Object other) -> bool
-
-      # Read-only: mutate content through {#set} so dirty tracking stays correct.
-      # 
-      # _@return_ — one grapheme cluster, `" "` for blank, or `""` for a
-      # wide-glyph continuation.
-      attr_reader grapheme: String
-
-      attr_reader style: StyledString::Style
-
-      # _@return_ — true if this cell changed since the last {Buffer#flush}.
-      # {Buffer} flips it (off as it flushes, on via {Buffer#mark_all_dirty}).
-      attr_accessor dirty: bool
     end
   end
 
@@ -1746,6 +1757,41 @@ module Tuile
   # 
   # UI-thread-confined.
   class Canvas
+    # _@return_ — where the cells land.
+    def backend: () -> Backend
+
+    # _@return_ — the background painted behind content that states
+    # none; `nil` leaves the terminal default showing.
+    def bg_color: () -> Color?
+
+    # Where this canvas's `(0, 0)` sits in {#backend} coordinates — the
+    # component's {Component#rect}`.top_left`, as {Screen#canvas_for} built it.
+    # A component never reads it: adding the offset back by hand is the one
+    # thing it exists to make unnecessary.
+    def origin: () -> Point
+
+    # The region of the {#backend}'s grid this canvas may write to —
+    # {Screen#clip_for}'s answer moved into backend coordinates, or `nil` for a
+    # canvas nobody bounded, which costs one test per write and nothing else.
+    # Every canvas {Screen#canvas_for} builds carries one; {Screen#canvas}, the
+    # root, is the `nil` case.
+    # 
+    # In **backend** coordinates, like {#origin} and unlike every argument the
+    # three paint methods take: a canvas's *state* says where it sits in the
+    # world, its arguments are in paint coordinates (`D_clip`).
+    # 
+    # An {Rect#empty? empty} clip is not `nil`: it means *paint nothing*, and it
+    # is what a component that can show nothing gets — collapsed, or scrolled
+    # clean out of its viewport. Every write is judged against the clip on its
+    # own terms, so this needs no special case; it is simply the case where they
+    # all fail.
+    # 
+    # The one cell it does not protect: {Buffer#put_char} blanks the head of a
+    # wide glyph whose continuation half a clipped write overwrites, one column
+    # outside. That is the terminal's physical truth, and better than the
+    # dangling half-glyph the alternative leaves.
+    def clip: () -> Rect?
+
     # _@param_ `backend`
     # 
     # _@param_ `bg_color` — already resolved — a canvas consults no component and no theme.
@@ -1834,41 +1880,6 @@ module Tuile
     # 
     # _@param_ `styled` — the text of one row, uncoloured as handed in.
     def write_clipped_text: (Integer col, Integer row, StyledString styled) -> void
-
-    # _@return_ — where the cells land.
-    attr_reader backend: Backend
-
-    # _@return_ — the background painted behind content that states
-    # none; `nil` leaves the terminal default showing.
-    attr_reader bg_color: Color?
-
-    # Where this canvas's `(0, 0)` sits in {#backend} coordinates — the
-    # component's {Component#rect}`.top_left`, as {Screen#canvas_for} built it.
-    # A component never reads it: adding the offset back by hand is the one
-    # thing it exists to make unnecessary.
-    attr_reader origin: Point
-
-    # The region of the {#backend}'s grid this canvas may write to —
-    # {Screen#clip_for}'s answer moved into backend coordinates, or `nil` for a
-    # canvas nobody bounded, which costs one test per write and nothing else.
-    # Every canvas {Screen#canvas_for} builds carries one; {Screen#canvas}, the
-    # root, is the `nil` case.
-    # 
-    # In **backend** coordinates, like {#origin} and unlike every argument the
-    # three paint methods take: a canvas's *state* says where it sits in the
-    # world, its arguments are in paint coordinates (`D_clip`).
-    # 
-    # An {Rect#empty? empty} clip is not `nil`: it means *paint nothing*, and it
-    # is what a component that can show nothing gets — collapsed, or scrolled
-    # clean out of its viewport. Every write is judged against the clip on its
-    # own terms, so this needs no special case; it is simply the case where they
-    # all fail.
-    # 
-    # The one cell it does not protect: {Buffer#put_char} blanks the head of a
-    # wide glyph whose continuation half a clipped write overwrites, one column
-    # outside. That is the terminal's physical truth, and better than the
-    # dangling half-glyph the alternative leaves.
-    attr_reader clip: Rect?
 
     # Where a {Canvas}'s cells land: three primitives taking a fully resolved
     # style. Include it to *be* one — {Tuile::Buffer} does, and needs no adapter:
@@ -2721,6 +2732,32 @@ module Tuile
 
     def initialize: () -> void
 
+    # _@return_ — the structural root of the component tree.
+    def pane: () -> ScreenPane
+
+    # _@return_ — `:light` or `:dark`
+    def color_scheme: () -> Symbol
+
+    # How many colors this terminal can show ({ColorDepth::DEPTHS}), detected
+    # at construction. {Buffer#flush} degrades every color it emits to this,
+    # so an app may compute an RGB tint — say from {#background_color} — and
+    # paint with it, whatever the terminal turns out to understand.
+    # 
+    # Deliberately read-only: detection runs once and the answer can't change
+    # mid-session. Override a terminal that reports itself wrong through
+    # {ColorDepth::OVERRIDE_ENV} instead.
+    def color_depth: () -> Symbol
+
+    # _@return_ — the back buffer components paint into
+    # ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
+    def buffer: () -> Buffer
+
+    # The untinted root canvas over {#buffer}, at the buffer's own origin,
+    # which {#canvas_for} derives every component's from. Nothing in `lib/`
+    # paints through it: a component paints onto the canvas it is *given*,
+    # never this one by name (`D_canvas`).
+    def canvas: () -> Canvas
+
     # The canvas `component` paints onto: one over {#buffer} carrying that
     # component's resolved background, positioned where it sits on screen and
     # bounded by what its ancestors allow — so it writes at `(0, 0)`, an
@@ -2804,10 +2841,95 @@ module Tuile
     # _@param_ `content`
     def content=: (Component content) -> void
 
+    # _@return_ — current screen size.
+    def size: () -> Size
+
+    # The color {Theme} built-in components read at paint time: the member
+    # of {#theme_def} matching the terminal background detected at
+    # construction (see {TerminalBackground.detect}; inconclusive means
+    # dark). While the event loop runs, terminals supporting mode 2031
+    # push OS appearance changes ({EventQueue::ColorSchemeEvent}) and the
+    # screen re-picks from {#theme_def}.
+    # 
+    # Always resolved ({Theme#resolve}): a derived token is recomputed from
+    # {#background_color} whenever that changes, so no token here is a Proc.
+    def theme: () -> Theme
+
+    # The app's {ThemeDef} — the dark/light {Theme} pair the screen picks
+    # {#theme} from, at startup and on every OS appearance flip. Starts as
+    # {ThemeDef.default} ({ThemeDef::DEFAULT} unless reassigned — tests
+    # do, see {ThemeDef.default=}). Assigning a custom definition is the
+    # durable way to theme an app: unlike a bare {#theme=}, it survives
+    # the user toggling the OS appearance.
+    def theme_def: () -> ThemeDef
+
+    # The terminal's own background, as it reported it — for deriving a
+    # color *from* the background rather than picking one against it. A pane
+    # tinted a few percent off it sits right on any terminal, where a fixed
+    # near-neutral only sits right near the one it was tuned on. Declare such
+    # a color as a derived theme token (see {Theme}) and point a slot at it:
+    # 
+    #   pane_bg: ->(bg) { bg ? Color.rgb(*bg.rgb.map { (_1 + 10).clamp(0, 255) }) : FALLBACK_TINT }
+    #   sidebar.bg_color = Theme.ref(:pane_bg)
+    # 
+    # **Nil is the normal case, not an edge** — a terminal answering only
+    # `COLORFGBG`, or neither probe, reports no RGB at all. Keep a fallback.
+    # 
+    # Kept current across OS appearance flips, a frame behind: the flip
+    # report carries light/dark only, so the screen re-probes and this
+    # updates when the reply lands. A changed color re-resolves {#theme} and
+    # then fires {Component#handle_theme_changed} across the tree once, as a
+    # theme swap does — even when no token is derived, since a component may
+    # read this directly.
+    def background_color: () -> Color?
+
+    # Replaces the theme definition and immediately applies the member
+    # matching the current color scheme (via {#theme=}, so the whole UI
+    # restyles — or nothing repaints if that member equals the current
+    # theme).
+    # 
+    # _@param_ `theme_def`
+    def theme_def=: (ThemeDef theme_def) -> void
+
+    # Replaces the theme and restyles the whole UI: fires
+    # {Component#handle_theme_changed} across the attached tree and invalidates
+    # every attached component. No-op when `new_theme`, resolved, equals the
+    # current theme. A derived token keeps following {#background_color}.
+    # This is a *transient* override — the next OS appearance flip re-picks from
+    # {#theme_def}; assign {#theme_def=} for durable theming.
+    # 
+    # _@param_ `new_theme` — resolved or not.
+    def theme=: (Theme new_theme) -> void
+
+    # The formatting conventions this session renders and parses by — date
+    # formats, the calendar, month and weekday names, the decimal separator.
+    # Detected once at construction from {Locale.system}; {Locale::ISO} when
+    # the environment says nothing.
+    # 
+    # Read it at paint or parse time and never cache it in an ivar, for the
+    # same reason {#theme} says so: {#locale=} can replace it mid-session.
+    def locale: () -> Locale
+
+    # Replaces the locale: fires {Component#handle_locale_changed} across the
+    # attached tree and invalidates every attached component. No-op when
+    # `new_locale` equals the current one.
+    # 
+    #   screen.locale = Locale::ISO.with(date_formats: ["%d.%m.%Y"])
+    # 
+    # Note this can invalidate what a user has half-typed: a field's buffer
+    # reparses under the new grammar, and one that no longer parses reads as
+    # bad input.
+    # 
+    # _@param_ `new_locale`
+    def locale=: (Locale new_locale) -> void
+
     # _@return_ — the open overlay stack — both
     # {Component::Popup} modals and bare {Component::Overlay}s — in stacking
     # order (forwarded to {ScreenPane}). The array must not be modified!
     def popups: () -> ::Array[Component::Overlay]
+
+    # _@return_ — the event queue.
+    def event_queue: () -> EventQueue
 
     # `:idle` covers *both* ends of the screen's life — before the first
     # {#run_event_loop} and after it returns — and a screen may cycle
@@ -2863,6 +2985,40 @@ module Tuile
     # ({ScreenPane#remark_moved_anchors}); and the half of a {#focused=} that was
     # deferred because it happened inside a pass — see there.
     def flush_layout: () -> void
+
+    # _@return_ — currently focused component.
+    def focused: () -> Component?
+
+    # Sets the focused {Component}. Focused component receives keyboard events.
+    # All focusable components live under {#pane}, so this is a single uniform
+    # path (no separate popup-vs-content branches).
+    # 
+    # A hidden target — or one under a hidden ancestor — raises, exactly as a
+    # detached one does: focusing it would park the hardware cursor inside
+    # whatever is painted over it and feed it every keystroke.
+    # 
+    # Once the pointer and the active flags are settled, four steps run in
+    # order: {Component#handle_blur} on what lost focus, {Component#handle_focus}
+    # on what took it, that component's {Component#scroll_to_visible} so a
+    # scroller shows what Tab just reached, then {#on_focus_changed}, which
+    # therefore reads settled geometry. The outer two are edge-triggered and the
+    # middle two are not — see `handle_focus`.
+    # 
+    # **Inside a {Component#relayout} the last two wait for the layout** — a
+    # focus repair from a child hidden there, a menu closed from
+    # {Component#handle_rect_changed}. The pass has not placed its children yet,
+    # and a scroll decided now is latched, so {#flush_layout} runs them once the
+    # tree has settled: the final target is scrolled into view, and
+    # {#on_focus_changed} fires once if focus ended somewhere other than where
+    # the pass found it.
+    # 
+    # A target whose {#clip_for} is still empty after that request — a stale
+    # {Component::Scroller#content_rows}, say — logs a warning to
+    # {Tuile.logger} rather than raising: a terminal shrunk to nothing causes it
+    # legitimately.
+    # 
+    # _@param_ `focused` — the new component to be focused.
+    def focused=: (Component? focused) -> void
 
     # Fired with a {FocusChangedEvent} after {#focused} changes.
     def on_focus_changed: () -> Listeners
@@ -2982,7 +3138,7 @@ module Tuile
     # background re-probe, cursor-show on teardown. Component painting does
     # *not* go through here anymore — it writes into {#buffer}, which
     # {#repaint} diffs and {#emit}s. {FakeScreen} overrides this (and
-    # {#emit}) to capture into `@prints` instead of the test runner's stdout.
+    # {#emit}) to capture into `@_prints` instead of the test runner's stdout.
     # 
     # Flushed, like {#emit}: none of these escapes ends in a newline, and a
     # buffered stdout would hold a *query* — one whose reply the app is
@@ -3245,95 +3401,12 @@ module Tuile
     # 
     # The list is built on first read, so no mixin has to remember a
     # constructor line — which means in-class code goes through the reader and
-    # never touches `@on_foo`, nil until somebody asks.
+    # never touches `@_on_foo`, nil until somebody asks.
     # 
     # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
     # 
     # _@return_ — `name`.
     def self.listener: (Symbol name) ?{ (bool claimed) -> void } -> Symbol
-
-    # _@return_ — the structural root of the component tree.
-    attr_reader pane: ScreenPane
-
-    # _@return_ — `:light` or `:dark`
-    attr_reader color_scheme: Symbol
-
-    # How many colors this terminal can show ({ColorDepth::DEPTHS}), detected
-    # at construction. {Buffer#flush} degrades every color it emits to this,
-    # so an app may compute an RGB tint — say from {#background_color} — and
-    # paint with it, whatever the terminal turns out to understand.
-    # 
-    # Deliberately read-only: detection runs once and the answer can't change
-    # mid-session. Override a terminal that reports itself wrong through
-    # {ColorDepth::OVERRIDE_ENV} instead.
-    attr_reader color_depth: Symbol
-
-    # _@return_ — the back buffer components paint into
-    # ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
-    attr_reader buffer: Buffer
-
-    # The untinted root canvas over {#buffer}, at the buffer's own origin,
-    # which {#canvas_for} derives every component's from. Nothing in `lib/`
-    # paints through it: a component paints onto the canvas it is *given*,
-    # never this one by name (`D_canvas`).
-    attr_reader canvas: Canvas
-
-    # _@return_ — current screen size.
-    attr_reader size: Size
-
-    # The color {Theme} built-in components read at paint time: the member
-    # of {#theme_def} matching the terminal background detected at
-    # construction (see {TerminalBackground.detect}; inconclusive means
-    # dark). While the event loop runs, terminals supporting mode 2031
-    # push OS appearance changes ({EventQueue::ColorSchemeEvent}) and the
-    # screen re-picks from {#theme_def}.
-    # 
-    # Always resolved ({Theme#resolve}): a derived token is recomputed from
-    # {#background_color} whenever that changes, so no token here is a Proc.
-    attr_accessor theme: Theme
-
-    # The app's {ThemeDef} — the dark/light {Theme} pair the screen picks
-    # {#theme} from, at startup and on every OS appearance flip. Starts as
-    # {ThemeDef.default} ({ThemeDef::DEFAULT} unless reassigned — tests
-    # do, see {ThemeDef.default=}). Assigning a custom definition is the
-    # durable way to theme an app: unlike a bare {#theme=}, it survives
-    # the user toggling the OS appearance.
-    attr_accessor theme_def: ThemeDef
-
-    # The terminal's own background, as it reported it — for deriving a
-    # color *from* the background rather than picking one against it. A pane
-    # tinted a few percent off it sits right on any terminal, where a fixed
-    # near-neutral only sits right near the one it was tuned on. Declare such
-    # a color as a derived theme token (see {Theme}) and point a slot at it:
-    # 
-    #   pane_bg: ->(bg) { bg ? Color.rgb(*bg.rgb.map { (_1 + 10).clamp(0, 255) }) : FALLBACK_TINT }
-    #   sidebar.bg_color = Theme.ref(:pane_bg)
-    # 
-    # **Nil is the normal case, not an edge** — a terminal answering only
-    # `COLORFGBG`, or neither probe, reports no RGB at all. Keep a fallback.
-    # 
-    # Kept current across OS appearance flips, a frame behind: the flip
-    # report carries light/dark only, so the screen re-probes and this
-    # updates when the reply lands. A changed color re-resolves {#theme} and
-    # then fires {Component#handle_theme_changed} across the tree once, as a
-    # theme swap does — even when no token is derived, since a component may
-    # read this directly.
-    attr_reader background_color: Color?
-
-    # The formatting conventions this session renders and parses by — date
-    # formats, the calendar, month and weekday names, the decimal separator.
-    # Detected once at construction from {Locale.system}; {Locale::ISO} when
-    # the environment says nothing.
-    # 
-    # Read it at paint or parse time and never cache it in an ivar, for the
-    # same reason {#theme} says so: {#locale=} can replace it mid-session.
-    attr_accessor locale: Locale
-
-    # _@return_ — the event queue.
-    attr_reader event_queue: EventQueue
-
-    # _@return_ — currently focused component.
-    attr_accessor focused: Component?
 
     # What {#on_focus_changed} fires.
     # 
@@ -3798,6 +3871,35 @@ module Tuile
 
     def initialize: () -> void
 
+    # A tag for finding this component again — nothing paints it, and the
+    # framework never reads it:
+    # 
+    #   field.id = :name
+    #   Testing.get(id: :name).value = "Zaphod"
+    # 
+    # **Nothing enforces uniqueness**, here or anywhere in production; two
+    # components may carry the same id, and only {Testing.get} — which raises
+    # on an ambiguous match — will ever say so.
+    def id: () -> Symbol?
+
+    # A `String` is refused rather than coerced: `id = "name"` would never
+    # match a `get(id: :name)`, silently.
+    # 
+    # _@param_ `new_id`
+    def id=: (Symbol? new_id) -> void
+
+    # The rectangle the component occupies **inside its parent**: `(0, 0)` is
+    # the parent's top-left, not the screen's. {#absolute_rect} is where that
+    # lands on screen, and {#local_rect} is this same rectangle with the
+    # position taken out.
+    # 
+    # **Layout is deferred, so a rect read in the same turn that dirtied it is
+    # the *previous* pass's** — a plausible rectangle, not zeros.
+    # {#flush_layout} brings it up to date (`D_deferred_layout`),
+    # {#rect_stale?} answers whether it is one, and {Tuile.strict_layout} makes
+    # every such read say so.
+    def rect: () -> Rect
+
     # _@return_ — `rect.size`.
     def size: () -> Size
 
@@ -3903,6 +4005,39 @@ module Tuile
     # 
     # _@return_ — in this component's coordinates.
     def to_local: (Point point) -> Point
+
+    # Places the component **inside its parent**: `(0, 0)` is the parent's
+    # top-left, so a container divides its own {#local_rect} and never adds its
+    # own position in. {#absolute_rect} is where the result lands on screen.
+    # 
+    # A component that sticks outside its parent's {#local_rect}, or paints
+    # outside this rectangle, is cut to it — {Screen#canvas_for} bounds every
+    # component by its own rect and every ancestor's (`D_clip`). Overrunning is
+    # still a bug; it now shows as truncation rather than as a corrupt neighbour.
+    # 
+    # The component is invalidated and will paint over the new rectangle, and
+    # so is its parent, which owns the cells the old position vacated.
+    # 
+    # **The children do not move yet**: this only marks a {#relayout}, so a
+    # child's rect read back in the same turn is still the previous pass's —
+    # {#flush_layout} first.
+    # 
+    # **Only the parent's {#relayout} may call this**, and it raises from
+    # anywhere else, a component with no parent included. To move a child,
+    # change what its parent places it by — {Layout::Absolute#constrain},
+    # {Layout::Box#constrain}, {Component::Overlay#placement=} — and to size a
+    # tree that has no screen, hold it in a {Layout::Absolute}:
+    # 
+    #   holder = Component::Layout::Absolute.new
+    #   holder.add(tree, Rect.new(0, 0, 40, 10))
+    #   holder.flush_layout
+    # 
+    # A subclass reacts to a new rect in {#handle_rect_changed}; it cannot
+    # override this, because a `protected` override is callable only from its
+    # own class, and the parent calling it is not one.
+    # 
+    # _@param_ `new_rect` — new position. Does nothing if the new rectangle is the same as the old one.
+    def rect=: (Rect new_rect) -> void
 
     # Runs every {#relayout} this component's *tree* owes, so its rects are
     # current — the force-now that makes a detached tree measurable:
@@ -4244,12 +4379,34 @@ module Tuile
     # _@return_ — true if Tab / Shift+Tab should land on this component.
     def tab_stop?: () -> bool
 
+    # Final: the parent chain is one half of the tree's single source of truth
+    # — {#attached?} walks it while every subtree walk uses {#children}, so a
+    # derived pointer leaves a component attached but never painted, with
+    # nothing raising (`D_final_tree`). Reparent through {#add_child} /
+    # {#remove_child} / {#detach_child}.
+    # 
+    # _@return_ — the parent component or nil if the component has
+    # no parent.
+    def parent: () -> Component?
+
     # _@return_ — the distance from the root component; 0 if {#parent}
     # is nil.
     def depth: () -> Integer
 
     # _@return_ — the root component of this component hierarchy.
     def root: () -> Component
+
+    # Child components in paint order (siblings left to right, earlier ones
+    # painted under later ones), maintained by {#add_child} / {#remove_child}.
+    # 
+    # Final: a container that computed this from its own slots would disagree
+    # with the parent pointers {#attached?} walks, silently (`D_final_tree`).
+    # Named slots are readers *over* this array (`Window#footer`), never a
+    # second copy of it; for a swappable region hold a {Slot}.
+    # 
+    # _@return_ — child components. Must not be mutated by
+    # callers! May be empty.
+    def children: () -> ::Array[Component]
 
     # Calls block for this component and for every descendant component.
     def walk_tree: () ?{ (Component component) -> void } -> void
@@ -4424,6 +4581,20 @@ module Tuile
     # happens after), and the ex-parent's own bookkeeping may not be finished.
     # So release resources here and don't inspect the tree around you.
     def handle_detached: () -> void
+
+    # Rewires the parent pointer and, when that changes whether the component is
+    # {#attached?}, fires {#handle_attached} / {#handle_detached} across the whole
+    # subtree. The sole firing site: `add_child` / `detach_child` are the only
+    # callers, and they update {#children} *before* calling this, so a hook sees
+    # a tree whose list and pointers already agree.
+    # 
+    # Reparenting inside an already-attached tree fires nothing (attachedness
+    # doesn't change), and neither does building a detached tree.
+    # Final: being the sole firing site is the whole contract — an override
+    # would fire the lifecycle hooks for the wrong set, or not at all.
+    # 
+    # _@param_ `new_parent`
+    def parent=: (Component? new_parent) -> void
 
     # Walks self-then-children calling one lifecycle hook, delivering at most one
     # call per component per transition however the hooks mutate the tree. Two
@@ -4603,9 +4774,9 @@ module Tuile
     # {Component::TextView}'s:
     # 
     #   def relayout
-    #     rewrap unless @wrapped_at == wrap_width   # not on every append
+    #     rewrap unless @_wrapped_at == wrap_width   # not on every append
     #     update_scroll_top_row_if_auto_scroll      # a taller viewport moves the bottom
-    #     @scrollbar.rect = …
+    #     @_scrollbar.rect = …
     #   end
     # 
     # There is no width-changed hook; {#handle_rect_changed} is the edge, for a
@@ -4653,6 +4824,14 @@ module Tuile
     # 
     # _@param_ `canvas` — the paint context, at this component's own background.
     def clear_inside_extent: (Canvas canvas) -> void
+
+    # This component's background — protected, because stating a widget's own
+    # well is the widget's business; an app tints through {#bg_color=}.
+    # 
+    #   bg.default_color = ComponentBackground::INPUT_WELL   # in a field's initialize
+    # 
+    # Final: {Screen#canvas_for} and every descendant's chain read it.
+    def bg: () -> ComponentBackground
 
     # The background a component paints while it is in an *error* state —
     # `nil` by default, meaning "I am not signalling one". {HasValidation}
@@ -4749,65 +4928,12 @@ module Tuile
     # 
     # The list is built on first read, so no mixin has to remember a
     # constructor line — which means in-class code goes through the reader and
-    # never touches `@on_foo`, nil until somebody asks.
+    # never touches `@_on_foo`, nil until somebody asks.
     # 
     # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
     # 
     # _@return_ — `name`.
     def self.listener: (Symbol name) ?{ (bool claimed) -> void } -> Symbol
-
-    # A tag for finding this component again — nothing paints it, and the
-    # framework never reads it:
-    # 
-    #   field.id = :name
-    #   Testing.get(id: :name).value = "Zaphod"
-    # 
-    # **Nothing enforces uniqueness**, here or anywhere in production; two
-    # components may carry the same id, and only {Testing.get} — which raises
-    # on an ambiguous match — will ever say so.
-    attr_accessor id: Symbol?
-
-    # The rectangle the component occupies **inside its parent**: `(0, 0)` is
-    # the parent's top-left, not the screen's. {#absolute_rect} is where that
-    # lands on screen, and {#local_rect} is this same rectangle with the
-    # position taken out.
-    # 
-    # **Layout is deferred, so a rect read in the same turn that dirtied it is
-    # the *previous* pass's** — a plausible rectangle, not zeros.
-    # {#flush_layout} brings it up to date (`D_deferred_layout`),
-    # {#rect_stale?} answers whether it is one, and {Tuile.strict_layout} makes
-    # every such read say so.
-    attr_accessor rect: Rect
-
-    # Final: the parent chain is one half of the tree's single source of truth
-    # — {#attached?} walks it while every subtree walk uses {#children}, so a
-    # derived pointer leaves a component attached but never painted, with
-    # nothing raising (`D_final_tree`). Reparent through {#add_child} /
-    # {#remove_child} / {#detach_child}.
-    # 
-    # _@return_ — the parent component or nil if the component has
-    # no parent.
-    attr_accessor parent: Component?
-
-    # Child components in paint order (siblings left to right, earlier ones
-    # painted under later ones), maintained by {#add_child} / {#remove_child}.
-    # 
-    # Final: a container that computed this from its own slots would disagree
-    # with the parent pointers {#attached?} walks, silently (`D_final_tree`).
-    # Named slots are readers *over* this array (`Window#footer`), never a
-    # second copy of it; for a swappable region hold a {Slot}.
-    # 
-    # _@return_ — child components. Must not be mutated by
-    # callers! May be empty.
-    attr_reader children: ::Array[Component]
-
-    # This component's background — protected, because stating a widget's own
-    # well is the widget's business; an app tints through {#bg_color=}.
-    # 
-    #   bg.default_color = ComponentBackground::INPUT_WELL   # in a field's initialize
-    # 
-    # Final: {Screen#canvas_for} and every descendant's chain read it.
-    attr_reader bg: ComponentBackground
 
     # What {#on_theme_changed} fires.
     # 
@@ -4851,6 +4977,28 @@ module Tuile
       # _@param_ `color` — initial {#color=}.
       def initialize: (String char, ?color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?) -> void
 
+      # _@return_ — the glyph painted into every cell; one grapheme
+      # cluster, one column wide.
+      def char: () -> String
+
+      # _@return_ — the value as set, so a {Theme::Ref}
+      # comes back unresolved; `nil` (the default) is the terminal's default
+      # foreground.
+      def color: () -> (Color | Theme::Ref)?
+
+      # _@param_ `char`
+      def char=: (String char) -> void
+
+      # Sets the glyph's color, live-resolved at paint time when given a
+      # {Theme::Ref} (so it follows a {Screen#theme=} with no
+      # {Component#handle_theme_changed} hook).
+      # 
+      #   rule.color = :bright_black
+      #   rule.color = Theme.ref(:pane_frame)   # an app #custom token
+      # 
+      # _@param_ `color` — coerced via {Color.coerce} unless it is a {Theme::Ref}; `nil` is the terminal default.
+      def color=: ((Color | Theme::Ref | Symbol | Integer | ::Array[Integer])? color) -> void
+
       # Paints {#char} into every cell. Not `super`: the default's clear would
       # dirty every cell just before it is painted over.
       # 
@@ -4858,15 +5006,6 @@ module Tuile
       def repaint: (Canvas canvas) -> void
 
       def resolved_color: () -> Color?
-
-      # _@return_ — the glyph painted into every cell; one grapheme
-      # cluster, one column wide.
-      attr_accessor char: String
-
-      # _@return_ — the value as set, so a {Theme::Ref}
-      # comes back unresolved; `nil` (the default) is the terminal's default
-      # foreground.
-      attr_accessor color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?
     end
 
     # A scrollable list of typed items, one row each, with cursor support.
@@ -4943,11 +5082,37 @@ module Tuile
       # row.
       def on_cursor_changed: () -> Listeners
 
+      # _@return_ — if true and new content is set, auto-scrolls to the
+      # bottom — but only while the viewport is already pinned to the last
+      # row (see {#following?}). Scroll up to read older content and
+      # incoming rows stop yanking you back down; scroll back to the bottom
+      # and tailing resumes.
+      def auto_scroll: () -> bool
+
       # _@return_ — whether {#auto_scroll} is currently tailing. True
       # while the viewport sits at the last row; flips to false the moment
       # the user scrolls up, and back to true once they scroll to the bottom
       # again. Only consulted when {#auto_scroll} is enabled.
       def following?: () -> bool
+
+      # _@return_ — top row of the viewport. 0 or positive.
+      def scroll_top_row: () -> Integer
+
+      # _@return_ — the list's cursor.
+      def cursor: () -> Cursor
+
+      # _@return_ — scrollbar visibility: `:gone`, `:visible`, or `:auto`
+      # — shown only while there are more {#items} than rows. `:gone` by
+      # default.
+      def scrollbar_visibility: () -> Symbol
+
+      # _@return_ — when true, the cursor highlight is painted even while
+      # the list is inactive (e.g. when focus is on a sibling search field).
+      # Defaults to false.
+      def show_cursor_when_inactive: () -> bool
+
+      # _@param_ `value`
+      def show_cursor_when_inactive=: (bool value) -> void
 
       # Whether the list is a control: focusable, a tab stop, and a press on a
       # row moves the cursor and fires {#on_item_chosen}. `false` makes it a
@@ -4963,6 +5128,53 @@ module Tuile
       # 
       # _@param_ `value`
       def interactive=: (bool value) -> void
+
+      # Sets the scrollbar visibility.
+      # 
+      # _@param_ `value` — `:gone`, `:visible` or `:auto`.
+      def scrollbar_visibility=: (Symbol value) -> void
+
+      # Sets the new auto_scroll. If true, re-engages tailing and immediately
+      # scrolls to the bottom.
+      # 
+      # _@param_ `new_auto_scroll`
+      def auto_scroll=: (bool new_auto_scroll) -> void
+
+      # Sets a new cursor.
+      # 
+      # _@param_ `cursor` — new cursor.
+      def cursor=: (Cursor cursor) -> void
+
+      # Sets the top row.
+      # 
+      # _@param_ `new_row` — 0 or greater.
+      def scroll_top_row=: (Integer new_row) -> void
+
+      # _@return_ — the items, one row each.
+      def items: () -> ::Array[untyped]
+
+      # The width is passed whether or not a renderer wants it, so a
+      # one-argument callable raises when a row is rendered.
+      # 
+      # _@return_ — `(item, text_width) -> row`: a {StyledString}, a
+      # `String` (parsed, so embedded ANSI is honored), or anything with
+      # `#to_s`. Only the first line of a multi-line rendering is kept — one
+      # item is one row. `text_width` is the display columns the row body
+      # gets, gutters and scrollbar column already deducted; it is `0` before
+      # the list has a rect, and every change to it drops the row cache, so a
+      # width-dependent row is never left over from the old width.
+      def renderer: () -> (Proc | Method)
+
+      # Replaces the items, leaving the cursor where it is — a cursor left past
+      # the last item strands off-content: no highlight, a dead Enter, and a
+      # caller resolving `items[position]` gets `nil`. A caller that cares
+      # clamps it (`cursor.go_to_last(items.size)`).
+      # 
+      # _@param_ `new_items` — one row each; rendered by {#renderer}.
+      def items=: (::Array[untyped] new_items) -> void
+
+      # _@param_ `proc` — `(item, text_width) -> row`; see {#renderer}.
+      def renderer=: ((Proc | Method) proc) -> void
 
       # Re-renders every row — for a {#renderer} whose *inputs* changed while
       # it and {#items} stayed the same, e.g. one prefixing a marker read from
@@ -5171,14 +5383,14 @@ module Tuile
       # last reachable position. Without the cursor snap the viewport gets
       # yanked back to wherever the cursor sat on the next arrow press,
       # negating the auto-scroll. Skipped when {#rect} is empty: without a
-      # viewport the "items minus viewport" formula yields `@items.size`,
+      # viewport the "items minus viewport" formula yields `@_items.size`,
       # which would leave `scroll_top_row` past the last item once a real rect
       # arrives. {#relayout} re-runs it once one does.
       # 
       # Gated on {#following?}: once the user scrolls up off the bottom the
       # cursor snap and viewport pin are both skipped, so reading older
       # content is not interrupted by incoming items. {#scroll_top_row=} re-arms
-      # `@follow` when the viewport returns to the bottom.
+      # `@_follow` when the viewport returns to the bottom.
       def update_scroll_top_row_if_auto_scroll: () -> void
 
       # Derived on every read, never stored, so {#content_width} can't disagree
@@ -5249,44 +5461,6 @@ module Tuile
       # wide — the bar's column is the child's; highlighted if cursor is here.
       def paintable_row: (Integer index) -> StyledString
 
-      # _@return_ — if true and new content is set, auto-scrolls to the
-      # bottom — but only while the viewport is already pinned to the last
-      # row (see {#following?}). Scroll up to read older content and
-      # incoming rows stop yanking you back down; scroll back to the bottom
-      # and tailing resumes.
-      attr_accessor auto_scroll: bool
-
-      # _@return_ — top row of the viewport. 0 or positive.
-      attr_accessor scroll_top_row: Integer
-
-      # _@return_ — the list's cursor.
-      attr_accessor cursor: Cursor
-
-      # _@return_ — scrollbar visibility: `:gone`, `:visible`, or `:auto`
-      # — shown only while there are more {#items} than rows. `:gone` by
-      # default.
-      attr_accessor scrollbar_visibility: Symbol
-
-      # _@return_ — when true, the cursor highlight is painted even while
-      # the list is inactive (e.g. when focus is on a sibling search field).
-      # Defaults to false.
-      attr_accessor show_cursor_when_inactive: bool
-
-      # _@return_ — the items, one row each.
-      attr_accessor items: ::Array[untyped]
-
-      # The width is passed whether or not a renderer wants it, so a
-      # one-argument callable raises when a row is rendered.
-      # 
-      # _@return_ — `(item, text_width) -> row`: a {StyledString}, a
-      # `String` (parsed, so embedded ANSI is honored), or anything with
-      # `#to_s`. Only the first line of a multi-line rendering is kept — one
-      # item is one row. `text_width` is the display columns the row body
-      # gets, gutters and scrollbar column already deducted; it is `0` before
-      # the list has a rect, and every change to it drops the row cache, so a
-      # width-dependent row is never left over from the old width.
-      attr_accessor renderer: (Proc | Method)
-
       # What {#on_item_chosen} fires.
       # 
       # @!attribute [r] source
@@ -5338,6 +5512,9 @@ module Tuile
         # _@param_ `position` — the initial cursor position.
         def initialize: (?position: Integer) -> void
 
+        # _@return_ — 0-based item index of the current cursor position.
+        def position: () -> Integer
+
         # _@param_ `item_count` — number of items in the list.
         # 
         # _@return_ — positions the cursor can land on, in
@@ -5387,9 +5564,6 @@ module Tuile
         def go_up_by: (Integer count) -> bool
 
         def go_to_first: () -> bool
-
-        # _@return_ — 0-based item index of the current cursor position.
-        attr_reader position: Integer
 
         # No cursor — cursor is disabled.
         class None < Cursor
@@ -5494,6 +5668,17 @@ module Tuile
 
       def relayout: () -> void
 
+      # _@return_ — the current content component.
+      def content: () -> Component?
+
+      # Sets the new content of this component. Updates `@_content` itself;
+      # including classes may still override to add behaviour (e.g. a
+      # special-cased Array input) but should call `super` to perform the
+      # swap.
+      # 
+      # _@param_ `content` — the component to set or clear.
+      def content=: (Component? content) -> void
+
       def handle_focus: () -> void
     end
 
@@ -5576,11 +5761,35 @@ module Tuile
       # _@return_ — `true` — one stop for the whole strip.
       def tab_stop?: () -> bool
 
+      # _@return_ — the tabs, in strip order. Read-only by convention
+      # (like {Component#children}) — grow and shrink it through {#add_tab} /
+      # {#remove_tab}, which keep the selection consistent. Enumerate it to
+      # find a tab: `tabs.find { |t| t.caption.to_s == "Payment" }`.
+      def tabs: () -> ::Array[Tab]
+
+      # _@return_ — the column painted between two segments.
+      def separator: () -> StyledString
+
+      # _@param_ `new_separator` — e.g. ASCII `"|"` for a terminal that renders `│` badly. Both the paint and the hit test measure it, so a wider one widens the dead column between segments.
+      def separator=: ((String | StyledString) new_separator) -> void
+
       # _@return_ — the selected tab; `nil` only while there are no tabs.
       def selected: () -> Tab?
 
+      # _@return_ — the selected tab's position; `nil` only while
+      # there are no tabs.
+      def selected_index: () -> Integer?
+
       # _@param_ `tab` — one of this strip's tabs.
       def selected=: (Tab tab) -> void
+
+      # Selects the tab at `index`. There is deliberately no way to select
+      # *nothing* while tabs exist — a strip showing captions with none of them
+      # selected has no meaning, and a {Component::TabSheet} in that state would
+      # show no pane.
+      # 
+      # _@param_ `index` — a position in `0...tabs.size`.
+      def selected_index=: (Integer index) -> void
 
       # Appends a tab and returns its handle. The first tab added becomes the
       # selection; later ones don't disturb it.
@@ -5636,6 +5845,11 @@ module Tuile
 
       # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (Canvas canvas) -> void
+
+      # _@return_ — the strip column painted in {#rect}'s leftmost cell —
+      # the horizontal scroll offset. `0` unless the strip overflows its rect;
+      # {#adjust_left_column} is its sole writer.
+      def left_column: () -> Integer
 
       # Re-syncs the scroll offset and repaints — what every change to the
       # captions, the separator or the selection ends in.
@@ -5750,31 +5964,13 @@ module Tuile
       # _@param_ `previous` — the tab selected before the caller's change.
       def apply_selection: (Integer? index, Tab? previous) -> void
 
-      # Called with `@tabs` already shortened and `@selected_index` still holding
+      # Called with `@_tabs` already shortened and `@_selected_index` still holding
       # the pre-removal position.
       # 
       # _@param_ `removed_index` — the position the removed tab held.
       # 
       # _@return_ — where the selection lands.
       def selection_after_removing: (Integer removed_index) -> Integer?
-
-      # _@return_ — the tabs, in strip order. Read-only by convention
-      # (like {Component#children}) — grow and shrink it through {#add_tab} /
-      # {#remove_tab}, which keep the selection consistent. Enumerate it to
-      # find a tab: `tabs.find { |t| t.caption.to_s == "Payment" }`.
-      attr_reader tabs: ::Array[Tab]
-
-      # _@return_ — the column painted between two segments.
-      attr_accessor separator: (StyledString | String)
-
-      # _@return_ — the selected tab's position; `nil` only while
-      # there are no tabs.
-      attr_accessor selected_index: Integer?
-
-      # _@return_ — the strip column painted in {#rect}'s leftmost cell —
-      # the horizontal scroll offset. `0` unless the strip overflows its rect;
-      # {#adjust_left_column} is its sole writer.
-      attr_reader left_column: Integer
 
       # A single tab: a caption, plus its identity on the strip.
       # 
@@ -5794,6 +5990,18 @@ module Tuile
         # _@param_ `caption` — already coerced by the caller.
         def initialize: (Tabs strip, StyledString caption) -> void
 
+        # _@return_ — the label painted on the strip. Safe to read on
+        # a removed tab.
+        def caption: () -> StyledString
+
+        # Sets the caption and repaints the strip; no-op when unchanged.
+        # 
+        # The caption is app-authored content and may carry its own colors — a
+        # badge, a warning marker — over which the strip's own styling composes.
+        # 
+        # _@param_ `new_caption` — parsed as {StyledString.parse} parses it; `nil` empties the caption.
+        def caption=: ((String | StyledString)? new_caption) -> void
+
         # _@return_ — `true` while the tab is owned by its {Tabs}; `false`
         # permanently once removed.
         def attached?: () -> bool
@@ -5811,10 +6019,6 @@ module Tuile
         def detach: () -> void
 
         def check_attached: () -> void
-
-        # _@return_ — the label painted on the strip. Safe to read on
-        # a removed tab.
-        attr_accessor caption: (StyledString | String)?
       end
 
       # What {#on_tab_selected} fires — and what {TabSheet#on_tab_selected} fires
@@ -5852,6 +6056,18 @@ module Tuile
       # _@param_ `text` — initial text, coerced the same way {#text=} coerces it (a `String` is parsed via {StyledString.parse}; `nil` is an empty label). Equivalent to constructing empty and assigning {#text=}.
       def initialize: (?(String | StyledString)? text) -> void
 
+      # _@return_ — the current text. Defaults to an empty
+      # {StyledString}.
+      def text: () -> StyledString
+
+      # Replaces the text. A `String` is parsed via {StyledString.parse}
+      # (embedded ANSI is honored); a `StyledString` is used as-is; `nil` is
+      # coerced to an empty {StyledString}. Lines wider than {#rect} are
+      # truncated with an ellipsis at paint time.
+      # 
+      # _@param_ `value`
+      def text=: ((String | StyledString)? value) -> void
+
       # Paints the text into {#rect}.
       # 
       # Skips the {Component#repaint} default's auto-clear: every row is
@@ -5868,15 +6084,11 @@ module Tuile
       # redundant pass, which beats keying the cache.
       def relayout: () -> void
 
-      # Recomputes {@rows} for the current text and rect width.
+      # Recomputes {@_rows} for the current text and rect width.
       # Each line is ellipsized to fit and padded with trailing spaces out to
       # the full width, so {#repaint} is just a lookup + {Buffer#set_text} per
-      # row. {@blank_row} covers rows past the last text line.
+      # row. {@_blank_row} covers rows past the last text line.
       def update_rows: () -> void
-
-      # _@return_ — the current text. Defaults to an empty
-      # {StyledString}.
-      attr_accessor text: (StyledString | String)?
     end
 
     # A modal dialog: an {Component::Overlay} centered on the screen, which
@@ -5922,6 +6134,15 @@ module Tuile
       # _@param_ `close_on_outside_click` — true (default) to dismiss on a left click that misses this popup. See {Overlay#close_on_outside_click?}.
       def initialize: (?content: Component?, ?declared_size: (Size | Fraction), ?close_on_outside_click: bool) -> void
 
+      # The box this popup asks for, *as set* — a {Fraction} comes back
+      # unresolved. {#rect} is the resolved answer. Named apart from `size`
+      # because a component's `size` is its `rect.size`, which this is not: it
+      # is an input re-read on every layout pass, not a report of the current
+      # geometry.
+      # 
+      # _@return_ — see {#declared_size=}.
+      def declared_size: () -> (Size | Fraction)
+
       # _@return_ — true — a Popup scopes key dispatch, grabs focus on
       # open, and blocks clicks on the content beneath it.
       def modal?: () -> bool
@@ -5929,6 +6150,15 @@ module Tuile
       # _@return_ — true — {ScreenPane#add_popup} focuses a popup on open,
       # and focus repair falls back to it when its subtree has no tab stop.
       def focusable?: () -> bool
+
+      # Sets the popup's box; an open popup takes it on the next settle.
+      # Accepts a {Fraction} (resolved against the screen every layout pass, so
+      # it tracks resize) or an absolute {Size} (clamped to the screen). This is **authoritative**, not
+      # a preference: the screen applies exactly what you ask for (clamped),
+      # with no negotiation — a popup has no siblings to compete with.
+      # 
+      # _@param_ `new_size`
+      def declared_size=: ((Size | Fraction) new_size) -> void
 
       # {#declared_size} resolved against `screen_size`: a {Fraction} scaled, a
       # {Size} clamped.
@@ -5947,15 +6177,6 @@ module Tuile
       # 
       # _@return_ — true if the key was handled.
       def handle_key?: (String key) -> bool
-
-      # The box this popup asks for, *as set* — a {Fraction} comes back
-      # unresolved. {#rect} is the resolved answer. Named apart from `size`
-      # because a component's `size` is its `rect.size`, which this is not: it
-      # is an input re-read on every layout pass, not a report of the current
-      # geometry.
-      # 
-      # _@return_ — see {#declared_size=}.
-      attr_accessor declared_size: (Size | Fraction)
     end
 
     # A clickable button. Activated by Enter, Space, or a left mouse click;
@@ -6006,7 +6227,7 @@ module Tuile
       # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (Canvas canvas) -> void
 
-      # Read through *this* method, never `@caption` — the ivar stays nil until
+      # Read through *this* method, never `@_caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).
       # 
       # _@return_ — the caption; empty when never set.
@@ -6368,6 +6589,18 @@ module Tuile
         # _@param_ `padding` — inset from this layout's own rect; an Integer is coerced to a uniform {Insets}.
         def initialize: (?spacing: Integer, ?padding: (Insets | Integer)) -> void
 
+        # _@return_ — blank cells between adjacent children.
+        def spacing: () -> Integer
+
+        # _@return_ — inset from this layout's own rect.
+        def padding: () -> Insets
+
+        # _@param_ `cells` — blank cells between adjacent children; `>= 0`.
+        def spacing=: (Integer cells) -> void
+
+        # _@param_ `insets` — an Integer becomes a uniform inset.
+        def padding=: ((Insets | Integer) insets) -> void
+
         # Adds a child — or every element of an Enumerable, all with the same
         # constraints — and re-runs the layout.
         # 
@@ -6525,12 +6758,6 @@ module Tuile
 
         # _@param_ `align`
         def validate_align: (Object align) -> void
-
-        # _@return_ — blank cells between adjacent children.
-        attr_accessor spacing: Integer
-
-        # _@return_ — inset from this layout's own rect.
-        attr_accessor padding: (Insets | Integer)
       end
 
       # Places each child at the {Rect} it was added with, in this layout's own
@@ -6768,7 +6995,24 @@ module Tuile
       # _@param_ `value` — the initially selected item. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
       def initialize: (?items: ::Array[untyped], ?value: Object?) -> void
 
+      # _@return_ — the options.
+      def items: () -> ::Array[untyped]
+
+      # _@return_ — item -> shown label (a `String` or
+      # {StyledString}); `:to_s` by default. Never called with `nil` — an
+      # unselected Select renders a blank face.
+      def item_label: () -> (Proc | Method)
+
       def tab_stop?: () -> bool
+
+      # Replaces the options, leaving {#value} untouched. An open dropdown is
+      # rebuilt (and re-measured) around them, or closed when none are left.
+      # 
+      # _@param_ `new_items`
+      def items=: (::Array[untyped] new_items) -> void
+
+      # _@param_ `proc` — item -> shown label.
+      def item_label=: ((Proc | Method) proc) -> void
 
       # Closes the dropdown when the Select leaves the focus chain, so tabbing
       # away doesn't strand an open menu. Safe against re-entrancy: focus never
@@ -6950,14 +7194,6 @@ module Tuile
       # {HasBadInput} widens it: a field holding input its value cannot
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
-
-      # _@return_ — the options.
-      attr_accessor items: ::Array[untyped]
-
-      # _@return_ — item -> shown label (a `String` or
-      # {StyledString}); `:to_s` by default. Never called with `nil` — an
-      # unselected Select renders a blank face.
-      attr_accessor item_label: (Proc | Method)
     end
 
     # A window with a frame, a {#caption} and a content {Component}. Doesn't
@@ -6981,6 +7217,21 @@ module Tuile
       # _@return_ — optional focusable component occupying the
       # bottom border row, always spanning the full inner width.
       def footer: () -> Component?
+
+      # _@return_ — optional chrome embedded into the bottom border
+      # line, mirroring {#caption} on the top line. Empty by default; hidden
+      # whenever a {#footer} component is present.
+      def footer_text: () -> StyledString
+
+      # Sets the bottom-border chrome. Accepts a `String` (parsed via
+      # {StyledString.parse}), a {StyledString}, or `nil` (clears it). The text
+      # embeds into the bottom border at its own width with the border's dashes
+      # filling the remainder, clipped to the inner width — border decoration,
+      # not a component (not focusable). Hidden whenever a {#footer} component
+      # occupies the bottom row (see the precedence note on {#footer=}).
+      # 
+      # _@param_ `text`
+      def footer_text=: ((String | StyledString)? text) -> void
 
       # Mounts a component in the bottom border row, spanning the full inner
       # width and positioned automatically; `nil` removes it.
@@ -7063,7 +7314,7 @@ module Tuile
       # whatever it is given, which would blank the border underneath.
       def layout_footer: () -> void
 
-      # Read through *this* method, never `@caption` — the ivar stays nil until
+      # Read through *this* method, never `@_caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).
       # 
       # _@return_ — the caption; empty when never set.
@@ -7079,12 +7330,18 @@ module Tuile
       # Adds `caption="…"` to {Component#inspect}, omitted while empty.
       def inspect_details: () -> ::Array[String]
 
-      def handle_focus: () -> void
+      # _@return_ — the current content component.
+      def content: () -> Component?
 
-      # _@return_ — optional chrome embedded into the bottom border
-      # line, mirroring {#caption} on the top line. Empty by default; hidden
-      # whenever a {#footer} component is present.
-      attr_accessor footer_text: (StyledString | String)?
+      # Sets the new content of this component. Updates `@_content` itself;
+      # including classes may still override to add behaviour (e.g. a
+      # special-cased Array input) but should call `super` to perform the
+      # swap.
+      # 
+      # _@param_ `content` — the component to set or clear.
+      def content=: (Component? content) -> void
+
+      def handle_focus: () -> void
     end
 
     # A component mounted on the {Screen}'s overlay stack rather than in the
@@ -7184,6 +7441,27 @@ module Tuile
       # one click on the background, not peel one panel per click.
       def close_on_outside_click?: () -> bool
 
+      # _@param_ `value` — see {#close_on_outside_click?}.
+      def close_on_outside_click=: (bool value) -> void
+
+      # The component this overlay is *part of*, or `nil` (the default) when it
+      # is an overlay in its own right. It exists for outside-click dismissal: a
+      # click inside this overlay also counts as inside whatever overlay encloses
+      # its owner, so the host is not dismissed by a click on a panel it put
+      # there. See {#close_on_outside_click?}.
+      # 
+      # Set it to the *driver* — {Component::ComboBox} hands its dropdown `self`
+      # — rather than to the enclosing overlay: the driver knows what it is,
+      # while the overlay above it is a tree relationship the pane resolves at
+      # click time (so it cannot go stale). Any {Component} is accepted, and an
+      # `Overlay` resolves to itself, which is how a
+      # {Component::MenuBar::Cascade} chains each panel to the one it dropped out
+      # of.
+      def owner: () -> Component?
+
+      # _@param_ `value`
+      def owner=: (Component? value) -> void
+
       # Fired with a {CloseEvent} once this overlay has left the screen —
       # **however it left**: {#close}, a direct {Screen#remove_popup}, an
       # outside click, or teardown via {Screen#close}. That unconditionality is
@@ -7260,25 +7538,18 @@ module Tuile
       # subtract.
       def relayout: () -> void
 
-      def handle_focus: () -> void
+      # _@return_ — the current content component.
+      def content: () -> Component?
 
-      # _@return_ — see {#close_on_outside_click?}.
-      attr_writer close_on_outside_click: bool
-
-      # The component this overlay is *part of*, or `nil` (the default) when it
-      # is an overlay in its own right. It exists for outside-click dismissal: a
-      # click inside this overlay also counts as inside whatever overlay encloses
-      # its owner, so the host is not dismissed by a click on a panel it put
-      # there. See {#close_on_outside_click?}.
+      # Sets the new content of this component. Updates `@_content` itself;
+      # including classes may still override to add behaviour (e.g. a
+      # special-cased Array input) but should call `super` to perform the
+      # swap.
       # 
-      # Set it to the *driver* — {Component::ComboBox} hands its dropdown `self`
-      # — rather than to the enclosing overlay: the driver knows what it is,
-      # while the overlay above it is a tree relationship the pane resolves at
-      # click time (so it cannot go stale). Any {Component} is accepted, and an
-      # `Overlay` resolves to itself, which is how a
-      # {Component::MenuBar::Cascade} chains each panel to the one it dropped out
-      # of.
-      attr_accessor owner: Component?
+      # _@param_ `content` — the component to set or clear.
+      def content=: (Component? content) -> void
+
+      def handle_focus: () -> void
 
       # Where an overlay wants to be. Include it to *be* a placement — the pane
       # asks for a rect on every layout pass, and an app supplies its own by
@@ -7520,7 +7791,7 @@ module Tuile
       # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (Canvas canvas) -> void
 
-      # Read through *this* method, never `@caption` — the ivar stays nil until
+      # Read through *this* method, never `@_caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).
       # 
       # _@return_ — the caption; empty when never set.
@@ -7719,6 +7990,10 @@ module Tuile
       # convention; grow it through {#add_item}.
       def items: () -> ::Array[Item]
 
+      # _@return_ — which top-level item the strip highlights while
+      # focused, and which menu Enter opens. `0` until the user moves.
+      def highlighted_index: () -> Integer
+
       # Appends a top-level item and returns its handle; nest submenus into it
       # with {Item#add_item}.
       # 
@@ -7773,6 +8048,11 @@ module Tuile
 
       # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (Canvas canvas) -> void
+
+      # _@return_ — the strip column painted in {#rect}'s leftmost cell —
+      # the horizontal scroll offset. `0` unless the strip overflows its rect;
+      # {#adjust_left_column} is its sole writer.
+      def left_column: () -> Integer
 
       # The sole writer of {#highlighted_index}: assigns, re-syncs the scroll
       # offset and repaints. Every path that moves the highlight — arrow,
@@ -7926,15 +8206,6 @@ module Tuile
       # _@return_ — `false` only when there are no items.
       def open_highlighted: () -> bool
 
-      # _@return_ — which top-level item the strip highlights while
-      # focused, and which menu Enter opens. `0` until the user moves.
-      attr_reader highlighted_index: Integer
-
-      # _@return_ — the strip column painted in {#rect}'s leftmost cell —
-      # the horizontal scroll offset. `0` unless the strip overflows its rect;
-      # {#adjust_left_column} is its sole writer.
-      attr_reader left_column: Integer
-
       # One menu item: a caption, an optional click listener, and its children.
       # 
       #   file = bar.add_item("File")       # minted by the bar
@@ -7957,6 +8228,25 @@ module Tuile
         # 
         # _@param_ `on_click`
         def initialize: (StyledString caption, String? mnemonic, (Proc | Method)? on_click) -> void
+
+        # _@return_ — the label painted on the strip or the row.
+        def caption: () -> StyledString
+
+        # _@return_ — the downcased letter that activates this item
+        # while its own level is the live one; `nil` when it has none.
+        def mnemonic: () -> String?
+
+        # _@return_ — {#caption} with the {#mnemonic} underlined —
+        # what both paint sites draw. Equal to {#caption} when there is no
+        # mnemonic or the caption doesn't contain it. Computed once, at
+        # construction: caption and mnemonic are both fixed there, and
+        # underline is a plain attribute with no theme or `bg_color` input, so
+        # this is not a cached theme value.
+        def cued_caption: () -> StyledString
+
+        # _@return_ — this item's children, in menu order. Read-only by
+        # convention, like {Component#children} — grow it through {#add_item}.
+        def items: () -> ::Array[Item]
 
         # Fired with a {ClickEvent} when the item is activated (Enter, Space or
         # a left click), exactly as {Button#on_click}. Never fired on an item
@@ -8003,31 +8293,12 @@ module Tuile
         # 
         # The list is built on first read, so no mixin has to remember a
         # constructor line — which means in-class code goes through the reader and
-        # never touches `@on_foo`, nil until somebody asks.
+        # never touches `@_on_foo`, nil until somebody asks.
         # 
         # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
         # 
         # _@return_ — `name`.
         def self.listener: (Symbol name) ?{ (bool claimed) -> void } -> Symbol
-
-        # _@return_ — the label painted on the strip or the row.
-        attr_reader caption: StyledString
-
-        # _@return_ — the downcased letter that activates this item
-        # while its own level is the live one; `nil` when it has none.
-        attr_reader mnemonic: String?
-
-        # _@return_ — {#caption} with the {#mnemonic} underlined —
-        # what both paint sites draw. Equal to {#caption} when there is no
-        # mnemonic or the caption doesn't contain it. Computed once, at
-        # construction: caption and mnemonic are both fixed there, and
-        # underline is a plain attribute with no theme or `bg_color` input, so
-        # this is not a cached theme value.
-        attr_reader cued_caption: StyledString
-
-        # _@return_ — this item's children, in menu order. Read-only by
-        # convention, like {Component#children} — grow it through {#add_item}.
-        attr_reader items: ::Array[Item]
 
         # What {#on_click} fires.
         # 
@@ -8257,9 +8528,46 @@ module Tuile
       # _@param_ `content_rows` — see {#content_rows=}.
       def initialize: (?Component? content, ?content_rows: Integer) -> void
 
+      # _@return_ — the content row painted at the top of the viewport.
+      def scroll_top_row: () -> Integer
+
+      # _@return_ — how tall the content says it is, in rows.
+      def content_rows: () -> Integer
+
+      # _@return_ — `:visible` (the default), `:gone`, or `:auto` — shown
+      # only while {#content_rows} exceeds {#viewport_rows}.
+      def scrollbar_visibility: () -> Symbol
+
       # _@return_ — rows of content on screen at once — {#rect}'s height,
       # the bar taking a column rather than a row.
       def viewport_rows: () -> Integer
+
+      # How many rows the content occupies, which only the content can know:
+      # a {FormLayout} sums the rows its items were handed, a
+      # {Layout::Vertical} of `Fixed` children sums its constraints.
+      # 
+      # Nothing recomputes it for you, so re-assign it whenever the content's
+      # own size changes. Content taller than the count is clipped; focusing a
+      # field left out of reach logs a warning ({Screen#focused=}), the only
+      # sign of a stale count. A value below
+      # {#viewport_rows} scrolls nothing.
+      # 
+      # _@param_ `rows` — `>= 0`.
+      def content_rows=: (Integer rows) -> void
+
+      # _@param_ `new_row` — `>= 0`. Not clamped against {#content_rows} (matches {TextView#scroll_top_row=}); the scroll verbs clamp.
+      def scroll_top_row=: (Integer new_row) -> void
+
+      # `:gone` hides the bar and gives its columns back to the content;
+      # `:visible` keeps them reserved, drawing bare track while nothing
+      # scrolls (`D_scrollbar_ink`). `:auto` shows the bar only while
+      # {#content_rows} outgrows the viewport — never mid-scroll, since
+      # scrolling moves neither — and the content is re-laid-out two columns
+      # narrower as it appears. A {#content_rows} computed from the content's
+      # own width is the app's to keep from chasing that flip.
+      # 
+      # _@param_ `value` — `:gone`, `:visible` or `:auto`.
+      def scrollbar_visibility=: (Symbol value) -> void
 
       # Scrolls up half a viewport, clamped at the top — the verb to bind a key
       # to, a scroller claiming none of its own.
@@ -8347,17 +8655,18 @@ module Tuile
       # _@return_ — `rows`.
       def validate_rows: (Integer rows, Symbol name) -> Integer
 
+      # _@return_ — the current content component.
+      def content: () -> Component?
+
+      # Sets the new content of this component. Updates `@_content` itself;
+      # including classes may still override to add behaviour (e.g. a
+      # special-cased Array input) but should call `super` to perform the
+      # swap.
+      # 
+      # _@param_ `content` — the component to set or clear.
+      def content=: (Component? content) -> void
+
       def handle_focus: () -> void
-
-      # _@return_ — the content row painted at the top of the viewport.
-      attr_accessor scroll_top_row: Integer
-
-      # _@return_ — how tall the content says it is, in rows.
-      attr_accessor content_rows: Integer
-
-      # _@return_ — `:visible` (the default), `:gone`, or `:auto` — shown
-      # only while {#content_rows} exceeds {#viewport_rows}.
-      attr_accessor scrollbar_visibility: Symbol
     end
 
     # A text field with a filtering dropdown: type to narrow the candidates,
@@ -8403,6 +8712,19 @@ module Tuile
 
       # _@param_ `items` — the candidate items (any type); also settable via {#items=}.
       def initialize: (?items: ::Array[untyped]) -> void
+
+      # _@return_ — the candidate items.
+      def items: () -> ::Array[untyped]
+
+      # _@return_ — item -> shown label (a `String` or
+      # {StyledString}); the field shows its `#to_s`, the list its styled form.
+      def item_label: () -> (Proc | Method)
+
+      # _@param_ `new_items`
+      def items=: (::Array[untyped] new_items) -> void
+
+      # _@param_ `proc` — item -> shown label.
+      def item_label=: ((Proc | Method) proc) -> void
 
       # Selects `new_value` programmatically: updates the field to its label
       # *without* opening the dropdown, then fires {#on_value_change}. `nil`
@@ -8475,6 +8797,9 @@ module Tuile
       # 
       # _@param_ `_canvas` — the surface to paint onto.
       def clear_inside_extent: (Canvas _canvas) -> void
+
+      # _@return_ — the inner field, holding the query.
+      def field: () -> TextField
 
       # Dismisses the dropdown and puts the current value's label back in the
       # field, undoing an uncommitted query.
@@ -8615,16 +8940,6 @@ module Tuile
       # {HasBadInput} widens it: a field holding input its value cannot
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
-
-      # _@return_ — the candidate items.
-      attr_accessor items: ::Array[untyped]
-
-      # _@return_ — item -> shown label (a `String` or
-      # {StyledString}); the field shows its `#to_s`, the list its styled form.
-      attr_accessor item_label: (Proc | Method)
-
-      # _@return_ — the inner field, holding the query.
-      attr_reader field: TextField
     end
 
     # One row of a form: a {#caption} above a field, and whatever the field has
@@ -8702,6 +9017,25 @@ module Tuile
       MIN_FIELD_COLUMNS: Integer
       CAPTION_POSITIONS: ::Array[Symbol]
 
+      # The glyph marking a {#required?} item, `∙` (U+2219 BULLET OPERATOR)
+      # by default:
+      # 
+      #   Tuile::Component::FormItem.required_marker = "*"
+      # 
+      # An app-global, like {VerticalScrollBar.handle_char} — the marker is a
+      # house style, not a per-item decision.
+      # 
+      # The default is deliberately not one of `•`, `●` or `·`: those are
+      # East-Asian *Ambiguous* and would measure two columns under the other
+      # policy, enlarging the inventory that keeps `D_ambiguous_width`'s bet
+      # cheap to reverse. `∙` and `◦` measure one under both.
+      def self.required_marker: () -> String
+
+      # _@param_ `glyph` — one grapheme cluster, one column wide.
+      # 
+      # _@return_ — frozen.
+      def self.required_marker=: (String glyph) -> String
+
       # _@param_ `content` — the field to wrap; assignable later through {#content=}.
       # 
       # _@param_ `caption` — the text above it; omit it for a widget painting its own, such as a {Checkbox} or a {Button}.
@@ -8721,6 +9055,30 @@ module Tuile
 
       # _@return_ — whether the caption carries {.required_marker}.
       def required?: () -> bool
+
+      # _@return_ — `:above` (the default) or `:left`.
+      def caption_position: () -> Symbol
+
+      # Puts the caption above the field, or beside it with the message under
+      # the field. Inside a {FormLayout} this is the form's to write.
+      # 
+      # _@param_ `position` — one of {CAPTION_POSITIONS}.
+      def caption_position=: (Symbol position) -> void
+
+      # _@return_ — the left caption's column, in cells; nil fits
+      # the caption, marker included. Ignored while {#caption_position} is
+      # `:above`.
+      def caption_width: () -> Integer?
+
+      # Fixes the left caption's column, so items stacked in a {Layout::Vertical}
+      # can line up. Inside a {FormLayout} this is the form's to write.
+      # 
+      #   FormItem.new(city, caption: "City", caption_position: :left, caption_width: 12)
+      # 
+      # One gap column always follows the caption, outside this width.
+      # 
+      # _@param_ `columns` — `>= 0`, or nil to fit the caption.
+      def caption_width=: (Integer? columns) -> void
 
       # The caption as painted, {.required_marker} included — what a left
       # caption column is measured against.
@@ -8813,40 +9171,16 @@ module Tuile
       # _@return_ — the caption, content and message rects.
       def left_rects: () -> [Rect, Rect, Rect]
 
-      # Read through *this* method, never `@caption` — the ivar stays nil until
+      # Read through *this* method, never `@_caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).
       # 
       # _@return_ — the caption; empty when never set.
       def caption: () -> StyledString
 
+      # _@return_ — the current content component.
+      def content: () -> Component?
+
       def handle_focus: () -> void
-
-      # The glyph marking a {#required?} item, `∙` (U+2219 BULLET OPERATOR)
-      # by default:
-      # 
-      #   Tuile::Component::FormItem.required_marker = "*"
-      # 
-      # An app-global, like {VerticalScrollBar.handle_char} — the marker is a
-      # house style, not a per-item decision.
-      # 
-      # The default is deliberately not one of `•`, `●` or `·`: those are
-      # East-Asian *Ambiguous* and would measure two columns under the other
-      # policy, enlarging the inventory that keeps `D_ambiguous_width`'s bet
-      # cheap to reverse. `∙` and `◦` measure one under both.
-      def self.required_marker: () -> String
-
-      # _@param_ `glyph` — one grapheme cluster, one column wide.
-      # 
-      # _@return_ — frozen.
-      def self.required_marker=: (String value) -> String
-
-      # _@return_ — `:above` (the default) or `:left`.
-      attr_accessor caption_position: Symbol
-
-      # _@return_ — the left caption's column, in cells; nil fits
-      # the caption, marker included. Ignored while {#caption_position} is
-      # `:above`.
-      attr_accessor caption_width: Integer?
     end
 
     # The value seam every input component shares: a settable/gettable {#value}
@@ -8867,7 +9201,7 @@ module Tuile
     #   field.value = "x"                        # e.from_user? is false
     #   field.set_value("x", from_user: true)    # an app writing for the user
     # 
-    # The default {#set_value}/{#value} keep the value in `@value` and are
+    # The default {#set_value}/{#value} keep the value in `@_value` and are
     # enough for a component with nothing more natural — you get a repaint and
     # the listener for free. An includer whose value lives elsewhere overrides
     # both ({AbstractStringField} backs them with its text buffer); **the
@@ -8964,7 +9298,7 @@ module Tuile
       # 
       # The list is built on first read, so no mixin has to remember a
       # constructor line — which means in-class code goes through the reader and
-      # never touches `@on_foo`, nil until somebody asks.
+      # never touches `@_on_foo`, nil until somebody asks.
       # 
       # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
       # 
@@ -9103,6 +9437,17 @@ module Tuile
       # _@param_ `separator` — the strip's separator; see {Tabs#separator=}.
       def initialize: (?separator: (String | StyledString)) -> void
 
+      # _@return_ — the strip. Reach through it for the rest of its API —
+      # `sheet.strip.separator = "|"`. Its `on_tab_selected` is safe to
+      # register on (the sheet's own listener is wired first, so the pane is
+      # already swapped), but {#on_tab_selected} is the one that names this
+      # sheet as the event's source.
+      def strip: () -> Tabs
+
+      # _@return_ — the pane currently in the tree — the selected
+      # tab's, `nil` while the sheet has no tabs.
+      def pane: () -> Component?
+
       # Adds a tab and the pane to show while it is selected. The first tab
       # added becomes the selection, so its pane is shown immediately.
       # 
@@ -9165,7 +9510,7 @@ module Tuile
       def handle_child_removed: (Component child) -> void
 
       # Makes the visible pane match `strip.selected`, swapping if it doesn't.
-      # Idempotent and the sole writer of `@pane`: it derives everything from
+      # Idempotent and the sole writer of `@_pane`: it derives everything from
       # current state, so {#add_tab} can register a pane after the strip has
       # already selected its tab.
       def sync_pane: () -> void
@@ -9181,17 +9526,6 @@ module Tuile
 
       # The strip takes the top row, the selected pane everything under it.
       def relayout: () -> void
-
-      # _@return_ — the strip. Reach through it for the rest of its API —
-      # `sheet.strip.separator = "|"`. Its `on_tab_selected` is safe to
-      # register on (the sheet's own listener is wired first, so the pane is
-      # already swapped), but {#on_tab_selected} is the one that names this
-      # sheet as the event's source.
-      attr_reader strip: Tabs
-
-      # _@return_ — the pane currently in the tree — the selected
-      # tab's, `nil` while the sheet has no tabs.
-      attr_reader pane: Component?
     end
 
     # A multi-line, word-wrapping text input.
@@ -9247,6 +9581,9 @@ module Tuile
       DEFAULT_TIMEOUT: Float
 
       def initialize: () -> void
+
+      # _@return_ — index of the topmost row currently visible.
+      def scroll_top_row: () -> Integer
 
       # The caret's row, counted from the text's first row — *not* from the top
       # of the viewport (subtract {#scroll_top_row} for that).
@@ -9306,9 +9643,6 @@ module Tuile
       # Keeps the caret visible by scrolling vertically.
       def adjust_scroll_top_row: () -> void
 
-      # _@return_ — index of the topmost row currently visible.
-      attr_reader scroll_top_row: Integer
-
       # The word-wrapped layout of a {TextArea}'s text: which row each
       # character lands on, and which glyphs each row paints.
       # 
@@ -9341,6 +9675,10 @@ module Tuile
         # 
         # _@param_ `width` — column budget per row; `0` or less yields a single empty row.
         def initialize: (String text, Integer width) -> void
+
+        def text: () -> String
+
+        def width: () -> Integer
 
         # _@return_ — rows the text occupies; always `>= 1`, since
         # empty text still wraps to one (empty) row.
@@ -9484,10 +9822,6 @@ module Tuile
         # _@return_ — columns.
         def columns_of: (String str) -> Integer
 
-        attr_reader text: String
-
-        attr_reader width: Integer
-
         # One row's span, measured on both axes.
         # 
         # Both counts cover only the row's *visible* content: whitespace absorbed
@@ -9558,6 +9892,20 @@ module Tuile
       # lazily on the first read after a mutation (O(total spans)), then
       # cached — repeated reads are O(1).
       def text: () -> StyledString
+
+      # _@return_ — index of the first visible row.
+      def scroll_top_row: () -> Integer
+
+      # _@return_ — `:gone`, `:visible`, or `:auto` — shown only while the
+      # text overflows the viewport at the full width. `:gone` by default.
+      def scrollbar_visibility: () -> Symbol
+
+      # _@return_ — if true, mutating the text scrolls the viewport so
+      # the last line stays in view — but only while the viewport is already
+      # pinned to the last line (see {#following?}). Scroll up to read older
+      # content and appends stop yanking you back down; scroll back to the
+      # bottom and tailing resumes. Default `false`.
+      def auto_scroll: () -> bool
 
       # _@return_ — whether {#auto_scroll} is currently tailing. True
       # while the viewport sits at the last line; flips to false the moment
@@ -9663,6 +10011,18 @@ module Tuile
       # Clears the text. Equivalent to `text = ""`.
       def clear: () -> void
 
+      # _@param_ `new_row` — 0 or greater. Not clamped against the number of rows (matches {List#scroll_top_row=}).
+      def scroll_top_row=: (Integer new_row) -> void
+
+      # _@param_ `value` — `:gone`, `:visible` or `:auto`.
+      def scrollbar_visibility=: (Symbol value) -> void
+
+      # Sets `auto_scroll`. If true, re-engages tailing and immediately
+      # scrolls to the bottom.
+      # 
+      # _@param_ `value`
+      def auto_scroll=: (bool value) -> void
+
       # Scrolls up half a viewport (`rect.height / 2`, at least one row),
       # clamped at the top — unlike {#scroll_top_row=}, which raises below `0`.
       # What `Ctrl+U` does, minus the focus: dispatch delivers keys only along
@@ -9739,7 +10099,7 @@ module Tuile
       # _@param_ `what`
       def normalize_replace_range: ((::Range[untyped] | Integer) range, ?Integer size, ?String what) -> [Integer, Integer]
 
-      # Hard-line index where `region` begins in {@lines} — derived
+      # Hard-line index where `region` begins in {@_lines} — derived
       # by summing the line counts of all regions that precede it.
       # 
       # _@param_ `region`
@@ -9790,7 +10150,7 @@ module Tuile
       # _@param_ `n`
       def remove_last_n_from_region: (Region region, Integer n) -> void
 
-      # Drops `region` from {@regions}: its hard lines are removed via
+      # Drops `region` from {@_regions}: its hard lines are removed via
       # {#splice_lines}, the handle is detached, and the always-one
       # default is restored if the removal would have left zero regions.
       # Skips the rewrap / invalidate work when the region was empty
@@ -9799,7 +10159,7 @@ module Tuile
       # _@param_ `region`
       def remove_region: (Region region) -> void
 
-      # Adjusts region line counts after a {@lines} splice that removed
+      # Adjusts region line counts after a {@_lines} splice that removed
       # `removed_count` lines at `from` and inserted `added_count`. Subtracts
       # each region's overlap with the removed range, then credits the added
       # lines to the first region that lost lines. Pure insertions have no such
@@ -9823,19 +10183,19 @@ module Tuile
       # scroll verbs and their keys.
       def half_page_rows: () -> Integer
 
-      # Full rebuild of {@rows} and {@line_wrap_counts}
-      # from {@lines}. Called when wrap width changes (which
+      # Full rebuild of {@_rows} and {@_line_wrap_counts}
+      # from {@_lines}. Called when wrap width changes (which
       # invalidates every cached row count) and from {#text=} (which
       # replaces the whole logical model). Mid-buffer mutators splice
       # incrementally via {#splice_lines} and do *not* go through
-      # here. Clamps {@scroll_top_row} if the new line count puts it out of
+      # here. Clamps {@_scroll_top_row} if the new line count puts it out of
       # range.
       def rewrap: () -> void
 
       # Wraps `line` at `width` and returns the padded rows alongside the
       # row count. Empty lines (e.g. from a `"\n\n"`
-      # run) and degenerate `width <= 0` both emit a single {@blank_row}
-      # row, matching what `@text.wrap(width).map { |l| l.ljust(width) }`
+      # run) and degenerate `width <= 0` both emit a single {@_blank_row}
+      # row, matching what `@_text.wrap(width).map { |l| l.ljust(width) }`
       # would have produced.
       # 
       # _@param_ `line`
@@ -9843,8 +10203,8 @@ module Tuile
       # _@param_ `width`
       def wrap_line: (StyledString line, Integer width) -> [::Array[StyledString], Integer]
 
-      # Appends `line` to the tail of {@lines}, updating the
-      # wrap-count cache and {@rows} in lockstep.
+      # Appends `line` to the tail of {@_lines}, updating the
+      # wrap-count cache and {@_rows} in lockstep.
       # 
       # _@param_ `line`
       # 
@@ -9856,8 +10216,8 @@ module Tuile
       def pop_line: () -> StyledString
 
       # Splices `new_lines` into the buffer in place of the `count` lines
-      # starting at index `from`. Updates {@lines},
-      # {@line_wrap_counts}, and {@rows} consistently.
+      # starting at index `from`. Updates {@_lines},
+      # {@_line_wrap_counts}, and {@_rows} consistently.
       # The starting row offset is computed in O(`from`) integer
       # adds via the cache — no wraps of preceding lines. Wraps are
       # done only for the new content, so total cost is
@@ -9872,12 +10232,12 @@ module Tuile
 
       # _@param_ `idx`
       # 
-      # _@return_ — the {@rows} index where the line
-      # at {@lines}`[idx]` starts. O(`idx`) integer adds via the
+      # _@return_ — the {@_rows} index where the line
+      # at {@_lines}`[idx]` starts. O(`idx`) integer adds via the
       # wrap-count cache.
       def row_offset_at: (Integer idx) -> Integer
 
-      # Rebuilds the joined {StyledString} from {@lines}, inserting a
+      # Rebuilds the joined {StyledString} from {@_lines}, inserting a
       # default-styled `"\n"` between lines. Called from the {#text}
       # reader when the cache is cold. Cost is O(total spans).
       def build_text: () -> StyledString
@@ -9908,7 +10268,7 @@ module Tuile
 
       # Every splice's tail. {#invalidate_layout} rides along because
       # {#relayout} pushes the bar's `row_count`: a splice that changed
-      # `@rows.size` without the mark leaves the handle sized for the old
+      # `@_rows.size` without the mark leaves the handle sized for the old
       # buffer.
       # 
       # Not for {#append} or {#text=}, which mark by hand — appending must not
@@ -9919,7 +10279,7 @@ module Tuile
 
       # Gated on {#following?}: once the user scrolls up off the bottom the
       # viewport pin is skipped, so reading older content is not interrupted
-      # by incoming lines. {#scroll_top_row=} re-arms `@follow` when the viewport
+      # by incoming lines. {#scroll_top_row=} re-arms `@_follow` when the viewport
       # returns to the bottom.
       def update_scroll_top_row_if_auto_scroll: () -> void
 
@@ -9929,7 +10289,7 @@ module Tuile
 
       def scrollbar_visible?: () -> bool
 
-      # The sole writer of `@auto_scrollbar_shown`: shows the bar iff the text
+      # The sole writer of `@_auto_scrollbar_shown`: shows the bar iff the text
       # overflows the viewport at the *full* width, and rewraps when that
       # flips. Deciding at the full width alone is what settles it in one
       # step — the answer does not depend on the width the bar leaves, so
@@ -9937,33 +10297,19 @@ module Tuile
       def sync_auto_scrollbar: () -> void
 
       # Whether the text, wrapped at {#rect}`.width`, has more rows than the
-      # viewport. With the bar hidden `@rows` already *is* that wrap; with it
+      # viewport. With the bar hidden `@_rows` already *is* that wrap; with it
       # shown the lines are re-wrapped at the full width, stopping at the first
       # row past the viewport — so the cost is bounded by what fits on screen,
       # and a buffer with more hard lines than rows costs nothing at all.
       def overflows_at_full_width?: () -> bool
 
-      # _@param_ `index` — 0-based index into `@rows`.
+      # _@param_ `index` — 0-based index into `@_rows`.
       # 
       # _@return_ — every column of {#rect} the child bar does not
       # own: all of them with the bar hidden, one fewer with it visible.
       # Rows arrive padded to {#wrap_width} from {#rewrap}, so only the blank
       # {#scrollbar_columns} reserves is added here.
       def paintable_row: (Integer index) -> StyledString
-
-      # _@return_ — index of the first visible row.
-      attr_accessor scroll_top_row: Integer
-
-      # _@return_ — `:gone`, `:visible`, or `:auto` — shown only while the
-      # text overflows the viewport at the full width. `:gone` by default.
-      attr_accessor scrollbar_visibility: Symbol
-
-      # _@return_ — if true, mutating the text scrolls the viewport so
-      # the last line stays in view — but only while the viewport is already
-      # pinned to the last line (see {#following?}). Scroll up to read older
-      # content and appends stop yanking you back down; scroll back to the
-      # bottom and tailing resumes. Default `false`.
-      attr_accessor auto_scroll: bool
 
       # A logical section of a {TextView}'s text — a contiguous run of
       # hard lines the app wants to address as a unit (e.g. an LLM's
@@ -9989,6 +10335,10 @@ module Tuile
         # 
         # _@param_ `line_count` — number of hard lines this region owns.
         def initialize: (TextView view, ?Integer line_count) -> void
+
+        # _@return_ — number of hard lines this region owns. Safe to
+        # read on a detached region (no error raised).
+        def line_count: () -> Integer
 
         # _@return_ — `true` while the region is owned by its
         # {TextView}. Becomes `false` permanently once detached
@@ -10081,13 +10431,12 @@ module Tuile
         # _@param_ `n`
         def remove_last_n_lines: (Integer n) -> void
 
+        # _@param_ `value`
+        def line_count=: (Integer value) -> void
+
         def detach!: () -> void
 
         def check_attached: () -> void
-
-        # _@return_ — number of hard lines this region owns. Safe to
-        # read on a detached region (no error raised).
-        attr_accessor line_count: (Integer | untyped)
       end
     end
 
@@ -10349,7 +10698,7 @@ module Tuile
       def wears_bad_input_ink?: () -> bool
 
       # Fires {#on_bad_input_change} when the showable report has really
-      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # changed — the sole writer of `@_last_bad_input`, called from wherever an
       # input of that expression moves.
       def sync_bad_input: () -> void
 
@@ -10448,6 +10797,18 @@ module Tuile
       DEFAULT_TIMEOUT: Float
 
       def initialize: () -> void
+
+      # Optional cap on {#text}'s length **in characters** — a wide glyph counts
+      # once. Typing into a field already at the cap does nothing.
+      # 
+      # Deliberately does not police {#value=}: lowering the cap under an existing
+      # value leaves that value intact rather than silently trimming it.
+      # 
+      # _@return_ — maximum characters, or nil for unbounded (default).
+      def max_text_length: () -> Integer?
+
+      # _@param_ `max`
+      def max_text_length=: (Integer? max) -> void
 
       # Fired with a {KeyUpEvent} when the UP arrow key is pressed. **Empty means
       # the field declines UP**, which then falls through to the parent; a
@@ -10553,6 +10914,15 @@ module Tuile
       # as a half glyph.
       def visible_text: () -> String
 
+      # Internal — the field's own scroll state, with no caller outside this
+      # class: the paint, the cursor and the hit test all read the ivar, and
+      # nothing above the field has a column to spend it on. Specs assert the
+      # scrolling through `send`.
+      # 
+      # _@return_ — text column drawn in the field's leftmost cell — the
+      # horizontal scroll offset. Follows {#caret}, always on a glyph boundary.
+      def left_column: () -> Integer
+
       # Scrolls the minimum needed to keep the caret's column visible.
       def adjust_left_column: () -> void
 
@@ -10578,24 +10948,6 @@ module Tuile
 
       # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
       def inspect_details: () -> ::Array[String]
-
-      # Optional cap on {#text}'s length **in characters** — a wide glyph counts
-      # once. Typing into a field already at the cap does nothing.
-      # 
-      # Deliberately does not police {#value=}: lowering the cap under an existing
-      # value leaves that value intact rather than silently trimming it.
-      # 
-      # _@return_ — maximum characters, or nil for unbounded (default).
-      attr_accessor max_text_length: Integer?
-
-      # Internal — the field's own scroll state, with no caller outside this
-      # class: the paint, the cursor and the hit test all read the ivar, and
-      # nothing above the field has a column to spend it on. Specs assert the
-      # scrolling through `send`.
-      # 
-      # _@return_ — text column drawn in the field's leftmost cell — the
-      # horizontal scroll offset. Follows {#caret}, always on a glyph boundary.
-      attr_reader left_column: Integer
 
       # What {#on_key_up} fires.
       # 
@@ -10787,6 +11139,32 @@ module Tuile
       # `nil`, not `""`: a time field with no parseable time is empty.
       def empty_value: () -> void
 
+      # _@return_ — how many seconds Up/Down move the value, and — under
+      # a minute — the reason seconds are shown at all. See {#step=}.
+      def step: () -> Integer
+
+      # Sets the arrow-key stride, **and with it the precision**: under a
+      # minute the field shows seconds, at a minute or more it does not.
+      # 
+      #   field.step = 1     # "13:45:00"; Up walks a second
+      #   field.step = 900   # "13:45";    Up walks a quarter hour
+      # 
+      # The stride need not divide an hour: stepping adds and wraps rather than
+      # snapping to a grid, so `step = 90` from `13:45` walks to `13:46:30`.
+      # 
+      # A buffer that still parses under the new precision is rewritten, and so
+      # is one the new precision can write *exactly* — narrowing over
+      # `13:45:00` shows `13:45`. One that would lose something (`13:45:30`) is
+      # left as typed and reads as bad input, so this never silently discards
+      # seconds a user meant.
+      # 
+      # Why precision rides the stride rather than a knob of its own, and what
+      # that costs — seconds with a minute stride is unsayable — is
+      # `design/decisions.md` `D_time_field`.
+      # 
+      # _@param_ `seconds` — 1 up to (not including) a full day.
+      def step=: (Integer seconds) -> void
+
       # The formats in force, primary first — the locale's spelling
       # ({Locale#time_formats}) reduced to this field's precision, with the
       # seconds-bearing forms *in front* when {#step} shows seconds so that
@@ -10934,7 +11312,7 @@ module Tuile
       def wears_bad_input_ink?: () -> bool
 
       # Fires {#on_bad_input_change} when the showable report has really
-      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # changed — the sole writer of `@_last_bad_input`, called from wherever an
       # input of that expression moves.
       def sync_bad_input: () -> void
 
@@ -10968,10 +11346,6 @@ module Tuile
       # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
       # a {Testing.get} failure dump says which field is already flagged.
       def inspect_details: () -> ::Array[String]
-
-      # _@return_ — how many seconds Up/Down move the value, and — under
-      # a minute — the reason seconds are shown at all. See {#step=}.
-      attr_accessor step: Integer
     end
 
     # A single-line field whose {#value} is a `Float` (or `nil` when empty) —
@@ -11139,7 +11513,7 @@ module Tuile
       def handle_editor_change: () -> void
 
       # Fires {#on_bad_input_change} when the showable report has really
-      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # changed — the sole writer of `@_last_bad_input`, called from wherever an
       # input of that expression moves.
       def sync_bad_input: () -> void
 
@@ -11257,6 +11631,30 @@ module Tuile
       # _@param_ `caption_width` — the left caption column in cells; nil fits the widest caption, up to half the form's width.
       def initialize: (?spacing: Integer, ?caption_position: Symbol, ?caption_width: Integer?) -> void
 
+      # _@return_ — extra blank rows between adjacent items.
+      def spacing: () -> Integer
+
+      # _@return_ — `:above` (the default) or `:left`, for every item.
+      def caption_position: () -> Symbol
+
+      # _@return_ — the left caption column in cells, or nil for
+      # the widest caption up to half the form's width.
+      def caption_width: () -> Integer?
+
+      # Moves every caption above its field or into a column beside it.
+      # 
+      # _@param_ `position` — one of {FormItem::CAPTION_POSITIONS}.
+      def caption_position=: (Symbol position) -> void
+
+      # Fixes the left caption column, or with nil fits it to the widest caption.
+      # The field still keeps {FormItem::MIN_FIELD_COLUMNS}: the caption yields.
+      # 
+      # _@param_ `columns` — `>= 0`.
+      def caption_width=: (Integer? columns) -> void
+
+      # _@param_ `rows` — extra blank rows between adjacent items; `>= 0`.
+      def spacing=: (Integer rows) -> void
+
       # Wraps `field` in a {FormItem}, adds it, and re-runs the layout.
       # 
       #   item = form.add(notes, caption: "Notes", rows: 5)
@@ -11366,16 +11764,6 @@ module Tuile
 
       # _@param_ `rows`
       def validate_rows: (Integer rows) -> void
-
-      # _@return_ — extra blank rows between adjacent items.
-      attr_accessor spacing: Integer
-
-      # _@return_ — `:above` (the default) or `:left`, for every item.
-      attr_accessor caption_position: Symbol
-
-      # _@return_ — the left caption column in cells, or nil for
-      # the widest caption up to half the form's width.
-      attr_accessor caption_width: Integer?
     end
 
     # The chrome text a component *wears* — a {Window}'s border title, a
@@ -11407,7 +11795,7 @@ module Tuile
     # that really wants the text says so per-class in a block. See
     # `D_component_lookup`.
     module HasCaption
-      # Read through *this* method, never `@caption` — the ivar stays nil until
+      # Read through *this* method, never `@_caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).
       # 
       # _@return_ — the caption; empty when never set.
@@ -11436,14 +11824,14 @@ module Tuile
     # populatable regions gives each one a {Slot} rather than including this
     # twice.
     # 
-    # The includer initializes `@content` to nil and positions the child from
+    # The includer initializes `@_content` to nil and positions the child from
     # its own {Component#relayout}; the mixin owns the swap, and the swap marks,
     # so nothing here places anything itself:
     # 
     #   class Slot < Component
     #     include Component::HasContent
     # 
-    #     def initialize = (super; @content = nil)
+    #     def initialize = (super; @_content = nil)
     # 
     #     protected
     # 
@@ -11465,10 +11853,18 @@ module Tuile
     # accessor — the same reason {HasCaption} is one. Under the rule above such
     # a walk reaches only *public* contents, never a widget's private editor.
     module HasContent
-      def handle_focus: () -> void
-
       # _@return_ — the current content component.
-      attr_accessor content: Component?
+      def content: () -> Component?
+
+      # Sets the new content of this component. Updates `@_content` itself;
+      # including classes may still override to add behaviour (e.g. a
+      # special-cased Array input) but should call `super` to perform the
+      # swap.
+      # 
+      # _@param_ `content` — the component to set or clear.
+      def content=: (Component? content) -> void
+
+      def handle_focus: () -> void
     end
 
     # A {Window} with a read-only body, in one of two presentations:
@@ -11489,6 +11885,18 @@ module Tuile
       # _@param_ `body` — an `Array` is assigned through {#lines=}, anything else through {#message=}.
       def initialize: (?(String | StyledString)? caption, ?(String | StyledString | Component | ::Array[untyped])? body) -> void
 
+      # _@return_ — whatever {#message=}
+      # was given — set a `String`, read that `String` back. After
+      # {#lines=} it is the {List} that setter mounted.
+      def message: () -> (String | StyledString | Component)?
+
+      # Sets the prose body. Text (`String` / {StyledString}) is rendered by
+      # a word-wrapping, scrollable {TextView} the window owns; a {Component}
+      # is mounted as-is. `nil` clears.
+      # 
+      # _@param_ `value`
+      def message=: ((String | StyledString | Component)? value) -> void
+
       # Sets the rows body: a {List} populated via {List#lines=} (so entries
       # are coerced, `\n`-split and rstripped exactly as there), one item per
       # row, long rows truncated — never wrapped. For prose use {#message=}.
@@ -11506,11 +11914,6 @@ module Tuile
       # 
       # _@return_ — the opened popup.
       def self.open: ((String | StyledString)? caption, ?(String | StyledString | Component | ::Array[untyped])? body, ?declared_size: (Size | Fraction)) -> Popup
-
-      # _@return_ — whatever {#message=}
-      # was given — set a `String`, read that `String` back. After
-      # {#lines=} it is the {List} that setter mounted.
-      attr_accessor message: (String | StyledString | Component)?
     end
 
     # Single-select from a set of typed items, one row each. Arrows move a
@@ -11579,6 +11982,14 @@ module Tuile
       # _@param_ `value` — the initially selected item. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
       def initialize: (?items: ::Array[untyped], ?value: Object?) -> void
 
+      # The composed {List}: an app may *tune* it — its scrollbar, its cursor,
+      # `show_cursor_when_inactive` — but never replace it, since this group's
+      # renderer and selection are wired into this one (`design/decisions.md`
+      # `D_has_content`). Those knobs are {List} concepts rather than group
+      # concepts, which is why they are reached here instead of forwarded
+      # (`D_wrapping_field`).
+      def list: () -> List
+
       def relayout: () -> void
 
       def handle_focus: () -> void
@@ -11586,11 +11997,18 @@ module Tuile
       # _@return_ — the presented items.
       def items: () -> ::Array[untyped]
 
+      # _@return_ — item -> row label (a `String`, {StyledString}, or
+      # anything with `#to_s`); `:to_s` by default.
+      def item_label: () -> (Proc | Method)
+
       # Replaces the presented rows, leaving {#value} untouched and clamping the
       # cursor back into range.
       # 
       # _@param_ `new_items`
       def items=: (::Array[untyped] new_items) -> void
+
+      # _@param_ `proc` — item -> row label.
+      def item_label=: ((Proc | Method) proc) -> void
 
       # Selects `new_value`, firing {HasValue#on_value_change} when it really
       # changed. The cursor stays where it is.
@@ -11727,18 +12145,6 @@ module Tuile
       # {HasBadInput} widens it: a field holding input its value cannot
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
-
-      # The composed {List}: an app may *tune* it — its scrollbar, its cursor,
-      # `show_cursor_when_inactive` — but never replace it, since this group's
-      # renderer and selection are wired into this one (`design/decisions.md`
-      # `D_has_content`). Those knobs are {List} concepts rather than group
-      # concepts, which is why they are reached here instead of forwarded
-      # (`D_wrapping_field`).
-      attr_reader list: List
-
-      # _@return_ — item -> row label (a `String`, {StyledString}, or
-      # anything with `#to_s`); `:to_s` by default.
-      attr_accessor item_label: (Proc | Method)
     end
 
     # A transient message in the screen's top-right corner — the TTY toast:
@@ -11857,7 +12263,7 @@ module Tuile
       def retire_oldest: () -> void
 
       # Syncs the retirement clock from the invariant "something to retire, and on
-      # screen" — the sole writer of `@ticker`. Four sites change whether it is
+      # screen" — the sole writer of `@_ticker`. Four sites change whether it is
       # wanted (append, a retirement that empties the queue, {#close}, detach),
       # which is the 2×2 a start-in-{#handle_attached} / cancel-in-{#handle_detached} pair
       # gets half wrong. The early return is also what keeps an append from
@@ -11976,6 +12382,17 @@ module Tuile
       # _@param_ `indeterminate` — initial {#indeterminate=}.
       def initialize: (?range: ::Range[untyped], ?value: Numeric?, ?indeterminate: bool) -> void
 
+      # _@return_ — lower bound of {#range}.
+      def min: () -> Float
+
+      # _@return_ — upper bound of {#range}.
+      def max: () -> Float
+
+      # _@return_ — the value as set, so a {Theme::Ref} comes back
+      # unresolved. Both glyphs paint in it; `nil` (the default) is the
+      # terminal's default foreground.
+      def bar_color: () -> Color?
+
       # _@return_ — the scale {#value} is measured against.
       def range: () -> ::Range[untyped]
 
@@ -11986,12 +12403,29 @@ module Tuile
       # _@param_ `new_range` — inclusive; endpoints Numeric and finite.
       def range=: (::Range[untyped] new_range) -> void
 
+      # _@return_ — the progress, clamped into {#range} when assigned — so
+      # `bar.value = 999` on a `0..250` bar reads back as `250.0`.
+      def value: () -> Float
+
+      # _@param_ `new_value` — clamped into {#range}.
+      def value=: (Numeric new_value) -> void
+
       # _@return_ — {#value} as `0.0..1.0`. `1.0` when the range is empty.
       def fraction: () -> Float
 
       # _@return_ — {#fraction} as `0..100`, floored — `100` means done and
       # nothing else does, matching the painted bar exactly.
       def percent: () -> Integer
+
+      # Sets the color of both glyphs, live-resolved at paint time when given a
+      # {Theme::Ref} (so it follows a {Screen#theme=} with no
+      # {Component#handle_theme_changed} hook).
+      # 
+      #   bar.bar_color = Color::GREEN
+      #   bar.bar_color = Theme.ref(:brand_ok)   # an app #custom token
+      # 
+      # _@param_ `color` — coerced via {Color.coerce} unless it is a {Theme::Ref}; `nil` is the terminal default.
+      def bar_color=: ((Color | Theme::Ref | Symbol | Integer | ::Array[Integer])? color) -> void
 
       # _@return_ — whether the sliding-block animation is showing.
       def indeterminate?: () -> bool
@@ -12046,25 +12480,10 @@ module Tuile
       def resolved_bar_color: () -> Color?
 
       # Brings the ticker in line with "animating and on screen". The sole writer
-      # of `@ticker`, and idempotent, so the attach/detach hooks and
+      # of `@_ticker`, and idempotent, so the attach/detach hooks and
       # {#indeterminate=} are all the same call and a repeated `indeterminate =
       # true` cannot start a second one.
       def sync_ticker: () -> void
-
-      # _@return_ — lower bound of {#range}.
-      attr_reader min: Float
-
-      # _@return_ — upper bound of {#range}.
-      attr_reader max: Float
-
-      # _@return_ — the value as set, so a {Theme::Ref} comes back
-      # unresolved. Both glyphs paint in it; `nil` (the default) is the
-      # terminal's default foreground.
-      attr_accessor bar_color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?
-
-      # _@return_ — the progress, clamped into {#range} when assigned — so
-      # `bar.value = 999` on a `0..250` bar reads back as `250.0`.
-      attr_accessor value: (Float | Numeric)
     end
 
     # The one fact a parsing field knows that {HasValue#on_value_change} cannot
@@ -12112,8 +12531,8 @@ module Tuile
     #   valid date"`, never `"'xyz' is not a valid date"`. It is read per call,
     #   the error ink reads it per paint, and the push diffs it per edit.
     # 
-    # The status is never stored: `@last_bad_input` is the diff guard the push
-    # needs and nothing reads it back, as {AbstractWrappingField}'s `@last_value`
+    # The status is never stored: `@_last_bad_input` is the diff guard the push
+    # needs and nothing reads it back, as {AbstractWrappingField}'s `@_last_value`
     # is for the value notice. Which fields *can* answer is a class fact worth
     # caching; what they answer is not.
     # 
@@ -12183,7 +12602,7 @@ module Tuile
       def handle_editor_change: () -> void
 
       # Fires {#on_bad_input_change} when the showable report has really
-      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # changed — the sole writer of `@_last_bad_input`, called from wherever an
       # input of that expression moves.
       def sync_bad_input: () -> void
 
@@ -12200,7 +12619,7 @@ module Tuile
       # 
       # The list is built on first read, so no mixin has to remember a
       # constructor line — which means in-class code goes through the reader and
-      # never touches `@on_foo`, nil until somebody asks.
+      # never touches `@_on_foo`, nil until somebody asks.
       # 
       # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
       # 
@@ -12413,7 +12832,7 @@ module Tuile
       def handle_editor_change: () -> void
 
       # Fires {#on_bad_input_change} when the showable report has really
-      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # changed — the sole writer of `@_last_bad_input`, called from wherever an
       # input of that expression moves.
       def sync_bad_input: () -> void
 
@@ -12510,6 +12929,12 @@ module Tuile
 
       # _@param_ `proc` — `(item, text_width) -> row`; see {List#renderer}.
       def renderer=: ((Proc | Method) proc) -> void
+
+      # The wrapped list, exposed so a driver can register on {List#on_item_chosen}
+      # (its commit) and {List#on_cursor_changed} (a cascading driver drops the
+      # panels belonging to the row the highlight just left). A driver tunes it
+      # but never supplies it (`D_has_content`).
+      def list: () -> List
 
       # _@param_ `cursor` — the highlight; see {List#cursor=}.
       def cursor=: (List::Cursor cursor) -> void
@@ -12621,12 +13046,6 @@ module Tuile
       # 
       # _@param_ `placement`
       def anchor_with: (Anchored placement) -> void
-
-      # The wrapped list, exposed so a driver can register on {List#on_item_chosen}
-      # (its commit) and {List#on_cursor_changed} (a cascading driver drops the
-      # panels belonging to the row the highlight just left). A driver tunes it
-      # but never supplies it (`D_has_content`).
-      attr_reader list: List
 
       # The dropdown's {List}. Non-focusable on purpose: the driver forwards keys
       # while focus stays on it, and a mouse click selects an item without
@@ -12960,6 +13379,14 @@ module Tuile
       # _@param_ `value` — the initial selection. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
       def initialize: (?items: ::Array[untyped], ?value: ::Enumerable[untyped]?) -> void
 
+      # The composed {List}: an app may *tune* it — its scrollbar, its cursor,
+      # `show_cursor_when_inactive` — but never replace it, since this group's
+      # renderer and selection are wired into this one (`design/decisions.md`
+      # `D_has_content`). Those knobs are {List} concepts rather than group
+      # concepts, which is why they are reached here instead of forwarded
+      # (`D_wrapping_field`).
+      def list: () -> List
+
       def relayout: () -> void
 
       def handle_focus: () -> void
@@ -12967,10 +13394,17 @@ module Tuile
       # _@return_ — the presented items.
       def items: () -> ::Array[untyped]
 
+      # _@return_ — item -> row label (a `String`, {StyledString}, or
+      # anything with `#to_s`); `:to_s` by default.
+      def item_label: () -> (Proc | Method)
+
       # Replaces the presented rows, leaving {#value} untouched.
       # 
       # _@param_ `new_items`
       def items=: (::Array[untyped] new_items) -> void
+
+      # _@param_ `proc` — item -> row label.
+      def item_label=: ((Proc | Method) proc) -> void
 
       # _@return_ — the frozen empty set — {HasValue#empty?} means nothing is
       # selected.
@@ -13111,18 +13545,6 @@ module Tuile
       # {HasBadInput} widens it: a field holding input its value cannot
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
-
-      # The composed {List}: an app may *tune* it — its scrollbar, its cursor,
-      # `show_cursor_when_inactive` — but never replace it, since this group's
-      # renderer and selection are wired into this one (`design/decisions.md`
-      # `D_has_content`). Those knobs are {List} concepts rather than group
-      # concepts, which is why they are reached here instead of forwarded
-      # (`D_wrapping_field`).
-      attr_reader list: List
-
-      # _@return_ — item -> row label (a `String`, {StyledString}, or
-      # anything with `#to_s`); `:to_s` by default.
-      attr_accessor item_label: (Proc | Method)
     end
 
     # The confirm dialog: a {Window} asking a question — a caption, a prose
@@ -13183,10 +13605,23 @@ module Tuile
       # once per {#open}, and never when an action button was chosen.
       def on_dismiss: () -> Listeners
 
+      # _@return_ — whatever {#message=} was
+      # given — set a `String`, read that `String` back. The component
+      # rendering it is derived, never returned.
+      def message: () -> (String | StyledString | Component)?
+
       # Also re-measures the popup: the caption participates in the width.
       # 
       # _@param_ `new_caption`
       def caption=: ((String | StyledString)? new_caption) -> void
+
+      # Sets the dialog body. Text (`String` / {StyledString}) is rendered by a
+      # word-wrapping, scrollable {TextView} the dialog owns and measures; a
+      # {Component} is mounted as-is, and the dialog — which may measure only
+      # content it owns — then takes the full half-screen box. `nil` clears.
+      # 
+      # _@param_ `value`
+      def message=: ((String | StyledString | Component)? value) -> void
 
       # Appends a button and returns it. A button with a block is an action
       # button: pressing it closes the dialog, then fires the block. A button
@@ -13361,11 +13796,6 @@ module Tuile
       # Re-measures the popup while open; a no-op tiled or before {#open}.
       def resize_popup: () -> void
 
-      # _@return_ — whatever {#message=} was
-      # given — set a `String`, read that `String` back. The component
-      # rendering it is derived, never returned.
-      attr_accessor message: (String | StyledString | Component)?
-
       # What {#on_dismiss} fires.
       # 
       # @!attribute [r] source
@@ -13509,7 +13939,7 @@ module Tuile
       # 
       # The list is built on first read, so no mixin has to remember a
       # constructor line — which means in-class code goes through the reader and
-      # never touches `@on_foo`, nil until somebody asks.
+      # never touches `@_on_foo`, nil until somebody asks.
       # 
       # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
       # 
@@ -13566,8 +13996,31 @@ module Tuile
 
       def initialize: () -> void
 
+      # _@return_ — the glyph painted per character; `"*"` by default.
+      def mask_char: () -> String
+
+      # The default is `"*"` rather than a prettier `"•"` because U+2022 is
+      # East-Asian-*Ambiguous*: a CJK-configured terminal draws it two columns
+      # wide, shifting every column past the caret. Validation can't catch that
+      # one — Tuile measures Ambiguous as 1 by construction — so the default
+      # carries it, and this setter is the knob for someone who knows their
+      # terminal.
+      # 
+      # _@param_ `char` — one grapheme cluster, one column wide.
+      def mask_char=: (String char) -> void
+
+      # _@return_ — whether the plaintext is shown; `false` by default.
+      def revealed: () -> bool
+
       # _@return_ — {#revealed} in predicate form.
       def revealed?: () -> bool
+
+      # Shows or re-masks the plaintext. There is no built-in reveal *button* —
+      # a TTY field has no room for an in-field affordance — so an app flips
+      # this from a key binding or a sibling {Checkbox}.
+      # 
+      # _@param_ `flag` — anything; truthiness decides.
+      def revealed=: (Object flag) -> void
 
       # _@return_ — the mask, one glyph per character, unless {#revealed}.
       def display_text: () -> String
@@ -13577,12 +14030,6 @@ module Tuile
 
       # _@return_ — caret target for CTRL+RIGHT: the end, while masked.
       def word_right: () -> Integer
-
-      # _@return_ — the glyph painted per character; `"*"` by default.
-      attr_accessor mask_char: String
-
-      # _@return_ — whether the plaintext is shown; `false` by default.
-      attr_accessor revealed: (bool | Object)
     end
 
     # A one-row field pairing a {DateField} and a {TimeField} behind a single
@@ -13688,6 +14135,12 @@ module Tuile
       ALIGNMENTS: ::Array[Symbol]
 
       def initialize: () -> void
+
+      # _@return_ — the left half; tune it, never replace it.
+      def date_field: () -> DateField
+
+      # _@return_ — the right half; tune it, never replace it.
+      def time_field: () -> TimeField
 
       # _@return_ — the two halves assembled, on the calendar
       # {DateField#calendar_start} parsed the date in; `nil` unless both parse.
@@ -13803,7 +14256,7 @@ module Tuile
       def handle_editor_change: () -> void
 
       # Fires {#on_bad_input_change} when the showable report has really
-      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # changed — the sole writer of `@_last_bad_input`, called from wherever an
       # input of that expression moves.
       def sync_bad_input: () -> void
 
@@ -13854,12 +14307,6 @@ module Tuile
       # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       def focusable?: () -> bool
-
-      # _@return_ — the left half; tune it, never replace it.
-      attr_reader date_field: DateField
-
-      # _@return_ — the right half; tune it, never replace it.
-      attr_reader time_field: TimeField
     end
 
     # The hint a field paints in its own cells while it holds nothing — a format
@@ -14084,7 +14531,7 @@ module Tuile
       def handle_editor_change: () -> void
 
       # Fires {#on_bad_input_change} when the showable report has really
-      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # changed — the sole writer of `@_last_bad_input`, called from wherever an
       # input of that expression moves.
       def sync_bad_input: () -> void
 
@@ -14166,6 +14613,27 @@ module Tuile
     # handlers on the owner, and why the handle sits where it does, are
     # `D_draggable_scrollbar`.
     class VerticalScrollBar < Component
+      # The glyph drawn where the handle covers a row, `█` by default. Set
+      # the pair at startup for a lazygit-style bar:
+      # 
+      #   Tuile::Component::VerticalScrollBar.handle_char = "▐"
+      #   Tuile::Component::VerticalScrollBar.track_char  = "│"
+      # 
+      # Process-global, and assigning invalidates nothing — a change after
+      # the first paint shows up only where something repaints anyway. Why
+      # app-global rather than per instance is `D_scrollbar_ink`.
+      def self.handle_char: () -> String
+
+      # The glyph drawn on the rows the handle doesn't cover, `░` by
+      # default — and on every row when nothing scrolls ({#repaint}).
+      def self.track_char: () -> String
+
+      # _@param_ `char`
+      def self.handle_char=: (String char) -> String
+
+      # _@param_ `char` — see {handle_char=}.
+      def self.track_char=: (String char) -> String
+
       # Fired with a {ScrollRequestEvent} when a drag or a track press asks
       # for a row other than the current one — never from {#scroll_top_row=},
       # so an owner assigning the row it was just handed loops nothing.
@@ -14178,6 +14646,22 @@ module Tuile
       # 
       # _@param_ `scroll_top_row` — see {#scroll_top_row=}.
       def initialize: (?row_count: Integer, ?scroll_top_row: Integer) -> void
+
+      # _@return_ — how many rows of content the bar stands for.
+      def row_count: () -> Integer
+
+      # _@return_ — the content row currently at the top of the viewport.
+      def scroll_top_row: () -> Integer
+
+      # _@param_ `count` — `>= 0`.
+      def row_count=: (Integer count) -> void
+
+      # Not clamped against {#row_count} — the owner's scroll state is
+      # authoritative, and a bar that silently disagreed with it would paint a
+      # handle where the content is not.
+      # 
+      # _@param_ `row` — `>= 0`.
+      def scroll_top_row=: (Integer row) -> void
 
       # _@return_ — whether there is content out of view — `false` also
       # for an empty rect, and what {#repaint} asks before drawing a handle.
@@ -14252,33 +14736,6 @@ module Tuile
       # _@return_ — `rows`.
       def validate_rows: (Integer rows, Symbol name) -> Integer
 
-      # The glyph drawn where the handle covers a row, `█` by default. Set
-      # the pair at startup for a lazygit-style bar:
-      # 
-      #   Tuile::Component::VerticalScrollBar.handle_char = "▐"
-      #   Tuile::Component::VerticalScrollBar.track_char  = "│"
-      # 
-      # Process-global, and assigning invalidates nothing — a change after
-      # the first paint shows up only where something repaints anyway. Why
-      # app-global rather than per instance is `D_scrollbar_ink`.
-      def self.handle_char: () -> String
-
-      # _@param_ `char`
-      def self.handle_char=: (String value) -> String
-
-      # The glyph drawn on the rows the handle doesn't cover, `░` by
-      # default — and on every row when nothing scrolls ({#repaint}).
-      def self.track_char: () -> String
-
-      # _@param_ `char` — see {handle_char=}.
-      def self.track_char=: (String value) -> String
-
-      # _@return_ — how many rows of content the bar stands for.
-      attr_accessor row_count: Integer
-
-      # _@return_ — the content row currently at the top of the viewport.
-      attr_accessor scroll_top_row: Integer
-
       # What {#on_scroll_request} fires.
       # 
       # @!attribute [r] source
@@ -14351,7 +14808,7 @@ module Tuile
     # 
     #     # Hex digits only — and a paste of "12zz" lands nothing, not "12".
     #     def insert_text(str)
-    #       return false unless @text.dup.insert(@caret, str).match?(/\A\h*\z/)
+    #       return false unless text.dup.insert(caret, str).match?(/\A\h*\z/)
     # 
     #       super
     #     end
@@ -14385,6 +14842,9 @@ module Tuile
 
       def initialize: () -> void
 
+      # _@return_ — current text contents.
+      def text: () -> String
+
       # A text component's value *is* its text: {#value} reads the same buffer
       # as {#text}, and {#set_value} is its one writer.
       def value: () -> String
@@ -14412,6 +14872,10 @@ module Tuile
       # `""` (not `nil`): a text field is empty when its buffer is blank.
       def empty_value: () -> String
 
+      # _@return_ — caret index in `0..text.length`, counting characters
+      # and always on a grapheme-cluster boundary (see the class doc).
+      def caret: () -> Integer
+
       # Fired with an {EscapeEvent} when ESC is pressed, after
       # {#escape_clears_focus} has had its say. Append to react as well as
       # blur; turn that flag off first to react *instead*:
@@ -14425,7 +14889,25 @@ module Tuile
       # screen's ESC-to-quit.
       def on_escape: () -> Listeners
 
+      # Whether ESC clears focus (`true` by default), so text entry visibly
+      # cancels instead of quitting the app. It runs before {#on_escape} fires,
+      # and it — not a listener an app must remove by identity — is the whole
+      # representation of the default, so turning it off is the one way to give
+      # ESC another meaning. See `D_escape_opt_out`.
+      def escape_clears_focus: () -> bool
+
+      # _@param_ `value`
+      def escape_clears_focus=: (bool value) -> void
+
       def tab_stop?: () -> bool
+
+      # Clamps to `0..text.length`, then snaps forward onto a grapheme-cluster
+      # boundary, so an index that fell inside a cluster reads back as that
+      # cluster's end. Fires the {#handle_caret_mutated} hook for subclasses (e.g.
+      # {TextArea} scrolls).
+      # 
+      # _@param_ `new_caret`
+      def caret=: (Integer new_caret) -> void
 
       # Handles a key, by delegating to the {#handle_text_input_key?} hook a
       # subclass overrides. Dispatch ({ScreenPane#handle_key?}) only routes keys
@@ -14460,7 +14942,7 @@ module Tuile
       # by overriding this, and one override covers typing and pasting both:
       # 
       #   def insert_text(str)      # hex digits only, in a TextField subclass
-      #     return false unless @text.dup.insert(@caret, str).match?(/\A\h*\z/)
+      #     return false unless text.dup.insert(caret, str).match?(/\A\h*\z/)
       # 
       #     super
       #   end
@@ -14719,20 +15201,6 @@ module Tuile
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
 
-      # _@return_ — current text contents.
-      attr_reader text: String
-
-      # _@return_ — caret index in `0..text.length`, counting characters
-      # and always on a grapheme-cluster boundary (see the class doc).
-      attr_accessor caret: Integer
-
-      # Whether ESC clears focus (`true` by default), so text entry visibly
-      # cancels instead of quitting the app. It runs before {#on_escape} fires,
-      # and it — not a listener an app must remove by identity — is the whole
-      # representation of the default, so turning it off is the one way to give
-      # ESC another meaning. See `D_escape_opt_out`.
-      attr_accessor escape_clears_focus: bool
-
       # What {#on_escape} fires.
       # 
       # @!attribute [r] source
@@ -14896,7 +15364,7 @@ module Tuile
     # 
     # == Implementation details
     # - **{HasValue#value} and {#set_value} raise until overridden.** The inherited
-    #   pair stores into `@value` and never touches the editor, so a subclass
+    #   pair stores into `@_value` and never touches the editor, so a subclass
     #   that defined only one would silently half-work.
     # - **{HasValue#empty_value} is called during construction**, to seed the
     #   change guard, so it must not depend on subclass state that `super` has
@@ -14976,6 +15444,9 @@ module Tuile
       def active=: (bool flag) -> void
 
       def handle_focus: () -> void
+
+      # _@return_ — the wrapped editor.
+      def editor: () -> AbstractStringField
 
       # Called on a commit gesture — the field leaving the focus chain, or
       # ENTER; no-op by default. This is the commit point a canonicalizing
@@ -15108,9 +15579,6 @@ module Tuile
       # {HasBadInput} widens it: a field holding input its value cannot
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
-
-      # _@return_ — the wrapped editor.
-      attr_reader editor: AbstractStringField
 
       # What {#on_enter} fires.
       # 
@@ -15279,7 +15747,7 @@ module Tuile
       # 
       # The list is built on first read, so no mixin has to remember a
       # constructor line — which means in-class code goes through the reader and
-      # never touches `@on_foo`, nil until somebody asks.
+      # never touches `@_on_foo`, nil until somebody asks.
       # 
       # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
       # 
@@ -15348,7 +15816,7 @@ module Tuile
     def self.default: () -> ThemeDef
 
     # _@param_ `theme_def`
-    def self.default=: (ThemeDef value) -> ThemeDef
+    def self.default=: (ThemeDef theme_def) -> void
 
     # The theme applied on dark terminal backgrounds.
     attr_reader dark: Theme
@@ -15762,6 +16230,12 @@ module Tuile
     # _@param_ `height` — the terminal's rows.
     def initialize: (?width: Integer, ?height: Integer) -> void
 
+    # _@return_ — whatever {#print} / {#emit} produced so far.
+    # Component painting lands in {#buffer}, not here — assert on
+    # {Buffer#row_text} / {Buffer#row_ansi} / {Buffer#cell} for content, and
+    # on `prints` for cursor and housekeeping escapes.
+    def prints: () -> ::Array[String]
+
     def clear: () -> void
 
     # Doesn't print anything: collects all strings in {#prints}.
@@ -15957,12 +16431,6 @@ module Tuile
     # detection assigns {Screen#locale=} or calls {Locale.from_keywords} with
     # canned answers.
     def detect_locale: () -> Locale
-
-    # _@return_ — whatever {#print} / {#emit} produced so far.
-    # Component painting lands in {#buffer}, not here — assert on
-    # {Buffer#row_text} / {Buffer#row_ansi} / {Buffer#cell} for content, and
-    # on `prints` for cursor and housekeeping escapes.
-    attr_reader prints: ::Array[String]
   end
 
   # Binds form fields to a model's attributes, with validation. Abstract;
@@ -16052,6 +16520,9 @@ module Tuile
     # field red.
     # @api private
     class Engine
+      # _@return_ — in `bind` order.
+      def pipelines: () -> ::Array[FormSyncer::Pipeline]
+
       def initialize: () ?{ (FormSyncer::Pipeline pipeline, bool edit) -> void } -> void
 
       # _@param_ `field`
@@ -16152,9 +16623,6 @@ module Tuile
       # 
       # _@param_ `message`
       def blame: (Object model, Symbol? attr, String message) -> void
-
-      # _@return_ — in `bind` order.
-      attr_reader pipelines: ::Array[FormSyncer::Pipeline]
     end
 
     # Binds fields to a model and writes them back only on Save, and only when
@@ -16263,6 +16731,13 @@ module Tuile
     # written. Bad input blocks even an optional field: optional means "may be
     # empty", not "may be garbage".
     class Pipeline
+      # _@return_ — the bound field.
+      def field: () -> Component::HasValue
+
+      # _@return_ — the model attribute, and this pipeline's key in the
+      # verdict map.
+      def attr: () -> Symbol
+
       # _@param_ `field`
       # 
       # _@param_ `attr`
@@ -16336,13 +16811,6 @@ module Tuile
       # _@param_ `message`
       def check_message: (Object message) -> void
 
-      # _@return_ — the bound field.
-      attr_reader field: Component::HasValue
-
-      # _@return_ — the model attribute, and this pipeline's key in the
-      # verdict map.
-      attr_reader attr: Symbol
-
       # The result of one {#run}: `failure` is `nil` on a pass, and `bad_input`
       # says the failure is the field's own report rather than a verdict.
       # @api private
@@ -16404,7 +16872,17 @@ module Tuile
     # through the model and its setters. A Save the user reaches takes focus,
     # which announces the field being left, so the model has it by then.
     class Unbuffered < FormSyncer
+      # _@return_ — the model edits write into.
+      def model: () -> Object?
+
       def initialize: () -> void
+
+      # Shows `model` in the fields, and writes each valid edit into it from now
+      # on. `nil` clears the fields: they still validate, and nothing is written.
+      # Recomputes {#last_validation}, showing no verdict.
+      # 
+      # _@param_ `model`
+      def model=: (Object? model) -> void
 
       # Runs every pipeline and every model validator, showing every verdict,
       # and writes nothing.
@@ -16419,9 +16897,6 @@ module Tuile
       # 
       # _@param_ `edit`
       def edited: (FormSyncer::Pipeline pipeline, bool edit) -> void
-
-      # _@return_ — the model edits write into.
-      attr_accessor model: Object?
     end
 
     # What {Buffered#write!} raises when the write was refused — bad
@@ -16431,12 +16906,12 @@ module Tuile
     # rescue FormSyncer::ValidationError => e
     #   e.failures   # => {name: [#<data ValidationFailure message="Name is required" …>]}
     class ValidationError < Tuile::Error
-      # _@param_ `failures`
-      def initialize: (::Hash[Symbol?, ::Array[ValidationFailure]] failures) -> void
-
       # _@return_ — the frozen
       # verdict map, {FormSyncer#last_validation} at the time of the raise.
-      attr_reader failures: ::Hash[Symbol?, ::Array[ValidationFailure]]
+      def failures: () -> ::Hash[Symbol?, ::Array[ValidationFailure]]
+
+      # _@param_ `failures`
+      def initialize: (::Hash[Symbol?, ::Array[ValidationFailure]] failures) -> void
     end
 
     # One entry of a form syncer's verdict map, `{attr => [ValidationFailure]}`:
@@ -16665,7 +17140,23 @@ module Tuile
   class ScreenPane < Tuile::Component
     def initialize: () -> void
 
+    # _@return_ — the tiled content component.
+    def content: () -> Component?
+
+    # _@return_ — the open overlays in stacking order;
+    # last is topmost. Holds both {Component::Popup} modals and bare
+    # {Component::Overlay}s ({Component::Overlay#modal?}). The array must not
+    # be mutated by callers.
+    def popups: () -> ::Array[Component::Overlay]
+
     def focusable?: () -> bool
+
+    # Replaces the tiled content. Wipes focus first (the new tree starts
+    # fresh), detaches the old content, then attaches the new one and
+    # re-lays out.
+    # 
+    # _@param_ `content`
+    def content=: (Component content) -> void
 
     # Adds an overlay at `placement` and invalidates it for repaint; the next
     # settle gives it its rect. A {Component::Popup} grabs focus; a bare
@@ -16712,7 +17203,7 @@ module Tuile
     # Deliberately not named `close` ({Component::Popup#close} already means
     # "remove *me* from the pane"), and deliberately not a generic
     # `Component#remove_all_children`: a slot container calling that would empty
-    # `@children` while `#content` / `#footer` still pointed at detached
+    # `@_children` while `#content` / `#footer` still pointed at detached
     # components, which is the desync the tree API exists to prevent.
     def detach_all: () -> void
 
@@ -16822,7 +17313,7 @@ module Tuile
     #   dismissed by clicking the Select.
     # 
     # The snapshot is a fresh array for a third reason: a handler may close
-    # further popups, and `@popups` must not be mutated mid-iteration.
+    # further popups, and `@_popups` must not be mutated mid-iteration.
     # 
     # _@param_ `point`
     # 
@@ -16930,15 +17421,6 @@ module Tuile
     # 
     # _@param_ `root`
     def first_tab_stop_or_root: (Component? root) -> Component?
-
-    # _@return_ — the tiled content component.
-    attr_accessor content: Component?
-
-    # _@return_ — the open overlays in stacking order;
-    # last is topmost. Holds both {Component::Popup} modals and bare
-    # {Component::Overlay}s ({Component::Overlay#modal?}). The array must not
-    # be mutated by callers.
-    attr_reader popups: ::Array[Component::Overlay]
   end
 
   # The stale-rect diagnostic: a {Component#rect} read taken while an ancestor
@@ -17096,6 +17578,10 @@ module Tuile
     # 
     # _@return_ — `char`, frozen.
     def self.validate_glyph: (String char, (Symbol | String) name) -> String
+
+    # _@return_ — the frozen, normalized span list — no empty-text
+    # entries, no two adjacent entries sharing a style.
+    def spans: () -> ::Array[Span]
 
     # _@param_ `spans`
     def initialize: (?::Array[Span] spans) -> void
@@ -17396,10 +17882,6 @@ module Tuile
     # _@param_ `len_col`
     def slice_text_by_columns: (String text, Integer start_col, Integer len_col) -> String
 
-    # _@return_ — the frozen, normalized span list — no empty-text
-    # entries, no two adjacent entries sharing a style.
-    attr_reader spans: ::Array[Span]
-
     # Raised by {.parse} on malformed or unsupported escape sequences.
     class ParseError < Tuile::Error
     end
@@ -17636,6 +18118,20 @@ module Tuile
 
     def initialize: () -> void
 
+    # Lets a spec assert that a component started a ticker, and — via
+    # {FakeTicker#cancelled?} — that it cancelled one rather than merely
+    # dropping it. Cancelled tickers stay here until the next {#tick_once}
+    # prunes them.
+    # 
+    # _@return_ — the registered tickers, in creation order.
+    def tickers: () -> ::Array[FakeTicker]
+
+    # The {#after} counterpart of {#tickers}: every timer scheduled since the
+    # last {#fire_timers}, cancelled or not.
+    # 
+    # _@return_ — in creation order.
+    def timers: () -> ::Array[FakeTimer]
+
     # _@return_ — always false — {#run_loop} raises, so no loop ever runs.
     def running?: () -> bool
 
@@ -17710,20 +18206,6 @@ module Tuile
     # A timer scheduled by a block that runs here waits for the next call. Fires
     # directly, as {#tick_once} does and for the same reason.
     def fire_timers: () -> void
-
-    # Lets a spec assert that a component started a ticker, and — via
-    # {FakeTicker#cancelled?} — that it cancelled one rather than merely
-    # dropping it. Cancelled tickers stay here until the next {#tick_once}
-    # prunes them.
-    # 
-    # _@return_ — the registered tickers, in creation order.
-    attr_reader tickers: ::Array[FakeTicker]
-
-    # The {#after} counterpart of {#tickers}: every timer scheduled since the
-    # last {#fire_timers}, cancelled or not.
-    # 
-    # _@return_ — in creation order.
-    attr_reader timers: ::Array[FakeTimer]
 
     # Handle returned by {FakeEventQueue#tick}. Mirrors the public surface of
     # {EventQueue::Ticker} (`cancel`, `cancelled?`) but does not auto-fire —
@@ -17941,6 +18423,37 @@ module Tuile
     # _@param_ `owner` — whose background this is.
     def initialize: (Component owner) -> void
 
+    # _@return_ — the app's background — the value as set, so a {Theme::Ref} comes back
+    # unresolved and a state map comes back a Hash; `nil` when unset.
+    def color: () -> (Color | Theme::Ref | ::Hash[Symbol, (Color | Theme::Ref)] | Symbol)?
+
+    # Tints the owner and every descendant that doesn't state its own, and
+    # invalidates that subtree. See {Component#bg_color=}, its public face.
+    # 
+    # _@param_ `value`
+    def color=: ((Color | Theme::Ref | ::Hash[untyped, untyped] | Symbol | Integer | ::Array[Integer])? value) -> void
+
+    # _@return_ — the
+    # widget's own surface — `nil` by default, meaning "whatever is behind me
+    # shows through".
+    def default_color: () -> (Color | Theme::Ref | ::Hash[Symbol, (Color | Theme::Ref)])?
+
+    # States the opaque surface a widget paints when the app has set no
+    # {#color} — and inheritance stops there, which is what keeps a form's
+    # fields looking like fields inside a tinted panel. Set it unconditionally,
+    # at construction: a widget owned by a bigger one is told so with
+    # {INHERIT}, and must not work it out from where it sits in the tree.
+    # 
+    #   bg.default_color = ComponentBackground::INPUT_WELL             # the field well
+    #   bg.default_color = { normal: Theme.ref(:panel_bg), active: … } # an app widget's
+    # 
+    # **Hand it a {Theme::Ref}, never `screen.theme.input_bg_color`** — a
+    # resolved {Color} is a cached token and strands on the old scheme after a
+    # {Screen#theme=}, with nothing raising.
+    # 
+    # _@param_ `value`
+    def default_color=: ((Color | Theme::Ref | ::Hash[untyped, untyped] | Symbol | Integer | ::Array[Integer])? value) -> void
+
     # _@return_ — the background actually painted, for the state the
     # owner is in right now — the whole chain, resolved. {Screen#canvas_for}
     # loads it onto the canvas; an app never needs it.
@@ -17969,14 +18482,5 @@ module Tuile
     # 
     # _@param_ `value`
     def coerce: (Object value) -> (Color | Theme::Ref | ::Hash[untyped, untyped] | Symbol)?
-
-    # _@return_ — the app's background — the value as set, so a {Theme::Ref} comes back
-    # unresolved and a state map comes back a Hash; `nil` when unset.
-    attr_accessor color: (Color | Theme::Ref | ::Hash[Symbol, (Color | Theme::Ref)] | Symbol | ::Hash[untyped, untyped] | Integer | ::Array[Integer])?
-
-    # _@return_ — the
-    # widget's own surface — `nil` by default, meaning "whatever is behind me
-    # shows through".
-    attr_accessor default_color: (Color | Theme::Ref | ::Hash[Symbol, (Color | Theme::Ref)] | ::Hash[untyped, untyped] | Symbol | Integer | ::Array[Integer])?
   end
 end

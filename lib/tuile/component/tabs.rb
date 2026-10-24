@@ -77,15 +77,15 @@ module Tuile
         # @param strip [Tabs] the owning strip.
         # @param caption [StyledString] already coerced by the caller.
         def initialize(strip, caption)
-          @strip = strip
-          @caption = caption
+          @_strip = strip
+          @_caption = caption
         end
 
         private_class_method :new
 
         # @return [StyledString] the label painted on the strip. Safe to read on
         #   a removed tab.
-        attr_reader :caption
+        def caption = @_caption
 
         # Sets the caption and repaints the strip; no-op when unchanged.
         #
@@ -98,21 +98,21 @@ module Tuile
         def caption=(new_caption)
           check_attached
           new_caption = StyledString.parse(new_caption)
-          return if @caption == new_caption
+          return if @_caption == new_caption
 
-          @caption = new_caption
-          @strip.send(:refresh)
+          @_caption = new_caption
+          @_strip.send(:refresh)
         end
 
         # @return [Boolean] `true` while the tab is owned by its {Tabs}; `false`
         #   permanently once removed.
-        def attached? = !@strip.nil?
+        def attached? = !@_strip.nil?
 
         # @return [Boolean] whether this is the strip's selected tab.
         # @raise [RuntimeError] when the tab has been removed.
         def selected?
           check_attached
-          @strip.selected.equal?(self)
+          @_strip.selected.equal?(self)
         end
 
         # Removes this tab from its strip and detaches the handle permanently —
@@ -122,7 +122,7 @@ module Tuile
         def remove
           return unless attached?
 
-          @strip.remove_tab(self)
+          @_strip.remove_tab(self)
         end
 
         # @return [String]
@@ -132,7 +132,7 @@ module Tuile
 
         # @return [void]
         def detach
-          @strip = nil
+          @_strip = nil
         end
 
         # @raise [RuntimeError] when the tab has been removed.
@@ -174,9 +174,9 @@ module Tuile
       # @param separator [String, StyledString] see {#separator=}.
       def initialize(separator: DEFAULT_SEPARATOR)
         super()
-        @tabs = []
-        @selected_index = nil
-        @left_column = 0
+        @_tabs = []
+        @_selected_index = nil
+        @_left_column = 0
         self.separator = separator
       end
 
@@ -190,10 +190,10 @@ module Tuile
       #   (like {Component#children}) — grow and shrink it through {#add_tab} /
       #   {#remove_tab}, which keep the selection consistent. Enumerate it to
       #   find a tab: `tabs.find { |t| t.caption.to_s == "Payment" }`.
-      attr_reader :tabs
+      def tabs = @_tabs
 
       # @return [StyledString] the column painted between two segments.
-      attr_reader :separator
+      def separator = @_separator
 
       # @param new_separator [String, StyledString] e.g. ASCII `"|"` for a
       #   terminal that renders `│` badly. Both the paint and the hit test
@@ -204,18 +204,18 @@ module Tuile
       def separator=(new_separator)
         new_separator = StyledString.parse(new_separator)
         raise ArgumentError, "separator must not be empty" if new_separator.empty?
-        return if @separator == new_separator
+        return if @_separator == new_separator
 
-        @separator = new_separator
+        @_separator = new_separator
         refresh
       end
 
       # @return [Tab, nil] the selected tab; `nil` only while there are no tabs.
-      def selected = @selected_index && @tabs[@selected_index]
+      def selected = @_selected_index && @_tabs[@_selected_index]
 
       # @return [Integer, nil] the selected tab's position; `nil` only while
       #   there are no tabs.
-      attr_reader :selected_index
+      def selected_index = @_selected_index
 
       # @param tab [Tab] one of this strip's tabs.
       # @raise [ArgumentError] when the tab isn't on this strip (a removed one
@@ -235,8 +235,8 @@ module Tuile
       # @return [void]
       def selected_index=(index)
         raise TypeError, "expected Integer, got #{index.inspect}" unless index.is_a?(Integer)
-        unless (0...@tabs.size).cover?(index)
-          raise ArgumentError, "index #{index} out of range for #{@tabs.size} tab(s)"
+        unless (0...@_tabs.size).cover?(index)
+          raise ArgumentError, "index #{index} out of range for #{@_tabs.size} tab(s)"
         end
 
         select_at(index)
@@ -249,8 +249,8 @@ module Tuile
       # @return [Tab]
       def add_tab(caption = nil)
         tab = Tab.send(:new, self, StyledString.parse(caption))
-        @tabs << tab
-        @selected_index.nil? ? select_at(0) : refresh
+        @_tabs << tab
+        @_selected_index.nil? ? select_at(0) : refresh
         tab
       end
 
@@ -267,7 +267,7 @@ module Tuile
       def remove_tab(tab)
         index = index_of!(tab)
         previous = selected
-        @tabs.delete_at(index)
+        @_tabs.delete_at(index)
         tab.send(:detach)
         apply_selection(selection_after_removing(index), previous)
       end
@@ -294,7 +294,7 @@ module Tuile
       def extent
         return Size.new(0, 1) if rect.empty?
 
-        Size.new([painted_width - @left_column, rect.width].min, 1)
+        Size.new([painted_width - @_left_column, rect.width].min, 1)
       end
 
       # @return [String]
@@ -330,7 +330,7 @@ module Tuile
         super
         return if rect.empty?
 
-        row = strip_row.slice(@left_column, rect.width)
+        row = strip_row.slice(@_left_column, rect.width)
         canvas.set_text(0, 0, row)
         draw_cues(canvas, row)
       end
@@ -340,7 +340,7 @@ module Tuile
       # @return [Integer] the strip column painted in {#rect}'s leftmost cell —
       #   the horizontal scroll offset. `0` unless the strip overflows its rect;
       #   {#adjust_left_column} is its sole writer.
-      attr_reader :left_column
+      def left_column = @_left_column
 
       # Re-syncs the scroll offset and repaints — what every change to the
       # captions, the separator or the selection ends in.
@@ -366,19 +366,19 @@ module Tuile
       # being the half of a caption that identifies it.
       # @return [void]
       def adjust_left_column
-        if rect.empty? || painted_width <= rect.width || @selected_index.nil?
-          @left_column = 0
+        if rect.empty? || painted_width <= rect.width || @_selected_index.nil?
+          @_left_column = 0
           return
         end
 
-        _tab, start, width = segments[@selected_index]
+        _tab, start, width = segments[@_selected_index]
         if width >= rect.width
-          @left_column = start
+          @_left_column = start
         else
-          @left_column = start if start < @left_column
-          @left_column = start + width - rect.width if start + width > @left_column + rect.width
+          @_left_column = start if start < @_left_column
+          @_left_column = start + width - rect.width if start + width > @_left_column + rect.width
         end
-        @left_column = snap_to_glyph_start(@left_column.clamp(0, painted_width - rect.width))
+        @_left_column = snap_to_glyph_start(@_left_column.clamp(0, painted_width - rect.width))
       end
 
       # {StyledString#slice} *drops* a cluster straddling the window's edge
@@ -409,8 +409,8 @@ module Tuile
       # @param row [StyledString] the windowed row, as painted.
       # @return [void]
       def draw_cues(canvas, row)
-        draw_cue(canvas, row, 0, "<") if @left_column.positive?
-        draw_cue(canvas, row, rect.width - 1, ">") if @left_column + rect.width < painted_width
+        draw_cue(canvas, row, 0, "<") if @_left_column.positive?
+        draw_cue(canvas, row, rect.width - 1, ">") if @_left_column + rect.width < painted_width
       end
 
       # The cue keeps the style of the cell it covers, so one landing on the
@@ -433,7 +433,7 @@ module Tuile
       # @return [Array<Array(Tab, Integer, Integer)>]
       def segments
         column = 0
-        @tabs.each_with_index.map do |tab, index|
+        @_tabs.each_with_index.map do |tab, index|
           column += separator.display_width if index.positive?
           width = tab.caption.display_width + 2
           [tab, column, width].tap { column += width }
@@ -452,7 +452,7 @@ module Tuile
       def tab_at(point)
         return nil unless local_extent_rect.contains?(point)
 
-        column = point.x + @left_column
+        column = point.x + @_left_column
         found = segments.find { |_tab, start, width| column >= start && column < start + width }
         found&.first
       end
@@ -463,7 +463,7 @@ module Tuile
       #   {#adjust_left_column}'s.
       def strip_row
         row = StyledString::EMPTY
-        @tabs.each_with_index do |tab, index|
+        @_tabs.each_with_index do |tab, index|
           row += separator if index.positive?
           row += segment_text(tab, index)
         end
@@ -477,7 +477,7 @@ module Tuile
       def segment_text(tab, index)
         pad = StyledString.plain(" ")
         segment = pad + tab.caption + pad
-        return segment unless index == @selected_index
+        return segment unless index == @_selected_index
 
         segment = segment.with_bold
         active? ? segment.with_bg(screen.theme.active_bg_color) : segment
@@ -487,7 +487,7 @@ module Tuile
       # @return [Integer] the tab's position on this strip.
       # @raise [ArgumentError] when it isn't on this strip.
       def index_of!(tab)
-        index = @tabs.index { |candidate| candidate.equal?(tab) }
+        index = @_tabs.index { |candidate| candidate.equal?(tab) }
         raise ArgumentError, "not a tab of this strip: #{tab.inspect}" if index.nil?
 
         index
@@ -496,9 +496,9 @@ module Tuile
       # @param delta [Integer] `+1` / `-1`.
       # @return [Boolean] `false` only when there are no tabs.
       def step_selection(delta)
-        return false if @tabs.empty?
+        return false if @_tabs.empty?
 
-        select_at((@selected_index + delta).clamp(0, @tabs.size - 1))
+        select_at((@_selected_index + delta).clamp(0, @_tabs.size - 1))
         true
       end
 
@@ -519,24 +519,24 @@ module Tuile
       # @param previous [Tab, nil] the tab selected before the caller's change.
       # @return [void]
       def apply_selection(index, previous)
-        @selected_index = index
+        @_selected_index = index
         refresh
-        tab = index.nil? ? nil : @tabs[index]
+        tab = index.nil? ? nil : @_tabs[index]
         return if tab.equal?(previous)
 
         on_tab_selected.fire(TabSelectedEvent.new(source: self, index: index, tab: tab))
       end
 
-      # Called with `@tabs` already shortened and `@selected_index` still holding
+      # Called with `@_tabs` already shortened and `@_selected_index` still holding
       # the pre-removal position.
       # @param removed_index [Integer] the position the removed tab held.
       # @return [Integer, nil] where the selection lands.
       def selection_after_removing(removed_index)
-        return nil if @tabs.empty?
-        return @selected_index if removed_index > @selected_index
-        return @selected_index - 1 if removed_index < @selected_index
+        return nil if @_tabs.empty?
+        return @_selected_index if removed_index > @_selected_index
+        return @_selected_index - 1 if removed_index < @_selected_index
 
-        [removed_index, @tabs.size - 1].min
+        [removed_index, @_tabs.size - 1].min
       end
     end
   end

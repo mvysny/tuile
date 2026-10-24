@@ -17,8 +17,8 @@ module Tuile
     # Screen#handle_key? is the (private) key-dispatch entry the event loop
     # drives; poke it directly to simulate typing without a real loop.
     def key(code) = Screen.instance.send(:handle_key?, code)
-    def overlay(sel) = sel.instance_variable_get(:@overlay)
-    def menu(sel) = overlay(sel).instance_variable_get(:@list)
+    def overlay(sel) = sel.instance_variable_get(:@_overlay)
+    def menu(sel) = overlay(sel).instance_variable_get(:@_list)
 
     # The dropdown's *painted* rows: the list renders items lazily, so what it
     # shows can only be read off the buffer (and carries List's row gutters).

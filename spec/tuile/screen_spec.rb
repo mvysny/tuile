@@ -12,7 +12,7 @@ module Tuile
     def with_real_screen
       Screen.close # tear down the FakeScreen installed by the outer `before`
       real = Screen.new
-      real.instance_variable_set(:@event_queue, EventQueue.new(listen_for_keys: false))
+      real.instance_variable_set(:@_event_queue, EventQueue.new(listen_for_keys: false))
       real.define_singleton_method(:print) { |*_| } # don't pollute test stdout
       real.define_singleton_method(:emit) { |*_| }  # …nor with an assembled frame
       yield real

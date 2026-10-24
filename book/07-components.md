@@ -431,7 +431,7 @@ class HexField < Tuile::Component::TextField
   protected
 
   def insert_text(str)
-    super if @text.dup.insert(@caret, str).match?(/\A\h*\z/)
+    super if text.dup.insert(caret, str).match?(/\A\h*\z/)
   end
 end
 ```

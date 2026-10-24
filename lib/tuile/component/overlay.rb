@@ -163,9 +163,9 @@ module Tuile
       #   left click that misses this overlay. See {#close_on_outside_click?}.
       def initialize(content: nil, close_on_outside_click: true)
         super()
-        @close_on_outside_click = close_on_outside_click
-        @owner = nil
-        @content = nil
+        @_close_on_outside_click = close_on_outside_click
+        @_owner = nil
+        @_content = nil
         self.content = content unless content.nil?
       end
 
@@ -220,10 +220,13 @@ module Tuile
       # order plays no part: a {Component::MenuBar} cascade must vanish whole on
       # one click on the background, not peel one panel per click.
       # @return [Boolean]
-      def close_on_outside_click? = @close_on_outside_click
+      def close_on_outside_click? = @_close_on_outside_click
 
-      # @return [Boolean] see {#close_on_outside_click?}.
-      attr_writer :close_on_outside_click
+      # @param value [Boolean] see {#close_on_outside_click?}.
+      # @return [void]
+      def close_on_outside_click=(value)
+        @_close_on_outside_click = value
+      end
 
       # The component this overlay is *part of*, or `nil` (the default) when it
       # is an overlay in its own right. It exists for outside-click dismissal: a
@@ -239,7 +242,13 @@ module Tuile
       # {Component::MenuBar::Cascade} chains each panel to the one it dropped out
       # of.
       # @return [Component, nil]
-      attr_accessor :owner
+      def owner = @_owner
+
+      # @param value [Component, nil]
+      # @return [void]
+      def owner=(value)
+        @_owner = value
+      end
 
       # What {#on_close} fires.
       #

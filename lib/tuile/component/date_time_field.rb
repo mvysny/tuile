@@ -124,15 +124,15 @@ module Tuile
 
       def initialize
         super(spacing: 1)
-        @date_field = DateField.new
-        @time_field = TimeField.new
-        @last_value = empty_value
-        @applying = false
+        @_date_field = DateField.new
+        @_time_field = TimeField.new
+        @_last_value = empty_value
+        @_applying = false
         # cross: Fixed[1] is load-bearing — neither half declares an extent, so
         # one handed a three-row rect paints a three-row well.
-        add(@date_field, Expand[DATE_WEIGHT], cross: Fixed[1])
-        add(@time_field, Expand[TIME_WEIGHT], cross: Fixed[1])
-        [@date_field, @time_field].each do |half|
+        add(@_date_field, Expand[DATE_WEIGHT], cross: Fixed[1])
+        add(@_time_field, Expand[TIME_WEIGHT], cross: Fixed[1])
+        [@_date_field, @_time_field].each do |half|
           half.on_value_change { |e| handle_half_change(from_user: e.from_user?) }
           # A half's report moves without its value — garbage and an empty
           # buffer both read `nil` — and this field relays it. The report
@@ -143,10 +143,10 @@ module Tuile
       end
 
       # @return [DateField] the left half; tune it, never replace it.
-      attr_reader :date_field
+      def date_field = @_date_field
 
       # @return [TimeField] the right half; tune it, never replace it.
-      attr_reader :time_field
+      def time_field = @_time_field
 
       # @return [DateTime, nil] the two halves assembled, on the calendar
       #   {DateField#calendar_start} parsed the date in; `nil` unless both parse.
@@ -283,7 +283,7 @@ module Tuile
       # @return [void]
       def handle_half_change(from_user:)
         sync_half_wells
-        return if @applying
+        return if @_applying
 
         sync_bad_input
         fire_if_changed(from_user:)
@@ -292,26 +292,26 @@ module Tuile
       # @return [void]
       def handle_half_report_change
         sync_half_wells
-        sync_bad_input unless @applying
+        sync_bad_input unless @_applying
       end
 
       # Runs `block` with the halves' notices suppressed, so a value written
       # into both is announced once rather than half-assembled.
       # @return [void]
       def applying
-        @applying = true
+        @_applying = true
         yield
       ensure
-        @applying = false
+        @_applying = false
       end
 
       # @param from_user [Boolean]
       # @return [void]
       def fire_if_changed(from_user:)
         v = value
-        return if v == @last_value
+        return if v == @_last_value
 
-        @last_value = v
+        @_last_value = v
         on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: v, from_user:))
       end
     end

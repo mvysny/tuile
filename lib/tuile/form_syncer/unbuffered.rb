@@ -47,12 +47,12 @@ module Tuile
     # which announces the field being left, so the model has it by then.
     class Unbuffered < FormSyncer
       # @return [Object, nil] the model edits write into.
-      attr_reader :model
+      def model = @_model
 
       def initialize
         super { |pipeline, edit| edited(pipeline, edit) }
-        @model = nil
-        @changed = Set.new
+        @_model = nil
+        @_changed = Set.new
       end
 
       # Shows `model` in the fields, and writes each valid edit into it from now
@@ -60,35 +60,36 @@ module Tuile
       # Recomputes {#last_validation}, showing no verdict.
       # @param model [Object, nil]
       # @raise [ArgumentError] when a converter's `to_value` rejects the stored value.
+      # @return [void]
       def model=(model)
-        @model = model
-        @changed.clear
-        @engine.populate(model)
-        @engine.run(@engine.pipelines, model:, write: [], keep: false, show: [])
+        @_model = model
+        @_changed.clear
+        @_engine.populate(model)
+        @_engine.run(@_engine.pipelines, model:, write: [], keep: false, show: [])
       end
 
       # Runs every pipeline and every model validator, showing every verdict,
       # and writes nothing.
       # @return [Hash{Symbol, nil => Array<ValidationFailure>}] {#last_validation}.
       def validate
-        @engine.run(@engine.pipelines, model: @model, write: pending, keep: false, show: :all)
+        @_engine.run(@_engine.pipelines, model: @_model, write: pending, keep: false, show: :all)
         last_validation
       end
 
       private
 
       # @return [Array<FormSyncer::Pipeline>] the pipelines edited and not yet written.
-      def pending = @engine.pipelines.select { @changed.include?(_1.attr) }
+      def pending = @_engine.pipelines.select { @_changed.include?(_1.attr) }
 
       # @param pipeline [FormSyncer::Pipeline]
       # @param edit [Boolean]
       # @return [void]
       def edited(pipeline, edit)
-        @changed << pipeline.attr if edit
+        @_changed << pipeline.attr if edit
         set = pending
         set << pipeline unless set.include?(pipeline)
-        kept = @engine.run(set, model: @model, write: set, keep: true, show: [pipeline.attr], partial: true)
-        @changed.subtract(set.select { @engine.passed?(_1) }.map(&:attr)) if kept
+        kept = @_engine.run(set, model: @_model, write: set, keep: true, show: [pipeline.attr], partial: true)
+        @_changed.subtract(set.select { @_engine.passed?(_1) }.map(&:attr)) if kept
       end
     end
   end

@@ -23,12 +23,15 @@ module Tuile
     # silent unless the host app opts in via `Tuile.logger = ...`. Any object
     # duck-typing the stdlib `Logger` interface (`debug/info/warn/error/fatal`
     # taking a string) works — including `TTY::Logger`.
-    # @return [Logger]
-    attr_writer :logger
+    # @param value [Logger]
+    # @return [void]
+    def logger=(value)
+      @_logger = value
+    end
 
     # @return [Logger]
     def logger
-      @logger ||= Logger.new(IO::NULL)
+      @_logger ||= Logger.new(IO::NULL)
     end
 
     # How a pre-settle {Component#rect} read is reported: `false`, `:warn` to
@@ -37,7 +40,7 @@ module Tuile
     # audience, and `false` anywhere else. See {StrictLayout}.
     # @return [Symbol, false]
     def strict_layout
-      return @strict_layout unless @strict_layout.nil?
+      return @_strict_layout unless @_strict_layout.nil?
 
       Screen.instance? && Screen.instance.is_a?(FakeScreen) ? :raise : false
     end
@@ -62,7 +65,7 @@ module Tuile
       end
 
       StrictLayout.install if mode
-      @strict_layout = mode
+      @_strict_layout = mode
     end
 
     # Runs the block with the diagnostic off, for a *spec's* read taken
@@ -77,11 +80,11 @@ module Tuile
     # every read in the block, on this thread and any other.
     # @return [Object] the block's value.
     def without_strict_layout
-      previous = @strict_layout
-      @strict_layout = false
+      previous = @_strict_layout
+      @_strict_layout = false
       yield
     ensure
-      @strict_layout = previous
+      @_strict_layout = previous
     end
   end
 

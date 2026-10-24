@@ -146,11 +146,11 @@ module Tuile
       end
 
       def initialize
-        @list = Menu.new
-        @list.cursor = List::Cursor.new
-        @list.show_cursor_when_inactive = true # highlight the selection though focus stays on the driver
-        @list.scrollbar_visibility = :auto # the list fills the panel, so the bar is on exactly when the rows outrun it
-        super(content: @list)
+        @_list = Menu.new
+        @_list.cursor = List::Cursor.new
+        @_list.show_cursor_when_inactive = true # highlight the selection though focus stays on the driver
+        @_list.scrollbar_visibility = :auto # the list fills the panel, so the bar is on exactly when the rows outrun it
+        super(content: @_list)
         self.bg_color = Theme.ref(:input_bg_color)
       end
 
@@ -158,17 +158,17 @@ module Tuile
       #   An open dropdown resizes to the new count on the next settle.
       # @return [void]
       def items=(items)
-        @list.items = items
+        @_list.items = items
         reposition
       end
 
       # @return [Array] the items currently shown.
-      def items = @list.items
+      def items = @_list.items
 
       # @param proc [Proc, Method] `(item, text_width) -> row`; see {List#renderer}.
       # @return [void]
       def renderer=(proc)
-        @list.renderer = proc
+        @_list.renderer = proc
       end
 
       # The wrapped list, exposed so a driver can register on {List#on_item_chosen}
@@ -176,23 +176,23 @@ module Tuile
       # panels belonging to the row the highlight just left). A driver tunes it
       # but never supplies it (`D_has_content`).
       # @return [List]
-      attr_reader :list
+      def list = @_list
 
       # @param cursor [List::Cursor] the highlight; see {List#cursor=}.
       # @return [void]
       def cursor=(cursor)
-        @list.cursor = cursor
+        @_list.cursor = cursor
       end
 
       # @return [List::Cursor] the list's cursor (the current highlight).
-      def cursor = @list.cursor
+      def cursor = @_list.cursor
 
       # Moves the highlight to the item at `index`, scrolling it into view; see
       # {List#select}. The positional counterpart of {#move}, for a driver that
       # picked a row by something other than a key — a mnemonic letter, say.
       # @param index [Integer]
       # @return [Boolean] whether the highlight moved there.
-      def select(index) = @list.select(index)
+      def select(index) = @_list.select(index)
 
       # Opens the dropdown against `anchor` — directly beneath it, flipped above
       # when its rows won't fit below, clamped (with the list scrolling) when
@@ -273,13 +273,13 @@ module Tuile
       #   the cursor is off-content ({List::Cursor::None}, an empty list) or its
       #   row is scrolled out of the viewport.
       def cursor_row_rect
-        return nil if @list.rect.empty?
-        return nil unless @list.cursor.position.between?(0, @list.items.size - 1)
+        return nil if @_list.rect.empty?
+        return nil unless @_list.cursor.position.between?(0, @_list.items.size - 1)
 
-        row = @list.cursor.position - @list.scroll_top_row
-        return nil unless row.between?(0, @list.rect.height - 1)
+        row = @_list.cursor.position - @_list.scroll_top_row
+        return nil unless row.between?(0, @_list.rect.height - 1)
 
-        Rect.new(0, 0, @list.rect.width, 1).at(@list.to_screen(Point.new(0, row)))
+        Rect.new(0, 0, @_list.rect.width, 1).at(@_list.to_screen(Point.new(0, row)))
       end
 
       # Forwards a cursor-movement key to the list. The driver calls this from
@@ -291,7 +291,7 @@ module Tuile
       def move(key)
         return false unless open? && MOVE_KEYS.include?(key)
 
-        @list.handle_key?(key)
+        @_list.handle_key?(key)
         true
       end
 
@@ -300,7 +300,7 @@ module Tuile
       # own Enter branch.
       # @return [Boolean] true iff a row was chosen (false when the cursor is
       #   off-content).
-      def choose = @list.handle_key?(Keys::ENTER)
+      def choose = @_list.handle_key?(Keys::ENTER)
 
       private
 

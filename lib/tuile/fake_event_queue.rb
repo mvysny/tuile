@@ -20,10 +20,10 @@ module Tuile
     MAX_ITEMS_PER_RUN = 1000
 
     def initialize
-      @queue = Thread::Queue.new
-      @tickers = []
-      @timers = []
-      @running_until_idle = false
+      @_queue = Thread::Queue.new
+      @_tickers = []
+      @_timers = []
+      @_running_until_idle = false
     end
 
     # Lets a spec assert that a component started a ticker, and — via
@@ -31,12 +31,12 @@ module Tuile
     # dropping it. Cancelled tickers stay here until the next {#tick_once}
     # prunes them.
     # @return [Array<FakeTicker>] the registered tickers, in creation order.
-    attr_reader :tickers
+    def tickers = @_tickers
 
     # The {#after} counterpart of {#tickers}: every timer scheduled since the
     # last {#fire_timers}, cancelled or not.
     # @return [Array<FakeTimer>] in creation order.
-    attr_reader :timers
+    def timers = @_timers
 
     # @return [Boolean] always false — {#run_loop} raises, so no loop ever runs.
     def running? = false
@@ -60,7 +60,7 @@ module Tuile
     # @yieldreturn [void]
     # @return [void]
     def submit(&block)
-      @queue << block
+      @_queue << block
     end
 
     # Queues `event` for the next {#run_until_idle}. Callable from any thread.
@@ -71,11 +71,11 @@ module Tuile
     def post(event)
       raise ArgumentError, "event passed across threads must be frozen, got #{event.inspect}" unless event.frozen?
 
-      @queue << event
+      @_queue << event
     end
 
     # @return [Boolean] true when nothing is waiting for {#run_until_idle}.
-    def empty? = @queue.empty?
+    def empty? = @_queue.empty?
 
     # {EventQueue#run_loop} without the wait: yields every queued item, oldest
     # first, then an {EventQueue::EmptyQueueEvent}, and returns once that leaves
@@ -93,26 +93,26 @@ module Tuile
     #   {MAX_ITEMS_PER_RUN} items — some block keeps resubmitting itself.
     # @return [void]
     def run_until_idle
-      return if @running_until_idle
+      return if @_running_until_idle
 
-      @running_until_idle = true
+      @_running_until_idle = true
       begin
         ran = 0
         Kernel.loop do
-          if @queue.empty?
+          if @_queue.empty?
             yield EventQueue::EmptyQueueEvent.instance
-            break if @queue.empty?
+            break if @_queue.empty?
           else
             if (ran += 1) > MAX_ITEMS_PER_RUN
               raise Tuile::Error, "the event queue is still not empty after #{MAX_ITEMS_PER_RUN} items: " \
                                   "does a submitted block submit itself?"
             end
 
-            yield @queue.pop
+            yield @_queue.pop
           end
         end
       ensure
-        @running_until_idle = false
+        @_running_until_idle = false
       end
     end
 
@@ -133,7 +133,7 @@ module Tuile
         raise ArgumentError, "seconds must be a positive Numeric, got #{seconds.inspect}"
       end
 
-      FakeTicker.new(block).tap { |t| @tickers << t }
+      FakeTicker.new(block).tap { |t| @_tickers << t }
     end
 
     # Mirrors {EventQueue#tick_fps}: validates `fps` for parity, then delegates
@@ -163,8 +163,8 @@ module Tuile
     # finishes the turn.
     # @return [void]
     def tick_once
-      @tickers.reject!(&:cancelled?)
-      @tickers.each(&:fire)
+      @_tickers.reject!(&:cancelled?)
+      @_tickers.each(&:fire)
     end
 
     # Mirrors {EventQueue#after} but timeless: returns a {FakeTimer} that
@@ -183,7 +183,7 @@ module Tuile
         raise ArgumentError, "seconds must be a non-negative Numeric, got #{seconds.inspect}"
       end
 
-      FakeTimer.new(block).tap { |t| @timers << t }
+      FakeTimer.new(block).tap { |t| @_timers << t }
     end
 
     # Test helper: lets every pending timer's delay elapse at once — each runs
@@ -193,8 +193,8 @@ module Tuile
     # directly, as {#tick_once} does and for the same reason.
     # @return [void]
     def fire_timers
-      due = @timers
-      @timers = []
+      due = @_timers
+      @_timers = []
       due.each(&:fire)
     end
 
@@ -204,20 +204,20 @@ module Tuile
     class FakeTicker
       # @param block [Proc] called as `block.call(tick_count)` on each {#fire}.
       def initialize(block)
-        @block = block
-        @tick = 0
-        @cancelled = false
+        @_block = block
+        @_tick = 0
+        @_cancelled = false
       end
 
       # @return [Boolean] true once {#cancel} has been called.
-      def cancelled? = @cancelled
+      def cancelled? = @_cancelled
 
       # Marks the ticker cancelled. Idempotent. Subsequent {#fire} calls are
       # no-ops; {FakeEventQueue#tick_once} also prunes the ticker on its next
       # pass.
       # @return [void]
       def cancel
-        @cancelled = true
+        @_cancelled = true
       end
 
       # Invokes the user block with the current tick counter, then advances.
@@ -226,10 +226,10 @@ module Tuile
       # wants to drive a single ticker.
       # @return [void]
       def fire
-        return if @cancelled
+        return if @_cancelled
 
-        @block.call(@tick)
-        @tick += 1
+        @_block.call(@_tick)
+        @_tick += 1
       end
     end
 
@@ -239,20 +239,20 @@ module Tuile
     class FakeTimer
       # @param block [Proc] called with no arguments on the first {#fire}.
       def initialize(block)
-        @block = block
-        @cancelled = false
-        @fired = false
+        @_block = block
+        @_cancelled = false
+        @_fired = false
       end
 
       # @return [Boolean] true once {#cancel} has been called, whether or not
       #   the block had already run.
-      def cancelled? = @cancelled
+      def cancelled? = @_cancelled
 
       # Marks the timer cancelled, so {#fire} no longer runs the block.
       # Idempotent.
       # @return [void]
       def cancel
-        @cancelled = true
+        @_cancelled = true
       end
 
       # Runs the block, at most once over the timer's life, and never after
@@ -260,10 +260,10 @@ module Tuile
       # call directly from a test that wants to elapse a single timer.
       # @return [void]
       def fire
-        return if @cancelled || @fired
+        return if @_cancelled || @_fired
 
-        @fired = true
-        @block.call
+        @_fired = true
+        @_block.call
       end
     end
   end

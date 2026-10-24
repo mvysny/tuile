@@ -47,58 +47,58 @@ module Tuile
       #   {#items=}.
       def initialize(items: [])
         super()
-        @value = nil
-        @items = items.to_a
-        @item_label = :to_s.to_proc
-        @filtered = []
+        @_value = nil
+        @_items = items.to_a
+        @_item_label = :to_s.to_proc
+        @_filtered = []
 
-        @field = TextField.new
+        @_field = TextField.new
         # One widget, one surface: the inner field paints no well of its own, so
         # this combo's well covers it and the `▾` alike, and the combo's own
         # bg_color reaches the cells the field paints.
-        @field.bg_color = ComponentBackground::INHERIT
+        @_field.bg_color = ComponentBackground::INHERIT
         bg.default_color = ComponentBackground::INPUT_WELL
         # Only the user's typing filters, and every keystroke of it: a
         # programmatic write to the field ({#sync_field}) must not spring the
         # dropdown open.
-        @field.value_change_mode = :eager
-        @field.on_value_change { |e| refill if e.from_user? }
+        @_field.value_change_mode = :eager
+        @_field.on_value_change { |e| refill if e.from_user? }
         # ESC is the one key this combo wants that the field consumes itself, so
         # it cannot arrive by bubbling the way {#handle_key?}'s do. With no menu
         # open it keeps the field's own meaning: cancel text entry.
-        @field.escape_clears_focus = false
-        @field.on_escape { @overlay.open? ? dismiss_menu : screen.focused = nil }
+        @_field.escape_clears_focus = false
+        @_field.on_escape { @_overlay.open? ? dismiss_menu : screen.focused = nil }
 
-        @overlay = ListDropdown.new
+        @_overlay = ListDropdown.new
         # Outside-click dismissal spans the owner chain, so a click on this
         # combo's dropdown must not dismiss a dialog the combo sits in.
-        @overlay.owner = self
-        @overlay.renderer = ->(item, _text_width) { @item_label.call(item) }
-        @overlay.list.on_item_chosen { |e| commit(e.item) }
-        add_child(@field, at: 0)
+        @_overlay.owner = self
+        @_overlay.renderer = ->(item, _text_width) { @_item_label.call(item) }
+        @_overlay.list.on_item_chosen { |e| commit(e.item) }
+        add_child(@_field, at: 0)
       end
 
       # @return [Array] the candidate items.
-      attr_reader :items
+      def items = @_items
 
       # @return [Proc, Method] item -> shown label (a `String` or
       #   {StyledString}); the field shows its `#to_s`, the list its styled form.
-      attr_reader :item_label
+      def item_label = @_item_label
 
       # @param new_items [Array]
       # @return [void]
       def items=(new_items)
         raise TypeError, "expected Array, got #{new_items.inspect}" unless new_items.is_a?(Array)
 
-        @items = new_items
-        refill if @overlay.open?
+        @_items = new_items
+        refill if @_overlay.open?
         invalidate
       end
 
       # @param proc [Proc, Method] item -> shown label.
       # @return [void]
       def item_label=(proc)
-        @item_label = proc
+        @_item_label = proc
         sync_field(display_for(value)) # re-render the current selection
         invalidate
       end
@@ -176,11 +176,11 @@ module Tuile
       # @param key [String]
       # @return [Boolean] true if consumed.
       def handle_key?(key)
-        if @overlay.open?
-          return true if @overlay.move(key)
+        if @_overlay.open?
+          return true if @_overlay.move(key)
           return false unless key == Keys::ENTER
 
-          @overlay.choose
+          @_overlay.choose
         else
           return false unless [Keys::DOWN_ARROW, Keys::ENTER].include?(key)
 
@@ -197,7 +197,7 @@ module Tuile
         return false unless event.button == :left
 
         field.focus
-        @overlay.open? ? close_menu : open_menu
+        @_overlay.open? ? close_menu : open_menu
         true
       end
 
@@ -227,7 +227,7 @@ module Tuile
       private
 
       # @return [TextField] the inner field, holding the query.
-      attr_reader :field
+      def field = @_field
 
       # Dismisses the dropdown and puts the current value's label back in the
       # field, undoing an uncommitted query.
@@ -242,12 +242,12 @@ module Tuile
       # when there are none.
       # @return [void]
       def refill
-        @filtered = matching(field.text)
-        if @filtered.empty?
+        @_filtered = matching(field.text)
+        if @_filtered.empty?
           close_menu
         else
-          @overlay.items = @filtered
-          @overlay.cursor = List::Cursor.new(position: @filtered.index(value) || 0)
+          @_overlay.items = @_filtered
+          @_overlay.cursor = List::Cursor.new(position: @_filtered.index(value) || 0)
           anchor
         end
       end
@@ -258,10 +258,10 @@ module Tuile
       # @param query [String]
       # @return [Array]
       def matching(query)
-        return @items if query.empty? || query == display_for(value)
+        return @_items if query.empty? || query == display_for(value)
 
         needle = query.downcase
-        @items.select { |item| @item_label.call(item).to_s.downcase.include?(needle) }
+        @_items.select { |item| @_item_label.call(item).to_s.downcase.include?(needle) }
       end
 
       # Commits the item chosen from the menu: closes the dropdown and adopts it
@@ -277,7 +277,7 @@ module Tuile
       def open_menu = refill
 
       # @return [void]
-      def close_menu = (@overlay.close if @overlay.open?)
+      def close_menu = (@_overlay.close if @_overlay.open?)
 
       # @return [void]
       def revert_query = sync_field(display_for(value))
@@ -297,14 +297,14 @@ module Tuile
 
       # @param item [Object]
       # @return [String] the plain-text label for `item`, or "" for nil.
-      def display_for(item) = item.nil? ? "" : @item_label.call(item).to_s
+      def display_for(item) = item.nil? ? "" : @_item_label.call(item).to_s
 
       # Places the dropdown at the combo's own width, so both its edges line up
       # with the field — at the cost of the scrollbar taking its column from the
       # labels, which ellipsize a column earlier once the list scrolls. That is
       # the trade a measuring driver ({Select}) makes the other way.
       # @return [void]
-      def anchor = @overlay.anchor_to(self)
+      def anchor = @_overlay.anchor_to(self)
     end
   end
 end

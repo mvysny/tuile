@@ -64,7 +64,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **Two prefixes: `handle_foo` is the override point, `on_foo` the listener slot.** No name
   carries both, and there is no third family. See `D_handler_naming`.
 - **A slot is a {Tuile::Listeners}, declared with `listener :on_foo`** — append, and remove your
-  own. Read the slot, never `@on_foo`: it is built on first read and nil until asked. See `D_listeners`.
+  own. Read the slot, never `@_on_foo`: it is built on first read and nil until asked. See `D_listeners`.
 - **No `on_` method is *defined* in `lib/`, reader or writer** — every reader is macro-generated,
   and there is no writer. See `D_listeners`.
 - **An empty list is meaningful, and each slot's rdoc says what its empty means** — so a widget's
@@ -418,6 +418,8 @@ One line per directory; `ls` is the file index, and each class's rdoc says what 
   cost-free only because Zeitwerk loads that file lazily. See `D_bigdecimal_field`.
 - **One top-level constant per file**: `lib/tuile/foo.rb` defines exactly `Tuile::Foo`. Nested
   constants inside it are fine; a sibling top-level class gets its own file.
+- **Every ivar in `lib/` is `@_foo`, read through `def foo = @_foo`, never an `attr_*`** — an app
+  subclass owns every bare name; `nomenclature_spec` parses `lib/` for it. See `D_ivar_prefix`.
 - **Log through `Tuile.logger`, never `$log` or `TTY::Logger` directly.** The default is
   `Logger.new(IO::NULL)`, so the gem is silent unless the host sets one.
 - **Reach the singleton through `Screen.instance` / `.close` / `.fake`, never `@@instance`** — the

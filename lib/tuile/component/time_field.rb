@@ -157,11 +157,11 @@ module Tuile
         editor.max_text_length = MAX_TEXT_LENGTH
         # Claiming the editor's two arrow slots, not the general interceptor:
         # that one stays free for the app.
-        editor.on_key_up { step_by(@step) }
-        editor.on_key_down { step_by(-@step) }
-        @settled = false
-        @placeholder_override = nil
-        @step = DEFAULT_STEP
+        editor.on_key_up { step_by(@_step) }
+        editor.on_key_down { step_by(-@_step) }
+        @_settled = false
+        @_placeholder_override = nil
+        @_step = DEFAULT_STEP
         sync_placeholder
       end
 
@@ -232,7 +232,7 @@ module Tuile
 
       # @return [Integer] how many seconds Up/Down move the value, and — under
       #   a minute — the reason seconds are shown at all. See {#step=}.
-      attr_reader :step
+      def step = @_step
 
       # Sets the arrow-key stride, **and with it the precision**: under a
       # minute the field shows seconds, at a minute or more it does not.
@@ -265,10 +265,10 @@ module Tuile
           raise ArgumentError, "step must be 1...#{SECONDS_PER_DAY} seconds, got #{seconds.inspect}"
         end
 
-        return if @step == seconds
+        return if @_step == seconds
 
         carried = value # read under the outgoing formats, while it still parses
-        @step = seconds
+        @_step = seconds
         reformat(carried)
       end
 
@@ -290,12 +290,12 @@ module Tuile
         # Keyed on both inputs rather than snapshotted, since this is read on
         # every repaint (through HasBadInput#error_ink?) and derives its answer
         # with a StringScanner per entry.
-        if !@formats_locale.equal?(current) || @formats_step != @step
-          @formats_locale = current
-          @formats_step = @step
-          @formats = derive_formats(current)
+        if !@_formats_locale.equal?(current) || @_formats_step != @_step
+          @_formats_locale = current
+          @_formats_step = @_step
+          @_formats = derive_formats(current)
         end
-        @formats
+        @_formats
       end
 
       # Overrides the hint derived from the primary format.
@@ -311,7 +311,7 @@ module Tuile
       def placeholder=(text)
         # The editor validates the type, so a bad one raises before it is stored.
         editor.placeholder = text || derived_placeholder
-        @placeholder_override = text
+        @_placeholder_override = text
       end
 
       # Nothing a format parses is bad input, and an *empty* buffer is empty
@@ -327,7 +327,7 @@ module Tuile
       # cannot parse reddens the moment the user leaves the field or presses
       # ENTER ({HasBadInput}).
       # @return [Boolean]
-      def bad_input_settled? = @settled
+      def bad_input_settled? = @_settled
 
       # Claims PageUp/PageDown for the hour step; they reach this field only
       # because the editor declines them.
@@ -422,7 +422,7 @@ module Tuile
       end
 
       # @return [Boolean]
-      def seconds_hidden? = @step >= SECONDS_VISIBLE_BELOW
+      def seconds_hidden? = @_step >= SECONDS_VISIBLE_BELOW
 
       # @param new_value [Object]
       # @return [Time]
@@ -459,9 +459,9 @@ module Tuile
       # @param flag [Boolean]
       # @return [void]
       def settle(flag)
-        return if @settled == flag
+        return if @_settled == flag
 
-        @settled = flag
+        @_settled = flag
         # Nothing else painted: an ENTER on an untouched buffer writes no cells,
         # and neither does leaving the field with bad input in it.
         invalidate
@@ -472,7 +472,7 @@ module Tuile
 
       # @return [void]
       def sync_placeholder
-        editor.placeholder = @placeholder_override || derived_placeholder
+        editor.placeholder = @_placeholder_override || derived_placeholder
       end
 
       # @return [String, nil] the hint for the primary format, or `nil` when it

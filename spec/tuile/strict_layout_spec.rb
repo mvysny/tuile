@@ -159,7 +159,7 @@ module Tuile
         # Opening the dropdown marks the pane, and the framework then reads the
         # Select's own rect to anchor against — a read the app did not make.
         Screen.instance.__send__(:handle_key?, "\r")
-        assert select.instance_variable_get(:@overlay).open?
+        assert select.instance_variable_get(:@_overlay).open?
       end
 
       # Opening a popup marks the pane, whose pass places popups — and so

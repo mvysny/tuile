@@ -72,20 +72,20 @@ module Tuile
       #   `caption_position` / `caption_width`.
       def initialize(spacing: 0, caption_position: :above, caption_width: nil)
         super()
-        @spacing = validate_spacing(spacing)
-        @caption_position = validate_caption_position(caption_position)
-        @caption_width = validate_caption_width(caption_width)
+        @_spacing = validate_spacing(spacing)
+        @_caption_position = validate_caption_position(caption_position)
+        @_caption_width = validate_caption_width(caption_width)
       end
 
       # @return [Integer] extra blank rows between adjacent items.
-      attr_reader :spacing
+      def spacing = @_spacing
 
       # @return [Symbol] `:above` (the default) or `:left`, for every item.
-      attr_reader :caption_position
+      def caption_position = @_caption_position
 
       # @return [Integer, nil] the left caption column in cells, or nil for
       #   the widest caption up to half the form's width.
-      attr_reader :caption_width
+      def caption_width = @_caption_width
 
       # Moves every caption above its field or into a column beside it.
       # @param position [Symbol] one of {FormItem::CAPTION_POSITIONS}.
@@ -93,9 +93,9 @@ module Tuile
       # @return [void]
       def caption_position=(position)
         position = validate_caption_position(position)
-        return if @caption_position == position
+        return if @_caption_position == position
 
-        @caption_position = position
+        @_caption_position = position
         invalidate_layout
       end
 
@@ -106,9 +106,9 @@ module Tuile
       # @return [void]
       def caption_width=(columns)
         columns = validate_caption_width(columns)
-        return if @caption_width == columns
+        return if @_caption_width == columns
 
-        @caption_width = columns
+        @_caption_width = columns
         invalidate_layout
       end
 
@@ -117,9 +117,9 @@ module Tuile
       # @return [void]
       def spacing=(rows)
         rows = validate_spacing(rows)
-        return if @spacing == rows
+        return if @_spacing == rows
 
-        @spacing = rows
+        @_spacing = rows
         invalidate_layout
       end
 

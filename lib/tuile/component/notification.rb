@@ -116,13 +116,13 @@ module Tuile
       private_class_method :new
 
       def initialize
-        @messages = []
-        @high_water = 0
-        @ticker = nil
-        @view = View.new
-        @window = Window.new
-        @window.content = @view
-        super(content: @window, close_on_outside_click: false)
+        @_messages = []
+        @_high_water = 0
+        @_ticker = nil
+        @_view = View.new
+        @_window = Window.new
+        @_window.content = @_view
+        super(content: @_window, close_on_outside_click: false)
       end
 
       # Appends a message, dropping it (with a {Tuile.logger} warning) once
@@ -135,20 +135,20 @@ module Tuile
       # @raise [Tuile::Error] see {show}.
       def add_message(text, color: nil)
         # Explicit rather than inherited-through-invalidate: this appends to
-        # @messages before anything repaints, so a wrong-thread call has to fail
+        # @_messages before anything repaints, so a wrong-thread call has to fail
         # before the message is recorded, not after.
         screen.check_locked
         message = build_message(text, color)
         return if message.empty?
 
-        if @messages.size >= MAX_MESSAGES
+        if @_messages.size >= MAX_MESSAGES
           Tuile.logger.warn("Notification: dropping #{message.to_s.inspect}, " \
                             "#{MAX_MESSAGES} messages already queued")
           return
         end
 
-        @messages << message
-        @high_water = [@high_water, natural_width(message)].max
+        @_messages << message
+        @_high_water = [@_high_water, natural_width(message)].max
         restack
         sync_ticker
       end
@@ -161,7 +161,7 @@ module Tuile
       # @param screen_size [Size]
       # @return [Size]
       def declared_size_in(screen_size)
-        return Size.new(0, 0) if @messages.empty?
+        return Size.new(0, 0) if @_messages.empty?
 
         width = box_width(screen_size)
         Size.new(width, [wrapped_rows(width).size + 2, cap_height(screen_size)].min)
@@ -213,7 +213,7 @@ module Tuile
       # @return [void]
       def relayout
         super
-        @view.text = join_rows(wrapped_rows(rect.width)) if rect.width > 2
+        @_view.text = join_rows(wrapped_rows(rect.width)) if rect.width > 2
       end
 
       private
@@ -228,33 +228,33 @@ module Tuile
 
       # @param width [Integer] the box width, border included.
       # @return [Array<StyledString>] every message, wrapped inside the border.
-      def wrapped_rows(width) = @messages.flat_map { |message| wrap_message(message, width - 2) }
+      def wrapped_rows(width) = @_messages.flat_map { |message| wrap_message(message, width - 2) }
 
       # Retires the oldest message, closing the box when it was the last. Runs on
       # the event-loop thread, from the ticker.
       # @return [void]
       def retire_oldest
-        @messages.shift
-        @messages.empty? ? close : restack
+        @_messages.shift
+        @_messages.empty? ? close : restack
         sync_ticker
       end
 
       # Syncs the retirement clock from the invariant "something to retire, and on
-      # screen" — the sole writer of `@ticker`. Four sites change whether it is
+      # screen" — the sole writer of `@_ticker`. Four sites change whether it is
       # wanted (append, a retirement that empties the queue, {#close}, detach),
       # which is the 2×2 a start-in-{#handle_attached} / cancel-in-{#handle_detached} pair
       # gets half wrong. The early return is also what keeps an append from
       # *restarting* the clock and extending the oldest message's life.
       # @return [void]
       def sync_ticker
-        want = attached? && !@messages.empty?
-        return if want == !@ticker.nil?
+        want = attached? && !@_messages.empty?
+        return if want == !@_ticker.nil?
 
         if want
-          @ticker = screen.event_queue.tick(DISPLAY_SECONDS) { retire_oldest }
+          @_ticker = screen.event_queue.tick(DISPLAY_SECONDS) { retire_oldest }
         else
-          @ticker.cancel
-          @ticker = nil
+          @_ticker.cancel
+          @_ticker = nil
         end
       end
 
@@ -281,7 +281,7 @@ module Tuile
       # the narrow cap, with nothing to restore it when the terminal widens.
       # @param screen_size [Size]
       # @return [Integer]
-      def box_width(screen_size) = [@high_water + 2, cap_width(screen_size)].min
+      def box_width(screen_size) = [@_high_water + 2, cap_width(screen_size)].min
 
       # @param screen_size [Size]
       # @return [Integer]

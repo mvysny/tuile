@@ -45,9 +45,9 @@ module Tuile
     # @yieldparam claimed [Boolean] `true` when the list just became non-empty,
     #   `false` when it just became empty — never called for any other change.
     def initialize(name:, &claim_changed)
-      @name = name
-      @claim_changed = claim_changed
-      @entries = []
+      @_name = name
+      @_claim_changed = claim_changed
+      @_entries = []
     end
 
     # Appends `callable` and returns it, so a lambda can be held for removal.
@@ -70,9 +70,9 @@ module Tuile
     #   argument.
     def add(callable)
       entry = Entry.new(callable, takes_event?(callable))
-      was_empty = @entries.empty?
-      @entries << entry
-      @claim_changed&.call(true) if was_empty
+      was_empty = @_entries.empty?
+      @_entries << entry
+      @_claim_changed&.call(true) if was_empty
       callable
     end
 
@@ -96,30 +96,30 @@ module Tuile
     # @param callable [#call] the listener to remove.
     # @return [Boolean] whether it was there.
     def remove(callable)
-      index = @entries.index { _1.callable == callable }
+      index = @_entries.index { _1.callable == callable }
       return false if index.nil?
 
-      @entries.delete_at(index)
-      @claim_changed&.call(false) if @entries.empty?
+      @_entries.delete_at(index)
+      @_claim_changed&.call(false) if @_entries.empty?
       true
     end
 
     # @param callable [#call]
     # @return [Boolean] whether `callable` is registered.
-    def include?(callable) = @entries.any? { _1.callable == callable }
+    def include?(callable) = @_entries.any? { _1.callable == callable }
 
     # @return [Boolean] whether nothing is registered — a state each slot gives
     #   its own meaning.
-    def empty? = @entries.empty?
+    def empty? = @_entries.empty?
 
     # @return [Integer] how many listeners are registered, duplicates counted.
-    def size = @entries.size
+    def size = @_entries.size
 
     # Yields each listener in registration order.
     # @yieldparam callable [#call]
     # @return [void]
     def each
-      @entries.each { yield _1.callable }
+      @_entries.each { yield _1.callable }
     end
 
     # Calls every listener in registration order — so the gem's own listener
@@ -134,7 +134,7 @@ module Tuile
     def fire(event)
       # Snapshot: a listener may add or remove during the fire, and the
       # newcomer is meant to run on the *next* one.
-      @entries.dup.each { _1.takes_event ? _1.callable.call(event) : _1.callable.call }
+      @_entries.dup.each { _1.takes_event ? _1.callable.call(event) : _1.callable.call }
     end
 
     private
@@ -143,12 +143,12 @@ module Tuile
     # @return [Boolean] whether {#fire} passes it the event.
     # @raise [ArgumentError]
     def takes_event?(callable)
-      raise ArgumentError, "#{@name}: expected a callable, got #{callable.inspect}" unless callable.respond_to?(:call)
+      raise ArgumentError, "#{@_name}: expected a callable, got #{callable.inspect}" unless callable.respond_to?(:call)
 
       arity = callable.is_a?(Proc) || callable.is_a?(Method) ? callable.arity : callable.method(:call).arity
       required = arity.negative? ? -arity - 1 : arity
       if required > 1
-        raise ArgumentError, "#{@name}: a listener takes the event or nothing, but #{callable.inspect} requires " \
+        raise ArgumentError, "#{@_name}: a listener takes the event or nothing, but #{callable.inspect} requires " \
                              "#{required} arguments"
       end
 
@@ -189,7 +189,7 @@ module Tuile
       #
       # The list is built on first read, so no mixin has to remember a
       # constructor line — which means in-class code goes through the reader and
-      # never touches `@on_foo`, nil until somebody asks.
+      # never touches `@_on_foo`, nil until somebody asks.
       #
       # @param name [Symbol] the slot's **full** name, `on_`-prefixed. Spelling
       #   it out is what keeps `on_value_change` greppable from its declaration.
@@ -202,7 +202,7 @@ module Tuile
                        "on_#{name} appears nowhere in lib/ for a grep to find. Declare it as :on_#{name}."
         end
 
-        ivar = :"@#{name}"
+        ivar = :"@_#{name}"
         define_method(name) do |&block|
           slot = instance_variable_get(ivar)
           unless slot

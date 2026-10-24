@@ -97,5 +97,34 @@ module Tuile
                    "only a routed handler (#{routed.join(", ")}) ends in `?` — " \
                    "see D_handler_naming:\n  #{offenders.join("\n  ")}"
     end
+
+    # An app subclass owns every bare ivar name, so each one Tuile writes is
+    # `@_foo`; an `attr_*` would mint a bare one, so it is banned too. Parsed
+    # rather than grepped: an rdoc example legitimately shows an app's `@foo`.
+    it "spells every ivar in lib/ @_foo, and declares no attr_*" do
+      require "prism"
+      lib = File.expand_path("../../lib", __dir__)
+      offenders = Dir["#{lib}/**/*.rb"].sort.flat_map do |path|
+        found = []
+        queue = [Prism.parse_file(path).value]
+        while (node = queue.shift)
+          queue.concat(node.compact_child_nodes)
+          hit = case node
+                when Prism::InstanceVariableReadNode, Prism::InstanceVariableWriteNode,
+                     Prism::InstanceVariableOperatorWriteNode, Prism::InstanceVariableOrWriteNode,
+                     Prism::InstanceVariableAndWriteNode, Prism::InstanceVariableTargetNode
+                  node.name unless node.name.start_with?("@_")
+                when Prism::CallNode
+                  node.name if node.receiver.nil? && node.name.start_with?("attr_")
+                end
+          found << "#{path.delete_prefix("#{lib}/")}:#{node.location.start_line}: #{hit}" if hit
+        end
+        found
+      end
+
+      assert_empty offenders,
+                   "a framework ivar is `@_foo`, read through `def foo = @_foo` — see " \
+                   "D_ivar_prefix:\n  #{offenders.join("\n  ")}"
+    end
   end
 end

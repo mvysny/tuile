@@ -54,7 +54,7 @@ module Tuile
 
     # The open panel's painted rows, rstripped.
     def panel_rows
-      list = popups.last.instance_variable_get(:@list)
+      list = popups.last.instance_variable_get(:@_list)
       Testing.paint(list).text.map(&:rstrip)
     end
 
@@ -459,7 +459,7 @@ module Tuile
           assert_equal 3, popups.size
           assert l0.open?, "the File panel must survive a click on its own submenu"
           assert l1.open?
-          assert_equal 3, bar.instance_variable_get(:@cascade).depth
+          assert_equal 3, bar.instance_variable_get(:@_cascade).depth
         end
 
         # Truncation is the driver's job, not the pane's: clicking a row moves
@@ -470,14 +470,14 @@ module Tuile
           click(l0.absolute_rect.left + 1, l0.absolute_rect.top + 1) # "Other", the sibling of "Sub"
 
           assert_equal 2, popups.size, "levels 1-2 replaced by Other's own panel"
-          assert_equal 2, bar.instance_variable_get(:@cascade).depth
+          assert_equal 2, bar.instance_variable_get(:@_cascade).depth
         end
 
         # The direct guard on the on_close wiring: popups going away is not
         # enough, the cascade's own level stack has to shrink with them.
         it "reconciles the cascade's level stack, not just the popups" do
           bar = nested_bar
-          cascade = bar.instance_variable_get(:@cascade)
+          cascade = bar.instance_variable_get(:@_cascade)
 
           click(50, 0)
           assert_equal 0, cascade.depth
@@ -744,7 +744,7 @@ module Tuile
         it "underlines the mnemonic in an open menu's rows too" do
           mnemonic_bar
           key("f")
-          list = popups.last.instance_variable_get(:@list)
+          list = popups.last.instance_variable_get(:@_list)
           painted = Testing.paint(list)
 
           assert_includes painted.region_ansi(list.local_rect).join, "\e[4m"

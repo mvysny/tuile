@@ -37,68 +37,68 @@ module Tuile
       def initialize
         super
         # Three parallel structures, kept in lockstep by every mutator:
-        # `@lines` is the logical model (one entry per `\n`-delimited
-        # line, width-independent); `@rows` is the rendered view
+        # `@_lines` is the logical model (one entry per `\n`-delimited
+        # line, width-independent); `@_rows` is the rendered view
         # (each line word-wrapped to `wrap_width` and padded with
         # trailing blanks, so painting a row is a lookup); and
-        # `@line_wrap_counts` is an Integer-per-line cache of how many
+        # `@_line_wrap_counts` is an Integer-per-line cache of how many
         # rows each line occupies, so a mid-buffer splice can find its
         # starting row offset without re-wrapping every preceding line.
         #
         # Invariants:
-        # - `@line_wrap_counts.size == @lines.size`
-        # - `@line_wrap_counts.sum == @rows.size`
+        # - `@_line_wrap_counts.size == @_lines.size`
+        # - `@_line_wrap_counts.sum == @_rows.size`
         # A full rebuild ({#rewrap}) happens on {#text=} and when
-        # {#wrap_width} moves off `@wrapped_at`; other mutators splice
+        # {#wrap_width} moves off `@_wrapped_at`; other mutators splice
         # incrementally.
-        @lines = []
-        @rows = []
-        @line_wrap_counts = []
-        @wrapped_at = 0
-        @text = StyledString::EMPTY
-        @blank_row = StyledString::EMPTY
-        @scroll_top_row = 0
-        @auto_scroll = false
-        @follow = true
-        @scrollbar_visibility = :gone
+        @_lines = []
+        @_rows = []
+        @_line_wrap_counts = []
+        @_wrapped_at = 0
+        @_text = StyledString::EMPTY
+        @_blank_row = StyledString::EMPTY
+        @_scroll_top_row = 0
+        @_auto_scroll = false
+        @_follow = true
+        @_scrollbar_visibility = :gone
         # Whether an `:auto` bar is showing — state, not derived on read,
-        # because `@rows` is wrapped at the width it leaves; only
+        # because `@_rows` is wrapped at the width it leaves; only
         # {#sync_auto_scrollbar} flips it.
-        @auto_scrollbar_shown = false
+        @_auto_scrollbar_shown = false
         # Always ≥1 region; the implicit default owns any hard lines no
         # app-created region claims. See {Region}.
-        @regions = [Region.send(:new, self)]
-        @scrollbar = VerticalScrollBar.new
-        @scrollbar.on_scroll_request { self.scroll_top_row = _1.scroll_top_row }
-        add_child(@scrollbar) # chrome, appended: a TextView has no content children
+        @_regions = [Region.send(:new, self)]
+        @_scrollbar = VerticalScrollBar.new
+        @_scrollbar.on_scroll_request { self.scroll_top_row = _1.scroll_top_row }
+        add_child(@_scrollbar) # chrome, appended: a TextView has no content children
       end
 
       # @return [StyledString] the current text (empty by default). Rebuilt
       #   lazily on the first read after a mutation (O(total spans)), then
       #   cached — repeated reads are O(1).
       def text
-        @text ||= build_text
+        @_text ||= build_text
       end
 
       # @return [Integer] index of the first visible row.
-      attr_reader :scroll_top_row
+      def scroll_top_row = @_scroll_top_row
 
       # @return [Symbol] `:gone`, `:visible`, or `:auto` — shown only while the
       #   text overflows the viewport at the full width. `:gone` by default.
-      attr_reader :scrollbar_visibility
+      def scrollbar_visibility = @_scrollbar_visibility
 
       # @return [Boolean] if true, mutating the text scrolls the viewport so
       #   the last line stays in view — but only while the viewport is already
       #   pinned to the last line (see {#following?}). Scroll up to read older
       #   content and appends stop yanking you back down; scroll back to the
       #   bottom and tailing resumes. Default `false`.
-      attr_reader :auto_scroll
+      def auto_scroll = @_auto_scroll
 
       # @return [Boolean] whether {#auto_scroll} is currently tailing. True
       #   while the viewport sits at the last line; flips to false the moment
       #   the user scrolls up, and back to true once they scroll to the bottom
       #   again. Only consulted when {#auto_scroll} is enabled.
-      def following? = @follow
+      def following? = @_follow
 
       # Replaces the text. Embedded `\n` characters become hard line breaks.
       # A `String` is parsed via {StyledString.parse} (so embedded ANSI is
@@ -120,10 +120,10 @@ module Tuile
         # the old, existing region handles must die — the caller said "set
         # the text," not "merge with what's there." The unchanged-content
         # path still skips the expensive rewrap / invalidate work.
-        @text = new_text
-        @lines = new_text.empty? ? [] : new_text.lines
-        @regions.each { |r| r.send(:detach!) }
-        @regions = [Region.send(:new, self, @lines.size)]
+        @_text = new_text
+        @_lines = new_text.empty? ? [] : new_text.lines
+        @_regions.each { |r| r.send(:detach!) }
+        @_regions = [Region.send(:new, self, @_lines.size)]
         return if content_unchanged
 
         rewrap
@@ -145,12 +145,12 @@ module Tuile
       # @return [Region]
       def create_region
         region = Region.send(:new, self)
-        @regions << region
+        @_regions << region
         region
       end
 
       # @return [Boolean] true iff {#text} is empty (no hard lines).
-      def empty? = @lines.empty?
+      def empty? = @_lines.empty?
 
       # Appends `str` verbatim. Embedded `\n` become hard line breaks; otherwise
       # the text is concatenated onto the current last hard line. Designed for
@@ -165,7 +165,7 @@ module Tuile
         appended = StyledString.parse(str)
         return if appended.empty?
 
-        tail_region = @regions.last
+        tail_region = @_regions.last
         tail_was_empty = tail_region.empty?
         new_segments = appended.lines
         width = wrap_width
@@ -188,7 +188,7 @@ module Tuile
         end
 
         tail_region.send(:line_count=, tail_region.line_count + added)
-        @text = nil
+        @_text = nil
         update_scroll_top_row_if_auto_scroll
         invalidate
         invalidate_layout # `@rows` grew, and the bar's row_count follows it
@@ -212,7 +212,7 @@ module Tuile
       # @return [void]
       def add_line(str)
         parsed = StyledString.parse(str)
-        if empty? || @regions.last.empty?
+        if empty? || @_regions.last.empty?
           # No previous line in the tail region to break away from — just
           # append. (If the tail region is empty but earlier regions have
           # content, the verbatim {#append} path already starts a fresh
@@ -239,14 +239,14 @@ module Tuile
         screen.check_locked
         return if n.zero? || empty?
 
-        to_drop = [n, @lines.size].min
+        to_drop = [n, @_lines.size].min
         to_drop.times { pop_line }
 
         # Cascade-shrink regions from the spatial tail. The tail region
         # gives up lines first; if more are still owed (because the tail
         # was shorter than `to_drop`), earlier regions shrink in turn.
         remaining = to_drop
-        @regions.reverse_each do |region|
+        @_regions.reverse_each do |region|
           break if remaining.zero?
 
           take = [remaining, region.line_count].min
@@ -288,7 +288,7 @@ module Tuile
         parsed = StyledString.parse(str)
         new_lines = parsed.empty? ? [] : parsed.lines
         length = to - from + 1
-        return if new_lines == @lines[from, length]
+        return if new_lines == @_lines[from, length]
 
         splice_lines(from, length, new_lines)
         update_region_counts(from, length, new_lines.size)
@@ -319,10 +319,10 @@ module Tuile
       def scroll_top_row=(new_row)
         raise TypeError, "expected Integer, got #{new_row.inspect}" unless new_row.is_a? Integer
         raise ArgumentError, "scroll_top_row must not be negative, got #{new_row}" if new_row.negative?
-        return if @scroll_top_row == new_row
+        return if @_scroll_top_row == new_row
 
-        @scroll_top_row = new_row
-        @follow = at_bottom?
+        @_scroll_top_row = new_row
+        @_follow = at_bottom?
         invalidate
         invalidate_layout # {#relayout} pushes the row to the bar
       end
@@ -334,10 +334,10 @@ module Tuile
         unless %i[gone visible auto].include?(value)
           raise ArgumentError, "expected :gone, :visible or :auto, got #{value.inspect}"
         end
-        return if @scrollbar_visibility == value
+        return if @_scrollbar_visibility == value
 
-        @scrollbar_visibility = value
-        @auto_scrollbar_shown = false # starts at the full width; the settle decides
+        @_scrollbar_visibility = value
+        @_auto_scrollbar_shown = false # starts at the full width; the settle decides
         rewrap
         invalidate
         invalidate_layout # the bar's rect appears or collapses
@@ -348,8 +348,8 @@ module Tuile
       # @param value [Boolean]
       # @return [void]
       def auto_scroll=(value)
-        @auto_scroll = value ? true : false
-        @follow = true if @auto_scroll
+        @_auto_scroll = value ? true : false
+        @_follow = true if @_auto_scroll
         update_scroll_top_row_if_auto_scroll
       end
 
@@ -425,7 +425,7 @@ module Tuile
 
         invalidate_children
         (0...rect.height).each do |row|
-          canvas.set_text(0, row, paintable_row(row + @scroll_top_row))
+          canvas.set_text(0, row, paintable_row(row + @_scroll_top_row))
         end
       end
 
@@ -444,12 +444,12 @@ module Tuile
       # marks, for the bar's `row_count`, so this runs after each one.
       # @return [void]
       def relayout
-        rewrap unless @wrapped_at == wrap_width
+        rewrap unless @_wrapped_at == wrap_width
         sync_auto_scrollbar
         update_scroll_top_row_if_auto_scroll
-        @scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
-        @scrollbar.row_count = @rows.size
-        @scrollbar.scroll_top_row = @scroll_top_row
+        @_scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
+        @_scrollbar.row_count = @_rows.size
+        @_scrollbar.scroll_top_row = @_scroll_top_row
       end
 
       private
@@ -467,7 +467,7 @@ module Tuile
       # @param size [Integer]
       # @param what [String]
       # @return [Array(Integer, Integer)]
-      def normalize_replace_range(range, size = @lines.size, what = "the buffer")
+      def normalize_replace_range(range, size = @_lines.size, what = "the buffer")
         case range
         when Integer
           from = to = range
@@ -491,16 +491,16 @@ module Tuile
         [from, to]
       end
 
-      # Hard-line index where `region` begins in {@lines} — derived
+      # Hard-line index where `region` begins in {@_lines} — derived
       # by summing the line counts of all regions that precede it.
       # @param region [Region]
       # @return [Integer]
       def region_start_index(region)
-        idx = @regions.index(region)
+        idx = @_regions.index(region)
         raise "region not found in view" unless idx
 
         sum = 0
-        idx.times { |i| sum += @regions[i].line_count }
+        idx.times { |i| sum += @_regions[i].line_count }
         sum
       end
 
@@ -512,13 +512,13 @@ module Tuile
         start = region_start_index(region)
         count = region.line_count
         return StyledString::EMPTY if count.zero?
-        return @lines[start] if count == 1
+        return @_lines[start] if count == 1
 
         newline = StyledString::Span.new(text: "\n", style: StyledString::Style::DEFAULT)
         spans = []
         count.times do |i|
           spans << newline if i.positive?
-          spans.concat(@lines[start + i].spans)
+          spans.concat(@_lines[start + i].spans)
         end
         StyledString.new(spans)
       end
@@ -536,7 +536,7 @@ module Tuile
         new_lines = parsed.empty? ? [] : parsed.lines
         start = region_start_index(region)
         old_count = region.line_count
-        return if new_lines == @lines[start, old_count]
+        return if new_lines == @_lines[start, old_count]
 
         splice_lines(start, old_count, new_lines)
         region.send(:line_count=, new_lines.size)
@@ -558,7 +558,7 @@ module Tuile
         start = region_start_index(region)
         abs_from = start + from
         length = to - from + 1
-        return if new_lines == @lines[abs_from, length]
+        return if new_lines == @_lines[abs_from, length]
 
         splice_lines(abs_from, length, new_lines)
         region.send(:line_count=, region.line_count - length + new_lines.size)
@@ -574,7 +574,7 @@ module Tuile
         parsed = StyledString.parse(str)
         return if parsed.empty?
 
-        if region.equal?(@regions.last)
+        if region.equal?(@_regions.last)
           append(parsed)
           return
         end
@@ -593,7 +593,7 @@ module Tuile
 
             splice_lines(last_idx + 1, 0, rest)
           else
-            extended = @lines[last_idx] + extension
+            extended = @_lines[last_idx] + extension
             splice_lines(last_idx, 1, [extended, *rest])
           end
           region.send(:line_count=, region.line_count + rest.size)
@@ -619,7 +619,7 @@ module Tuile
         content_changed
       end
 
-      # Drops `region` from {@regions}: its hard lines are removed via
+      # Drops `region` from {@_regions}: its hard lines are removed via
       # {#splice_lines}, the handle is detached, and the always-one
       # default is restored if the removal would have left zero regions.
       # Skips the rewrap / invalidate work when the region was empty
@@ -633,15 +633,15 @@ module Tuile
           start = region_start_index(region)
           splice_lines(start, region.line_count, [])
         end
-        @regions.delete(region)
+        @_regions.delete(region)
         region.send(:detach!)
-        @regions << Region.send(:new, self) if @regions.empty?
+        @_regions << Region.send(:new, self) if @_regions.empty?
         return unless had_lines
 
         content_changed
       end
 
-      # Adjusts region line counts after a {@lines} splice that removed
+      # Adjusts region line counts after a {@_lines} splice that removed
       # `removed_count` lines at `from` and inserted `added_count`. Subtracts
       # each region's overlap with the removed range, then credits the added
       # lines to the first region that lost lines. Pure insertions have no such
@@ -654,7 +654,7 @@ module Tuile
       def update_region_counts(from, removed_count, added_count)
         target = nil
         pos = 0
-        @regions.each do |region|
+        @_regions.each do |region|
           original_count = region.line_count
           overlap_start = [from, pos].max
           overlap_end = [from + removed_count, pos + original_count].min
@@ -669,7 +669,7 @@ module Tuile
 
         if target.nil?
           pos = 0
-          @regions.each do |region|
+          @_regions.each do |region|
             region_end_exclusive = pos + region.line_count
             if from == pos
               target = region
@@ -679,7 +679,7 @@ module Tuile
             end
             pos = region_end_exclusive
           end
-          target ||= @regions.last
+          target ||= @_regions.last
         end
         target.send(:line_count=, target.line_count + added_count)
       end
@@ -688,73 +688,73 @@ module Tuile
       def viewport_rows = rect.height
 
       # @return [Integer] the max value of {#scroll_top_row} for scroll-key clamping.
-      def scroll_top_row_max = (@rows.size - viewport_rows).clamp(0, nil)
+      def scroll_top_row_max = (@_rows.size - viewport_rows).clamp(0, nil)
 
       # @return [Integer] half a viewport, at least one row, for the half-page
       #   scroll verbs and their keys.
       def half_page_rows = [viewport_rows / 2, 1].max
 
-      # Full rebuild of {@rows} and {@line_wrap_counts}
-      # from {@lines}. Called when wrap width changes (which
+      # Full rebuild of {@_rows} and {@_line_wrap_counts}
+      # from {@_lines}. Called when wrap width changes (which
       # invalidates every cached row count) and from {#text=} (which
       # replaces the whole logical model). Mid-buffer mutators splice
       # incrementally via {#splice_lines} and do *not* go through
-      # here. Clamps {@scroll_top_row} if the new line count puts it out of
+      # here. Clamps {@_scroll_top_row} if the new line count puts it out of
       # range.
       # @return [void]
       def rewrap
         width = wrap_width
-        @wrapped_at = width
-        @blank_row = StyledString::EMPTY.ljust(width)
-        @rows = []
-        @line_wrap_counts = []
-        @lines.each do |line|
+        @_wrapped_at = width
+        @_blank_row = StyledString::EMPTY.ljust(width)
+        @_rows = []
+        @_line_wrap_counts = []
+        @_lines.each do |line|
           wrapped, n = wrap_line(line, width)
-          @rows.concat(wrapped)
-          @line_wrap_counts << n
+          @_rows.concat(wrapped)
+          @_line_wrap_counts << n
         end
-        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
+        @_scroll_top_row = scroll_top_row_max if @_scroll_top_row > scroll_top_row_max
       end
 
       # Wraps `line` at `width` and returns the padded rows alongside the
       # row count. Empty lines (e.g. from a `"\n\n"`
-      # run) and degenerate `width <= 0` both emit a single {@blank_row}
-      # row, matching what `@text.wrap(width).map { |l| l.ljust(width) }`
+      # run) and degenerate `width <= 0` both emit a single {@_blank_row}
+      # row, matching what `@_text.wrap(width).map { |l| l.ljust(width) }`
       # would have produced.
       # @param line [StyledString]
       # @param width [Integer]
       # @return [Array(Array<StyledString>, Integer)]
       def wrap_line(line, width)
-        return [[@blank_row], 1] if line.empty? || width <= 0
+        return [[@_blank_row], 1] if line.empty? || width <= 0
 
         wrapped = line.wrap(width)
         [wrapped.map { |row| row.ljust(width) }, wrapped.size]
       end
 
-      # Appends `line` to the tail of {@lines}, updating the
-      # wrap-count cache and {@rows} in lockstep.
+      # Appends `line` to the tail of {@_lines}, updating the
+      # wrap-count cache and {@_rows} in lockstep.
       # @param line [StyledString]
       # @param width [Integer]
       # @return [void]
       def push_line(line, width)
         wrapped, n = wrap_line(line, width)
-        @lines << line
-        @line_wrap_counts << n
-        @rows.concat(wrapped)
+        @_lines << line
+        @_line_wrap_counts << n
+        @_rows.concat(wrapped)
       end
 
       # Pops the last line, the corresponding cache entry, and the rows
       # that line contributed. Returns the popped line.
       # @return [StyledString]
       def pop_line
-        n = @line_wrap_counts.pop
-        n.times { @rows.pop }
-        @lines.pop
+        n = @_line_wrap_counts.pop
+        n.times { @_rows.pop }
+        @_lines.pop
       end
 
       # Splices `new_lines` into the buffer in place of the `count` lines
-      # starting at index `from`. Updates {@lines},
-      # {@line_wrap_counts}, and {@rows} consistently.
+      # starting at index `from`. Updates {@_lines},
+      # {@_line_wrap_counts}, and {@_rows} consistently.
       # The starting row offset is computed in O(`from`) integer
       # adds via the cache — no wraps of preceding lines. Wraps are
       # done only for the new content, so total cost is
@@ -766,9 +766,9 @@ module Tuile
       def splice_lines(from, count, new_lines)
         width = wrap_width
         row_start = row_offset_at(from)
-        old_row_count = @line_wrap_counts[from, count].sum
+        old_row_count = @_line_wrap_counts[from, count].sum
 
-        @lines[from, count] = new_lines
+        @_lines[from, count] = new_lines
 
         new_rows = []
         new_counts = []
@@ -778,31 +778,31 @@ module Tuile
           new_counts << n
         end
 
-        @line_wrap_counts[from, count] = new_counts
-        @rows[row_start, old_row_count] = new_rows
+        @_line_wrap_counts[from, count] = new_counts
+        @_rows[row_start, old_row_count] = new_rows
       end
 
       # @param idx [Integer]
-      # @return [Integer] the {@rows} index where the line
-      #   at {@lines}`[idx]` starts. O(`idx`) integer adds via the
+      # @return [Integer] the {@_rows} index where the line
+      #   at {@_lines}`[idx]` starts. O(`idx`) integer adds via the
       #   wrap-count cache.
       def row_offset_at(idx)
         return 0 if idx.zero?
 
-        @line_wrap_counts[0, idx].sum
+        @_line_wrap_counts[0, idx].sum
       end
 
-      # Rebuilds the joined {StyledString} from {@lines}, inserting a
+      # Rebuilds the joined {StyledString} from {@_lines}, inserting a
       # default-styled `"\n"` between lines. Called from the {#text}
       # reader when the cache is cold. Cost is O(total spans).
       # @return [StyledString]
       def build_text
-        return StyledString::EMPTY if @lines.empty?
-        return @lines.first if @lines.size == 1
+        return StyledString::EMPTY if @_lines.empty?
+        return @_lines.first if @_lines.size == 1
 
         newline = StyledString::Span.new(text: "\n", style: StyledString::Style::DEFAULT)
         spans = []
-        @lines.each_with_index do |line, i|
+        @_lines.each_with_index do |line, i|
           spans << newline if i.positive?
           spans.concat(line.spans)
         end
@@ -837,19 +837,19 @@ module Tuile
       # @param delta [Integer] negative scrolls up, positive scrolls down.
       # @return [void]
       def move_scroll_top_row_by(delta)
-        move_scroll_top_row_to(@scroll_top_row + delta)
+        move_scroll_top_row_to(@_scroll_top_row + delta)
       end
 
       # @param target [Integer] desired top line; clamped to `[0, scroll_top_row_max]`.
       # @return [void]
       def move_scroll_top_row_to(target)
         clamped = target.clamp(0, scroll_top_row_max)
-        self.scroll_top_row = clamped unless @scroll_top_row == clamped
+        self.scroll_top_row = clamped unless @_scroll_top_row == clamped
       end
 
       # Every splice's tail. {#invalidate_layout} rides along because
       # {#relayout} pushes the bar's `row_count`: a splice that changed
-      # `@rows.size` without the mark leaves the handle sized for the old
+      # `@_rows.size` without the mark leaves the handle sized for the old
       # buffer.
       #
       # Not for {#append} or {#text=}, which mark by hand — appending must not
@@ -858,8 +858,8 @@ module Tuile
       # {#text=} clamps inside {#rewrap} already.
       # @return [void]
       def content_changed
-        @text = nil
-        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
+        @_text = nil
+        @_scroll_top_row = scroll_top_row_max if @_scroll_top_row > scroll_top_row_max
         update_scroll_top_row_if_auto_scroll
         invalidate
         invalidate_layout
@@ -867,74 +867,74 @@ module Tuile
 
       # Gated on {#following?}: once the user scrolls up off the bottom the
       # viewport pin is skipped, so reading older content is not interrupted
-      # by incoming lines. {#scroll_top_row=} re-arms `@follow` when the viewport
+      # by incoming lines. {#scroll_top_row=} re-arms `@_follow` when the viewport
       # returns to the bottom.
       # @return [void]
       def update_scroll_top_row_if_auto_scroll
-        return unless @auto_scroll && @follow
+        return unless @_auto_scroll && @_follow
 
-        target = (@rows.size - viewport_rows).clamp(0, nil)
-        self.scroll_top_row = target if @scroll_top_row != target
+        target = (@_rows.size - viewport_rows).clamp(0, nil)
+        self.scroll_top_row = target if @_scroll_top_row != target
       end
 
       # @return [Boolean] whether the viewport is pinned to the last line.
       #   Drives {#following?}: re-evaluated on every {#scroll_top_row=}.
-      def at_bottom? = @scroll_top_row == scroll_top_row_max
+      def at_bottom? = @_scroll_top_row == scroll_top_row_max
 
       # @return [Boolean]
       def scrollbar_visible?
         return false if rect.empty?
 
-        case @scrollbar_visibility
+        case @_scrollbar_visibility
         when :visible then true
-        when :auto then @auto_scrollbar_shown
+        when :auto then @_auto_scrollbar_shown
         else false
         end
       end
 
-      # The sole writer of `@auto_scrollbar_shown`: shows the bar iff the text
+      # The sole writer of `@_auto_scrollbar_shown`: shows the bar iff the text
       # overflows the viewport at the *full* width, and rewraps when that
       # flips. Deciding at the full width alone is what settles it in one
       # step — the answer does not depend on the width the bar leaves, so
       # showing the bar can't flip it back. Idempotent.
       # @return [void]
       def sync_auto_scrollbar
-        return unless @scrollbar_visibility == :auto
+        return unless @_scrollbar_visibility == :auto
 
         shown = !rect.empty? && overflows_at_full_width?
-        return if shown == @auto_scrollbar_shown
+        return if shown == @_auto_scrollbar_shown
 
-        @auto_scrollbar_shown = shown
+        @_auto_scrollbar_shown = shown
         rewrap
         invalidate
       end
 
       # Whether the text, wrapped at {#rect}`.width`, has more rows than the
-      # viewport. With the bar hidden `@rows` already *is* that wrap; with it
+      # viewport. With the bar hidden `@_rows` already *is* that wrap; with it
       # shown the lines are re-wrapped at the full width, stopping at the first
       # row past the viewport — so the cost is bounded by what fits on screen,
       # and a buffer with more hard lines than rows costs nothing at all.
       # @return [Boolean]
       def overflows_at_full_width?
-        return @rows.size > viewport_rows unless @auto_scrollbar_shown
-        return true if @lines.size > viewport_rows
+        return @_rows.size > viewport_rows unless @_auto_scrollbar_shown
+        return true if @_lines.size > viewport_rows
 
         width = rect.width
         rows = 0
-        @lines.each do |line|
+        @_lines.each do |line|
           rows += line.empty? ? 1 : line.wrap(width).size
           return true if rows > viewport_rows
         end
         false
       end
 
-      # @param index [Integer] 0-based index into `@rows`.
+      # @param index [Integer] 0-based index into `@_rows`.
       # @return [StyledString] every column of {#rect} the child bar does not
       #   own: all of them with the bar hidden, one fewer with it visible.
       #   Rows arrive padded to {#wrap_width} from {#rewrap}, so only the blank
       #   {#scrollbar_columns} reserves is added here.
       def paintable_row(index)
-        row = @rows[index] || @blank_row
+        row = @_rows[index] || @_blank_row
         blanks = scrollbar_columns - 1
         return row unless blanks.positive?
 
@@ -964,34 +964,34 @@ module Tuile
         # @param view [TextView] the owning view (never `nil` at construction).
         # @param line_count [Integer] number of hard lines this region owns.
         def initialize(view, line_count = 0)
-          @view = view
-          @line_count = line_count
+          @_view = view
+          @_line_count = line_count
         end
 
         private_class_method :new
 
         # @return [Integer] number of hard lines this region owns. Safe to
         #   read on a detached region (no error raised).
-        attr_reader :line_count
+        def line_count = @_line_count
 
         # @return [Boolean] `true` while the region is owned by its
         #   {TextView}. Becomes `false` permanently once detached
         #   (typically by {TextView#text=} / {TextView#clear}).
         def attached?
-          !@view.nil?
+          !@_view.nil?
         end
 
         # @return [Boolean] true iff the region owns zero hard lines.
         #   Empty regions render nothing — they still hold a position in
         #   the sequence, so subsequent mutations route to them as usual.
-        def empty? = @line_count.zero?
+        def empty? = @_line_count.zero?
 
         # @return [StyledString] the joined content of just this region's
         #   hard lines. Empty regions return {StyledString::EMPTY}.
         # @raise [RuntimeError] when the region is detached.
         def text
           check_attached
-          @view.send(:text_for_region, self)
+          @_view.send(:text_for_region, self)
         end
 
         # Replaces all of this region's hard lines with the parsed content
@@ -1002,7 +1002,7 @@ module Tuile
         # @return [void]
         def text=(value)
           check_attached
-          @view.send(:set_region_text, self, value)
+          @_view.send(:set_region_text, self, value)
         end
 
         # Verbatim append into this region's tail. Same semantics as
@@ -1014,7 +1014,7 @@ module Tuile
         # @return [void]
         def append(str)
           check_attached
-          @view.send(:append_to_region, self, str)
+          @_view.send(:append_to_region, self, str)
         end
         alias << append
 
@@ -1026,8 +1026,8 @@ module Tuile
         # @raise [RuntimeError] when the region is detached.
         def range
           check_attached
-          start = @view.send(:region_start_index, self)
-          start...(start + @line_count)
+          start = @_view.send(:region_start_index, self)
+          start...(start + @_line_count)
         end
 
         # Removes this region from its view. The region's hard lines (if
@@ -1046,7 +1046,7 @@ module Tuile
         def remove
           return unless attached?
 
-          @view.send(:remove_region, self)
+          @_view.send(:remove_region, self)
         end
 
         # Appends `str` as a new entry in this region: starts a fresh
@@ -1082,7 +1082,7 @@ module Tuile
         # @return [void]
         def replace(range, str)
           check_attached
-          @view.send(:replace_in_region, self, range, str)
+          @_view.send(:replace_in_region, self, range, str)
         end
 
         # Inserts `str` at region-relative hard-line index `at`.
@@ -1114,16 +1114,20 @@ module Tuile
           raise ArgumentError, "n must not be negative, got #{n}" if n.negative?
           return if n.zero? || empty?
 
-          @view.send(:remove_last_n_from_region, self, n)
+          @_view.send(:remove_last_n_from_region, self, n)
         end
 
         private
 
-        attr_writer :line_count
+        # @param value [Integer]
+        # @return [void]
+        def line_count=(value)
+          @_line_count = value
+        end
 
         # @return [void]
         def detach!
-          @view = nil
+          @_view = nil
         end
 
         # @return [void]

@@ -40,8 +40,8 @@ module Tuile
     class Buffered < FormSyncer
       def initialize
         super { |pipeline, edit| edited(pipeline, edit) }
-        @model = nil
-        @changed = Set.new
+        @_model = nil
+        @_changed = Set.new
       end
 
       # Shows `model` in the fields and remembers it for {#validate}; a `nil`
@@ -51,10 +51,10 @@ module Tuile
       # @return [void]
       # @raise [ArgumentError] when a converter's `to_value` rejects the stored value.
       def read(model)
-        @model = model
-        @changed.clear
-        @engine.populate(model)
-        @engine.run(@engine.pipelines, model:, write: [], keep: false, show: [])
+        @_model = model
+        @_changed.clear
+        @_engine.populate(model)
+        @_engine.run(@_engine.pipelines, model:, write: [], keep: false, show: [])
         nil
       end
 
@@ -62,8 +62,8 @@ module Tuile
       # model validator, showing every verdict, and leaves the model as it was.
       # @return [Hash{Symbol, nil => Array<ValidationFailure>}] {#last_validation}.
       def validate
-        all = @engine.pipelines
-        @engine.run(all, model: @model, write: all, keep: false, show: :all)
+        all = @_engine.pipelines
+        @_engine.run(all, model: @_model, write: all, keep: false, show: :all)
         last_validation
       end
 
@@ -74,9 +74,9 @@ module Tuile
       def write?(model)
         raise ArgumentError, "write? needs a model" if model.nil?
 
-        all = @engine.pipelines
-        written = @engine.run(all, model:, write: all, keep: true, show: :all)
-        @changed.clear if written
+        all = @_engine.pipelines
+        written = @_engine.run(all, model:, write: all, keep: true, show: :all)
+        @_changed.clear if written
         written
       end
 
@@ -93,7 +93,7 @@ module Tuile
       #   a `nil` attribute is no change. An edit counts once its field
       #   announces it; a Save the user reaches takes focus, which announces
       #   the field being left.
-      def changed? = !@changed.empty?
+      def changed? = !@_changed.empty?
 
       private
 
@@ -101,9 +101,9 @@ module Tuile
       # @param edit [Boolean]
       # @return [void]
       def edited(pipeline, edit)
-        @changed << pipeline.attr if edit
-        @engine.run_fields([pipeline])
-        @engine.reveal([pipeline.attr])
+        @_changed << pipeline.attr if edit
+        @_engine.run_fields([pipeline])
+        @_engine.reveal([pipeline.attr])
       end
     end
   end

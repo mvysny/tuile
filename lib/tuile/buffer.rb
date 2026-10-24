@@ -46,27 +46,33 @@ module Tuile
       # Read-only: mutate content through {#set} so dirty tracking stays correct.
       # @return [String] one grapheme cluster, `" "` for blank, or `""` for a
       #   wide-glyph continuation.
-      attr_reader :grapheme
+      def grapheme = @_grapheme
 
       # @return [StyledString::Style]
-      attr_reader :style
+      def style = @_style
 
       # @return [Boolean] true if this cell changed since the last {Buffer#flush}.
       #   {Buffer} flips it (off as it flushes, on via {Buffer#mark_all_dirty}).
-      attr_accessor :dirty
+      def dirty = @_dirty
+
+      # @param value [Boolean]
+      # @return [void]
+      def dirty=(value)
+        @_dirty = value
+      end
 
       # @param grapheme [String]
       # @param style [StyledString::Style]
       def initialize(grapheme, style)
-        @grapheme = grapheme
-        @style = style
-        @dirty = false
+        @_grapheme = grapheme
+        @_style = style
+        @_dirty = false
       end
 
       # @return [Boolean] true if this is the right half of a wide glyph, which
       #   {Buffer#flush} skips (the glyph to the left already moved the cursor
       #   past it).
-      def continuation? = @grapheme.empty?
+      def continuation? = @_grapheme.empty?
 
       # Sets the cell's content, flipping {#dirty} on when grapheme or style
       # actually changes (an already-dirty cell stays dirty). Returns the
@@ -77,11 +83,11 @@ module Tuile
       # @param style [StyledString::Style]
       # @return [Boolean] {#dirty} after the write.
       def set(grapheme, style)
-        return @dirty if @grapheme == grapheme && @style == style
+        return @_dirty if @_grapheme == grapheme && @_style == style
 
-        @grapheme = grapheme
-        @style = style
-        @dirty = true
+        @_grapheme = grapheme
+        @_style = style
+        @_dirty = true
       end
 
       # Content equality (grapheme + style); the dirty flag is bookkeeping and
@@ -89,7 +95,7 @@ module Tuile
       # @param other [Object]
       # @return [Boolean]
       def ==(other)
-        other.is_a?(Cell) && @grapheme == other.grapheme && @style == other.style
+        other.is_a?(Cell) && @_grapheme == other.grapheme && @_style == other.style
       end
     end
 
@@ -129,7 +135,7 @@ module Tuile
       raise ArgumentError, "invalid color depth: #{color_depth.inspect}" unless
         ColorDepth::DEPTHS.include?(color_depth)
 
-      @color_depth = color_depth
+      @_color_depth = color_depth
       allocate_grid(size)
       # A fresh buffer never matches the terminal yet — the screen holds
       # whatever was there at startup — so it begins fully dirty and the first
@@ -138,16 +144,19 @@ module Tuile
     end
 
     # @return [Size] grid dimensions.
-    def size = Size.new(@width, @height)
+    def size = Size.new(@_width, @_height)
 
     # @return [Integer]
-    attr_reader :width, :height
+    def width = @_width
+
+    # @return [Integer]
+    def height = @_height
 
     # What the terminal can show ({ColorDepth::DEPTHS}). Cells hold whatever
     # color a component painted — {#region_ansi} and friends report that,
     # unchanged — and only {#flush} degrades it on the way to the wire.
     # @return [Symbol]
-    attr_reader :color_depth
+    def color_depth = @_color_depth
 
     # @param x [Integer] column.
     # @param y [Integer] row.
@@ -157,11 +166,11 @@ module Tuile
     def cell(x, y)
       return nil unless in_bounds?(x, y)
 
-      @cells[index(x, y)]
+      @_cells[index(x, y)]
     end
 
     # @return [Boolean] true if any cell has changed since the last {#flush}.
-    def dirty? = @any_dirty
+    def dirty? = @_any_dirty
 
     # Writes one grapheme cluster at `(x, y)`. A 2-column glyph also writes a
     # continuation cell at `(x + 1, y)`; a wide glyph that would overflow the
@@ -191,7 +200,7 @@ module Tuile
           w = Buffer.display_width(g)
           next if w <= 0 # combining mark with no base in this run: skip
 
-          break if col >= @width # rest of the line is clipped
+          break if col >= @_width # rest of the line is clipped
 
           # Reuse the width we just computed: put_char skips re-measuring `g`.
           put_char(col, y, g, w, span.style)
@@ -208,9 +217,9 @@ module Tuile
     # @return [void]
     def fill(rect, style = DEFAULT_STYLE)
       top = [rect.top, 0].max
-      bottom = [rect.top + rect.height, @height].min
+      bottom = [rect.top + rect.height, @_height].min
       left = [rect.left, 0].max
-      right = [rect.left + rect.width, @width].min
+      right = [rect.left + rect.width, @_width].min
       y = top
       while y < bottom
         x = left
@@ -229,11 +238,11 @@ module Tuile
     # @param style [StyledString::Style]
     # @return [void]
     def clear(style = DEFAULT_STYLE)
-      @cells.each_with_index do |c, i|
+      @_cells.each_with_index do |c, i|
         next unless c.set(" ", style)
 
-        @dirty_rows[i / @width] = true
-        @any_dirty = true
+        @_dirty_rows[i / @_width] = true
+        @_any_dirty = true
       end
     end
 
@@ -242,9 +251,9 @@ module Tuile
     # (e.g. the screen was cleared underneath us).
     # @return [void]
     def mark_all_dirty
-      @cells.each { |c| c.dirty = true }
-      @dirty_rows.fill(true)
-      @any_dirty = true
+      @_cells.each { |c| c.dirty = true }
+      @_dirty_rows.fill(true)
+      @_any_dirty = true
     end
 
     # Resizes the grid to `size`, reallocating blank cells and marking the
@@ -269,20 +278,20 @@ module Tuile
     # the terminal's SGR state is default at flush boundaries.
     # @return [String] the escape sequence to write to the terminal.
     def flush
-      return "" unless @any_dirty
+      return "" unless @_any_dirty
 
       out = +""
       style = DEFAULT_STYLE
       y = 0
-      while y < @height
-        if @dirty_rows[y]
-          @dirty_rows[y] = false
+      while y < @_height
+        if @_dirty_rows[y]
+          @_dirty_rows[y] = false
           style = flush_row(out, y, style)
         end
         y += 1
       end
       out << Ansi::RESET unless style.default?
-      @any_dirty = false
+      @_any_dirty = false
       out
     end
 
@@ -291,10 +300,10 @@ module Tuile
     #   nothing, so wide glyphs read as their single cluster). Intended for
     #   tests; see {FakeScreen}.
     def row_text(y)
-      return "" unless y >= 0 && y < @height
+      return "" unless y >= 0 && y < @_height
 
-      base = y * @width
-      (0...@width).map { |x| @cells[base + x].grapheme }.join
+      base = y * @_width
+      (0...@_width).map { |x| @_cells[base + x].grapheme }.join
     end
 
     # @param y [Integer] row.
@@ -303,11 +312,11 @@ module Tuile
     #   `set_text` of the whole row would have printed. Intended for tests that
     #   assert on styled output (see {FakeScreen}); empty for an out-of-range row.
     def row_ansi(y)
-      return "" unless y >= 0 && y < @height
+      return "" unless y >= 0 && y < @_height
 
-      base = y * @width
-      spans = (0...@width).map do |x|
-        c = @cells[base + x]
+      base = y * @_width
+      spans = (0...@_width).map do |x|
+        c = @_cells[base + x]
         StyledString::Span.new(text: c.grapheme, style: c.style)
       end
       StyledString.new(spans).to_ansi
@@ -326,7 +335,7 @@ module Tuile
     #   Testing.paint(window).text   # => ["┌Caption─────┐", "│ alpha      │", …]
     #
     # @return [Array<String>] the plain text of every row, top to bottom.
-    def text = region_text(Rect.new(0, 0, @width, @height))
+    def text = region_text(Rect.new(0, 0, @_width, @_height))
 
     # @param rect [Rect]
     # @return [Array<String>] each row within `rect` rendered to ANSI, top to
@@ -387,11 +396,11 @@ module Tuile
     def allocate_grid(size)
       raise TypeError, "expected Size, got #{size.inspect}" unless size.is_a?(Size)
 
-      @width = size.width
-      @height = size.height
-      @cells = Array.new(@width * @height) { Cell.new(" ", DEFAULT_STYLE) }
-      @dirty_rows = Array.new(@height, false)
-      @any_dirty = false
+      @_width = size.width
+      @_height = size.height
+      @_cells = Array.new(@_width * @_height) { Cell.new(" ", DEFAULT_STYLE) }
+      @_dirty_rows = Array.new(@_height, false)
+      @_any_dirty = false
     end
 
     # Emits the dirty cells of row `y` into `out`, breaking a run at each clean
@@ -401,11 +410,11 @@ module Tuile
     # @param style [StyledString::Style] style the terminal currently holds.
     # @return [StyledString::Style]
     def flush_row(out, y, style)
-      base = y * @width
+      base = y * @_width
       run_open = false
       x = 0
-      while x < @width
-        c = @cells[base + x]
+      while x < @_width
+        c = @_cells[base + x]
         if c.dirty
           c.dirty = false
           # A continuation cell (right half of a wide glyph) renders nothing of
@@ -451,13 +460,13 @@ module Tuile
     # @return [StyledString::Style] `style` itself whenever nothing needed
     #   degrading — {Color#quantize}'s identity contract, extended.
     def quantized_style(style)
-      return style if @color_depth == :truecolor
-      return @quantized_style if style.equal?(@quantized_source)
+      return style if @_color_depth == :truecolor
+      return @_quantized_style if style.equal?(@_quantized_source)
 
-      fg = style.fg&.quantize(@color_depth)
-      bg = style.bg&.quantize(@color_depth)
-      @quantized_source = style
-      @quantized_style =
+      fg = style.fg&.quantize(@_color_depth)
+      bg = style.bg&.quantize(@_color_depth)
+      @_quantized_source = style
+      @_quantized_style =
         if fg.equal?(style.fg) && bg.equal?(style.bg)
           style
         else
@@ -478,12 +487,12 @@ module Tuile
     # @param x [Integer] column
     # @param y [Integer] row
     # @return [Integer] flat-array index for `(x, y)`.
-    def index(x, y) = (y * @width) + x
+    def index(x, y) = (y * @_width) + x
 
     # @param x [Integer] column
     # @param y [Integer] row
     # @return [Boolean] true when `(x, y)` falls within the grid.
-    def in_bounds?(x, y) = x >= 0 && x < @width && y >= 0 && y < @height
+    def in_bounds?(x, y) = x >= 0 && x < @_width && y >= 0 && y < @_height
 
     # Rewrites the cell at `(x, y)` in place, marking it (and its row) dirty
     # only when grapheme or style actually changes. Caller guarantees `(x, y)`
@@ -494,10 +503,10 @@ module Tuile
     # @param style [StyledString::Style] the new style
     # @return [void]
     def write_cell(x, y, grapheme, style)
-      return unless @cells[index(x, y)].set(grapheme, style)
+      return unless @_cells[index(x, y)].set(grapheme, style)
 
-      @dirty_rows[y] = true
-      @any_dirty = true
+      @_dirty_rows[y] = true
+      @_any_dirty = true
     end
 
     # If `(x, y)` holds a continuation, blanks the head of the glyph it belongs to
@@ -509,10 +518,10 @@ module Tuile
     # @param y [Integer] row
     # @return [void]
     def blank_left_partner(x, y)
-      return unless in_bounds?(x, y) && @cells[index(x, y)].continuation?
+      return unless in_bounds?(x, y) && @_cells[index(x, y)].continuation?
 
       head = x - 1
-      head -= 1 while in_bounds?(head, y) && @cells[index(head, y)].continuation?
+      head -= 1 while in_bounds?(head, y) && @_cells[index(head, y)].continuation?
       return unless in_bounds?(head, y)
 
       cx = head
@@ -532,7 +541,7 @@ module Tuile
     # @return [void]
     def blank_right_partner(x, y)
       cx = x + 1
-      while in_bounds?(cx, y) && @cells[index(cx, y)].continuation?
+      while in_bounds?(cx, y) && @_cells[index(cx, y)].continuation?
         write_cell(cx, y, " ", DEFAULT_STYLE)
         cx += 1
       end

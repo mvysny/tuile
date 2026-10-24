@@ -11,7 +11,7 @@ are `Box`'s rdoc and `D_box_layouts`.
 ### The value seam
 
 - **`caption` is chrome, `text` is value** — two mixins because a component may carry both; read
-  through `caption`, never `@caption`.
+  through `caption`, never `@_caption`.
 - **{Component::HasValue} is the input-field mixin, not just a value seam** — it carries
   `focusable?` but deliberately **not** `tab_stop?`: exactly one stop per widget, so a wrapper
   composing a field claims none. A `value` that isn't a *field* stays out ({Tuile::Component::ProgressBar}).

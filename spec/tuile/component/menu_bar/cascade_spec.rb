@@ -41,9 +41,9 @@ module Tuile
       [c, log]
     end
 
-    def levels(cascade) = cascade.instance_variable_get(:@levels)
+    def levels(cascade) = cascade.instance_variable_get(:@_levels)
     def panel(cascade, level = -1) = levels(cascade)[level][1]
-    def list(drop) = drop.instance_variable_get(:@list)
+    def list(drop) = drop.instance_variable_get(:@_list)
 
     # A panel's painted rows, rstripped. The rows are rendered lazily, so what a
     # panel *shows* can only be read off the buffer.

@@ -139,7 +139,7 @@ module Tuile
       label = Component::Label.new
       Testing.place(label, Rect.new(0, 0, 5, 1))
       label.text = "hi"
-      invalidated = Screen.instance.instance_variable_get(:@invalidated)
+      invalidated = Screen.instance.instance_variable_get(:@_invalidated)
       invalidated.clear
       label.text = "hi"
       assert !invalidated.include?(label)

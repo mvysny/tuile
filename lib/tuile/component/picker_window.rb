@@ -94,11 +94,11 @@ module Tuile
         raise ArgumentError, "options must not be empty" if options.empty?
 
         super(caption)
-        @options = options.map { |key, text, opts = {}| build_option(key, text, **opts) }
-        @block = block
+        @_options = options.map { |key, text, opts = {}| build_option(key, text, **opts) }
+        @_block = block
         list = Component::List.new
         list.renderer = ->(option, _text_width) { render_option(option) }
-        list.items = @options
+        list.items = @_options
         list.cursor = Component::List::Cursor.new
         list.on_item_chosen { |e| select_option(e.item) }
         self.content = list
@@ -123,7 +123,7 @@ module Tuile
       # @param key [String]
       # @return [Boolean]
       def handle_key?(key)
-        option = @options.find { _1.key == key }
+        option = @_options.find { _1.key == key }
         return false if option.nil?
 
         select_option(option)
@@ -159,11 +159,11 @@ module Tuile
       # @return [void]
       def select_option(option)
         if option.disabled?
-          content.select(@options.index(option))
+          content.select(@_options.index(option))
           return
         end
 
-        @block.call(option.key)
+        @_block.call(option.key)
         on_pick.fire(PickEvent.new(source: self))
       end
 

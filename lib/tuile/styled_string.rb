@@ -181,43 +181,43 @@ module Tuile
       # @param lenient [Boolean] when true, discard unmodeled SGR codes and
       #   non-SGR escapes instead of raising {ParseError}.
       def initialize(input, lenient: false)
-        @scanner = StringScanner.new(input)
-        @lenient = lenient
-        @style = Style::DEFAULT
-        @text = +""
-        @spans = []
+        @_scanner = StringScanner.new(input)
+        @_lenient = lenient
+        @_style = Style::DEFAULT
+        @_text = +""
+        @_spans = []
       end
 
       # @return [StyledString]
       def parse
-        until @scanner.eos?
-          if @scanner.peek(1) == "\e"
+        until @_scanner.eos?
+          if @_scanner.peek(1) == "\e"
             consume_escape
           else
             consume_text
           end
         end
         flush
-        StyledString.new(@spans)
+        StyledString.new(@_spans)
       end
 
       private
 
       # @return [void]
       def consume_text
-        chunk = @scanner.scan_until(/(?=\e)|\z/)
-        @text << chunk if chunk
+        chunk = @_scanner.scan_until(/(?=\e)|\z/)
+        @_text << chunk if chunk
       end
 
       # @return [void]
       def consume_escape
-        @scanner.getch # \e
-        intro = @scanner.getch
+        @_scanner.getch # \e
+        intro = @_scanner.getch
         case intro
         when "[" then consume_csi
-        when nil then raise ParseError, "unterminated escape sequence" unless @lenient
+        when nil then raise ParseError, "unterminated escape sequence" unless @_lenient
         else
-          raise ParseError, "expected '[' after ESC, got #{intro.inspect}" unless @lenient
+          raise ParseError, "expected '[' after ESC, got #{intro.inspect}" unless @_lenient
 
           consume_non_csi(intro)
         end
@@ -232,17 +232,17 @@ module Tuile
       # `\e[?25l`.
       # @return [void]
       def consume_csi
-        params = @scanner.scan(/[\x30-\x3F]*/) || ""
-        intermediates = @scanner.scan(/[\x20-\x2F]*/) || ""
-        final = @scanner.getch
+        params = @_scanner.scan(/[\x30-\x3F]*/) || ""
+        intermediates = @_scanner.scan(/[\x20-\x2F]*/) || ""
+        final = @_scanner.getch
 
         if final == "m" && intermediates.empty? && params.match?(/\A[\d;]*\z/)
           flush
           return apply_sgr(params)
         end
 
-        raise ParseError, "unterminated escape sequence" if final.nil? && !@lenient
-        raise ParseError, "non-SGR CSI sequence (final byte #{final.inspect})" unless @lenient
+        raise ParseError, "unterminated escape sequence" if final.nil? && !@_lenient
+        raise ParseError, "non-SGR CSI sequence (final byte #{final.inspect})" unless @_lenient
 
         flush
       end
@@ -258,8 +258,8 @@ module Tuile
         if STRING_INTRODUCERS.include?(intro)
           consume_string_sequence
         elsif intro.match?(/[\x20-\x2F]/)
-          @scanner.scan(/[\x20-\x2F]*/)
-          @scanner.getch
+          @_scanner.scan(/[\x20-\x2F]*/)
+          @_scanner.getch
         end
       end
 
@@ -267,12 +267,12 @@ module Tuile
       # including its terminator (BEL, or ST `\e\\`), or to EOS if unterminated.
       # @return [void]
       def consume_string_sequence
-        until @scanner.eos?
-          ch = @scanner.getch
+        until @_scanner.eos?
+          ch = @_scanner.getch
           break if ch == "\a"
 
           if ch == "\e"
-            @scanner.getch if @scanner.peek(1) == "\\"
+            @_scanner.getch if @_scanner.peek(1) == "\\"
             break
           end
         end
@@ -286,30 +286,30 @@ module Tuile
         while i < codes.length
           code = codes[i]
           case code
-          when 0 then @style = Style::DEFAULT
-          when 1 then @style = @style.merge(bold: true)
-          when 22 then @style = @style.merge(bold: false)
-          when 3 then @style = @style.merge(italic: true)
-          when 23 then @style = @style.merge(italic: false)
-          when 4 then @style = @style.merge(underline: true)
-          when 24 then @style = @style.merge(underline: false)
-          when 7 then @style = @style.merge(inverse: true)
-          when 27 then @style = @style.merge(inverse: false)
-          when 9 then @style = @style.merge(strikethrough: true)
-          when 29 then @style = @style.merge(strikethrough: false)
-          when 30..37 then @style = @style.merge(fg: STANDARD_COLORS[code - 30])
+          when 0 then @_style = Style::DEFAULT
+          when 1 then @_style = @_style.merge(bold: true)
+          when 22 then @_style = @_style.merge(bold: false)
+          when 3 then @_style = @_style.merge(italic: true)
+          when 23 then @_style = @_style.merge(italic: false)
+          when 4 then @_style = @_style.merge(underline: true)
+          when 24 then @_style = @_style.merge(underline: false)
+          when 7 then @_style = @_style.merge(inverse: true)
+          when 27 then @_style = @_style.merge(inverse: false)
+          when 9 then @_style = @_style.merge(strikethrough: true)
+          when 29 then @_style = @_style.merge(strikethrough: false)
+          when 30..37 then @_style = @_style.merge(fg: STANDARD_COLORS[code - 30])
           when 38
             i += consume_extended_color(codes, i, :fg)
             next
-          when 39 then @style = @style.merge(fg: nil)
-          when 40..47 then @style = @style.merge(bg: STANDARD_COLORS[code - 40])
+          when 39 then @_style = @_style.merge(fg: nil)
+          when 40..47 then @_style = @_style.merge(bg: STANDARD_COLORS[code - 40])
           when 48
             i += consume_extended_color(codes, i, :bg)
             next
-          when 49 then @style = @style.merge(bg: nil)
-          when 90..97 then @style = @style.merge(fg: BRIGHT_COLORS[code - 90])
-          when 100..107 then @style = @style.merge(bg: BRIGHT_COLORS[code - 100])
-          else raise ParseError, "unsupported SGR code #{code}" unless @lenient
+          when 49 then @_style = @_style.merge(bg: nil)
+          when 90..97 then @_style = @_style.merge(fg: BRIGHT_COLORS[code - 90])
+          when 100..107 then @_style = @_style.merge(bg: BRIGHT_COLORS[code - 100])
+          else raise ParseError, "unsupported SGR code #{code}" unless @_lenient
           end
           i += 1
         end
@@ -329,8 +329,8 @@ module Tuile
         when 5
           n = codes[index + 2]
           if n&.between?(0, 255)
-            @style = @style.merge(target => n)
-          elsif !@lenient
+            @_style = @_style.merge(target => n)
+          elsif !@_lenient
             raise ParseError, "invalid 256-color index #{n.inspect}"
           end
           3
@@ -339,14 +339,14 @@ module Tuile
           g = codes[index + 3]
           b = codes[index + 4]
           if [r, g, b].all? { |v| v&.between?(0, 255) }
-            @style = @style.merge(target => [r, g, b])
-          elsif !@lenient
+            @_style = @_style.merge(target => [r, g, b])
+          elsif !@_lenient
             bad = [r, g, b].find { |v| !v&.between?(0, 255) }
             raise ParseError, "invalid RGB component #{bad.inspect}"
           end
           5
         else
-          raise ParseError, "unsupported extended-color selector #{mode.inspect}" unless @lenient
+          raise ParseError, "unsupported extended-color selector #{mode.inspect}" unless @_lenient
 
           2
         end
@@ -354,10 +354,10 @@ module Tuile
 
       # @return [void]
       def flush
-        return if @text.empty?
+        return if @_text.empty?
 
-        @spans << Span.new(text: @text.dup, style: @style)
-        @text = +""
+        @_spans << Span.new(text: @_text.dup, style: @_style)
+        @_text = +""
       end
     end
     private_constant :Parser
@@ -456,27 +456,27 @@ module Tuile
 
     # @return [Array<Span>] the frozen, normalized span list — no empty-text
     #   entries, no two adjacent entries sharing a style.
-    attr_reader :spans
+    def spans = @_spans
 
     # @param spans [Array<Span>]
     def initialize(spans = [])
-      @spans = normalize(spans).freeze
+      @_spans = normalize(spans).freeze
     end
 
     # Total display width in terminal columns, accounting for Unicode wide
     # characters (fullwidth CJK = 2 columns, combining marks = 0, etc.).
     # @return [Integer]
     def display_width
-      @display_width ||= @spans.sum { |s| Unicode::DisplayWidth.of(s.text, emoji: EMOJI_WIDTH) }
+      @_display_width ||= @_spans.sum { |s| Unicode::DisplayWidth.of(s.text, emoji: EMOJI_WIDTH) }
     end
 
     # @return [Boolean]
-    def empty? = @spans.empty?
+    def empty? = @_spans.empty?
 
     # Plain text concatenation across all spans — no SGR codes.
     # @return [String]
     def to_s
-      @spans.map(&:text).join
+      @_spans.map(&:text).join
     end
 
     # Rendered ANSI string. Minimal-diff between adjacent spans: only the
@@ -487,19 +487,19 @@ module Tuile
     # output.
     # @return [String]
     def to_ansi
-      @to_ansi ||= build_ansi
+      @_to_ansi ||= build_ansi
     end
 
     # @param other [Object]
     # @return [Boolean]
     def ==(other)
-      other.is_a?(StyledString) && @spans == other.spans
+      other.is_a?(StyledString) && @_spans == other.spans
     end
     alias eql? ==
 
     # @return [Integer]
     def hash
-      @spans.hash
+      @_spans.hash
     end
 
     # Concatenation. A `String` operand is parsed via {.parse} before joining
@@ -511,7 +511,7 @@ module Tuile
       other = self.class.parse(other) if other.is_a?(String)
       raise TypeError, "cannot concatenate #{other.class} to StyledString" unless other.is_a?(StyledString)
 
-      self.class.new(@spans + other.spans)
+      self.class.new(@_spans + other.spans)
     end
 
     # Substring by display columns, preserving spans. Characters whose column
@@ -627,7 +627,7 @@ module Tuile
     def lines
       result = []
       current_spans = []
-      @spans.each do |span|
+      @_spans.each do |span|
         parts = span.text.split("\n", -1)
         parts.each_with_index do |part, idx|
           if idx.positive?
@@ -685,7 +685,7 @@ module Tuile
     def each_char_with_style
       return enum_for(__method__) unless block_given?
 
-      @spans.each do |span|
+      @_spans.each do |span|
         span.text.each_char { |c| yield c, span.style }
       end
       self
@@ -701,7 +701,7 @@ module Tuile
     #   terminal default.
     # @return [StyledString]
     def with_bg(bg)
-      self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(bg: bg)) })
+      self.class.new(@_spans.map { |span| Span.new(text: span.text, style: span.style.merge(bg: bg)) })
     end
 
     # Returns a copy with `bg` set **only on spans that have none**; a span with
@@ -721,7 +721,7 @@ module Tuile
       return self if bg.nil?
 
       bg = Color.coerce(bg)
-      self.class.new(@spans.map do |span|
+      self.class.new(@_spans.map do |span|
         if span.style.bg.nil? && !span.style.inverse
           Span.new(text: span.text, style: span.style.merge(bg: bg))
         else
@@ -740,7 +740,7 @@ module Tuile
     #   terminal default.
     # @return [StyledString]
     def with_fg(fg)
-      self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(fg: fg)) })
+      self.class.new(@_spans.map { |span| Span.new(text: span.text, style: span.style.merge(fg: fg)) })
     end
 
     # Returns a copy with `fg` set **only on spans that have none**; a span with
@@ -762,7 +762,7 @@ module Tuile
       return self if fg.nil?
 
       fg = Color.coerce(fg)
-      self.class.new(@spans.map do |span|
+      self.class.new(@_spans.map do |span|
         if span.style.fg.nil? && !span.style.inverse
           Span.new(text: span.text, style: span.style.merge(fg: fg))
         else
@@ -787,7 +787,7 @@ module Tuile
     # @param bold [Boolean] whether the spans should be bold.
     # @return [StyledString]
     def with_bold(bold: true)
-      self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(bold:)) })
+      self.class.new(@_spans.map { |span| Span.new(text: span.text, style: span.style.merge(bold:)) })
     end
 
     # Returns a new {StyledString} with `underline` applied to every span,
@@ -808,7 +808,7 @@ module Tuile
     # @param underline [Boolean] whether the spans should be underlined.
     # @return [StyledString]
     def with_underline(underline: true)
-      self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(underline:)) })
+      self.class.new(@_spans.map { |span| Span.new(text: span.text, style: span.style.merge(underline:)) })
     end
 
     # Returns a new {StyledString} with `inverse` applied to every span,
@@ -825,7 +825,7 @@ module Tuile
     # @param inverse [Boolean] whether the spans should be inverted.
     # @return [StyledString]
     def with_inverse(inverse: true)
-      self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(inverse:)) })
+      self.class.new(@_spans.map { |span| Span.new(text: span.text, style: span.style.merge(inverse:)) })
     end
 
     # @return [String]
@@ -839,7 +839,7 @@ module Tuile
     def build_ansi
       out = +""
       current = Style::DEFAULT
-      @spans.each do |span|
+      @_spans.each do |span|
         out << current.sgr_to(span.style)
         out << span.text
         current = span.style
@@ -907,7 +907,7 @@ module Tuile
     def slice_spans(start, len)
       out = []
       col = 0
-      @spans.each do |span|
+      @_spans.each do |span|
         span_width = Unicode::DisplayWidth.of(span.text, emoji: EMOJI_WIDTH)
         span_end = col + span_width
 

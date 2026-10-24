@@ -53,15 +53,15 @@ module Tuile
 
     # @param owner [Component] whose background this is.
     def initialize(owner)
-      @owner = owner
-      @color = nil
-      @default_color = nil
+      @_owner = owner
+      @_color = nil
+      @_default_color = nil
     end
 
     # @return [Color, Theme::Ref, Hash{Symbol => Color, Theme::Ref}, Symbol, nil]
     #   the app's background — the value as set, so a {Theme::Ref} comes back
     #   unresolved and a state map comes back a Hash; `nil` when unset.
-    attr_reader :color
+    def color = @_color
 
     # Tints the owner and every descendant that doesn't state its own, and
     # invalidates that subtree. See {Component#bg_color=}, its public face.
@@ -71,16 +71,16 @@ module Tuile
     # @return [void]
     def color=(value)
       value = coerce(value)
-      return if @color == value
+      return if @_color == value
 
-      @color = value
+      @_color = value
       invalidate
     end
 
     # @return [Color, Theme::Ref, Hash{Symbol => Color, Theme::Ref}, nil] the
     #   widget's own surface — `nil` by default, meaning "whatever is behind me
     #   shows through".
-    attr_reader :default_color
+    def default_color = @_default_color
 
     # States the opaque surface a widget paints when the app has set no
     # {#color} — and inheritance stops there, which is what keeps a form's
@@ -100,9 +100,9 @@ module Tuile
     # @return [void]
     def default_color=(value)
       value = coerce(value)
-      return if @default_color == value
+      return if @_default_color == value
 
-      @default_color = value
+      @_default_color = value
       invalidate
     end
 
@@ -110,7 +110,7 @@ module Tuile
     #   owner is in right now — the whole chain, resolved. {Screen#canvas_for}
     #   loads it onto the canvas; an app never needs it.
     def effective
-      own = resolve(@owner.__send__(:error_bg_color)) || resolve(@color) || resolve(@default_color)
+      own = resolve(@_owner.__send__(:error_bg_color)) || resolve(@_color) || resolve(@_default_color)
       return parent_effective if own.nil? || own == INHERIT
 
       own
@@ -122,7 +122,7 @@ module Tuile
     # {Component#extent} and a container's gaps.
     # @return [Color, nil]
     def ambient
-      own = resolve(@color)
+      own = resolve(@_color)
       return parent_effective if own.nil? || own == INHERIT
 
       own
@@ -131,11 +131,11 @@ module Tuile
     private
 
     # @return [Color, nil]
-    def parent_effective = @owner.parent&.__send__(:bg)&.effective
+    def parent_effective = @_owner.parent&.__send__(:bg)&.effective
 
     # @return [void]
     def invalidate
-      @owner.walk_tree { |c| @owner.screen.invalidate(c) } if @owner.attached?
+      @_owner.walk_tree { |c| @_owner.screen.invalidate(c) } if @_owner.attached?
     end
 
     # Collapses one level to the {Color} it means right now. An absent state
@@ -146,8 +146,8 @@ module Tuile
     def resolve(value)
       case value
       when nil then nil
-      when Hash then resolve(value[@owner.active? ? :active : :normal])
-      when Theme::Ref then value.resolve(@owner.screen.theme)
+      when Hash then resolve(value[@_owner.active? ? :active : :normal])
+      when Theme::Ref then value.resolve(@_owner.screen.theme)
       else value
       end
     end
@@ -163,7 +163,7 @@ module Tuile
       case value
       when nil, Color, INHERIT then value
       when Theme::Ref
-        value.tap { _1.resolve(@owner.screen.theme) unless Theme.chrome_token?(_1.name) }
+        value.tap { _1.resolve(@_owner.screen.theme) unless Theme.chrome_token?(_1.name) }
       when Hash
         unknown = value.keys - STATES
         raise ArgumentError, "unknown background state(s) #{unknown.join(", ")}; known: #{STATES.join(", ")}" \

@@ -53,19 +53,19 @@ module Tuile
     class TextArea < AbstractStringField
       def initialize
         super
-        @scroll_top_row = 0
+        @_scroll_top_row = 0
         # Lazy cache; nil means "stale, rebuild on next read". Reset whenever
         # {#text} mutates; {#wrap} notices a width change itself.
-        @wrap = nil
+        @_wrap = nil
       end
 
       # @return [Integer] index of the topmost row currently visible.
-      attr_reader :scroll_top_row
+      def scroll_top_row = @_scroll_top_row
 
       # The caret's row, counted from the text's first row — *not* from the top
       # of the viewport (subtract {#scroll_top_row} for that).
       # @return [Integer] a row index in `0...row_count`.
-      def caret_row = wrap.row_at(@caret)
+      def caret_row = wrap.row_at(@_caret)
 
       # @return [Integer] rows the wrapped text occupies at the current
       #   {Rect#width}; always `>= 1`, since empty text still wraps to one
@@ -76,8 +76,8 @@ module Tuile
       def cursor_position
         return nil if rect.empty?
 
-        row, col = wrap.position_at(@caret)
-        row_in_viewport = row - @scroll_top_row
+        row, col = wrap.position_at(@_caret)
+        row_in_viewport = row - @_scroll_top_row
         return nil if row_in_viewport.negative? || row_in_viewport >= rect.height
 
         # Cap so the hardware cursor never lands one past the last column.
@@ -91,9 +91,9 @@ module Tuile
       def handle_mouse_down?(event)
         return false unless event.button == :left
 
-        target_row = event.y + @scroll_top_row
+        target_row = event.y + @_scroll_top_row
         self.caret = if target_row >= wrap.row_count
-                       @text.length
+                       @_text.length
                      else
                        wrap.index_at(target_row, event.x)
                      end
@@ -106,7 +106,7 @@ module Tuile
         return if rect.empty?
 
         (0...rect.height).each do |row_in_viewport|
-          line = wrap.row_text(row_in_viewport + @scroll_top_row)
+          line = wrap.row_text(row_in_viewport + @_scroll_top_row)
           canvas.set_text(0, row_in_viewport, StyledString.plain(line))
         end
       end
@@ -116,7 +116,7 @@ module Tuile
       # @return [void]
       def handle_text_mutated
         super
-        @wrap = nil
+        @_wrap = nil
         adjust_scroll_top_row
       end
 
@@ -160,19 +160,19 @@ module Tuile
 
       # @return [WrappedText] the current wrap of {#text} at {Rect#width}.
       def wrap
-        @wrap = nil unless @wrap&.width == rect.width
-        @wrap ||= WrappedText.new(@text, rect.width)
+        @_wrap = nil unless @_wrap&.width == rect.width
+        @_wrap ||= WrappedText.new(@_text, rect.width)
       end
 
       # @param delta [Integer] `+1` for down, `-1` for up.
       # @return [void]
       def move_caret_vertical(delta)
-        cur_row, cur_col = wrap.position_at(@caret)
+        cur_row, cur_col = wrap.position_at(@_caret)
         new_row = (cur_row + delta).clamp(0, wrap.row_count - 1)
         if new_row == cur_row
           # Already at the top/bottom row. Snap to the absolute start/end of the
           # text so the user has a quick way to reach it.
-          self.caret = delta.positive? ? @text.length : 0
+          self.caret = delta.positive? ? @_text.length : 0
           return
         end
 
@@ -180,7 +180,7 @@ module Tuile
       end
 
       # @return [Integer] index of the first character of the caret's row.
-      def caret_row_start = wrap.row_start(wrap.row_at(@caret))
+      def caret_row_start = wrap.row_start(wrap.row_at(@_caret))
 
       # @return [void]
       def move_caret_to_row_start
@@ -189,7 +189,7 @@ module Tuile
 
       # @return [void]
       def move_caret_to_row_end
-        self.caret = wrap.row_end(wrap.row_at(@caret))
+        self.caret = wrap.row_end(wrap.row_at(@_caret))
       end
 
       # Routes a typed character (or the ENTER newline) through
@@ -207,14 +207,14 @@ module Tuile
       def adjust_scroll_top_row
         return if rect.empty?
 
-        cur_row = wrap.row_at(@caret)
-        if cur_row < @scroll_top_row
-          @scroll_top_row = cur_row
-        elsif cur_row >= @scroll_top_row + rect.height
-          @scroll_top_row = cur_row - rect.height + 1
+        cur_row = wrap.row_at(@_caret)
+        if cur_row < @_scroll_top_row
+          @_scroll_top_row = cur_row
+        elsif cur_row >= @_scroll_top_row + rect.height
+          @_scroll_top_row = cur_row - rect.height + 1
         end
         max_top = (wrap.row_count - rect.height).clamp(0, nil)
-        @scroll_top_row = @scroll_top_row.clamp(0, max_top)
+        @_scroll_top_row = @_scroll_top_row.clamp(0, max_top)
       end
     end
   end

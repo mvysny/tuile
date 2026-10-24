@@ -19,26 +19,26 @@ module Tuile
       #   the same way {HasCaption#caption=} coerces it.
       def initialize(caption = nil)
         super()
-        @border_right = 1
+        @_border_right = 1
         self.caption = caption
-        @content = nil
+        @_content = nil
         # The bottom row holds either a widget or chrome text, never both; see
         # the precedence note on #footer=.
-        @footer_slot = Slot.new
-        add_child(@footer_slot) # appended: the footer paints over the border row
-        @footer_text = StyledString::EMPTY
+        @_footer_slot = Slot.new
+        add_child(@_footer_slot) # appended: the footer paints over the border row
+        @_footer_text = StyledString::EMPTY
       end
 
       def focusable? = true
 
       # @return [Component, nil] optional focusable component occupying the
       #   bottom border row, always spanning the full inner width.
-      def footer = @footer_slot.content
+      def footer = @_footer_slot.content
 
       # @return [StyledString] optional chrome embedded into the bottom border
       #   line, mirroring {#caption} on the top line. Empty by default; hidden
       #   whenever a {#footer} component is present.
-      attr_reader :footer_text
+      def footer_text = @_footer_text
 
       # Sets the bottom-border chrome. Accepts a `String` (parsed via
       # {StyledString.parse}), a {StyledString}, or `nil` (clears it). The text
@@ -47,11 +47,12 @@ module Tuile
       # not a component (not focusable). Hidden whenever a {#footer} component
       # occupies the bottom row (see the precedence note on {#footer=}).
       # @param text [String, StyledString, nil]
+      # @return [void]
       def footer_text=(text)
         new_text = StyledString.parse(text)
-        return if @footer_text == new_text
+        return if @_footer_text == new_text
 
-        @footer_text = new_text
+        @_footer_text = new_text
         invalidate # repaint the bottom border row
       end
 
@@ -65,7 +66,7 @@ module Tuile
       # @raise [ArgumentError] if `new_footer` already has a parent.
       # @return [void]
       def footer=(new_footer)
-        @footer_slot.content = new_footer
+        @_footer_slot.content = new_footer
         invalidate_layout
         invalidate # repaint border row that the footer covers/uncovers
       end
@@ -79,7 +80,7 @@ module Tuile
         end
 
         content.scrollbar_visibility = value ? :visible : :gone
-        @border_right = value ? 0 : 1
+        @_border_right = value ? 0 : 1
         invalidate
         invalidate_layout
       end
@@ -126,7 +127,7 @@ module Tuile
       # @return [Rect] may be {Rect#empty? empty}, for a window too small to have
       #   an inside.
       def content_rect
-        Rect.new(1, 1, rect.width - 1 - @border_right, rect.height - 2)
+        Rect.new(1, 1, rect.width - 1 - @_border_right, rect.height - 2)
       end
 
       # Paints the window border via {Canvas#set_text} / {Canvas#set_char},
@@ -152,7 +153,7 @@ module Tuile
           # Skipped once {#scrollbar=} has given that column to the content: the
           # bar would paint over the border anyway, and painting it first only
           # dirties the column into every frame's diff (`D_component_contract`).
-          canvas.set_char(w - 1, row, "│", bar) if @border_right.positive?
+          canvas.set_char(w - 1, row, "│", bar) if @_border_right.positive?
         end
         canvas.set_text(0, h - 1, bottom_border(inner_w, fg).slice(0, w)) if h >= 2
       end
@@ -180,10 +181,10 @@ module Tuile
       # @return [StyledString]
       def bottom_border(inner_w, fg)
         interior =
-          if footer || @footer_text.empty?
+          if footer || @_footer_text.empty?
             StyledString.styled("─" * inner_w, fg: fg)
           else
-            embedded = @footer_text.slice(0, inner_w)
+            embedded = @_footer_text.slice(0, inner_w)
             embedded + StyledString.styled("─" * (inner_w - embedded.display_width), fg: fg)
           end
         StyledString.styled("└", fg: fg) + interior + StyledString.styled("┘", fg: fg)
@@ -200,12 +201,12 @@ module Tuile
       # @return [void]
       def layout_footer
         if footer.nil? || rect.empty?
-          @footer_slot.rect = Rect.new(0, 0, 0, 0)
+          @_footer_slot.rect = Rect.new(0, 0, 0, 0)
           return
         end
 
         width = [rect.width - 2, 0].max
-        @footer_slot.rect = Rect.new(1, rect.height - 1, width, 1)
+        @_footer_slot.rect = Rect.new(1, rect.height - 1, width, 1)
       end
     end
   end

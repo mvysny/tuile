@@ -214,20 +214,20 @@ module Tuile
       # @param background [Color, nil]
       # @api private
       def initialize(theme, background)
-        @chrome = theme.to_h.except(:custom)
-        @custom = theme.custom
-        @background = background
-        @done = {}
-        @resolving = []
+        @_chrome = theme.to_h.except(:custom)
+        @_custom = theme.custom
+        @_background = background
+        @_done = {}
+        @_resolving = []
       end
 
       # @param token [Symbol] a {Theme#custom} token.
       # @return [Color]
       # @raise [KeyError] when the token is not present.
-      def [](token) = resolve_token([:custom, token], @custom.fetch(token))
+      def [](token) = resolve_token([:custom, token], @_custom.fetch(token))
 
       CHROME_TOKENS.each do |name|
-        define_method(name) { resolve_token([:chrome, name], @chrome.fetch(name)) }
+        define_method(name) { resolve_token([:chrome, name], @_chrome.fetch(name)) }
       end
 
       private
@@ -237,20 +237,20 @@ module Tuile
       # @param value [Color, Proc]
       # @return [Color]
       def resolve_token(key, value)
-        return @done[key] if @done.key?(key)
-        return @done[key] = value unless value.is_a?(Proc)
+        return @_done[key] if @_done.key?(key)
+        return @_done[key] = value unless value.is_a?(Proc)
 
-        if @resolving.include?(key)
-          path = [*@resolving, key].map { |(kind, name)| kind == :custom ? "[#{name.inspect}]" : name.to_s }
+        if @_resolving.include?(key)
+          path = [*@_resolving, key].map { |(kind, name)| kind == :custom ? "[#{name.inspect}]" : name.to_s }
           raise ArgumentError, "derived theme tokens form a cycle: #{path.join(" -> ")}"
         end
 
-        @resolving << key
-        color = value.call(*[@background, self].first(Theme.derivation_arity(value)))
-        @resolving.pop
+        @_resolving << key
+        color = value.call(*[@_background, self].first(Theme.derivation_arity(value)))
+        @_resolving.pop
         raise TypeError, "#{key.last.inspect} derived #{color.inspect}, not a Tuile::Color" unless color.is_a?(Color)
 
-        @done[key] = color
+        @_done[key] = color
       end
     end
 

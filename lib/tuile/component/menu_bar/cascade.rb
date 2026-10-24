@@ -49,21 +49,21 @@ module Tuile
         ARROW_WIDTH = 2
 
         def initialize
-          @levels = []
-          @browsing = false
+          @_levels = []
+          @_browsing = false
         end
 
         # @return [Boolean] whether any panel is open.
-        def open? = !@levels.empty?
+        def open? = !@_levels.empty?
 
         # @return [Boolean] whether the bar is in *menu mode* — which is not
         #   {#open?}: stepping onto a top-level item with no menu keeps the mode
         #   with no panel to show for it. Cleared with the last panel, however
         #   it went.
-        def browsing? = @browsing
+        def browsing? = @_browsing
 
         # @return [Integer] how many panels are open; `0` when closed.
-        def depth = @levels.size
+        def depth = @_levels.size
 
         # Opens `item`'s children directly beneath `anchor`, first row
         # highlighted, closing anything already open first.
@@ -82,7 +82,7 @@ module Tuile
         # @return [void]
         def step_to(anchor, item)
           show(anchor, item, highlight: false)
-          @browsing = true
+          @_browsing = true
         end
 
         # Closes every open panel, deepest first, and leaves menu mode.
@@ -92,7 +92,7 @@ module Tuile
         # @return [void]
         def close
           truncate(0)
-          @browsing = false
+          @_browsing = false
         end
 
         # Offers a key to the deepest panel and to the cascade's own verbs.
@@ -137,7 +137,7 @@ module Tuile
           return false unless open?
 
           level = depth - 1
-          item, drop = @levels[level]
+          item, drop = @_levels[level]
           index = item.items.index { |child| child.mnemonic == key }
           return false if index.nil?
 
@@ -158,7 +158,7 @@ module Tuile
           close
           return unless item.submenu?
 
-          @browsing = true
+          @_browsing = true
           push(item, highlight: highlight) { |drop, width| drop.anchor_to(anchor, width: width) }
         end
 
@@ -175,7 +175,7 @@ module Tuile
           level = depth - 1
           return false unless highlighted(level).nil?
 
-          item, drop = @levels[level]
+          item, drop = @_levels[level]
           case key
           when *Keys::DOWN_ARROWS, Keys::ENTER, " " then drop.select(0)
           when *Keys::UP_ARROWS then drop.select(item.items.size - 1)
@@ -184,7 +184,7 @@ module Tuile
         end
 
         # @return [ListDropdown] the deepest open panel.
-        def deepest = @levels.last[1]
+        def deepest = @_levels.last[1]
 
         # @return [void]
         def activate_highlighted = activate(depth - 1, highlighted(depth - 1))
@@ -216,7 +216,7 @@ module Tuile
         # @param item [Item]
         # @return [void]
         def push_beside(level, item)
-          anchor = @levels[level][1].cursor_row_rect
+          anchor = @_levels[level][1].cursor_row_rect
           return if anchor.nil?
 
           push(item) { |drop, width| drop.anchor_beside(anchor, width: width) }
@@ -236,7 +236,7 @@ module Tuile
           drop.renderer = renderer_for(children)
           drop.items = children
           drop.cursor = List::Cursor.new(position: highlight ? 0 : -1)
-          level = @levels.size
+          level = @_levels.size
           # Wired *after* the items and cursor: {List#items=} and {List#cursor=}
           # both fire on_cursor_changed, so wiring first would have the fresh
           # panel truncate itself away as it was built.
@@ -245,22 +245,22 @@ module Tuile
           # The cascade's own record of what is open is reconciled from the
           # popup's own closure, not maintained alongside it: an outside click
           # closes panels behind our back ({Overlay#close_on_outside_click?}), and
-          # a level left in `@levels` after its panel is gone would have `depth`,
+          # a level left in `@_levels` after its panel is gone would have `depth`,
           # `deepest` and `highlighted` all lying. Identity-keyed and idempotent,
           # because the notice also arrives from `truncate` (which has already
           # popped the entry) and from teardown, in no guaranteed order.
           # Menu mode ends with the last panel, whoever took it: this notice is
           # what covers a dismissal {#close} never hears about.
           drop.on_close do
-            @levels.delete_if { |(_i, d)| d.equal?(drop) }
-            @browsing = false if @levels.empty?
+            @_levels.delete_if { |(_i, d)| d.equal?(drop) }
+            @_browsing = false if @_levels.empty?
           end
           # Chain each panel to the one it dropped out of, so a click on a
           # deeper panel is "inside" the shallower ones and doesn't dismiss
           # them. Level 0 owns nothing on purpose: a click on a dialog hosting
           # the bar *should* close the whole menu and keep the dialog.
-          drop.owner = @levels.last&.last
-          @levels << [item, drop]
+          drop.owner = @_levels.last&.last
+          @_levels << [item, drop]
           yield(drop, width_for(children))
         end
 
@@ -272,7 +272,7 @@ module Tuile
         # @return [void]
         def truncate(count)
           while depth > count
-            _item, drop = @levels.pop
+            _item, drop = @_levels.pop
             drop.close
           end
         end
@@ -282,7 +282,7 @@ module Tuile
         #   off-content. The range guard matters: a cursor at `-1` would
         #   otherwise index the *last* child.
         def highlighted(level)
-          item, drop = @levels[level]
+          item, drop = @_levels[level]
           position = drop.cursor.position
           position.between?(0, item.items.size - 1) ? item.items[position] : nil
         end

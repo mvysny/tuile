@@ -44,3 +44,9 @@ Naming/MethodParameterName:
     - x
     - y
     - w
+
+# Every ivar in lib/ is spelled `@_foo`, so an app subclass owns the bare
+# names (see AGENTS.md, Conventions). `optional` keeps `@foo ||=` legal in
+# specs and examples, which are app code.
+Naming/MemoizedInstanceVariableName:
+  EnforcedStyleForLeadingUnderscores: optional

@@ -165,7 +165,7 @@ module Tuile
       assert_equal Rect.new(40, 12, 80, 25), p.rect
 
       # Simulate a SIGWINCH-driven reposition: shrink the screen, re-lay out.
-      Screen.instance.instance_variable_set(:@size, Size.new(100, 30))
+      Screen.instance.instance_variable_set(:@_size, Size.new(100, 30))
       Screen.instance.resize_terminal(100, 30)
       # HALF of 100x30 = 50x15; centered at ((100-50)/2, (30-15)/2) = (25, 7).
       p.flush_layout

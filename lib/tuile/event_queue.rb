@@ -12,9 +12,9 @@ module Tuile
   class EventQueue
     # @param listen_for_keys [Boolean] if true, fires {KeyEvent}.
     def initialize(listen_for_keys: true)
-      @queue = Thread::Queue.new
-      @listen_for_keys = listen_for_keys
-      @run_lock = Mutex.new
+      @_queue = Thread::Queue.new
+      @_listen_for_keys = listen_for_keys
+      @_run_lock = Mutex.new
     end
 
     # Posts event into the event queue. The event may be of any type. Since the
@@ -26,7 +26,7 @@ module Tuile
     def post(event)
       raise ArgumentError, "event passed across threads must be frozen, got #{event.inspect}" unless event.frozen?
 
-      @queue << event
+      @_queue << event
     end
 
     # Submits block to be run in the event queue. Returns immediately.
@@ -39,7 +39,7 @@ module Tuile
     # @yieldreturn [void]
     # @return [void]
     def submit(&block)
-      @queue << block
+      @_queue << block
     end
 
     # Awaits until the event queue is empty (all events have been processed).
@@ -143,14 +143,14 @@ module Tuile
     def run_loop(&)
       raise ArgumentError, "run_loop requires a block" unless block_given?
 
-      @run_lock.synchronize do
-        start_key_thread if @listen_for_keys
+      @_run_lock.synchronize do
+        start_key_thread if @_listen_for_keys
         begin
           trap_winch
           event_loop(&)
         ensure
           Signal.trap("WINCH", "SYSTEM_DEFAULT")
-          if @key_thread
+          if @_key_thread
             # Kill returns immediately, but the key thread is typically
             # blocked inside $stdin.getch with a termios snapshot saved in
             # io-console's C-level ensure. If we let it run to completion
@@ -161,19 +161,19 @@ module Tuile
             # Joining here forces the restore to happen while we're still
             # nested inside $stdin.raw, so raw's own restoration is the
             # final write and the terminal lands in cooked mode.
-            @key_thread.kill
-            @key_thread.join
+            @_key_thread.kill
+            @_key_thread.join
           end
-          @queue.clear
+          @_queue.clear
         end
       end
     end
 
     # @return [Boolean] true if a {#run_loop} is in progress on *any* thread.
-    def running? = @run_lock.locked?
+    def running? = @_run_lock.locked?
 
     # @return [Boolean] true if this thread is the one running {#run_loop}.
-    def in_loop_thread? = @run_lock.owned?
+    def in_loop_thread? = @_run_lock.owned?
 
     # Stops ongoing {#run_loop}. The stop may not be immediate: {#run_loop} may
     # process a bunch of events before terminating.
@@ -182,7 +182,7 @@ module Tuile
     # loop.
     # @return [void]
     def stop
-      @queue.clear
+      @_queue.clear
       post(nil)
     end
 
@@ -352,23 +352,23 @@ module Tuile
       # @param interval [Numeric] seconds between firings (positive).
       # @param block [Proc] called as `block.call(tick_count)` on each fire.
       def initialize(event_queue, interval, block)
-        @event_queue = event_queue
-        @block = block
-        @tick = 0
+        @_event_queue = event_queue
+        @_block = block
+        @_tick = 0
         # AtomicBoolean rather than a plain ivar: cancel may run on any
         # thread (caller code, the event-loop thread from inside the block,
         # or the IO executor on an error path), and we want both a CAS-style
         # one-shot guard against double-shutdown and well-defined visibility
         # on non-MRI Rubies.
-        @cancelled = Concurrent::AtomicBoolean.new(false)
-        @timer = Concurrent::TimerTask.new(execution_interval: interval) do
-          @event_queue.submit { fire }
+        @_cancelled = Concurrent::AtomicBoolean.new(false)
+        @_timer = Concurrent::TimerTask.new(execution_interval: interval) do
+          @_event_queue.submit { fire }
         end
-        @timer.execute
+        @_timer.execute
       end
 
       # @return [Boolean] true once {#cancel} has been called.
-      def cancelled? = @cancelled.true?
+      def cancelled? = @_cancelled.true?
 
       # Stops the ticker. Idempotent and safe to call from any thread,
       # including from inside the tick block. Any tick already queued on the
@@ -376,9 +376,9 @@ module Tuile
       # block runs.
       # @return [void]
       def cancel
-        return unless @cancelled.make_true # CAS: only the winner shuts down
+        return unless @_cancelled.make_true # CAS: only the winner shuts down
 
-        @timer.shutdown
+        @_timer.shutdown
       end
 
       private
@@ -386,10 +386,10 @@ module Tuile
       # Runs on the event-loop thread.
       # @return [void]
       def fire
-        return if @cancelled.true?
+        return if @_cancelled.true?
 
-        @block.call(@tick)
-        @tick += 1
+        @_block.call(@_tick)
+        @_tick += 1
       rescue StandardError
         cancel
         raise
@@ -408,21 +408,21 @@ module Tuile
       # @param delay [Numeric] seconds until the block runs (zero or positive).
       # @param block [Proc] called with no arguments.
       def initialize(event_queue, delay, block)
-        @block = block
+        @_block = block
         # AtomicBoolean for the same reason as Ticker's: cancel may run on any thread.
-        @cancelled = Concurrent::AtomicBoolean.new(false)
+        @_cancelled = Concurrent::AtomicBoolean.new(false)
         if delay.zero?
           # Straight onto the queue, not via the timer thread, which could
           # land it behind a submit made after this call.
           event_queue.submit { fire }
         else
-          @task = Concurrent::ScheduledTask.execute(delay) { event_queue.submit { fire } }
+          @_task = Concurrent::ScheduledTask.execute(delay) { event_queue.submit { fire } }
         end
       end
 
       # @return [Boolean] true once {#cancel} has been called, whether or not
       #   the block had already run.
-      def cancelled? = @cancelled.true?
+      def cancelled? = @_cancelled.true?
 
       # Drops the block unless it has already run. Idempotent and safe to call
       # from any thread, including from inside the block; a firing already
@@ -430,9 +430,9 @@ module Tuile
       # debounce that cancels on a keystroke never sees a stale firing.
       # @return [void]
       def cancel
-        return unless @cancelled.make_true
+        return unless @_cancelled.make_true
 
-        @task&.cancel
+        @_task&.cancel
       end
 
       private
@@ -440,7 +440,7 @@ module Tuile
       # Runs on the event-loop thread.
       # @return [void]
       def fire
-        @block.call unless @cancelled.true?
+        @_block.call unless @_cancelled.true?
       end
     end
 
@@ -449,8 +449,8 @@ module Tuile
     # @return [void]
     def event_loop
       loop do
-        yield EmptyQueueEvent.instance if @queue.empty?
-        event = @queue.pop
+        yield EmptyQueueEvent.instance if @_queue.empty?
+        event = @_queue.pop
         break if event.nil?
 
         if event.is_a? ErrorEvent
@@ -470,7 +470,7 @@ module Tuile
     # Starts listening for stdin, firing {KeyEvent} on keypress.
     # @return [void]
     def start_key_thread
-      @key_thread = Thread.new do
+      @_key_thread = Thread.new do
         loop do
           key = Keys.getkey
           event = if key == Keys::PASTE_START

@@ -30,12 +30,12 @@ module Tuile
     class PasswordField < TextField
       def initialize
         super
-        @mask_char = "*"
-        @revealed = false
+        @_mask_char = "*"
+        @_revealed = false
       end
 
       # @return [String] the glyph painted per character; `"*"` by default.
-      attr_reader :mask_char
+      def mask_char = @_mask_char
 
       # The default is `"*"` rather than a prettier `"•"` because U+2022 is
       # East-Asian-*Ambiguous*: a CJK-configured terminal draws it two columns
@@ -52,17 +52,17 @@ module Tuile
       #   a wide one the column axis.
       def mask_char=(char)
         char = StyledString.validate_glyph(char, :mask_char)
-        return if @mask_char == char
+        return if @_mask_char == char
 
-        @mask_char = char
+        @_mask_char = char
         invalidate
       end
 
       # @return [Boolean] whether the plaintext is shown; `false` by default.
-      attr_reader :revealed
+      def revealed = @_revealed
 
       # @return [Boolean] {#revealed} in predicate form.
-      def revealed? = @revealed
+      def revealed? = @_revealed
 
       # Shows or re-masks the plaintext. There is no built-in reveal *button* —
       # a TTY field has no room for an in-field affordance — so an app flips
@@ -71,9 +71,9 @@ module Tuile
       # @return [void]
       def revealed=(flag)
         flag = flag ? true : false
-        return if @revealed == flag
+        return if @_revealed == flag
 
-        @revealed = flag
+        @_revealed = flag
         # The plaintext and the mask differ in *columns* (a CJK passphrase is
         # wider than its mask), so the scroll window has to be recomputed —
         # the caret index it must keep visible has not moved.
@@ -84,7 +84,7 @@ module Tuile
       protected
 
       # @return [String] the mask, one glyph per character, unless {#revealed}.
-      def display_text = revealed? ? super : @mask_char * @text.length
+      def display_text = revealed? ? super : @_mask_char * @_text.length
 
       private
 
@@ -92,7 +92,7 @@ module Tuile
       def word_left = revealed? ? super : 0
 
       # @return [Integer] caret target for CTRL+RIGHT: the end, while masked.
-      def word_right = revealed? ? super : @text.length
+      def word_right = revealed? ? super : @_text.length
     end
   end
 end

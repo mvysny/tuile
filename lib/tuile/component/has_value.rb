@@ -20,7 +20,7 @@ module Tuile
     #   field.value = "x"                        # e.from_user? is false
     #   field.set_value("x", from_user: true)    # an app writing for the user
     #
-    # The default {#set_value}/{#value} keep the value in `@value` and are
+    # The default {#set_value}/{#value} keep the value in `@_value` and are
     # enough for a component with nothing more natural — you get a repaint and
     # the listener for free. An includer whose value lives elsewhere overrides
     # both ({AbstractStringField} backs them with its text buffer); **the
@@ -66,7 +66,7 @@ module Tuile
       listener :on_value_change
 
       # @return [Object] the current value; `nil` until first set.
-      def value = @value
+      def value = @_value
 
       # A programmatic write: {#set_value} with `from_user: false`. Defined
       # here once and never overridden — override {#set_value} instead, since a
@@ -95,7 +95,7 @@ module Tuile
       def set_value(new_value, from_user:)
         return if value == new_value
 
-        @value = new_value
+        @_value = new_value
         invalidate
         on_value_change.fire(ValueChangeEvent.new(source: self, value: new_value, from_user:))
       end

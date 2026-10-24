@@ -31,7 +31,7 @@ module Tuile
       # @param content [Component, nil] the initial occupant.
       def initialize(content = nil)
         super()
-        @content = nil
+        @_content = nil
         self.content = content unless content.nil?
       end
 

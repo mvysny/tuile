@@ -7,11 +7,11 @@ RSpec.describe Tuile do
 
   describe ".logger" do
     around do |example|
-      saved = Tuile.instance_variable_get(:@logger)
-      Tuile.instance_variable_set(:@logger, nil)
+      saved = Tuile.instance_variable_get(:@_logger)
+      Tuile.instance_variable_set(:@_logger, nil)
       example.run
     ensure
-      Tuile.instance_variable_set(:@logger, saved)
+      Tuile.instance_variable_set(:@_logger, saved)
     end
 
     it "lazily defaults to a null Logger" do

@@ -115,21 +115,21 @@ module Tuile
         #   case it was given in.
         # @param on_click [Proc, Method, nil]
         def initialize(caption, mnemonic, on_click)
-          @caption = caption
-          @mnemonic = mnemonic&.downcase
-          @cued_caption = build_cued_caption(caption, mnemonic)
+          @_caption = caption
+          @_mnemonic = mnemonic&.downcase
+          @_cued_caption = build_cued_caption(caption, mnemonic)
           self.on_click << on_click if on_click
-          @items = []
+          @_items = []
         end
 
         private_class_method :new
 
         # @return [StyledString] the label painted on the strip or the row.
-        attr_reader :caption
+        def caption = @_caption
 
         # @return [String, nil] the downcased letter that activates this item
         #   while its own level is the live one; `nil` when it has none.
-        attr_reader :mnemonic
+        def mnemonic = @_mnemonic
 
         # @return [StyledString] {#caption} with the {#mnemonic} underlined —
         #   what both paint sites draw. Equal to {#caption} when there is no
@@ -137,11 +137,11 @@ module Tuile
         #   construction: caption and mnemonic are both fixed there, and
         #   underline is a plain attribute with no theme or `bg_color` input, so
         #   this is not a cached theme value.
-        attr_reader :cued_caption
+        def cued_caption = @_cued_caption
 
         # @return [Array<Item>] this item's children, in menu order. Read-only by
         #   convention, like {Component#children} — grow it through {#add_item}.
-        attr_reader :items
+        def items = @_items
 
         # @!method on_click
         #   Fired with a {ClickEvent} when the item is activated (Enter, Space or
@@ -151,7 +151,7 @@ module Tuile
         listener :on_click
 
         # @return [Boolean] whether this item opens a submenu, i.e. has children.
-        def submenu? = !@items.empty?
+        def submenu? = !@_items.empty?
 
         # Appends a child and returns its handle.
         # @param caption [String, StyledString, nil] parsed as
@@ -164,13 +164,13 @@ module Tuile
         # @return [Item]
         def add_item(caption = nil, mnemonic: nil, &on_click)
           validate_mnemonic(mnemonic)
-          Item.send(:new, StyledString.parse(caption), mnemonic, on_click).tap { @items << _1 }
+          Item.send(:new, StyledString.parse(caption), mnemonic, on_click).tap { @_items << _1 }
         end
 
         # @return [String]
         def inspect
-          mn = @mnemonic.nil? ? "" : " [#{@mnemonic}]"
-          "#<#{self.class.name} #{caption.to_s.inspect}#{mn}#{submenu? ? " (#{@items.size} items)" : ""}>"
+          mn = @_mnemonic.nil? ? "" : " [#{@_mnemonic}]"
+          "#<#{self.class.name} #{caption.to_s.inspect}#{mn}#{submenu? ? " (#{@_items.size} items)" : ""}>"
         end
 
         private
@@ -191,7 +191,7 @@ module Tuile
           end
 
           down = mnemonic.downcase
-          return unless @items.any? { |item| item.mnemonic == down }
+          return unless @_items.any? { |item| item.mnemonic == down }
 
           raise ArgumentError, "duplicate mnemonic #{down.inspect} among these menu items"
         end
@@ -218,10 +218,10 @@ module Tuile
 
       def initialize
         super()
-        @root = Item.send(:new, StyledString::EMPTY, nil, nil)
-        @highlighted_index = 0
-        @left_column = 0
-        @cascade = Cascade.new
+        @_root = Item.send(:new, StyledString::EMPTY, nil, nil)
+        @_highlighted_index = 0
+        @_left_column = 0
+        @_cascade = Cascade.new
       end
 
       # @return [Boolean] `true` — the strip takes focus, so its keys work.
@@ -232,11 +232,11 @@ module Tuile
 
       # @return [Array<Item>] the top-level items, in strip order. Read-only by
       #   convention; grow it through {#add_item}.
-      def items = @root.items
+      def items = @_root.items
 
       # @return [Integer] which top-level item the strip highlights while
       #   focused, and which menu Enter opens. `0` until the user moves.
-      attr_reader :highlighted_index
+      def highlighted_index = @_highlighted_index
 
       # Appends a top-level item and returns its handle; nest submenus into it
       # with {Item#add_item}.
@@ -253,7 +253,7 @@ module Tuile
       #   one-column printable character, or duplicates a sibling's.
       # @return [Item]
       def add_item(caption = nil, mnemonic: nil, &on_click)
-        @root.add_item(caption, mnemonic: mnemonic, &on_click).tap { refresh }
+        @_root.add_item(caption, mnemonic: mnemonic, &on_click).tap { refresh }
       end
 
       # The cells the strip actually paints: one row, as wide as its segments
@@ -267,7 +267,7 @@ module Tuile
       def extent
         return Size.new(0, 1) if rect.empty?
 
-        Size.new([painted_width - @left_column, rect.width].min, 1)
+        Size.new([painted_width - @_left_column, rect.width].min, 1)
       end
 
       # Closes the cascade — only on a *changed* rect, which is all this hook
@@ -277,7 +277,7 @@ module Tuile
       # @return [void]
       def handle_rect_changed(old_rect)
         super
-        @cascade.close
+        @_cascade.close
       end
 
       # Closes the cascade when the strip leaves the focus chain, so tabbing (or
@@ -287,7 +287,7 @@ module Tuile
       def active=(flag)
         was = active?
         super
-        @cascade.close if was && !active?
+        @_cascade.close if was && !active?
       end
 
       # Closes the cascade, so a bar removed from the tree can't strand its
@@ -296,7 +296,7 @@ module Tuile
       # @return [void]
       def handle_detached
         super
-        @cascade.close
+        @_cascade.close
       end
 
       # Offers the key to the open cascade first, then to the strip's own
@@ -311,11 +311,11 @@ module Tuile
         # Ahead of the cascade: an open one swallows every printable it doesn't
         # recognize, so a letter would never reach the strip otherwise.
         return true if handle_mnemonic?(key)
-        return true if @cascade.handle_key?(key)
+        return true if @_cascade.handle_key?(key)
 
         case key
-        when Keys::LEFT_ARROW then @cascade.browsing? ? step_menu(-1) : move_highlight(-1)
-        when Keys::RIGHT_ARROW then @cascade.browsing? ? step_menu(1) : move_highlight(1)
+        when Keys::LEFT_ARROW then @_cascade.browsing? ? step_menu(-1) : move_highlight(-1)
+        when Keys::RIGHT_ARROW then @_cascade.browsing? ? step_menu(1) : move_highlight(1)
         when Keys::ENTER, " ", Keys::DOWN_ARROW then open_highlighted
         when Keys::ESC then leave_menus
         else false
@@ -333,8 +333,8 @@ module Tuile
         index = index_at(event.point)
         return true if index.nil?
 
-        if @cascade.open? && index == @highlighted_index
-          @cascade.close
+        if @_cascade.open? && index == @_highlighted_index
+          @_cascade.close
         else
           self.highlight = index
           open_highlighted
@@ -348,7 +348,7 @@ module Tuile
         super
         return if rect.empty?
 
-        row = strip_row.slice(@left_column, rect.width)
+        row = strip_row.slice(@_left_column, rect.width)
         canvas.set_text(0, 0, row)
         draw_cues(canvas, row)
       end
@@ -358,7 +358,7 @@ module Tuile
       # @return [Integer] the strip column painted in {#rect}'s leftmost cell —
       #   the horizontal scroll offset. `0` unless the strip overflows its rect;
       #   {#adjust_left_column} is its sole writer.
-      attr_reader :left_column
+      def left_column = @_left_column
 
       # The sole writer of {#highlighted_index}: assigns, re-syncs the scroll
       # offset and repaints. Every path that moves the highlight — arrow,
@@ -367,9 +367,9 @@ module Tuile
       # @param index [Integer]
       # @return [void]
       def highlight=(index)
-        return if index == @highlighted_index
+        return if index == @_highlighted_index
 
-        @highlighted_index = index
+        @_highlighted_index = index
         refresh
       end
 
@@ -399,18 +399,18 @@ module Tuile
       # @return [void]
       def adjust_left_column
         if rect.empty? || painted_width <= rect.width || items.empty?
-          @left_column = 0
+          @_left_column = 0
           return
         end
 
-        _item, start, width = segments[@highlighted_index]
+        _item, start, width = segments[@_highlighted_index]
         if width >= rect.width
-          @left_column = start
+          @_left_column = start
         else
-          @left_column = start if start < @left_column
-          @left_column = start + width - rect.width if start + width > @left_column + rect.width
+          @_left_column = start if start < @_left_column
+          @_left_column = start + width - rect.width if start + width > @_left_column + rect.width
         end
-        @left_column = snap_to_glyph_start(@left_column.clamp(0, painted_width - rect.width))
+        @_left_column = snap_to_glyph_start(@_left_column.clamp(0, painted_width - rect.width))
       end
 
       # {StyledString#slice} *drops* a cluster straddling the window's edge
@@ -443,8 +443,8 @@ module Tuile
       # @param row [StyledString] the windowed row, as painted.
       # @return [void]
       def draw_cues(canvas, row)
-        draw_cue(canvas, row, 0, "<") if @left_column.positive?
-        draw_cue(canvas, row, rect.width - 1, ">") if @left_column + rect.width < painted_width
+        draw_cue(canvas, row, 0, "<") if @_left_column.positive?
+        draw_cue(canvas, row, rect.width - 1, ">") if @_left_column + rect.width < painted_width
       end
 
       # The cue keeps the style of the cell it covers, so one landing on the
@@ -486,7 +486,7 @@ module Tuile
       def index_at(point)
         return nil unless local_extent_rect.contains?(point)
 
-        column = point.x + @left_column
+        column = point.x + @_left_column
         segments.index { |_item, start, width| column >= start && column < start + width }
       end
 
@@ -496,7 +496,7 @@ module Tuile
       # @return [Rect] the segment's cells on screen — the cascade's anchor.
       def segment_rect(index)
         _item, start, width = segments[index]
-        Rect.new(0, 0, width, 1).at(to_screen(Point.new(start - @left_column, 0)))
+        Rect.new(0, 0, width, 1).at(to_screen(Point.new(start - @_left_column, 0)))
       end
 
       # @return [StyledString] the whole strip as one row, unclipped. {#repaint}
@@ -517,7 +517,7 @@ module Tuile
       def segment_text(item, index)
         pad = StyledString.plain(" ")
         segment = pad + item.cued_caption + pad
-        return segment unless index == @highlighted_index && active?
+        return segment unless index == @_highlighted_index && active?
 
         segment.with_bg(screen.theme.active_bg_color)
       end
@@ -532,7 +532,7 @@ module Tuile
         return false unless Keys.printable?(key)
 
         down = key.downcase
-        return @cascade.handle_mnemonic?(down) if @cascade.open?
+        return @_cascade.handle_mnemonic?(down) if @_cascade.open?
 
         index = items.index { |item| item.mnemonic == down }
         return false if index.nil?
@@ -548,7 +548,7 @@ module Tuile
       def move_highlight(delta)
         return false if items.empty?
 
-        self.highlight = (@highlighted_index + delta).clamp(0, items.size - 1)
+        self.highlight = (@_highlighted_index + delta).clamp(0, items.size - 1)
         true
       end
 
@@ -563,11 +563,11 @@ module Tuile
       # @param delta [Integer] `+1` / `-1`.
       # @return [Boolean] always `true`: menu mode swallows the key either way.
       def step_menu(delta)
-        was = @highlighted_index
+        was = @_highlighted_index
         move_highlight(delta)
-        return true if @highlighted_index == was
+        return true if @_highlighted_index == was
 
-        @cascade.step_to(segment_rect(@highlighted_index), items[@highlighted_index])
+        @_cascade.step_to(segment_rect(@_highlighted_index), items[@_highlighted_index])
         true
       end
 
@@ -576,9 +576,9 @@ module Tuile
       # Declined otherwise, so ESC keeps its app-level meaning (`D_quit_key`).
       # @return [Boolean]
       def leave_menus
-        return false unless @cascade.browsing?
+        return false unless @_cascade.browsing?
 
-        @cascade.close
+        @_cascade.close
         true
       end
 
@@ -589,8 +589,8 @@ module Tuile
       def open_highlighted
         return false if items.empty?
 
-        item = items[@highlighted_index]
-        @cascade.open_below(segment_rect(@highlighted_index), item)
+        item = items[@_highlighted_index]
+        @_cascade.open_below(segment_rect(@_highlighted_index), item)
         # Fired after the close inside `open_below`, exactly as {Cascade}
         # activates a leaf: an action that opens a dialog must not paint it
         # under a menu.

@@ -49,7 +49,7 @@ module Tuile
       #   {Overlay#close_on_outside_click?}.
       def initialize(content: nil, declared_size: Fraction::HALF, close_on_outside_click: true)
         super(content: content, close_on_outside_click: close_on_outside_click)
-        @declared_size = declared_size
+        @_declared_size = declared_size
       end
 
       # The box this popup asks for, *as set* — a {Fraction} comes back
@@ -58,7 +58,7 @@ module Tuile
       # is an input re-read on every layout pass, not a report of the current
       # geometry.
       # @return [Size, Fraction] see {#declared_size=}.
-      attr_reader :declared_size
+      def declared_size = @_declared_size
 
       # @return [Boolean] true — a Popup scopes key dispatch, grabs focus on
       #   open, and blocks clicks on the content beneath it.
@@ -76,7 +76,7 @@ module Tuile
       # @param new_size [Size, Fraction]
       # @return [void]
       def declared_size=(new_size)
-        @declared_size = new_size
+        @_declared_size = new_size
         reposition
       end
 
@@ -85,7 +85,7 @@ module Tuile
       # @param screen_size [Size]
       # @return [Size]
       def declared_size_in(screen_size)
-        @declared_size.is_a?(Fraction) ? @declared_size.resolve(screen_size) : @declared_size.clamp(screen_size)
+        @_declared_size.is_a?(Fraction) ? @_declared_size.resolve(screen_size) : @_declared_size.clamp(screen_size)
       end
 
       # @return [Overlay::Centered] a popup opens centered.

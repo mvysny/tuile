@@ -56,38 +56,38 @@ module Tuile
         # @param width [Integer] column budget per row; `0` or less yields a
         #   single empty row.
         def initialize(text, width)
-          @text = text
-          @width = width
-          @rows = compute_rows
+          @_text = text
+          @_width = width
+          @_rows = compute_rows
         end
 
         # @return [String]
-        attr_reader :text
+        def text = @_text
 
         # @return [Integer]
-        attr_reader :width
+        def width = @_width
 
         # @return [Integer] rows the text occupies; always `>= 1`, since
         #   empty text still wraps to one (empty) row.
-        def row_count = @rows.size
+        def row_count = @_rows.size
 
         # Display row holding `index`. An index inside a whitespace run absorbed
         # by a soft wrap belongs to the row *before* the break.
         # @param index [Integer] a character index into {#text}.
         # @return [Integer] a row index in `0...row_count`.
         def row_at(index)
-          @rows.each_with_index do |r, i|
-            next_start = i + 1 < @rows.size ? @rows[i + 1].start : @text.length + 1
+          @_rows.each_with_index do |r, i|
+            next_start = i + 1 < @_rows.size ? @_rows[i + 1].start : @_text.length + 1
             return i if index >= r.start && index < next_start
           end
-          @rows.size - 1
+          @_rows.size - 1
         end
 
         # @param index [Integer] a character index into {#text}.
         # @return [Array(Integer, Integer)] `[row, column]` for `index`.
         def position_at(index)
           row = row_at(index)
-          [row, column_in(@rows[row], index)]
+          [row, column_in(@_rows[row], index)]
         end
 
         # Inverse of {#position_at}. A column landing in a wide glyph's right
@@ -96,19 +96,19 @@ module Tuile
         # @param column [Integer] a column offset within that row.
         # @return [Integer] a character index into {#text}.
         def index_at(row, column)
-          r = @rows[row]
+          r = @_rows[row]
           r.start + chars_for_column(r, column)
         end
 
         # @param row [Integer] a row index in `0...row_count`.
         # @return [Integer] character index where the row begins.
-        def row_start(row) = @rows[row].start
+        def row_start(row) = @_rows[row].start
 
         # @param row [Integer] a row index in `0...row_count`.
         # @return [Integer] character index one past the row's last *visible*
         #   character — whitespace absorbed by a soft wrap is excluded.
         def row_end(row)
-          r = @rows[row]
+          r = @_rows[row]
           r.start + r.length
         end
 
@@ -119,19 +119,19 @@ module Tuile
         # @param row [Integer]
         # @return [String]
         def row_text(row)
-          r = @rows[row]
-          return " " * @width if r.nil?
+          r = @_rows[row]
+          return " " * @_width if r.nil?
 
           out = +""
           cols = 0
           glyphs_of(r).each_grapheme_cluster do |g|
             w = Buffer.display_width(g)
-            break if cols + w > @width
+            break if cols + w > @_width
 
             out << g
             cols += w
           end
-          out << (" " * (@width - cols))
+          out << (" " * (@_width - cols))
         end
 
         private
@@ -143,7 +143,7 @@ module Tuile
         #   {#text}: `{offset: <text-index>, text: <cluster>, width: <columns>}`.
         def cluster_table
           offset = 0
-          @text.each_grapheme_cluster.map do |g|
+          @_text.each_grapheme_cluster.map do |g|
             entry = { offset: offset, text: g, width: Buffer.display_width(g) }
             offset += g.length
             entry
@@ -166,7 +166,7 @@ module Tuile
         # the wrap restarts on the next cluster.
         # @return [Array<Row>] one entry per row.
         def compute_rows
-          return [Row::EMPTY] if @width <= 0 || @text.empty?
+          return [Row::EMPTY] if @_width <= 0 || @_text.empty?
 
           cl = cluster_table
           rows = []
@@ -183,7 +183,7 @@ module Tuile
               break if newline?(g)
 
               if blank?(g)
-                if cols < @width
+                if cols < @_width
                   chars += g[:text].length
                   cols += g[:width]
                   i += 1
@@ -195,7 +195,7 @@ module Tuile
               else
                 word_chars, word_cols, word_end = measure_word(cl, i)
 
-                if cols + word_cols <= @width
+                if cols + word_cols <= @_width
                   chars += word_chars
                   cols += word_cols
                   i = word_end
@@ -214,7 +214,7 @@ module Tuile
             next unless i < n && newline?(cl[i])
 
             i += 1
-            rows << Row::EMPTY.with(start: @text.length) if i >= n
+            rows << Row::EMPTY.with(start: @_text.length) if i >= n
           end
 
           rows
@@ -247,7 +247,7 @@ module Tuile
         def hard_wrap(clusters, index)
           chars = 0
           cols = 0
-          while index < clusters.size && cols + clusters[index][:width] <= @width
+          while index < clusters.size && cols + clusters[index][:width] <= @_width
             chars += clusters[index][:text].length
             cols += clusters[index][:width]
             index += 1
@@ -273,7 +273,7 @@ module Tuile
         # @param row_cols [Integer]
         # @return [Array(Integer, Integer)] `[row_chars, row_cols]`
         def trim_trailing_whitespace(row_start, row_chars, row_cols)
-          while row_chars.positive? && @text[row_start + row_chars - 1].match?(/[ \t]/)
+          while row_chars.positive? && @_text[row_start + row_chars - 1].match?(/[ \t]/)
             row_chars -= 1
             row_cols -= 1
           end
@@ -285,7 +285,7 @@ module Tuile
         # @return [Integer] `index`'s column offset within `row`.
         def column_in(row, index)
           chars = (index - row.start).clamp(0, row.length)
-          columns_of(@text[row.start, chars] || "").clamp(0, row.columns)
+          columns_of(@_text[row.start, chars] || "").clamp(0, row.columns)
         end
 
         # @param row [Row]
@@ -306,7 +306,7 @@ module Tuile
 
         # @param row [Row]
         # @return [String] the row's visible characters.
-        def glyphs_of(row) = @text[row.start, row.length] || ""
+        def glyphs_of(row) = @_text[row.start, row.length] || ""
 
         # Mirrors {AbstractStringField}'s measurement primitive, which this class
         # can't inherit. Per-cluster rather than whole-string so a multi-codepoint

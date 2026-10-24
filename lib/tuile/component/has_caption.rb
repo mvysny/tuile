@@ -31,10 +31,10 @@ module Tuile
     # that really wants the text says so per-class in a block. See
     # `D_component_lookup`.
     module HasCaption
-      # Read through *this* method, never `@caption` — the ivar stays nil until
+      # Read through *this* method, never `@_caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).
       # @return [StyledString] the caption; empty when never set.
-      def caption = @caption || StyledString::EMPTY
+      def caption = @_caption || StyledString::EMPTY
 
       # Sets the caption and invalidates the component. No-op when unchanged. A
       # `String` is parsed via {StyledString.parse} (embedded ANSI is honored);
@@ -45,7 +45,7 @@ module Tuile
         new_caption = StyledString.parse(new_caption)
         return if caption == new_caption
 
-        @caption = new_caption
+        @_caption = new_caption
         invalidate
       end
 

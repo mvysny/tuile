@@ -45,19 +45,19 @@ module Tuile
       class IO
         # @param sink [LogTextView, LogWindow] anything responding to `#log`.
         def initialize(sink)
-          @sink = sink
+          @_sink = sink
         end
 
         # @param string [String]
         # @return [void]
         def write(string)
-          @sink.log(string.chomp)
+          @_sink.log(string.chomp)
         end
 
         # @param string [String]
         # @return [void]
         def puts(string)
-          @sink.log(string)
+          @_sink.log(string)
         end
 
         # Stdlib `Logger` only treats an object as an IO target when it

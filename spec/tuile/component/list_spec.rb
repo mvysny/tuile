@@ -345,7 +345,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new
         refute l.select_next("no such item")
         assert_equal 100, rendered.size, "the whole list should have been scanned"
-        assert_empty l.instance_variable_get(:@row_cache)
+        assert_empty l.instance_variable_get(:@_row_cache)
         rendered.clear
         Testing.paint(l)
         assert_equal [1, 2, 3], rendered, "the viewport should still need rendering after a scan"
@@ -874,7 +874,7 @@ module Tuile
 
       def attach_as_content(component)
         pane = Screen.instance.pane
-        pane.instance_variable_set(:@content, component)
+        pane.instance_variable_set(:@_content, component)
         component.send(:parent=, pane)
       end
 
@@ -903,7 +903,7 @@ module Tuile
     context "on_item_chosen" do
       def attach_as_content(component)
         pane = Screen.instance.pane
-        pane.instance_variable_set(:@content, component)
+        pane.instance_variable_set(:@_content, component)
         component.send(:parent=, pane)
       end
 
@@ -1030,7 +1030,7 @@ module Tuile
     context "on_cursor_changed" do
       def attach_as_content(component)
         pane = Screen.instance.pane
-        pane.instance_variable_set(:@content, component)
+        pane.instance_variable_set(:@_content, component)
         component.send(:parent=, pane)
       end
 

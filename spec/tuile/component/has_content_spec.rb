@@ -11,11 +11,11 @@ module Tuile
     let(:host_class) do
       Class.new(Component) do
         include Component::HasContent
-        attr_reader :content, :layout_calls
+        attr_reader :layout_calls
 
         def initialize
           super
-          @content = nil
+          @_content = nil
           @layout_calls = []
         end
 

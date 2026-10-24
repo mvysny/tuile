@@ -43,12 +43,12 @@ module Tuile
     #   one was given.
     def final(*names)
       names = names.flatten
-      (@final_methods ||= []).concat(names)
+      (@_final_methods ||= []).concat(names)
       names.one? ? names.first : names
     end
 
     # @return [Array<Symbol>] the methods marked {#final} on this class.
-    def final_methods = @final_methods || []
+    def final_methods = @_final_methods || []
 
     # Raises unless `klass` inherits every {#final_methods} entry from this
     # class. Memoized per class, so a construction-time call costs one hash
@@ -58,8 +58,8 @@ module Tuile
     # @raise [Error] if `klass` redefines a final method, by any route.
     # @return [void]
     def verify_final!(klass)
-      @final_verified ||= {}
-      return if @final_verified.key?(klass)
+      @_final_verified ||= {}
+      return if @_final_verified.key?(klass)
 
       overridden = final_methods.reject { klass.instance_method(_1).owner == self }
       unless overridden.empty?
@@ -69,7 +69,7 @@ module Tuile
                      "to use instead."
       end
 
-      @final_verified[klass] = true
+      @_final_verified[klass] = true
     end
   end
 end

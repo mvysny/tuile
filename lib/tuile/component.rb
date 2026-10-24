@@ -46,13 +46,13 @@ module Tuile
 
     def initialize
       Component.verify_final!(self.class)
-      @rect = Rect.new(0, 0, 0, 0)
-      @visible = true
-      @active = false
-      @bg = ComponentBackground.new(self)
-      @children = []
-      @id = nil
-      @layout_dirty = false
+      @_rect = Rect.new(0, 0, 0, 0)
+      @_visible = true
+      @_active = false
+      @_bg = ComponentBackground.new(self)
+      @_children = []
+      @_id = nil
+      @_layout_dirty = false
     end
 
     # A tag for finding this component again — nothing paints it, and the
@@ -65,7 +65,7 @@ module Tuile
     # components may carry the same id, and only {Testing.get} — which raises
     # on an ambiguous match — will ever say so.
     # @return [Symbol, nil]
-    attr_reader :id
+    def id = @_id
 
     # A `String` is refused rather than coerced: `id = "name"` would never
     # match a `get(id: :name)`, silently.
@@ -75,7 +75,7 @@ module Tuile
     def id=(new_id)
       raise TypeError, "expected Symbol or nil, got #{new_id.inspect}" unless new_id.nil? || new_id.is_a?(Symbol)
 
-      @id = new_id
+      @_id = new_id
     end
 
     # The rectangle the component occupies **inside its parent**: `(0, 0)` is
@@ -89,7 +89,7 @@ module Tuile
     # {#rect_stale?} answers whether it is one, and {Tuile.strict_layout} makes
     # every such read say so.
     # @return [Rect]
-    attr_reader :rect
+    def rect = @_rect
 
     # The three readers below report the geometry a parent *assigned*, as
     # shorthand for the matching {#rect} field. They are reports, not requests:
@@ -260,15 +260,16 @@ module Tuile
     # @param new_rect [Rect] new position. Does nothing if the new rectangle is
     #   the same as the old one.
     # @raise [Tuile::Error] unless the parent's {#relayout} is running.
+    # @return [void]
     def rect=(new_rect)
       raise TypeError, "expected Rect, got #{new_rect.inspect}" unless new_rect.is_a? Rect
 
       LayoutPass.check(self)
       LayoutPass.note_placement(self)
-      return if @rect == new_rect
+      return if @_rect == new_rect
 
-      old_rect = @rect
-      @rect = new_rect
+      old_rect = @_rect
+      @_rect = new_rect
       handle_rect_changed(old_rect)
       invalidate
       # Nothing else blanks the cells the old rect vacated — the same reason
@@ -320,7 +321,7 @@ module Tuile
     # that assigns it, and {#rect_stale?} is that question asked from here.
     # Survives detaching, so {#handle_attached} can hand the mark to the {Screen}.
     # @return [Boolean]
-    def layout_dirty? = @layout_dirty
+    def layout_dirty? = @_layout_dirty
 
     # Whether {#rect} is the *previous* pass's rectangle, because some ancestor
     # owes a {#relayout} and that pass reassigns every rect below it — or is
@@ -339,7 +340,7 @@ module Tuile
     # also depends on its ancestors: a shown field inside a hidden panel
     # answers `true`.
     # @return [Boolean]
-    def visible? = @visible
+    def visible? = @_visible
 
     # Hides or shows the component: `false` means **as if detached — but it
     # stays in the tree**.
@@ -373,10 +374,10 @@ module Tuile
     # @return [void]
     def visible=(value)
       value = value ? true : false
-      return if @visible == value
+      return if @_visible == value
 
       screen.check_locked if attached?
-      @visible = value
+      @_visible = value
       # Both on the parent, because the child just vacated (or re-claimed) cells
       # the parent owns *and* may have changed how it divides its space. A
       # hidden component paints nothing itself, so nothing else would blank what
@@ -439,7 +440,7 @@ module Tuile
     #   this component's own background — the value as set, so a {Theme::Ref}
     #   comes back unresolved and a state map comes back a Hash; `nil` when
     #   unset, in which case the widget's own well and then the parent answer.
-    def bg_color = @bg.color
+    def bg_color = @_bg.color
 
     # Tints this component and every descendant that doesn't set its own
     # background — set it once on a container / {Component::Popup} to tint a
@@ -477,7 +478,7 @@ module Tuile
     #   validated eagerly at assignment, not deferred to paint.
     # @return [void]
     def bg_color=(color)
-      @bg.color = color
+      @_bg.color = color
     end
 
     # Repaints the component. The default does the bookkeeping most components
@@ -645,16 +646,16 @@ module Tuile
 
     # @return [Boolean] true if the component is on the active chain — i.e. it
     #   is the focused component or an ancestor of it. Set by {Screen#focused=}.
-    def active? = @active
+    def active? = @_active
 
     # @param active [Boolean] true if active. Set by {Screen#focused=} as it
     #   marks the focus chain (root → focused); not meant to be called directly.
     # @return [void]
     def active=(active)
       active = active ? true : false
-      return unless @active != active
+      return unless @_active != active
 
-      @active = active
+      @_active = active
       invalidate
     end
 
@@ -683,7 +684,7 @@ module Tuile
     # {#remove_child} / {#detach_child}.
     # @return [Component, nil] the parent component or nil if the component has
     #   no parent.
-    attr_reader :parent
+    def parent = @_parent
 
     # @return [Integer] the distance from the root component; 0 if {#parent}
     #   is nil.
@@ -701,7 +702,7 @@ module Tuile
     # second copy of it; for a swappable region hold a {Slot}.
     # @return [Array<Component>] child components. Must not be mutated by
     #   callers! May be empty.
-    attr_reader :children
+    def children = @_children
 
     # Calls block for this component and for every descendant component.
     # @yield [component]
@@ -844,7 +845,7 @@ module Tuile
     # @return [String]
     def inspect
       parts = [self.class.to_s] # not .name — an anonymous class has none
-      parts << "id=#{@id.inspect}" unless @id.nil?
+      parts << "id=#{@_id.inspect}" unless @_id.nil?
       parts << "rect=(#{rect})"
       "#<#{(parts + inspect_details).join(" ")}>"
     end
@@ -864,7 +865,7 @@ module Tuile
     # nothing when it is true — so in a {Testing.dump} the marker sits on the
     # hidden ancestor, not on each component under it.
     # @return [Array<String>]
-    def inspect_details = @visible ? [] : ["hidden"]
+    def inspect_details = @_visible ? [] : ["hidden"]
 
     # Adopts `child`: places it in {#children} and wires its parent pointer.
     #
@@ -894,7 +895,7 @@ module Tuile
         raise Tuile::Error, "#{child.class} belongs on the popup stack — open it (#{child.class}#open) " \
                             "rather than adding it to #{self.class}"
       end
-      at.nil? ? @children.push(child) : @children.insert(at, child)
+      at.nil? ? @_children.push(child) : @_children.insert(at, child)
       child.parent = self
       invalidate_layout
     end
@@ -928,9 +929,9 @@ module Tuile
     # Final: one of the three mutators that write {#children} and the parent
     # pointer in the same call, which is what keeps them in agreement.
     def detach_child(child)
-      raise ArgumentError, "#{child} is not a child of #{self}" unless @children.include?(child)
+      raise ArgumentError, "#{child} is not a child of #{self}" unless @_children.include?(child)
 
-      @children.delete(child)
+      @_children.delete(child)
       child.parent = nil
       invalidate_layout
     end
@@ -984,7 +985,7 @@ module Tuile
     # would fire the lifecycle hooks for the wrong set, or not at all.
     def parent=(new_parent)
       was_attached = attached?
-      @parent = new_parent
+      @_parent = new_parent
       return if was_attached == attached?
 
       fire_lifecycle(attached?)
@@ -1014,7 +1015,7 @@ module Tuile
       # A mark taken while detached had no screen to go to; hand it over now
       # that there is one (the `attached?` re-check covers a hook that detached
       # us again). Flutter's `RenderObject#attach` does the same.
-      screen.invalidate_layout(self) if attached && @layout_dirty && attached?
+      screen.invalidate_layout(self) if attached && @_layout_dirty && attached?
       kids.each { _1.fire_lifecycle(attached) if _1.attached? == attached }
     end
 
@@ -1167,7 +1168,7 @@ module Tuile
     def invalidate_layout
       return if LayoutPass.before_first_placement?(self)
 
-      @layout_dirty = true
+      @_layout_dirty = true
       screen.invalidate_layout(self) if attached?
     end
 
@@ -1194,9 +1195,9 @@ module Tuile
     # {Component::TextView}'s:
     #
     #   def relayout
-    #     rewrap unless @wrapped_at == wrap_width   # not on every append
+    #     rewrap unless @_wrapped_at == wrap_width   # not on every append
     #     update_scroll_top_row_if_auto_scroll      # a taller viewport moves the bottom
-    #     @scrollbar.rect = …
+    #     @_scrollbar.rect = …
     #   end
     #
     # There is no width-changed hook; {#handle_rect_changed} is the edge, for a
@@ -1271,7 +1272,7 @@ module Tuile
     #
     # Final: {Screen#canvas_for} and every descendant's chain read it.
     # @return [ComponentBackground]
-    attr_reader :bg
+    def bg = @_bg
 
     # The background a component paints while it is in an *error* state —
     # `nil` by default, meaning "I am not signalling one". {HasValidation}
@@ -1313,7 +1314,7 @@ module Tuile
     # `relayout`, reached only from {LayoutPass.drain}.
     # @return [void]
     def perform_relayout
-      @layout_dirty = false
+      @_layout_dirty = false
       LayoutPass.run(self) { relayout }
     end
 

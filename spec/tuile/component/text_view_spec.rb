@@ -24,7 +24,7 @@ module Tuile
     # tests once read was removed with the bottom-up sizing channel, so they
     # probe the model directly for the hard-line count.
     def line_count_of(view)
-      view.instance_variable_get(:@lines).size
+      view.instance_variable_get(:@_lines).size
     end
 
     # A view mounted at `rect` with its bar turned on, so a full-tree

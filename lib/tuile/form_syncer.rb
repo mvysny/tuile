@@ -51,7 +51,7 @@ module Tuile
               "FormSyncer is abstract: build a FormSyncer::Buffered or a FormSyncer::Unbuffered"
       end
 
-      @engine = Engine.new(&on_edit)
+      @_engine = Engine.new(&on_edit)
     end
 
     # Binds `field` to the model's `attr`; chain the steps onto the result.
@@ -63,7 +63,7 @@ module Tuile
     # @return [FormSyncer::Pipeline]
     # @raise [ArgumentError] unless `field` is a field, or when `field` or
     #   `attr` is already bound.
-    def bind(field, attr) = @engine.bind(field, attr)
+    def bind(field, attr) = @_engine.bind(field, attr)
 
     # Adds a model validator, judging the whole model, run only once every
     # field it judges passes — when is the mode's: {Buffered} in `read`,
@@ -79,11 +79,11 @@ module Tuile
     # @yieldreturn [String, Hash{Symbol => String}, nil]
     # @return [void]
     # @raise [Error] (when the validator runs) on a return that is none of these.
-    def add_validator(&) = @engine.add_validator(&)
+    def add_validator(&) = @_engine.add_validator(&)
 
     # @return [Hash{Symbol, nil => Array<ValidationFailure>}] the verdict of
     #   the latest run, frozen; `{}` when valid. Form-level failures are under
     #   `nil`.
-    def last_validation = @engine.last_validation
+    def last_validation = @_engine.last_validation
   end
 end

@@ -22,19 +22,19 @@ module Tuile
     # @api private
     class Engine
       # @return [Array<FormSyncer::Pipeline>] in `bind` order.
-      attr_reader :pipelines
+      def pipelines = @_pipelines
 
       # @yieldparam pipeline [FormSyncer::Pipeline] the pipeline whose field changed.
       # @yieldparam edit [Boolean] `true` for a user's value change, `false`
       #   for a bad-input notice, which moves no value.
       def initialize(&on_edit)
-        @notify = on_edit
-        @pipelines = []
-        @model_validators = []
-        @field_failures = {}
-        @model_failures = {}
-        @shown = Set.new
-        @populating = false
+        @_notify = on_edit
+        @_pipelines = []
+        @_model_validators = []
+        @_field_failures = {}
+        @_model_failures = {}
+        @_shown = Set.new
+        @_populating = false
       end
 
       # @param field [Component::HasValue]
@@ -48,11 +48,11 @@ module Tuile
           raise ArgumentError, "#{field.inspect} is not a field: bind needs a Component::HasValue"
         end
         raise ArgumentError, "bind needs an attribute Symbol, got #{attr.inspect}" unless attr.is_a?(Symbol)
-        raise ArgumentError, ":#{attr} is already bound" if @pipelines.any? { _1.attr == attr }
-        raise ArgumentError, "#{field.inspect} is already bound" if @pipelines.any? { _1.field.equal?(field) }
+        raise ArgumentError, ":#{attr} is already bound" if @_pipelines.any? { _1.attr == attr }
+        raise ArgumentError, "#{field.inspect} is already bound" if @_pipelines.any? { _1.field.equal?(field) }
 
         pipeline = Pipeline.new(field, attr)
-        @pipelines << pipeline
+        @_pipelines << pipeline
         field.on_value_change { |e| edited(pipeline, true) if e.from_user? }
         # Bad input can move no value: `-` typed into an empty IntegerField goes nil → nil.
         field.on_bad_input_change { edited(pipeline, false) } if field.respond_to?(:on_bad_input_change)
@@ -63,7 +63,7 @@ module Tuile
       def add_validator(&validator)
         raise ArgumentError, "add_validator needs a block" if validator.nil?
 
-        @model_validators << validator
+        @_model_validators << validator
         nil
       end
 
@@ -71,13 +71,13 @@ module Tuile
       #   `bind` order then the model validators' blame, the form-level `nil`
       #   key last.
       def last_validation
-        @last_validation ||= begin
+        @_last_validation ||= begin
           map = {}
-          @pipelines.each do |b|
-            outcome = @field_failures[b.attr]
+          @_pipelines.each do |b|
+            outcome = @_field_failures[b.attr]
             map[b.attr] = [outcome.failure] if outcome
           end
-          @model_failures.each { |key, list| map[key] = map.fetch(key, []) + list }
+          @_model_failures.each { |key, list| map[key] = map.fetch(key, []) + list }
           map.transform_values(&:freeze).freeze
         end
       end
@@ -87,11 +87,11 @@ module Tuile
       # @param model [Object, nil]
       # @return [void]
       def populate(model)
-        @shown.clear
-        @populating = true
-        @pipelines.each { _1.populate(model) }
+        @_shown.clear
+        @_populating = true
+        @_pipelines.each { _1.populate(model) }
       ensure
-        @populating = false
+        @_populating = false
       end
 
       # Runs `pipelines`, then — only if every one passed and there is a model —
@@ -119,26 +119,26 @@ module Tuile
           candidates = write.select { outcomes.fetch(_1).ok? }.to_h { [_1.attr, outcomes.fetch(_1).candidate] }
           passed = run_model_validators(model, candidates, keep:)
         else
-          @model_failures = {}
+          @_model_failures = {}
         end
-        show += @model_failures.keys.compact if show.is_a?(Array) && !show.empty?
+        show += @_model_failures.keys.compact if show.is_a?(Array) && !show.empty?
         reveal(show)
         passed
       end
 
       # @param pipeline [FormSyncer::Pipeline]
       # @return [Boolean] whether `pipeline` passed the last time it ran.
-      def passed?(pipeline) = !@field_failures.key?(pipeline.attr)
+      def passed?(pipeline) = !@_field_failures.key?(pipeline.attr)
 
       # Runs each pipeline's field steps and records its outcome, touching no
       # model validation failure.
       # @param pipelines [Array<FormSyncer::Pipeline>]
       # @return [Hash{FormSyncer::Pipeline => FormSyncer::Pipeline::Outcome}]
       def run_fields(pipelines)
-        @last_validation = nil
+        @_last_validation = nil
         pipelines.to_h do |b|
           outcome = b.run
-          outcome.ok? ? @field_failures.delete(b.attr) : @field_failures[b.attr] = outcome
+          outcome.ok? ? @_field_failures.delete(b.attr) : @_field_failures[b.attr] = outcome
           [b, outcome]
         end
       end
@@ -149,8 +149,8 @@ module Tuile
       # @param attrs [Array<Symbol>, :all]
       # @return [void]
       def reveal(attrs)
-        @shown.merge(attrs == :all ? @pipelines.map(&:attr) : attrs)
-        @pipelines.each { _1.field.error_message = (verdict(_1) if @shown.include?(_1.attr)) }
+        @_shown.merge(attrs == :all ? @_pipelines.map(&:attr) : attrs)
+        @_pipelines.each { _1.field.error_message = (verdict(_1) if @_shown.include?(_1.attr)) }
       end
 
       private
@@ -159,7 +159,7 @@ module Tuile
       # @param edit [Boolean]
       # @return [void]
       def edited(pipeline, edit)
-        @notify.call(pipeline, edit) unless @populating
+        @_notify.call(pipeline, edit) unless @_populating
       end
 
       # One message per field: its own failure first, then the model
@@ -169,10 +169,10 @@ module Tuile
       # @param pipeline [FormSyncer::Pipeline]
       # @return [String, nil]
       def verdict(pipeline)
-        own = @field_failures[pipeline.attr]
+        own = @_field_failures[pipeline.attr]
         return nil if own&.bad_input
 
-        (own&.failure || @model_failures[pipeline.attr]&.first)&.message
+        (own&.failure || @_model_failures[pipeline.attr]&.first)&.message
       end
 
       # @param model [Object]
@@ -180,7 +180,7 @@ module Tuile
       # @param keep [Boolean]
       # @return [Boolean] whether every model validator passed.
       def run_model_validators(model, candidates, keep:)
-        @model_failures = {}
+        @_model_failures = {}
         snapshot = {}
         ok = false
         begin
@@ -191,8 +191,8 @@ module Tuile
             snapshot[attr] = old
             model.public_send(:"#{attr}=", value)
           end
-          @model_validators.each { collect(model, _1.call(model)) }
-          ok = @model_failures.empty?
+          @_model_validators.each { collect(model, _1.call(model)) }
+          ok = @_model_failures.empty?
         ensure
           snapshot.each { |attr, value| model.public_send(:"#{attr}=", value) } unless ok && keep
         end
@@ -228,9 +228,9 @@ module Tuile
       # @param message [String]
       # @return [void]
       def blame(model, attr, message)
-        field = attr && @pipelines.find { _1.attr == attr }&.field
+        field = attr && @_pipelines.find { _1.attr == attr }&.field
         value = model.public_send(attr) if attr && model.respond_to?(attr)
-        (@model_failures[attr] ||= []) << ValidationFailure.new(field, message, value)
+        (@_model_failures[attr] ||= []) << ValidationFailure.new(field, message, value)
       end
     end
   end

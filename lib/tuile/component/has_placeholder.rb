@@ -34,7 +34,7 @@ module Tuile
     # leaf's alone.
     module HasPlaceholder
       # @return [String, nil] the hint, or `nil` when there is none (default).
-      def placeholder = @placeholder
+      def placeholder = @_placeholder
 
       # Sets the hint and invalidates the component. No-op when unchanged.
       # @param text [String, nil] `nil` removes it.
@@ -44,9 +44,9 @@ module Tuile
       #   theme's to choose.
       def placeholder=(text)
         raise TypeError, "expected String or nil, got #{text.inspect}" unless text.nil? || text.instance_of?(String)
-        return if @placeholder == text
+        return if @_placeholder == text
 
-        @placeholder = text
+        @_placeholder = text
         invalidate
       end
 

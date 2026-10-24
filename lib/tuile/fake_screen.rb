@@ -49,30 +49,30 @@ module Tuile
       # `Tuile.strict_layout` defaults to `:raise` under this screen; this puts
       # the check it answers through into `Component#rect`.
       StrictLayout.install
-      @event_queue = FakeEventQueue.new
-      @size = Size.new(width, height)
+      @_event_queue = FakeEventQueue.new
+      @_size = Size.new(width, height)
       # super sized both to the test runner's TTY.
-      @buffer.resize(@size)
+      @_buffer.resize(@_size)
       size_pane
-      @prints = []
+      @_prints = []
     end
 
     # @return [Array<String>] whatever {#print} / {#emit} produced so far.
     #   Component painting lands in {#buffer}, not here — assert on
     #   {Buffer#row_text} / {Buffer#row_ansi} / {Buffer#cell} for content, and
     #   on `prints` for cursor and housekeeping escapes.
-    attr_reader :prints
+    def prints = @_prints
 
     # @return [void]
     def clear
-      @prints.clear
+      @_prints.clear
     end
 
     # Doesn't print anything: collects all strings in {#prints}.
     # @param args [String]
     # @return [void]
     def print(*args)
-      @prints += args
+      @_prints += args
     end
 
     # Captures the assembled repaint frame instead of writing to the test
@@ -81,7 +81,7 @@ module Tuile
     # @param str [String]
     # @return [void]
     def emit(str)
-      @prints << str
+      @_prints << str
     end
 
     # Pastes `text` into the focused component, as a real terminal would with
@@ -117,7 +117,7 @@ module Tuile
     # @return [void]
     def run_until_idle
       check_locked
-      @event_queue.run_until_idle { dispatch(_1) }
+      @_event_queue.run_until_idle { dispatch(_1) }
     end
 
     # Runs whatever is still queued before tearing down, so a queued block that
@@ -129,7 +129,7 @@ module Tuile
       begin
         # Only for the queued blocks' sake: an idle repaint of a tree being torn
         # down would only re-report a broken layout a spec built on purpose.
-        run_until_idle unless @event_queue.empty?
+        run_until_idle unless @_event_queue.empty?
       ensure
         super
       end
@@ -137,11 +137,11 @@ module Tuile
 
     # @param component [Component] the component to check.
     # @return [Boolean]
-    def invalidated?(component) = @invalidated.include?(component)
+    def invalidated?(component) = @_invalidated.include?(component)
 
     # @return [void]
     def invalidated_clear
-      @invalidated.clear
+      @_invalidated.clear
     end
 
     # Plays the terminal answering the OSC 11 re-probe, so a spec can

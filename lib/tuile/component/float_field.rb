@@ -71,7 +71,7 @@ module Tuile
         # @param str [String]
         # @return [Boolean] true if the text changed.
         def insert_text(str)
-          return false unless TYPEABLE.match?(@text.dup.insert(@caret, str))
+          return false unless TYPEABLE.match?(@_text.dup.insert(@_caret, str))
 
           super
         end

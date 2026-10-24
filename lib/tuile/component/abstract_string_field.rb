@@ -55,7 +55,7 @@ module Tuile
     #
     #     # Hex digits only — and a paste of "12zz" lands nothing, not "12".
     #     def insert_text(str)
-    #       return false unless @text.dup.insert(@caret, str).match?(/\A\h*\z/)
+    #       return false unless text.dup.insert(caret, str).match?(/\A\h*\z/)
     #
     #       super
     #     end
@@ -89,10 +89,10 @@ module Tuile
 
       def initialize
         super
-        @text = +""
-        @announced_text = ""
-        @caret = 0
-        @escape_clears_focus = true
+        @_text = +""
+        @_announced_text = ""
+        @_caret = 0
+        @_escape_clears_focus = true
         # Unconditional on purpose: a field used as the face of a composed one
         # ({ComboBox}, {IntegerField} …) is *told* to drop its well with
         # {ComponentBackground::INHERIT} — a second well would make the
@@ -101,7 +101,7 @@ module Tuile
       end
 
       # @return [String] current text contents.
-      attr_reader :text
+      def text = @_text
 
       # A text component's value *is* its text: {#value} reads the same buffer
       # as {#text}, and {#set_value} is its one writer.
@@ -139,7 +139,7 @@ module Tuile
 
       # @return [Integer] caret index in `0..text.length`, counting characters
       #   and always on a grapheme-cluster boundary (see the class doc).
-      attr_reader :caret
+      def caret = @_caret
 
       # What {#on_escape} fires.
       #
@@ -168,7 +168,13 @@ module Tuile
       # representation of the default, so turning it off is the one way to give
       # ESC another meaning. See `D_escape_opt_out`.
       # @return [Boolean]
-      attr_accessor :escape_clears_focus
+      def escape_clears_focus = @_escape_clears_focus
+
+      # @param value [Boolean]
+      # @return [void]
+      def escape_clears_focus=(value)
+        @_escape_clears_focus = value
+      end
 
       def tab_stop? = true
 
@@ -177,11 +183,12 @@ module Tuile
       # cluster's end. Fires the {#handle_caret_mutated} hook for subclasses (e.g.
       # {TextArea} scrolls).
       # @param new_caret [Integer]
+      # @return [void]
       def caret=(new_caret)
-        new_caret = snap_to_cluster(new_caret.clamp(0, @text.length))
-        return if @caret == new_caret
+        new_caret = snap_to_cluster(new_caret.clamp(0, @_text.length))
+        return if @_caret == new_caret
 
-        @caret = new_caret
+        @_caret = new_caret
         handle_caret_mutated
         invalidate
       end
@@ -223,7 +230,7 @@ module Tuile
       # by overriding this, and one override covers typing and pasting both:
       #
       #   def insert_text(str)      # hex digits only, in a TextField subclass
-      #     return false unless @text.dup.insert(@caret, str).match?(/\A\h*\z/)
+      #     return false unless text.dup.insert(caret, str).match?(/\A\h*\z/)
       #
       #     super
       #   end
@@ -246,8 +253,8 @@ module Tuile
       def insert_text(str)
         return false if str.empty?
 
-        new_text = @text.dup.insert(@caret, str)
-        @caret += str.length
+        new_text = @_text.dup.insert(@_caret, str)
+        @_caret += str.length
         edit_text(new_text)
         true
       end
@@ -292,15 +299,15 @@ module Tuile
       # @return [Boolean] true if the key was handled.
       def handle_text_input_key?(key)
         case key
-        when Keys::LEFT_ARROW then self.caret = cluster_boundary_before(@caret)
-        when Keys::RIGHT_ARROW then self.caret = cluster_boundary_after(@caret)
+        when Keys::LEFT_ARROW then self.caret = cluster_boundary_before(@_caret)
+        when Keys::RIGHT_ARROW then self.caret = cluster_boundary_after(@_caret)
         when Keys::CTRL_LEFT_ARROW then self.caret = word_left
         when Keys::CTRL_RIGHT_ARROW then self.caret = word_right
         when Keys::CTRL_W then delete_back_to(word_left)
         when Keys::ESC
-          return false if !@escape_clears_focus && on_escape.empty?
+          return false if !@_escape_clears_focus && on_escape.empty?
 
-          screen.focused = nil if @escape_clears_focus
+          screen.focused = nil if @_escape_clears_focus
           on_escape.fire(EscapeEvent.new(source: self))
         else
           return false
@@ -312,7 +319,7 @@ module Tuile
       # glyph, whatever it is built from (a ZWJ emoji family and a three-jamo
       # Hangul syllable each go whole).
       # @return [void]
-      def delete_before_caret = delete_back_to(cluster_boundary_before(@caret))
+      def delete_before_caret = delete_back_to(cluster_boundary_before(@_caret))
 
       # Removes the text between `index` and the caret, leaving the caret at
       # `index` — one mutation, so {HasValue#on_value_change} fires at most
@@ -323,22 +330,22 @@ module Tuile
       # @param index [Integer] a {#text} index; clamped to `0..caret`.
       # @return [void]
       def delete_back_to(index)
-        start = snap_to_cluster(index.clamp(0, @caret))
-        return if start == @caret
+        start = snap_to_cluster(index.clamp(0, @_caret))
+        return if start == @_caret
 
-        new_text = @text.dup
-        new_text.slice!(start...@caret)
-        @caret = start
+        new_text = @_text.dup
+        new_text.slice!(start...@_caret)
+        @_caret = start
         edit_text(new_text)
       end
 
       # Removes the whole grapheme cluster at the caret.
       # @return [void]
       def delete_at_caret
-        return if @caret >= @text.length
+        return if @_caret >= @_text.length
 
-        new_text = @text.dup
-        new_text.slice!(@caret...cluster_boundary_after(@caret))
+        new_text = @_text.dup
+        new_text.slice!(@_caret...cluster_boundary_after(@_caret))
         edit_text(new_text)
       end
 
@@ -358,10 +365,10 @@ module Tuile
       # @return [Boolean] true if the buffer changed.
       def write_text(new_text)
         new_text = preprocess_text(new_text)
-        return false if @text == new_text
+        return false if @_text == new_text
 
-        @text = +new_text
-        @caret = snap_to_cluster(@caret.clamp(0, @text.length))
+        @_text = +new_text
+        @_caret = snap_to_cluster(@_caret.clamp(0, @_text.length))
         handle_text_mutated
         invalidate
         true
@@ -373,17 +380,17 @@ module Tuile
       # @param from_user [Boolean]
       # @return [void]
       def fire_if_changed(from_user:)
-        return if @text == @announced_text
+        return if @_text == @_announced_text
 
-        @announced_text = @text
-        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: @text, from_user:))
+        @_announced_text = @_text
+        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: @_text, from_user:))
       end
 
       # @param index [Integer] a {#text} index in `0..text.length`.
       # @return [Integer] the smallest grapheme-cluster boundary `>= index`.
       def snap_to_cluster(index)
         offset = 0
-        @text.each_grapheme_cluster do |g|
+        @_text.each_grapheme_cluster do |g|
           return offset if offset >= index
 
           offset += g.length
@@ -397,7 +404,7 @@ module Tuile
       def cluster_boundary_before(index)
         last = 0
         offset = 0
-        @text.each_grapheme_cluster do |g|
+        @_text.each_grapheme_cluster do |g|
           offset += g.length
           return last if offset >= index
 
@@ -411,7 +418,7 @@ module Tuile
       #   `text.length` at the end of the text.
       def cluster_boundary_after(index)
         offset = 0
-        @text.each_grapheme_cluster do |g|
+        @_text.each_grapheme_cluster do |g|
           offset += g.length
           return offset if offset > index
         end
@@ -423,9 +430,9 @@ module Tuile
       # beginning of the previous word if already there.
       # @return [Integer]
       def word_left
-        c = @caret
-        c -= 1 while c.positive? && @text[c - 1].match?(/\s/)
-        c -= 1 while c.positive? && !@text[c - 1].match?(/\s/)
+        c = @_caret
+        c -= 1 while c.positive? && @_text[c - 1].match?(/\s/)
+        c -= 1 while c.positive? && !@_text[c - 1].match?(/\s/)
         c
       end
 
@@ -434,9 +441,9 @@ module Tuile
       # end of the text if no further word exists.
       # @return [Integer]
       def word_right
-        c = @caret
-        c += 1 while c < @text.length && !@text[c].match?(/\s/)
-        c += 1 while c < @text.length && @text[c].match?(/\s/)
+        c = @_caret
+        c += 1 while c < @_text.length && !@_text[c].match?(/\s/)
+        c += 1 while c < @_text.length && @_text[c].match?(/\s/)
         c
       end
     end

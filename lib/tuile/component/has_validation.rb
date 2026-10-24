@@ -77,7 +77,7 @@ module Tuile
 
       # @return [StyledString, nil] why the field is invalid, or `nil` when it
       #   is not; `nil` until something sets it.
-      def error_message = @error_message
+      def error_message = @_error_message
 
       # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
       # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
@@ -91,7 +91,7 @@ module Tuile
         new_message = StyledString.parse(new_message) unless new_message.nil?
         return if error_message == new_message
 
-        @error_message = new_message
+        @_error_message = new_message
         invalidate
         on_error_message_change.fire(ErrorMessageChangeEvent.new(source: self, error_message: new_message))
       end

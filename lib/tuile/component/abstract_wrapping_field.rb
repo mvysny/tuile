@@ -79,7 +79,7 @@ module Tuile
     #
     # == Implementation details
     # - **{HasValue#value} and {#set_value} raise until overridden.** The inherited
-    #   pair stores into `@value` and never touches the editor, so a subclass
+    #   pair stores into `@_value` and never touches the editor, so a subclass
     #   that defined only one would silently half-work.
     # - **{HasValue#empty_value} is called during construction**, to seed the
     #   change guard, so it must not depend on subclass state that `super` has
@@ -106,11 +106,11 @@ module Tuile
         super()
         raise TypeError, "expected AbstractStringField, got #{editor.inspect}" unless editor.is_a?(AbstractStringField)
 
-        @editor = editor
-        @last_value = empty_value
+        @_editor = editor
+        @_last_value = empty_value
         # Held so the transition block can unsubscribe the same object it added:
         # a lambda is only equal to itself.
-        @enter_bridge = lambda do
+        @_enter_bridge = lambda do
           commit_and_notify
           on_enter.fire(EnterEvent.new(source: self))
         end
@@ -181,7 +181,7 @@ module Tuile
       #   first, so a listener here always reads a committed buffer.
       #   @return [Listeners]
       listener :on_enter do |claimed|
-        claimed ? editor.on_enter << @enter_bridge : editor.on_enter.remove(@enter_bridge)
+        claimed ? editor.on_enter << @_enter_bridge : editor.on_enter.remove(@_enter_bridge)
       end
 
       # Commits on ENTER, and leaves the key unconsumed so it keeps bubbling.
@@ -224,7 +224,7 @@ module Tuile
       protected
 
       # @return [AbstractStringField] the wrapped editor.
-      attr_reader :editor
+      def editor = @_editor
 
       # Called on a commit gesture — the field leaving the focus chain, or
       # ENTER; no-op by default. This is the commit point a canonicalizing
@@ -290,9 +290,9 @@ module Tuile
       # @return [void]
       def fire_if_changed(from_user:)
         v = value
-        return if v == @last_value
+        return if v == @_last_value
 
-        @last_value = v
+        @_last_value = v
         on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: v, from_user:))
       end
     end

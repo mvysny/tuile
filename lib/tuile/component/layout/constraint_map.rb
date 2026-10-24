@@ -31,19 +31,19 @@ module Tuile
       class ConstraintMap
         # @param owner [Layout] the layout whose children this maps.
         def initialize(owner)
-          @owner = owner
-          @entries = {}.compare_by_identity # two == children are two slots
+          @_owner = owner
+          @_entries = {}.compare_by_identity # two == children are two slots
         end
 
         # @param child [Component]
         # @return [Object, nil] the child's entry; nil when none was written.
-        def [](child) = @entries[child]
+        def [](child) = @_entries[child]
 
         # @param child [Component]
         # @return [Object] the child's entry.
         # @raise [KeyError] when none was written.
         def fetch(child)
-          @entries.fetch(child) { raise KeyError, "#{child} has no constraints in #{@owner}" }
+          @_entries.fetch(child) { raise KeyError, "#{child} has no constraints in #{@_owner}" }
         end
 
         # Constrains a child and marks the owner as owing a
@@ -53,12 +53,12 @@ module Tuile
         # @raise [ArgumentError] if `child` is not a child of the owner.
         # @return [void]
         def []=(child, value)
-          raise ArgumentError, "#{child} is not a child of #{@owner}" unless child.parent.equal?(@owner)
-          return if @entries.key?(child) && @entries[child] == value
+          raise ArgumentError, "#{child} is not a child of #{@_owner}" unless child.parent.equal?(@_owner)
+          return if @_entries.key?(child) && @_entries[child] == value
 
-          @entries[child] = value
+          @_entries[child] = value
           # Protected; the map is the layout's own bookkeeping, not a caller's.
-          @owner.__send__(:invalidate_layout)
+          @_owner.__send__(:invalidate_layout)
         end
 
         # Forgets a child's entry. Marks nothing: the removal that calls this
@@ -66,7 +66,7 @@ module Tuile
         # @param child [Component]
         # @return [void]
         def delete(child)
-          @entries.delete(child)
+          @_entries.delete(child)
         end
       end
     end

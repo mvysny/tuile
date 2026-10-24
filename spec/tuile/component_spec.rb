@@ -1198,7 +1198,7 @@ module Tuile
         Screen.instance.add_popup(popup)
 
         Screen.instance.pane.walk_tree do |c|
-          assert_equal c.children, c.instance_variable_get(:@children),
+          assert_equal c.children, c.instance_variable_get(:@_children),
                        "#{c.class} derives #children instead of owning it"
           c.children.each do |kid|
             assert_equal c, kid.parent, "#{kid.class} listed by #{c.class} has a different parent"
