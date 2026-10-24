@@ -6960,13 +6960,19 @@ too, not a lock bypass.
 **What a direct call skips is the rest of the turn, and nothing else:** the
 settle, and the blocks submitted in the meantime. The settle is already covered:
 a stale rect read raises under the fake (`D_strict_layout`), and `repaint` and
-`flush_layout` settle. The follow-up blocks are `FakeEventQueue`'s to model, and
-#65 does that by queueing every `submit` and adding a `drain`. **A `FakeScreen`
-gesture is a whole turn.** After any other drive, finishing the turn is the
-spec's job, and so is draining after joining a worker, whose blocks arrive
-outside any turn. The mismatch is a short, named list rather than open-ended
-drift, and the gestures exist for the action under test when the turn matters
-(`D_test_gestures`).
+`flush_layout` settle. The follow-up blocks are what #65 adds: every `submit` and
+`post` queues, and **`Testing.loop` runs the loop until the queue is empty and
+returns.** It hands each queued item to `Screen#dispatch`, then an
+`EmptyQueueEvent`, so it repaints just as the loop does when the queue empties.
+This is the same contract as `EventQueue#run_loop`, minus the wait: the fake
+reuses production's own dispatch, so it is faithful by construction and there
+is no second copy to keep in step. **Every spec-facing entry point calls it
+first**: each `Testing` function, each `FakeScreen` gesture (after the event as
+well, since a gesture is a whole turn), and `Screen.close` before teardown. No
+framework call does. After any other drive, and after joining a worker, whose
+blocks arrive outside any turn, the spec calls `Testing.loop` itself. The
+mismatch is a short, named list rather than open-ended drift, and the gestures
+exist for the action under test when the turn matters (`D_test_gestures`).
 
 Why not:
 
@@ -6981,6 +6987,11 @@ Why not:
 - *Draining on `repaint`*, since the loop only paints with an empty queue.
   `Screen#resize` repaints inside a spec's first `content=` and inside `dispatch`,
   so blocks would run in the middle of a call, which is the inline behaviour again.
+- *A `drain` beside each helper, or a long `screen.run_event_loop_until_idle`.*
+  Several places would each need the same fix whenever fidelity improves, and a
+  method on the screen does not say that it is for tests. One short name on
+  `Testing` says both. It hides `Kernel#loop` only inside `Testing`'s own
+  `class << self`, where a helper writes `Kernel.loop`.
 
 ---
 
