@@ -1922,7 +1922,9 @@ layout) *or* as a popup (via a class-level `open`).
   single key, firing your block with the picked key. Popped up via `open`,
   it closes itself after a pick; ESC/`q` cancels without firing. Captions
   paint in the terminal's own foreground; hand in a {Tuile::StyledString}
-  (or the ANSI string `theme.fg` returns) to color one, per option.
+  (or the ANSI string `theme.fg` returns) to color one, per option. An
+  option disabled with a reason paints in `disabled_color` and fires nothing
+  when picked.
 - {Tuile::Component::LogWindow} — a Window framing a
   {Tuile::Component::LogTextView}: an auto-scrolling, scrollbar-equipped
   TextView purpose-built for log output. The view is where the behavior

@@ -23,6 +23,27 @@ module Tuile
     #
     #   PickerWindow.open("File", [["o", StyledString.plain("Open")],
     #                              ["d", theme.fg(:danger, "Delete")]]) { … }
+    #
+    # An option that doesn't apply right now is *disabled* by a third element
+    # naming why. It paints in {Theme#disabled_color}, reason appended and any
+    # caption ink of the app's replaced, and picking it — key, Enter
+    # or click — fires nothing and closes nothing; its key moves the cursor
+    # onto it instead, so the reason is where the user is looking:
+    #
+    #   PickerWindow.open("Maintenance", [
+    #     ["r", "Resize disk image…", { disabled: "shut the VM down first" }],
+    #     ["g", "Grow root filesystem…"]
+    #   ]) { … }
+    #
+    #   ┌Maintenance──────────────────────────────────┐
+    #   │r Resize disk image… (shut the VM down first)│  ← disabled_color
+    #   │g Grow root filesystem…                      │
+    #   └─────────────────────────────────────────────┘
+    #
+    # The options are a snapshot taken at construction, as a desktop menu's
+    # enabled state is taken when it opens: what changes while the picker is
+    # up doesn't reach it. So disabling is a hint, never the guard — the block
+    # still checks that its operation can run.
     class PickerWindow < Window
       # Scrolls the window when more items.
       # @return [Integer]
@@ -35,31 +56,51 @@ module Tuile
       # @!attribute [r] caption
       #   @return [StyledString] the option caption, coerced from whatever the
       #     constructor was handed.
-      class Option < Data.define(:key, :caption)
+      # @!attribute [r] disabled_reason
+      #   @return [String, nil] why the option can't be picked; `nil` when it
+      #     can. A disabled option without a reason is refused.
+      class Option < Data.define(:key, :caption, :disabled_reason)
+        # @param key [String]
+        # @param caption [StyledString]
+        # @param disabled_reason [String, nil]
+        # @raise [ArgumentError] when `disabled_reason` is neither `nil` nor a
+        #   non-empty String — `disabled: true` included.
+        def initialize(key:, caption:, disabled_reason: nil)
+          unless disabled_reason.nil? || (disabled_reason.is_a?(String) && !disabled_reason.empty?)
+            raise ArgumentError, "a disabled option needs a reason String, got #{disabled_reason.inspect}"
+          end
+
+          super
+        end
+
+        # @return [Boolean]
+        def disabled? = !disabled_reason.nil?
       end
 
       # @param caption [String] the window caption.
-      # @param options [Array<Array(String, StyledString)>] pairs of
-      #   keyboard key and option caption. A caption goes through
-      #   {StyledString.parse}, so a plain String, an ANSI-coded one (what
-      #   {Theme#fg} returns) and a {StyledString} are all accepted.
+      # @param options [Array<Array(String, StyledString), Array(String, StyledString, Hash)>]
+      #   pairs of keyboard key and option caption, optionally followed by
+      #   `{ disabled: reason }`. A caption goes through {StyledString.parse},
+      #   so a plain String, an ANSI-coded one (what {Theme#fg} returns) and a
+      #   {StyledString} are all accepted.
       # @yield [key] called with the option key once one is selected by the
       #   user. Not called if the picker is dismissed without picking.
       # @yieldparam key [String] the picked option key.
       # @yieldreturn [void]
-      # @raise [ArgumentError] when `block` is missing or `options` is empty.
+      # @raise [ArgumentError] when `block` is missing, `options` is empty, or
+      #   an option's Hash holds anything but a non-empty `disabled:` String.
       def initialize(caption, options, &block)
         raise ArgumentError, "block required" unless block
         raise ArgumentError, "options must not be empty" if options.empty?
 
         super(caption)
-        @options = options.map { Option.new(_1[0], StyledString.parse(_1[1])) }
+        @options = options.map { |key, text, opts = {}| build_option(key, text, **opts) }
         @block = block
         list = Component::List.new
-        list.renderer = ->(option, _text_width) { StyledString.plain("#{option.key} ") + option.caption }
+        list.renderer = ->(option, _text_width) { render_option(option) }
         list.items = @options
         list.cursor = Component::List::Cursor.new
-        list.on_item_chosen { |e| select_option(e.item.key) }
+        list.on_item_chosen { |e| select_option(e.item) }
         self.content = list
       end
 
@@ -82,18 +123,18 @@ module Tuile
       # @param key [String]
       # @return [Boolean]
       def handle_key?(key)
-        if @options.any? { _1.key == key }
-          select_option(key)
-          true
-        else
-          false
-        end
+        option = @options.find { _1.key == key }
+        return false if option.nil?
+
+        select_option(option)
+        true
       end
 
       # Opens a picker as a popup. Picking an option fires `block`, then
       # closes the popup; ESC / `q` close without firing `block`.
       # @param caption [String]
-      # @param options [Array<Array(String, StyledString)>]
+      # @param options [Array<Array(String, StyledString), Array(String, StyledString, Hash)>]
+      #   see {#initialize}.
       # @yield [key]
       # @yieldparam key [String]
       # @yieldreturn [void]
@@ -107,11 +148,42 @@ module Tuile
 
       protected
 
-      # @param key [String]
+      # Re-renders the rows, which {List} caches with the disabled ink baked in.
       # @return [void]
-      def select_option(key)
-        @block.call(key)
+      def handle_theme_changed
+        super
+        content.refresh_rows
+      end
+
+      # @param option [Option]
+      # @return [void]
+      def select_option(option)
+        if option.disabled?
+          content.select(@options.index(option))
+          return
+        end
+
+        @block.call(option.key)
         on_pick.fire(PickEvent.new(source: self))
+      end
+
+      private
+
+      # @param key [String]
+      # @param text [String, StyledString]
+      # @param disabled [String, nil]
+      # @return [Option]
+      def build_option(key, text, disabled: nil)
+        Option.new(key:, caption: StyledString.parse(text), disabled_reason: disabled)
+      end
+
+      # @param option [Option]
+      # @return [StyledString]
+      def render_option(option)
+        row = StyledString.plain("#{option.key} ") + option.caption
+        return row unless option.disabled?
+
+        (row + StyledString.plain(" (#{option.disabled_reason})")).with_fg(screen.theme.disabled_color)
       end
     end
   end

@@ -7,6 +7,7 @@ module Tuile
     def theme_args(**overrides)
       { active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
         input_bg_color: Color.palette(238), placeholder_color: Color.palette(248),
+        disabled_color: Color.palette(247),
         error_color: Color.palette(203), error_bg_color: Color.palette(88),
         error_active_bg_color: Color.palette(95), scrollbar_color: Color.palette(59) }.merge(overrides)
     end
@@ -278,6 +279,21 @@ module Tuile
         refute_equal Theme::DARK.input_bg_color, Theme::LIGHT.input_bg_color
         refute_equal Theme::DARK.error_color, Theme::LIGHT.error_color
         refute_equal Theme::DARK.scrollbar_color, Theme::LIGHT.scrollbar_color
+        refute_equal Theme::DARK.disabled_color, Theme::LIGHT.disabled_color
+      end
+    end
+
+    # A disabled option must read as dimmed beside ordinary text, yet stay
+    # readable where the cursor rests on it — the ink is the only thing saying
+    # "this can't be picked".
+    describe "disabled_color" do
+      it "pins the greys the contrast measurements chose" do
+        assert_equal Color::GREY62, Theme::DARK.disabled_color
+        assert_equal Color::GREY54, Theme::LIGHT.disabled_color
+      end
+
+      it "stays apart from LIGHT's cursor highlight on 16 colors" do
+        refute_equal Theme::LIGHT.active_bg_color.quantize(:ansi16), Theme::LIGHT.disabled_color.quantize(:ansi16)
       end
     end
 

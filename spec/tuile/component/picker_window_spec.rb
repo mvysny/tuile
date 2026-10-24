@@ -55,6 +55,79 @@ module Tuile
       end
     end
 
+    describe "disabled options" do
+      options = [["r", "Resize", { disabled: "VM running" }], %w[g Grow]]
+
+      def paint(options)
+        picker = Component::PickerWindow.new("foo", options) {}
+        Testing.place(picker, Rect.new(0, 0, 30, 4))
+        Testing.paint(picker.content)
+      end
+
+      it "paints the whole row in disabled_color, its reason after the caption" do
+        painted = paint(options)
+        assert_equal "r Resize (VM running)", painted.text.first.strip
+        assert_equal Theme::DARK.disabled_color, painted.cell(1, 0).style.fg
+        assert_equal Theme::DARK.disabled_color, painted.cell(20, 0).style.fg
+        assert_nil painted.cell(1, 1).style.fg
+      end
+
+      it "replaces an app-colored caption's ink" do
+        painted = paint([["r", StyledString.styled("Resize", fg: Color::RED), { disabled: "VM running" }]])
+        assert_equal Theme::DARK.disabled_color, painted.cell(3, 0).style.fg
+      end
+
+      it "follows a theme change" do
+        picker = Component::PickerWindow.new("foo", options) {}
+        mount_at(picker, Rect.new(0, 0, 30, 4))
+        Testing.paint(picker.content) # fills the List's row cache under DARK
+        Screen.instance.theme = Theme::LIGHT
+        Testing.loop
+        assert_equal Theme::LIGHT.disabled_color, Testing.paint(picker.content).cell(1, 0).style.fg
+      end
+
+      it "refuses a disabled option without a reason" do
+        [true, "", :running].each do |reason|
+          assert_raises(ArgumentError) { Component::PickerWindow.new("foo", [["r", "Resize", { disabled: reason }]]) {} }
+        end
+      end
+
+      it "refuses an unknown option key" do
+        assert_raises(ArgumentError) { Component::PickerWindow.new("foo", [["r", "Resize", { hidden: true }]]) {} }
+      end
+
+      def press(key) = Screen.instance.send(:handle_key?, key)
+
+      it "moves the cursor onto it on its key, firing nothing and staying open" do
+        popup = Component::PickerWindow.open("foo", [%w[g Grow], *options]) { raise "should not be called" }
+        list = popup.content.content
+        assert_equal 0, list.cursor.position
+        assert press("r")
+        assert_equal 1, list.cursor.position
+        assert popup.open?
+      end
+
+      it "fires nothing on Enter on its row" do
+        popup = Component::PickerWindow.open("foo", options) { raise "should not be called" }
+        press(Keys::ENTER)
+        assert popup.open?
+      end
+
+      it "fires nothing on a click on its row" do
+        popup = Component::PickerWindow.open("foo", options) { raise "should not be called" }
+        row = popup.content.content.absolute_rect
+        Screen.instance.click(row.left + 1, row.top)
+        assert popup.open?
+      end
+
+      it "still picks an enabled option beside it" do
+        selected = nil
+        Component::PickerWindow.open("foo", options) { selected = _1 }
+        press("g")
+        assert_equal "g", selected
+      end
+    end
+
     describe ".open" do
       it "opens as a popup wrapping a PickerWindow" do
         popup = Component::PickerWindow.open("foo", [%w[a all]]) {}

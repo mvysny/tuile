@@ -27,8 +27,9 @@ active window, the resting "well" of a text field, the scrollbar down a
 scrollable pane's edge. Those are the accents, and they are exactly the tokens
 a {Tuile::Theme} carries — `active_bg_color`, `active_border_color`,
 `input_bg_color`, `scrollbar_color`, the three that mark a field
-invalid (`error_color` and the two error wells), and `placeholder_color` for
-the hint an empty field paints into itself. There is no global `bg` or `fg` token,
+invalid (`error_color` and the two error wells), `placeholder_color` for
+the hint an empty field paints into itself, and `disabled_color` for an
+option that can't be picked right now. There is no global `bg` or `fg` token,
 and that absence is intentional: adding one would mean painting over the
 terminal's defaults everywhere, which is precisely the thing that makes a
 TUI look wrong on someone else's color scheme. The theme touches only
@@ -40,11 +41,13 @@ shortcut captions in a status line are a good example — they want to be
 dimmer than the keys beside them, and Tuile has no opinion about how dim,
 because Tuile does not paint them. A status line is yours (the framework
 reserves no row for one), so its shades are yours too, and they go in
-`custom` — which the next section covers. The one token that *looks* like
-a secondary-text color is `placeholder_color`, and it isn't one: it is
-tuned to sit just above invisible, for the specific case of a hint the
-reader is welcome to miss, on the specific background of a field's own
-well.
+`custom` — which the next section covers. The two tokens that *look* like
+secondary-text colors aren't ones either. `placeholder_color` is tuned to
+sit just above invisible, for a hint the reader is welcome to miss, on the
+background of a field's own well. `disabled_color` is the opposite case: a
+row Tuile itself greys out because it can't be picked, whose reason the user
+*must* be able to read — and which Tuile paints with a color rather than the
+terminal's faint attribute, because most light themes render faint darker.
 
 So a {Tuile::Theme} is a frozen value type — a `Data.define` of colors
 plus an app-extensible `custom` hash — and that's all. Two are

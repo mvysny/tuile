@@ -92,6 +92,12 @@ module Tuile
   #   ({Component::HasPlaceholder}) — the one token tuned to be *barely*
   #   visible, since a placeholder the user misses costs nothing.
   #   @return [Color]
+  # @!attribute [r] disabled_color
+  #   Foreground of an option that can't be picked right now
+  #   ({Component::PickerWindow}): clearly dimmer than the terminal's own
+  #   foreground, yet readable on {#active_bg_color}, since the cursor may
+  #   rest on it while the user reads why.
+  #   @return [Color]
   # @!attribute [r] error_color
   #   Foreground for the *message* beside an invalid field — the text a
   #   container paints from {Component::HasValidation#error_message}. The
@@ -122,12 +128,13 @@ module Tuile
   #   the tokens. An unresolved theme's values may be derivation Procs.
   #   @return [Hash{Symbol => Color, Proc}]
   class Theme < Data.define(:active_bg_color, :active_border_color, :input_bg_color,
-                            :placeholder_color, :error_color, :error_bg_color, :error_active_bg_color,
-                            :scrollbar_color, :custom)
+                            :placeholder_color, :disabled_color, :error_color, :error_bg_color,
+                            :error_active_bg_color, :scrollbar_color, :custom)
     # @param active_bg_color [Color, Proc]
     # @param active_border_color [Color, Proc]
     # @param input_bg_color [Color, Proc]
     # @param placeholder_color [Color, Proc]
+    # @param disabled_color [Color, Proc]
     # @param error_color [Color, Proc]
     # @param error_bg_color [Color, Proc]
     # @param error_active_bg_color [Color, Proc]
@@ -137,9 +144,9 @@ module Tuile
     #   `custom` is not a Hash with Symbol keys.
     # @raise [ArgumentError] when a derivation Proc requires more than two
     #   arguments.
-    def initialize(active_bg_color:, active_border_color:, input_bg_color:, placeholder_color:,
+    def initialize(active_bg_color:, active_border_color:, input_bg_color:, placeholder_color:, disabled_color:,
                    error_color:, error_bg_color:, error_active_bg_color:, scrollbar_color:, custom: {})
-      { active_bg_color:, active_border_color:, input_bg_color:, placeholder_color:,
+      { active_bg_color:, active_border_color:, input_bg_color:, placeholder_color:, disabled_color:,
         error_color:, error_bg_color:, error_active_bg_color:, scrollbar_color: }.each do |name, value|
         Theme.validate_token(name.to_s, value)
       end
@@ -150,7 +157,7 @@ module Tuile
 
         Theme.validate_token("custom[#{key.inspect}]", value)
       end
-      super(active_bg_color:, active_border_color:, input_bg_color:, placeholder_color:,
+      super(active_bg_color:, active_border_color:, input_bg_color:, placeholder_color:, disabled_color:,
             error_color:, error_bg_color:, error_active_bg_color:, scrollbar_color:, custom: custom.dup.freeze)
     end
 
@@ -406,11 +413,19 @@ module Tuile
     # a 16-color terminal — everything below 248 lands on `:bright_black`
     # alongside both wells, where the hint is not subtle but gone
     # (`design/decisions.md` `D_placeholder`).
+    #
+    # `disabled_color` is GREY62 (247, ~#9e9e9e), the compromise between two
+    # backgrounds: 7.8:1 on black against ~13:1 for typical foreground text, so
+    # it reads as dimmed, and 2.4:1 on the GREY37 cursor highlight, which is
+    # low but legible. A grey readable on the highlight *and* dim on 16 colors
+    # doesn't exist: at `:ansi16` both land on `:bright_black`, so a cursor
+    # resting on a disabled option hides its text there.
     # @return [Theme]
     DARK = new(active_bg_color: Color::GREY37,
                active_border_color: Color::GREEN,
                input_bg_color: Color::GREY27,
                placeholder_color: Color::GREY66,
+               disabled_color: Color::GREY62,
                error_color: Color::INDIAN_RED1,
                error_bg_color: Color.palette(88),
                error_active_bg_color: Color::LIGHT_PINK4,
@@ -441,11 +456,18 @@ module Tuile
     # 16-color terminal, where both light wells are `:white`. It doubles as the
     # scrollbar ink, which wants the same thing — a foreground that recedes
     # against pale without vanishing into it.
+    #
+    # `disabled_color` is GREY54 (245, ~#8a8a8a): 3.5:1 on white and 2.2:1 on
+    # the GREY82 cursor highlight, two steps darker than the placeholder because
+    # a disabled option's reason must be read, not merely noticed; GREY46 read
+    # as too close to ordinary text. It stays `:bright_black` on 16 colors,
+    # distinct from the `:white` highlight.
     # @return [Theme]
     LIGHT = new(active_bg_color: Color::GREY82,
                 active_border_color: Color::GREEN,
                 input_bg_color: Color::GREY85,
                 placeholder_color: Color::GREY62,
+                disabled_color: Color::GREY54,
                 error_color: Color::RED3,
                 error_bg_color: Color::MISTY_ROSE1,
                 error_active_bg_color: Color::LIGHT_PINK1,

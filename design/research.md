@@ -75,6 +75,21 @@ web-component toolkit is surveyed often enough to be called *the Java web toolki
 - A terminal that reports 2031 flips need not answer OSC 11, and vice versa — the two capabilities
   are independent. **[unverified]** — inferred from the standards, not measured across emulators.
 
+## R_faint — SGR 2 (faint/dim): what the terminal paints
+
+- ECMA-48 defines SGR 2 as "faint, decreased intensity" and SGR 22 as "normal intensity", clearing
+  bold *and* faint — no code clears just one. **[docs]**
+- Alacritty paints faint from the theme's `[colors.dim]` palette and `dim_foreground`; a value the
+  theme leaves out is `normal × 0.66` (`DIM_FACTOR`), which *darkens* whatever the background.
+  **[src]** `alacritty/src/display/color.rs`, v0.16.1
+- So on a light background faint raises contrast: in the alacritty-theme collection, 24 of 30 light
+  themes leave dim unset and render it *darker* than normal (solarized_light 5.0:1 → 8.7:1), 5 more
+  show no change, 1 dims. **[verified 2026-10-24, Alacritty 0.16.1, 158 themes]**
+- 8 themes define dim equal to normal, switching faint off on dark schemes too — every Catppuccin
+  flavour, flexoki, meliora, nvim_dark, konsole_linux. **[verified 2026-10-24, Alacritty 0.16.1]**
+- VTE, kitty and iTerm2 dim by blending toward the background, which works on either scheme.
+  **[unverified]**
+
 ## R_esc_ambiguity — Reading keys: the ESC ambiguity, and typeahead
 
 - An `\e` on stdin is either the ESC key or the head of a sequence, and **nothing in the protocol

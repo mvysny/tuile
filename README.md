@@ -258,7 +258,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | `Notification` | A transient corner toast — `Notification.show("Saved")` — stacking messages in one box that a single ticker drains. Non-modal, it never takes focus, and its inner `View` refuses the wheel so queued messages wait for the ticker. |
 | `ConfirmWindow` | The confirm dialog: a message and a row of buttons in a popup sized to fit. `alert` / `confirm` / `yes_no` cover the common shapes; `#button` builds any other. Every button closes; ESC, `q` or an outside click fire `on_dismiss`. See [The confirm dialog](book/07-components.md#the-confirm-dialog). |
 | `InfoWindow` | A `Window` with a read-only body, tiled or popped up: prose that wraps (`message=`), or rows that don't (`lines=`). |
-| `PickerWindow` | A `Window` of options identified by single keystrokes, firing a callback with the key that was pressed. Captions take a `StyledString` to color one. |
+| `PickerWindow` | A `Window` of options identified by single keystrokes, firing a callback with the key that was pressed. Captions take a `StyledString` to color one; an option may be disabled, with a reason. |
 | `LogTextView` | An auto-scrolling `TextView` for log output. Point your logger at a `LogTextView::IO` and lines land here from any thread, marshalled through the event queue. |
 | `LogWindow` | A `Window` framing a `LogTextView` — the framed log pane. |
 

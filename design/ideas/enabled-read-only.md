@@ -65,9 +65,12 @@ working, so it lands in the widget's edit path (`insert_text`, the editing
   `D_bg_surface` records as **closed**; disabled has a better claim than error had (a
   per-component state, like `active`), but the claim must be made. Greying *text* is
   foreground, and `D_bg_surface` allows no foreground knob — so a dim *well*, or re-argue.
+  **The text half exists:** `Theme#disabled_color` (#71), a chrome token like
+  `placeholder_color`, not a per-component knob; SGR faint is ruled out by `R_faint`.
 - **`Q_readonly_ink`** — web toolkits commonly drop the well on read-only; dropping `INPUT_WELL` costs
   no new token.
 - **`Q_who_asks`** — nobody. The form syncer refused Save, #64 was served by a widget flag,
+  #71's disabled `PickerWindow` option is per-*item* (`disabled_color`, reason inline, gated at the pick),
   and the gestures only inherit the axis. Don't build ahead of a caller.
 
 ## Graduation owes
@@ -75,7 +78,7 @@ working, so it lands in the widget's edit path (`insert_text`, the editing
 - A root `AGENTS.md` invariant: a third reachability rule beside `visible`.
 - A `component_contract_spec` catalog entry — it holds for every component and fails
   silently.
-- A theme token, possibly a `STATES` key; CHANGELOG; book; rdoc.
+- `disabled_color`'s rdoc naming the fields, possibly a `STATES` key; CHANGELOG; book; rdoc.
 - `List#interactive=` folded into it, or its rdoc says why not.
 - The test gestures: `Testing.click` inherits the disabled check for free if the gate
   rides the dispatchers (if it doesn't, the design went per-widget); `Testing.set_value`

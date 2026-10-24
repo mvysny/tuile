@@ -2073,11 +2073,13 @@ module SamplerExample
         # Captions paint in the terminal's own foreground — the picker
         # recommends no color of its own. Styling one is the app's call, and
         # per option: a caption may be a String, an ANSI-coded String (what
-        # `theme.fg` hands back) or a StyledString.
+        # `theme.fg` hands back) or a StyledString. A disabled option paints
+        # in disabled_color with its reason, and picking it fires nothing.
         Tuile::Component::PickerWindow.open(
           "Pick a fruit",
           [%w[a Apple], %w[b Banana],
-           ["c", "Cherry #{screen.theme.fg(:hint, "(in season)")}"]]
+           ["c", "Cherry #{screen.theme.fg(:hint, "(in season)")}"],
+           ["d", "Durian", { disabled: "out of stock" }]]
         ) { |key| Tuile.logger.info("Picked: #{key}") }
       end
     end

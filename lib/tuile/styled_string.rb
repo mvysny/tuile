@@ -65,6 +65,11 @@ module Tuile
     # @!attribute [r] inverse
     #   @return [Boolean] swap the fg/bg *in effect* at the cell (SGR 7) —
     #     including terminal defaults, which `fg`/`bg` can't name.
+    #
+    # There is deliberately no `faint` (SGR 2): unlike the other attributes its
+    # ink is the terminal theme's to pick, and on most light themes it comes out
+    # *darker* than normal text (`design/research.md` `R_faint`). Dim with a
+    # `fg` color instead.
     class Style < Data.define(:fg, :bg, :bold, :italic, :underline, :strikethrough, :inverse)
       # @param fg [Color, Symbol, Integer, Array<Integer>, nil] coerced via {Color.coerce}.
       # @param bg [Color, Symbol, Integer, Array<Integer>, nil] coerced via {Color.coerce}.

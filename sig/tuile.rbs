@@ -1068,6 +1068,12 @@ module Tuile
   #   ({Component::HasPlaceholder}) — the one token tuned to be *barely*
   #   visible, since a placeholder the user misses costs nothing.
   #   @return [Color]
+  # @!attribute [r] disabled_color
+  #   Foreground of an option that can't be picked right now
+  #   ({Component::PickerWindow}): clearly dimmer than the terminal's own
+  #   foreground, yet readable on {#active_bg_color}, since the cursor may
+  #   rest on it while the user reads why.
+  #   @return [Color]
   # @!attribute [r] error_color
   #   Foreground for the *message* beside an invalid field — the text a
   #   container paints from {Component::HasValidation#error_message}. The
@@ -1110,6 +1116,8 @@ module Tuile
     # 
     # _@param_ `placeholder_color`
     # 
+    # _@param_ `disabled_color`
+    # 
     # _@param_ `error_color`
     # 
     # _@param_ `error_bg_color`
@@ -1124,6 +1132,7 @@ module Tuile
                       active_border_color: (Color | Proc),
                       input_bg_color: (Color | Proc),
                       placeholder_color: (Color | Proc),
+                      disabled_color: (Color | Proc),
                       error_color: (Color | Proc),
                       error_bg_color: (Color | Proc),
                       error_active_bg_color: (Color | Proc),
@@ -1267,6 +1276,12 @@ module Tuile
     # ({Component::HasPlaceholder}) — the one token tuned to be *barely*
     # visible, since a placeholder the user misses costs nothing.
     attr_reader placeholder_color: Color
+
+    # Foreground of an option that can't be picked right now
+    # ({Component::PickerWindow}): clearly dimmer than the terminal's own
+    # foreground, yet readable on {#active_bg_color}, since the cursor may
+    # rest on it while the user reads why.
+    attr_reader disabled_color: Color
 
     # Foreground for the *message* beside an invalid field — the text a
     # container paints from {Component::HasValidation#error_message}. The
@@ -12774,13 +12789,34 @@ module Tuile
     # 
     #   PickerWindow.open("File", [["o", StyledString.plain("Open")],
     #                              ["d", theme.fg(:danger, "Delete")]]) { … }
+    # 
+    # An option that doesn't apply right now is *disabled* by a third element
+    # naming why. It paints in {Theme#disabled_color}, reason appended and any
+    # caption ink of the app's replaced, and picking it — key, Enter
+    # or click — fires nothing and closes nothing; its key moves the cursor
+    # onto it instead, so the reason is where the user is looking:
+    # 
+    #   PickerWindow.open("Maintenance", [
+    #     ["r", "Resize disk image…", { disabled: "shut the VM down first" }],
+    #     ["g", "Grow root filesystem…"]
+    #   ]) { … }
+    # 
+    #   ┌Maintenance──────────────────────────────────┐
+    #   │r Resize disk image… (shut the VM down first)│  ← disabled_color
+    #   │g Grow root filesystem…                      │
+    #   └─────────────────────────────────────────────┘
+    # 
+    # The options are a snapshot taken at construction, as a desktop menu's
+    # enabled state is taken when it opens: what changes while the picker is
+    # up doesn't reach it. So disabling is a hint, never the guard — the block
+    # still checks that its operation can run.
     class PickerWindow < Tuile::Component::Window
       MAX_ITEMS: Integer
 
       # _@param_ `caption` — the window caption.
       # 
-      # _@param_ `options` — pairs of keyboard key and option caption. A caption goes through {StyledString.parse}, so a plain String, an ANSI-coded one (what {Theme#fg} returns) and a {StyledString} are all accepted.
-      def initialize: (String caption, ::Array[[String, StyledString]] options) ?{ (String key) -> void } -> void
+      # _@param_ `options` — pairs of keyboard key and option caption, optionally followed by `{ disabled: reason }`. A caption goes through {StyledString.parse}, so a plain String, an ANSI-coded one (what {Theme#fg} returns) and a {StyledString} are all accepted.
+      def initialize: (String caption, ::Array[([String, StyledString] | [String, StyledString, ::Hash[untyped, untyped]])] options) ?{ (String key) -> void } -> void
 
       # Fired with a {PickEvent} after the user picks an option, after the
       # block fires. The {Popup} returned by {.open} registers its own `close`.
@@ -12799,13 +12835,26 @@ module Tuile
       # 
       # _@param_ `caption`
       # 
-      # _@param_ `options`
+      # _@param_ `options` — see {#initialize}.
       # 
       # _@return_ — the wrapping popup.
-      def self.open: (String caption, ::Array[[String, StyledString]] options) ?{ (String key) -> void } -> Popup
+      def self.open: (String caption, ::Array[([String, StyledString] | [String, StyledString, ::Hash[untyped, untyped]])] options) ?{ (String key) -> void } -> Popup
+
+      # Re-renders the rows, which {List} caches with the disabled ink baked in.
+      def handle_theme_changed: () -> void
+
+      # _@param_ `option`
+      def select_option: (Option option) -> void
 
       # _@param_ `key`
-      def select_option: (String key) -> void
+      # 
+      # _@param_ `text`
+      # 
+      # _@param_ `disabled`
+      def build_option: (String key, (String | StyledString) text, ?disabled: String?) -> Option
+
+      # _@param_ `option`
+      def render_option: (Option option) -> StyledString
 
       # One picker option.
       # 
@@ -12814,13 +12863,29 @@ module Tuile
       # @!attribute [r] caption
       #   @return [StyledString] the option caption, coerced from whatever the
       #     constructor was handed.
+      # @!attribute [r] disabled_reason
+      #   @return [String, nil] why the option can't be picked; `nil` when it
+      #     can. A disabled option without a reason is refused.
       class Option
+        # _@param_ `key`
+        # 
+        # _@param_ `caption`
+        # 
+        # _@param_ `disabled_reason`
+        def initialize: (key: String, caption: StyledString, ?disabled_reason: String?) -> void
+
+        def disabled?: () -> bool
+
         # _@return_ — the keyboard key that picks this option.
         attr_reader key: String
 
         # _@return_ — the option caption, coerced from whatever the
         # constructor was handed.
         attr_reader caption: StyledString
+
+        # _@return_ — why the option can't be picked; `nil` when it
+        # can. A disabled option without a reason is refused.
+        attr_reader disabled_reason: String?
       end
 
       # What {#on_pick} fires.
@@ -17360,6 +17425,11 @@ module Tuile
     # @!attribute [r] inverse
     #   @return [Boolean] swap the fg/bg *in effect* at the cell (SGR 7) —
     #     including terminal defaults, which `fg`/`bg` can't name.
+    # 
+    # There is deliberately no `faint` (SGR 2): unlike the other attributes its
+    # ink is the terminal theme's to pick, and on most light themes it comes out
+    # *darker* than normal text (`design/research.md` `R_faint`). Dim with a
+    # `fg` color instead.
     class Style
       DEFAULT: Style
 
