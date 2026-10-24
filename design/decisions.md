@@ -6939,6 +6939,51 @@ enforces, so `_value=` grows a `read_only?` term of its own.
 
 ---
 
+## D_direct_manipulation — Why may a spec call a component directly, rather than drive every action through the event queue?
+
+Tracks [issue #65](https://github.com/mvysny/tuile/issues/65).
+
+A spec plays the user. In production one user action is one **turn** of the
+loop: `Screen#dispatch` delivers the key or the press and settles, the loop
+dispatches whatever that submitted until the queue is empty, and only then does
+it repaint. The faithful spec would post every action and pump the queue. Tuile
+does not ask that: a spec builds a tree, assigns `items=`, calls `handle_key?`
+and reads `label.text` directly, on its own thread. Karibu-Testing makes the
+same trade for Vaadin.
+
+**That thread is the UI thread, not a pretend one.** With no loop running,
+`check_locked` admits the thread that created the screen. That is the `:idle`
+state an app is in while it builds its tree before `run_event_loop`
+(`D_screen_lifecycle`). So a direct call is startup code, which production runs
+too, not a lock bypass.
+
+**What a direct call skips is the rest of the turn, and nothing else:** the
+settle, and the blocks submitted in the meantime. The settle is already covered:
+a stale rect read raises under the fake (`D_strict_layout`), and `repaint` and
+`flush_layout` settle. The follow-up blocks are `FakeEventQueue`'s to model, and
+#65 does that by queueing every `submit` and adding a `drain`. **A `FakeScreen`
+gesture is a whole turn.** After any other drive, finishing the turn is the
+spec's job, and so is draining after joining a worker, whose blocks arrive
+outside any turn. The mismatch is a short, named list rather than open-ended
+drift, and the gestures exist for the action under test when the turn matters
+(`D_test_gestures`).
+
+Why not:
+
+- *Every action posted to the queue and pumped.* Closest to production, but
+  every spec pays for it: no setup without a post, and an assertion has to wait
+  out a pump. The two things it would buy are the two listed above, and each
+  already has a cheaper answer.
+- *A `submit` that runs its block inline* (the fake until #65). It hides the turn
+  boundary instead of naming it. A block meant to run after the current handler
+  runs in the middle of it, and a worker's block runs on the worker and raises,
+  so the hand-off `submit` exists for cannot be specced.
+- *Draining on `repaint`*, since the loop only paints with an empty queue.
+  `Screen#resize` repaints inside a spec's first `content=` and inside `dispatch`,
+  so blocks would run in the middle of a call, which is the inline behaviour again.
+
+---
+
 ## D_clip — Why is every component's paint bounded by its own rect and its ancestors', computed by the screen rather than declared by a component?
 
 {Tuile::Screen#clip_for} answers, in the component's own coordinates, the cells it

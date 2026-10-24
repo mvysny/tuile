@@ -13,6 +13,10 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   `prints` buffer and no terminal IO, and resets the singleton between examples. Without it, anything touching `Screen.instance` sees leaked state.
 - **The fake runs no event loop, so the ordinary `check_locked` admits the example thread** — a spec
   mutating UI from a *spawned* thread raises, exactly as an app would. Don't add a bypass.
+- **A spec plays the user and may call components directly** — that is `:idle` startup code, and
+  it skips only the rest of the loop turn: the settle and the follow-up blocks. A {Tuile::FakeScreen}
+  gesture is a whole turn; after any other drive the spec finishes the turn itself. See
+  `D_direct_manipulation`.
 - **Assert painted content against `Screen.instance.buffer`**, not `prints` — `region_text(rect)` /
   `region_ansi(rect)` / `cell(x, y)` after a `Screen#repaint`, which a spec calls directly and
   production code never does. `prints` now holds only cursor escapes and

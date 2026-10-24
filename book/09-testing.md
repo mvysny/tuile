@@ -219,8 +219,25 @@ terser, and changes nothing about the assertion channel. What a component
 
 ## Driving the system
 
-There are two altitudes at which you feed input, and picking the right one
-is most of writing a good Tuile test.
+A test plays the user, and it helps to be clear about what that means. In a
+running app, one thing the user does is one *turn* of the event loop from
+chapter 4. The loop delivers the key or the click and settles the layout. It
+then runs whatever that handler submitted, until the queue is empty, and only
+then repaints. A test could be just as faithful by posting every action as an
+event and pumping the queue. Tuile doesn't ask that. Your example builds the
+tree, sets values, calls handlers and reads state back directly.
+
+That's legitimate, not a shortcut around the rules. With no loop running, your
+example's thread *is* the UI thread, in the same state a real app is in while
+it builds its tree before starting the loop. What a direct call skips is only
+the rest of the turn: the settle, and the blocks submitted along the way. The
+settle won't catch you out silently, because a rect read before it raises under
+the fake. The `FakeScreen` gestures later in this section are whole turns, so
+they finish the turn for you. After any other kind of call, finishing the turn
+is up to your test, and so is the repaint, as the end of this section shows.
+
+Within that, there are two altitudes at which you feed input, and picking the
+right one is most of writing a good Tuile test.
 
 **Low: call the component directly.** {Tuile::Component#handle_key?} and the
 `handle_mouse_*` handlers are public, and calling one straight tests a
@@ -339,18 +356,21 @@ mark is what tells a reader which is running. Being a refinement, it exists only
 where you `using` it — per file or per `describe`, never leaking to the next —
 and nothing is added to `Component`, so an app never sees it.
 
-## Why background code just works
+## Background code under the fake
 
 Chapter 4's rule was that background threads marshal UI work back with
-`screen.event_queue.submit { … }`. That rule has a happy consequence for
-tests: under the {Tuile::FakeEventQueue}, `submit` **runs its block
-synchronously, right now, on the calling thread.** There is no loop, no
-thread, no waiting. So code that in production hands work across the
-thread boundary — a `LogWindow#log`, a worker posting a result — executes
-inline the moment the test calls it, and the effect is visible on the very
-next line. Posted *events* are simply discarded (a test isn't running the
-loop that would consume them), and `check_locked` passing for free means
-none of this trips the lock guard.
+`screen.event_queue.submit { … }`. Under the {Tuile::FakeEventQueue},
+`submit` **runs its block synchronously, right away, on the calling thread.**
+Called from your example, as a `LogWindow#log` is, the block runs on the UI
+thread and its effect shows on the very next line. Called from a thread
+your example spawned, it runs on *that* thread, and the first UI mutation
+inside it raises, because a spawned thread doesn't own the UI. So the fake
+can't yet exercise a worker handing its result back. Posted *events* are
+simply discarded, because no loop is running to consume them.
+
+Note that this is *not* the turn from the start of "Driving the system". A
+real `submit` never runs its block inside the call; the block waits its turn
+in the queue.
 
 The one thing with no clock is animation. `tick` on the fake returns a
 timeless ticker that fires only when the test tells it to: call
