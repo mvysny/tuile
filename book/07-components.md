@@ -1951,5 +1951,5 @@ is the recurring theme of this whole book. Chapter 8 composes the value
 fields of this one into forms bound to a model. What remains after that is
 proving that a UI built this way actually works, without a terminal in the
 loop. The fakes the design has been quietly setting up since chapter 2 —
-the buffer you can read back, the synchronous event queue, the in-memory
+the buffer you can read back, the event queue a test runs by hand, the in-memory
 screen — are what make that possible, and chapter 9 puts them to work.

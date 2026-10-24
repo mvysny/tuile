@@ -13,12 +13,14 @@ module Tuile
 
     it "delegates #log to the view" do
       window.log("hello")
+      Testing.loop
       assert_equal "hello", window.content.text.to_s
     end
 
     it "keeps LogWindow::IO as an alias that accepts the window itself" do
       io = Component::LogWindow::IO.new(window)
       io.write("hello\n")
+      Testing.loop
       assert_equal "hello", window.content.text.to_s
     end
   end

@@ -19,7 +19,19 @@ module Tuile
       it "appends the line" do
         view.log("hello")
         view.log("world")
+        Testing.loop
         assert_equal "hello\nworld", view.text.to_s
+      end
+
+      it "appends nothing until the loop runs, as a submit never runs inline" do
+        view.log("hello")
+        assert_equal "", view.text.to_s
+      end
+
+      it "appends a line logged from a worker thread" do
+        Thread.new { view.log("from a worker") }.join
+        Testing.loop
+        assert_equal "from a worker", view.text.to_s
       end
 
       it "does nothing when passed nil" do
@@ -33,11 +45,13 @@ module Tuile
 
       it "appends a line on #write, stripping the trailing newline" do
         io.write("hello\n")
+        Testing.loop
         assert_equal "hello", view.text.to_s
       end
 
       it "appends a line on #puts" do
         io.puts("hello")
+        Testing.loop
         assert_equal "hello", view.text.to_s
       end
 
@@ -50,6 +64,7 @@ module Tuile
         log.formatter = ->(severity, _time, _progname, msg) { "#{severity}: #{msg}\n" }
         log.error "foo"
         log.warn "bar"
+        Testing.loop
         assert_equal "ERROR: foo\nWARN: bar", view.text.to_s
       end
     end

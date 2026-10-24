@@ -431,6 +431,35 @@ module Tuile
       end
     end
 
+    describe ".loop" do
+      it "raises without a fake screen" do
+        Screen.close
+        assert_raises(Tuile::Error) { Testing.loop }
+      end
+    end
+
+    describe "finishing the turn" do
+      it "runs the queue before a lookup, so a worker's result is there to find" do
+        layout = Component::Layout::Absolute.new
+        Screen.instance.content = layout
+        Thread.new do
+          Screen.instance.event_queue.submit { layout.add(Component::Button.new("Done").tap { _1.id = :done }) }
+        end.join
+        assert_instance_of Component::Button, Testing.get(id: :done)
+      end
+
+      it "runs the queue after a gesture, so its follow-up has happened" do
+        layout = Component::Layout::Absolute.new
+        Screen.instance.content = layout
+        field = Component::TextField.new
+        layout.add(field, Rect.new(0, 0, 10, 1))
+        echoed = nil
+        field.on_value_change << ->(e) { Screen.instance.event_queue.submit { echoed = e.value } }
+        Testing.set_value(field, "typed")
+        assert_equal "typed", echoed
+      end
+    end
+
     describe ".paint" do
       def list(*lines) = Component::List.new.tap { _1.lines = lines }
 
@@ -449,6 +478,9 @@ module Tuile
         inner = list("alpha")
         w = Component::Window.new("Caption").tap { _1.content = inner }
         mount_at(w, Rect.new(5, 5, 14, 3))
+        Testing.loop
+        # Blanked behind the screen's back: a write by paint would show here.
+        Screen.instance.buffer.fill(inner.absolute_rect)
         buffer = Testing.paint(inner)
 
         assert_equal Size.new(12, 1), buffer.size

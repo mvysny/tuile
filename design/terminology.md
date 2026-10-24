@@ -80,6 +80,7 @@ content-space.
 | **hidden** | carrying `visible? == false` — the component's own flag. *Gone*, not merely unpainted: as if detached, but still in the tree, so no lifecycle hook fires. Says nothing about the ancestors. |
 | **shown** | reachable by the user: this component and every ancestor visible. The effective, ancestor-inclusive state, and always the walk's word (`walk_shown_tree`, `Box#shown_children`) — there is deliberately no `shown?` reader. |
 | **invalidate** | record a component as needing repaint; the loop coalesces and repaints once per tick. |
+| **turn** | what the loop does for one event: dispatch and settle it, dispatch whatever got queued until the queue is empty, then repaint. A spec's direct call skips the rest of one; `Testing.loop` plays it. |
 | **bubble** | leaf → root delivery, stopping at whoever claims the event: what a key does up the focus chain, and what a press, a wheel notch and a move do up the chain of components under the pointer. |
 | **tunnel** | root → leaf delivery, the opposite direction. Named only to be refused: mouse dispatch tunnelled until 0.16.0, and nothing in Tuile does now (`D_mouse_dispatch`, `D_key_dispatch`). |
 | **grab** | the hold one component has on the mouse from the press it claimed until the release, during which its drags and its up reach it wherever the pointer goes ({Tuile::Screen#grabbed}). Never "capture", which already names the `capture_mouse:` level. |

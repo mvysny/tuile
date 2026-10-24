@@ -6960,19 +6960,24 @@ too, not a lock bypass.
 **What a direct call skips is the rest of the turn, and nothing else:** the
 settle, and the blocks submitted in the meantime. The settle is already covered:
 a stale rect read raises under the fake (`D_strict_layout`), and `repaint` and
-`flush_layout` settle. The follow-up blocks are what #65 adds: every `submit` and
-`post` queues, and **`Testing.loop` runs the loop until the queue is empty and
-returns.** It hands each queued item to `Screen#dispatch`, then an
+`flush_layout` settle. For the follow-ups, the fake queues every `submit` and
+`post`, from any thread, and **`Testing.loop` runs the loop until the queue is
+empty and returns.** It hands each queued item to `Screen#dispatch`, then an
 `EmptyQueueEvent`, so it repaints just as the loop does when the queue empties.
 This is the same contract as `EventQueue#run_loop`, minus the wait: the fake
 reuses production's own dispatch, so it is faithful by construction and there
 is no second copy to keep in step. **Every spec-facing entry point calls it
 first**: each `Testing` function, each `FakeScreen` gesture (after the event as
-well, since a gesture is a whole turn), and `Screen.close` before teardown. No
-framework call does. After any other drive, and after joining a worker, whose
+well, since a gesture is a whole turn), and `Screen.close` before teardown when
+anything is still queued. No framework call does, and neither does a `Testing`
+call on a detached tree, which is outside the screen's turn and may be
+assembled off-thread. After any other drive, and after joining a worker, whose
 blocks arrive outside any turn, the spec calls `Testing.loop` itself. The
 mismatch is a short, named list rather than open-ended drift, and the gestures
 exist for the action under test when the turn matters (`D_test_gestures`).
+`tick_once` and `fire_timers` are the one deliberate gap: they fire their
+blocks directly, where a real firing submits one, because the queue has no
+dispatcher and a spec pumps a frame to assert on the next line.
 
 Why not:
 
@@ -6980,7 +6985,7 @@ Why not:
   every spec pays for it: no setup without a post, and an assertion has to wait
   out a pump. The two things it would buy are the two listed above, and each
   already has a cheaper answer.
-- *A `submit` that runs its block inline* (the fake until #65). It hides the turn
+- *A `submit` that runs its block inline*, as the fake once did. It hides the turn
   boundary instead of naming it. A block meant to run after the current handler
   runs in the middle of it, and a worker's block runs on the worker and raises,
   so the hand-off `submit` exists for cannot be specced.

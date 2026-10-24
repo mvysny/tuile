@@ -28,8 +28,9 @@ after  { Screen.close }
 `Screen.fake` installs a {Tuile::FakeScreen} as the process singleton — a
 `Screen` subclass with the terminal amputated. It has a fixed 160×50
 viewport (so geometry is deterministic, independent of whoever's terminal
-runs the suite), it writes nothing to any TTY, and its event queue is the
-synchronous {Tuile::FakeEventQueue} (more on that below). You can mutate the
+runs the suite), it writes nothing to any TTY, and its event queue is a
+{Tuile::FakeEventQueue} that runs only when the test says so (more on that
+below). You can mutate the
 UI directly from your example — and note there is no lock *bypass* doing
 that for you: the fake runs no loop, so `running?` is false and chapter 4's
 rule falls back to "the thread that created the screen," which is yours. A
@@ -230,11 +231,12 @@ tree, sets values, calls handlers and reads state back directly.
 That's legitimate, not a shortcut around the rules. With no loop running, your
 example's thread *is* the UI thread, in the same state a real app is in while
 it builds its tree before starting the loop. What a direct call skips is only
-the rest of the turn: the settle, and the blocks submitted along the way. The
-settle won't catch you out silently, because a rect read before it raises under
-the fake. The `FakeScreen` gestures later in this section are whole turns, so
-they finish the turn for you. After any other kind of call, finishing the turn
-is up to your test, and so is the repaint, as the end of this section shows.
+the rest of the turn: the settle, the blocks submitted along the way, and the
+repaint. One call plays it: `Testing.loop` runs everything queued, the way the
+loop would, then repaints. You rarely type it, because every `Testing` function
+and every `FakeScreen` gesture in this chapter runs it on the way in, and a
+gesture runs it again on the way out, since a gesture *is* a whole turn. After
+any other kind of call, write `Testing.loop` before you assert.
 
 Within that, there are two altitudes at which you feed input, and picking the
 right one is most of writing a good Tuile test.
@@ -359,18 +361,24 @@ and nothing is added to `Component`, so an app never sees it.
 ## Background code under the fake
 
 Chapter 4's rule was that background threads marshal UI work back with
-`screen.event_queue.submit { … }`. Under the {Tuile::FakeEventQueue},
-`submit` **runs its block synchronously, right away, on the calling thread.**
-Called from your example, as a `LogWindow#log` is, the block runs on the UI
-thread and its effect shows on the very next line. Called from a thread
-your example spawned, it runs on *that* thread, and the first UI mutation
-inside it raises, because a spawned thread doesn't own the UI. So the fake
-can't yet exercise a worker handing its result back. Posted *events* are
-simply discarded, because no loop is running to consume them.
+`screen.event_queue.submit { … }`. The {Tuile::FakeEventQueue} keeps that rule
+honest: `submit` **queues the block, from any thread, and never runs it inside
+the call**, exactly as the real queue does. Nothing runs it until the test
+plays the turn. So a worker handing its result back reads, in a spec, just as
+it does in the app, plus one line:
 
-Note that this is *not* the turn from the start of "Driving the system". A
-real `submit` never runs its block inside the call; the block waits its turn
-in the queue.
+```ruby
+worker = Thread.new { result = slow_read; screen.event_queue.submit { show(result) } }
+worker.join
+Testing.loop        # show(result) runs here, on your example's thread
+```
+
+The `join` matters: until the worker has submitted, there's nothing in the
+queue to run. The same goes for code that marshals even from the UI thread,
+such as `LogWindow#log`. Call it, and the line isn't there yet; the next
+`Testing` call, gesture or `Testing.loop` adds it. A block that raises fails
+the test where the queue runs, and `Screen.close` runs whatever is still
+queued, so an error can't slip past at the end of the example.
 
 The one thing with no clock is animation. `tick` on the fake returns a
 timeless ticker that fires only when the test tells it to: call

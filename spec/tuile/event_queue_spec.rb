@@ -468,15 +468,5 @@ module Tuile
     it "await_empty returns immediately" do
       fake.await_empty
     end
-
-    it "submit runs the block immediately" do
-      called = false
-      fake.submit { called = true }
-      assert called
-    end
-
-    it "post accepts frozen events" do
-      fake.post("event")
-    end
   end
 end

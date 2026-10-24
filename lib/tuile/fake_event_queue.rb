@@ -1,12 +1,29 @@
 # frozen_string_literal: true
 
 module Tuile
-  # A "synchronous" event queue – no loop is run, submitted blocks are run right
-  # away and submitted events are thrown away. Intended for testing only.
+  # The event queue under a {FakeScreen}: it queues what {#submit} and {#post}
+  # hand it, from any thread, and runs nothing until a spec calls
+  # {Testing.loop}, which plays one {EventQueue#run_loop} pass without the wait:
+  #
+  #   Thread.new { screen.event_queue.submit { label.text = "done" } }.join
+  #   Testing.loop        # runs the block on the spec thread, then repaints
+  #
+  # So a block never runs inside the `submit` that queued it, exactly as in
+  # production. Intended for testing only.
+  #
+  # Thread-safe for {#submit} and {#post}; everything else is UI-thread-confined.
   class FakeEventQueue
+    # How many queued items one {#run_until_idle} runs before deciding the queue
+    # will never empty. Far above any honest turn; a block that resubmits itself
+    # reaches it in a blink.
+    # @return [Integer]
+    MAX_ITEMS_PER_RUN = 1000
+
     def initialize
+      @queue = Thread::Queue.new
       @tickers = []
       @timers = []
+      @running_until_idle = false
     end
 
     # Lets a spec assert that a component started a ticker, and — via
@@ -33,19 +50,71 @@ module Tuile
       raise Tuile::Error, "FakeEventQueue does not run an event loop"
     end
 
+    # A no-op: nothing drains the queue but {#run_until_idle}, so a block
+    # submitted before this call may still be queued after it.
     # @return [void]
     def await_empty; end
 
-    # @yield runs the block synchronously.
+    # Queues the block for the next {#run_until_idle}. Callable from any thread.
+    # @yield called from the spec thread, by {Testing.loop}.
     # @yieldreturn [void]
     # @return [void]
-    def submit
-      yield
+    def submit(&block)
+      @queue << block
     end
 
-    # @param event [Object]
+    # Queues `event` for the next {#run_until_idle}. Callable from any thread.
+    # @param event [Object] the event to post, frozen as {EventQueue#post}
+    #   demands.
+    # @raise [ArgumentError] if `event` is not frozen.
     # @return [void]
-    def post(event); end
+    def post(event)
+      raise ArgumentError, "event passed across threads must be frozen, got #{event.inspect}" unless event.frozen?
+
+      @queue << event
+    end
+
+    # @return [Boolean] true when nothing is waiting for {#run_until_idle}.
+    def empty? = @queue.empty?
+
+    # {EventQueue#run_loop} without the wait: yields every queued item, oldest
+    # first, then an {EventQueue::EmptyQueueEvent}, and returns once that leaves
+    # the queue empty. Whatever a yield queues runs in the same call, behind
+    # what was already waiting. {FakeScreen#run_until_idle} hands each item to
+    # {Screen#dispatch}, as the real loop does.
+    #
+    # A call made while one is running returns at once; the outer one runs
+    # whatever the inner would have.
+    # @yield [event] each queued item, then the idle event.
+    # @yieldparam event [Object] a `Proc` from {#submit}, an event from
+    #   {#post}, or {EventQueue::EmptyQueueEvent}.
+    # @yieldreturn [void]
+    # @raise [Tuile::Error] if the queue has not emptied after
+    #   {MAX_ITEMS_PER_RUN} items — some block keeps resubmitting itself.
+    # @return [void]
+    def run_until_idle
+      return if @running_until_idle
+
+      @running_until_idle = true
+      begin
+        ran = 0
+        Kernel.loop do
+          if @queue.empty?
+            yield EventQueue::EmptyQueueEvent.instance
+            break if @queue.empty?
+          else
+            if (ran += 1) > MAX_ITEMS_PER_RUN
+              raise Tuile::Error, "the event queue is still not empty after #{MAX_ITEMS_PER_RUN} items: " \
+                                  "does a submitted block submit itself?"
+            end
+
+            yield @queue.pop
+          end
+        end
+      ensure
+        @running_until_idle = false
+      end
+    end
 
     # Mirrors {EventQueue#tick} but timeless: returns a {FakeTicker} that
     # only fires when a test calls {#tick_once}. The `seconds` argument is
@@ -87,6 +156,11 @@ module Tuile
     # cancelled tickers. No-op when no tickers are registered. Pumps once
     # per call regardless of any ticker's fps — the fake has no clock, so
     # tests pump N frames by calling this N times.
+    #
+    # Fires the blocks directly, where a real firing is a {#submit}: the queue
+    # has no dispatcher, and a spec pumps a frame to assert on the next line.
+    # So a firing skips the settle, as any direct call does — {Testing.loop}
+    # finishes the turn.
     # @return [void]
     def tick_once
       @tickers.reject!(&:cancelled?)
@@ -94,8 +168,8 @@ module Tuile
     end
 
     # Mirrors {EventQueue#after} but timeless: returns a {FakeTimer} that
-    # fires only when a test calls {#fire_timers} — `after(0)` too, unlike
-    # {#submit}, so the block never runs inside the call that scheduled it.
+    # fires only when a test calls {#fire_timers} — `after(0)` too, so the
+    # block never runs inside the call that scheduled it.
     # `seconds` is validated as the real queue validates it, then discarded.
     #
     # @param seconds [Numeric] delay before the block runs, zero or positive.
@@ -115,7 +189,8 @@ module Tuile
     # Test helper: lets every pending timer's delay elapse at once — each runs
     # its block unless cancelled, and all are dropped from {#timers}. Kept apart
     # from {#tick_once} so pumping an animation frame never elapses a debounce.
-    # A timer scheduled by a block that runs here waits for the next call.
+    # A timer scheduled by a block that runs here waits for the next call. Fires
+    # directly, as {#tick_once} does and for the same reason.
     # @return [void]
     def fire_timers
       due = @timers

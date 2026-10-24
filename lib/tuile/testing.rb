@@ -41,8 +41,10 @@ module Tuile
   #
   # == Setup
   #
-  # A spec dispatches no event, so nothing lays out what a mutation left
-  # pending: call {Component#flush_layout} before reading a rect — it settles
+  # A spec dispatches no event, so nothing finishes the loop turn a mutation
+  # began. Every function here does it on the way in ({.loop}: the queued
+  # blocks, the settle, the repaint); after a direct call, write `Testing.loop`
+  # yourself, or {Component#flush_layout} before reading a rect — it settles
   # the whole tree, from any component in it. {.place} sizes a component the
   # way its parent would (`rect=` raises outside the parent's `relayout`) and
   # settles on its own:
@@ -97,6 +99,31 @@ module Tuile
     class AssertionError < Exception; end # rubocop:disable Lint/InheritException
 
     class << self
+      # Runs the event loop until its queue is empty, repaints as the loop does
+      # at idle, and returns. It is the rest of the loop turn a spec skips by
+      # calling components directly:
+      #
+      #   log_window.log("saved")   # queued, as LogWindow#log always is
+      #   Testing.loop
+      #   assert_equal "saved", log_window.content.text.to_s
+      #
+      # Every other function here, and every {FakeScreen} gesture, already calls
+      # it on the way in, so a spec needs it only after a direct call, or after
+      # joining a worker whose `submit` arrived outside any turn.
+      #
+      # Hides `Kernel#loop` inside this module's own methods: write `Kernel.loop`
+      # here.
+      # @raise [Tuile::Error] unless the screen is a {FakeScreen} — a real loop
+      #   cannot be run synchronously — or if a queued block raises.
+      # @return [void]
+      def loop
+        unless Screen.instance? && Screen.instance.is_a?(FakeScreen)
+          raise Tuile::Error, "Testing.loop needs Screen.fake: only a FakeScreen's queue can be run synchronously"
+        end
+
+        Screen.instance.run_until_idle
+      end
+
       # Every component in the searched tree matching the spec, in pre-order.
       #
       #   find(Component::Button)                     # every button on screen
@@ -119,6 +146,7 @@ module Tuile
       # @raise [AssertionError] if `count` is given and the match count differs.
       # @return [Array<Component>]
       def find(klass = Component, in: nil, id: nil, count: nil, &predicate)
+        finish_turn
         # `in` is a Ruby keyword, so the local it binds is unreachable by name.
         scope = binding.local_variable_get(:in) || Screen.instance.pane
         spec = ->(c) { matches_spec?(c, klass, id, predicate) }
@@ -163,7 +191,7 @@ module Tuile
       #   that matched the spec but were skipped for being hidden.
       # @return [String]
       def dump(scope, marked = [], excluded = [])
-        settle_layout
+        finish_turn
         base = scope.depth
         rows = []
         # walk_tree, not walk_shown_tree: a reader looks here to find out where
@@ -180,8 +208,8 @@ module Tuile
       end
 
       # Clicks `component` as the terminal would: a press and a release at the
-      # top-left cell of its {Component#absolute_extent_rect}, posted through
-      # {Screen#handle_mouse}, so it focuses and dismisses popups exactly as a
+      # top-left cell of its {Component#absolute_extent_rect}, played through
+      # {FakeScreen#click}, so it focuses and dismisses popups exactly as a
       # real click does.
       #
       #   Testing.click(Testing.get(Component::Button, id: :save))
@@ -204,8 +232,7 @@ module Tuile
                                 "searched:\n#{dump(Screen.instance.pane, [component])}"
         end
 
-        Screen.instance.handle_mouse(Mouse::DownEvent.new(button, point.x, point.y))
-        Screen.instance.handle_mouse(Mouse::UpEvent.new(point.x, point.y))
+        Screen.instance.click(point.x, point.y, button:)
       end
 
       # Sets a field's value as a user who could reach it would.
@@ -225,6 +252,7 @@ module Tuile
       #   {ScreenPane#key_scope}, so a field behind a modal popup refuses.
       # @return [void]
       def set_value(component, value)
+        finish_turn
         unless component.is_a?(Component::HasValue)
           raise AssertionError, "#{brief(component)} is not a field: set_value needs a Component::HasValue"
         end
@@ -240,6 +268,7 @@ module Tuile
         end
 
         component.set_value(value, from_user: true)
+        finish_turn
       end
 
       # Moves `component` to `rect` within the parent it already has, through
@@ -260,6 +289,8 @@ module Tuile
       #   always the whole screen: put a {Component::Layout::Absolute} in between.
       # @return [Component] `component`, settled.
       def place(component, rect)
+        # A detached tree is outside the screen's turn, and may be assembled off-thread.
+        finish_turn if component.attached?
         parent = component.parent
         case parent
         when nil
@@ -306,6 +337,8 @@ module Tuile
       #   paint — {.place} it first.
       # @return [Buffer]
       def paint(component)
+        finish_turn if component.attached?
+        # A detached tree is one the screen's turn never settles.
         component.flush_layout
         raise AssertionError, "#{brief(component)} is hidden, so it paints nothing" unless component.visible?
         if component.rect.empty?
@@ -328,7 +361,7 @@ module Tuile
       # @param point [Point]
       # @return [Array<Component>]
       def component_path_at(point)
-        settle_layout
+        finish_turn
         path = []
         component = Screen.instance.pane.mouse_root_at(point)
         while component&.visible? && component.rect.contains?(point)
@@ -353,7 +386,7 @@ module Tuile
       # @raise [AssertionError] if no cell of it could be clicked.
       # @return [Point]
       def gesture_point(component)
-        settle_layout
+        finish_turn
         raise AssertionError, "#{brief(component)} is not attached to the screen" unless component.attached?
 
         unless reachable?(component, Screen.instance.pane)
@@ -369,12 +402,15 @@ module Tuile
         Point.new(rect.left, rect.top)
       end
 
-      # Brings child rects up to date before anything here reads one — these
-      # helpers run straight from spec code, with no event dispatched to settle
-      # the layout the way the loop's would. A no-op with nothing pending.
+      # Plays the rest of the loop turn the spec skipped by calling components
+      # directly ({.loop}), so nothing here reads a stale rect or misses a
+      # queued block. With no fake screen there is no queue, only the layout.
       # @return [void]
-      def settle_layout
-        Screen.instance.flush_layout if Screen.instance?
+      def finish_turn
+        return unless Screen.instance?
+
+        screen = Screen.instance
+        screen.is_a?(FakeScreen) ? screen.run_until_idle : screen.flush_layout
       end
 
       # @param component [Component] the node to paint, with its subtree.

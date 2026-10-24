@@ -3385,8 +3385,10 @@ module Tuile
   # 
   # == Setup
   # 
-  # A spec dispatches no event, so nothing lays out what a mutation left
-  # pending: call {Component#flush_layout} before reading a rect — it settles
+  # A spec dispatches no event, so nothing finishes the loop turn a mutation
+  # began. Every function here does it on the way in ({.loop}: the queued
+  # blocks, the settle, the repaint); after a direct call, write `Testing.loop`
+  # yourself, or {Component#flush_layout} before reading a rect — it settles
   # the whole tree, from any component in it. {.place} sizes a component the
   # way its parent would (`rect=` raises outside the parent's `relayout`) and
   # settles on its own:
@@ -3429,6 +3431,22 @@ module Tuile
   # See book ch9 for the worked usage, and `design/decisions.md`
   # `D_component_lookup` / `D_test_gestures` for the design.
   module Testing
+    # Runs the event loop until its queue is empty, repaints as the loop does
+    # at idle, and returns. It is the rest of the loop turn a spec skips by
+    # calling components directly:
+    # 
+    #   log_window.log("saved")   # queued, as LogWindow#log always is
+    #   Testing.loop
+    #   assert_equal "saved", log_window.content.text.to_s
+    # 
+    # Every other function here, and every {FakeScreen} gesture, already calls
+    # it on the way in, so a spec needs it only after a direct call, or after
+    # joining a worker whose `submit` arrived outside any turn.
+    # 
+    # Hides `Kernel#loop` inside this module's own methods: write `Kernel.loop`
+    # here.
+    def self.loop: () -> void
+
     # Every component in the searched tree matching the spec, in pre-order.
     # 
     #   find(Component::Button)                     # every button on screen
@@ -3479,8 +3497,8 @@ module Tuile
     def self.dump: (Component scope, ?::Array[Component] marked, ?::Array[Component] excluded) -> String
 
     # Clicks `component` as the terminal would: a press and a release at the
-    # top-left cell of its {Component#absolute_extent_rect}, posted through
-    # {Screen#handle_mouse}, so it focuses and dismisses popups exactly as a
+    # top-left cell of its {Component#absolute_extent_rect}, played through
+    # {FakeScreen#click}, so it focuses and dismisses popups exactly as a
     # real click does.
     # 
     #   Testing.click(Testing.get(Component::Button, id: :save))
@@ -3572,10 +3590,10 @@ module Tuile
     # _@param_ `component` — the target of a pointer gesture.
     def self.gesture_point: (Component component) -> Point
 
-    # Brings child rects up to date before anything here reads one — these
-    # helpers run straight from spec code, with no event dispatched to settle
-    # the layout the way the loop's would. A no-op with nothing pending.
-    def self.settle_layout: () -> void
+    # Plays the rest of the loop turn the spec skipped by calling components
+    # directly ({.loop}), so nothing here reads a stale rect or misses a
+    # queued block. With no fake screen there is no queue, only the layout.
+    def self.finish_turn: () -> void
 
     # _@param_ `component` — the node to paint, with its subtree.
     # 
@@ -15636,9 +15654,20 @@ module Tuile
   # mutating the UI from a *spawned* thread raises, exactly as an app would.
   # 
   # Intended for unit-testing individual components: instantiate a component,
-  # mutate it, and assert against {#prints} or {#invalidated?}. It does not
+  # mutate it, and assert against {#buffer} or {#invalidated?}. It does not
   # run an event loop, so it is *not* suitable for system-testing whole apps
   # — for that, drive the real script through a PTY (see `spec/examples/`).
+  # 
+  # **The queue runs only when a spec asks.** A {FakeEventQueue} queues every
+  # `submit`; {Testing.loop} runs it as one loop turn would, and so does every
+  # gesture here ({#click}, {#key}, …) on each side of its event, and {#close}.
+  # A worker's hand-off reads:
+  # 
+  #   worker = Thread.new { result = slow_read; screen.event_queue.submit { show(result) } }
+  #   worker.join
+  #   Testing.loop   # show(result) runs here, on the spec thread
+  # 
+  # See `D_direct_manipulation`.
   # 
   # It also turns the stale-rect diagnostic on ({Tuile::StrictLayout}): a rect
   # read before the layout has settled raises here, where in an app it would
@@ -15697,6 +15726,28 @@ module Tuile
     # 
     # _@return_ — true if some component consumed it.
     def paste: (String text) -> bool
+
+    # Presses a key as the terminal would report it, down the whole ladder:
+    # Tab, the global shortcuts, then delivery to {#focused} and the bubble.
+    # 
+    #   field.focus
+    #   screen.key(Keys::ENTER)   # => true if something handled it
+    # 
+    # Unlike calling a component's {Component#handle_key?}, this is a real
+    # keystroke, so an unhandled `q` or ESC stops the (absent) loop too.
+    # 
+    # _@param_ `key` — a key as {Keys} spells it.
+    # 
+    # _@return_ — true if some component handled it.
+    def key: (String key) -> bool
+
+    # Runs every queued `submit` and posted event through {Screen#dispatch}, then
+    # repaints as the loop does at idle. Specs spell it {Testing.loop}.
+    def run_until_idle: () -> void
+
+    # Runs whatever is still queued before tearing down, so a queued block that
+    # raises fails the spec. The teardown happens either way.
+    def close: () -> void
 
     # _@param_ `component` — the component to check.
     def invalidated?: (Component component) -> bool
@@ -15799,6 +15850,15 @@ module Tuile
     # 
     # _@param_ `button` — `:left`, `:middle` or `:right`.
     def drag: (*::Array[(Point | [Integer, Integer])] points, ?button: Symbol) -> void
+
+    # One gesture is one loop turn: whatever was queued before the event runs
+    # first, as it would have reached the real loop first, and what the event
+    # queued runs after it.
+    # 
+    # _@param_ `event` — see {Screen#dispatch}.
+    # 
+    # _@return_ — whatever the handler returned.
+    def play: (Object event) -> Object
 
     # Settles the layout on the way *in* as well as out. A spec mutates between
     # gestures, where the loop would have settled at the end of the previous
@@ -17490,9 +17550,20 @@ module Tuile
     def self.effectively_visible?: (Component component) -> bool
   end
 
-  # A "synchronous" event queue – no loop is run, submitted blocks are run right
-  # away and submitted events are thrown away. Intended for testing only.
+  # The event queue under a {FakeScreen}: it queues what {#submit} and {#post}
+  # hand it, from any thread, and runs nothing until a spec calls
+  # {Testing.loop}, which plays one {EventQueue#run_loop} pass without the wait:
+  # 
+  #   Thread.new { screen.event_queue.submit { label.text = "done" } }.join
+  #   Testing.loop        # runs the block on the spec thread, then repaints
+  # 
+  # So a block never runs inside the `submit` that queued it, exactly as in
+  # production. Intended for testing only.
+  # 
+  # Thread-safe for {#submit} and {#post}; everything else is UI-thread-confined.
   class FakeEventQueue
+    MAX_ITEMS_PER_RUN: Integer
+
     def initialize: () -> void
 
     # _@return_ — always false — {#run_loop} raises, so no loop ever runs.
@@ -17505,12 +17576,30 @@ module Tuile
 
     def run_loop: () -> void
 
+    # A no-op: nothing drains the queue but {#run_until_idle}, so a block
+    # submitted before this call may still be queued after it.
     def await_empty: () -> void
 
+    # Queues the block for the next {#run_until_idle}. Callable from any thread.
     def submit: () -> void
 
-    # _@param_ `event`
+    # Queues `event` for the next {#run_until_idle}. Callable from any thread.
+    # 
+    # _@param_ `event` — the event to post, frozen as {EventQueue#post} demands.
     def post: (Object event) -> void
+
+    # _@return_ — true when nothing is waiting for {#run_until_idle}.
+    def empty?: () -> bool
+
+    # {EventQueue#run_loop} without the wait: yields every queued item, oldest
+    # first, then an {EventQueue::EmptyQueueEvent}, and returns once that leaves
+    # the queue empty. Whatever a yield queues runs in the same call, behind
+    # what was already waiting. {FakeScreen#run_until_idle} hands each item to
+    # {Screen#dispatch}, as the real loop does.
+    # 
+    # A call made while one is running returns at once; the outer one runs
+    # whatever the inner would have.
+    def run_until_idle: () ?{ (Object event) -> void } -> void
 
     # Mirrors {EventQueue#tick} but timeless: returns a {FakeTicker} that
     # only fires when a test calls {#tick_once}. The `seconds` argument is
@@ -17530,11 +17619,16 @@ module Tuile
     # cancelled tickers. No-op when no tickers are registered. Pumps once
     # per call regardless of any ticker's fps — the fake has no clock, so
     # tests pump N frames by calling this N times.
+    # 
+    # Fires the blocks directly, where a real firing is a {#submit}: the queue
+    # has no dispatcher, and a spec pumps a frame to assert on the next line.
+    # So a firing skips the settle, as any direct call does — {Testing.loop}
+    # finishes the turn.
     def tick_once: () -> void
 
     # Mirrors {EventQueue#after} but timeless: returns a {FakeTimer} that
-    # fires only when a test calls {#fire_timers} — `after(0)` too, unlike
-    # {#submit}, so the block never runs inside the call that scheduled it.
+    # fires only when a test calls {#fire_timers} — `after(0)` too, so the
+    # block never runs inside the call that scheduled it.
     # `seconds` is validated as the real queue validates it, then discarded.
     # 
     # _@param_ `seconds` — delay before the block runs, zero or positive. Validated for parity with {EventQueue#after}; otherwise unused.
@@ -17543,7 +17637,8 @@ module Tuile
     # Test helper: lets every pending timer's delay elapse at once — each runs
     # its block unless cancelled, and all are dropped from {#timers}. Kept apart
     # from {#tick_once} so pumping an animation frame never elapses a debounce.
-    # A timer scheduled by a block that runs here waits for the next call.
+    # A timer scheduled by a block that runs here waits for the next call. Fires
+    # directly, as {#tick_once} does and for the same reason.
     def fire_timers: () -> void
 
     # Lets a spec assert that a component started a ticker, and — via

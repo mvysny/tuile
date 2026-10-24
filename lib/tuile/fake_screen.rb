@@ -7,9 +7,20 @@ module Tuile
   # mutating the UI from a *spawned* thread raises, exactly as an app would.
   #
   # Intended for unit-testing individual components: instantiate a component,
-  # mutate it, and assert against {#prints} or {#invalidated?}. It does not
+  # mutate it, and assert against {#buffer} or {#invalidated?}. It does not
   # run an event loop, so it is *not* suitable for system-testing whole apps
   # — for that, drive the real script through a PTY (see `spec/examples/`).
+  #
+  # **The queue runs only when a spec asks.** A {FakeEventQueue} queues every
+  # `submit`; {Testing.loop} runs it as one loop turn would, and so does every
+  # gesture here ({#click}, {#key}, …) on each side of its event, and {#close}.
+  # A worker's hand-off reads:
+  #
+  #   worker = Thread.new { result = slow_read; screen.event_queue.submit { show(result) } }
+  #   worker.join
+  #   Testing.loop   # show(result) runs here, on the spec thread
+  #
+  # See `D_direct_manipulation`.
   #
   # It also turns the stale-rect diagnostic on ({Tuile::StrictLayout}): a rect
   # read before the layout has settled raises here, where in an app it would
@@ -85,7 +96,44 @@ module Tuile
     # against `\n`.
     # @param text [String]
     # @return [Boolean] true if some component consumed it.
-    def paste(text) = dispatch(EventQueue::PasteEvent.new(Keys.normalize_paste(text)))
+    def paste(text) = play(EventQueue::PasteEvent.new(Keys.normalize_paste(text)))
+
+    # Presses a key as the terminal would report it, down the whole ladder:
+    # Tab, the global shortcuts, then delivery to {#focused} and the bubble.
+    #
+    #   field.focus
+    #   screen.key(Keys::ENTER)   # => true if something handled it
+    #
+    # Unlike calling a component's {Component#handle_key?}, this is a real
+    # keystroke, so an unhandled `q` or ESC stops the (absent) loop too.
+    # @param key [String] a key as {Keys} spells it.
+    # @return [Boolean] true if some component handled it.
+    def key(key) = play(EventQueue::KeyEvent.new(key))
+
+    # Runs every queued `submit` and posted event through {Screen#dispatch}, then
+    # repaints as the loop does at idle. Specs spell it {Testing.loop}.
+    # @raise [Tuile::Error] if the caller doesn't own the UI, or the queue never
+    #   empties (see {FakeEventQueue#run_until_idle}).
+    # @return [void]
+    def run_until_idle
+      check_locked
+      @event_queue.run_until_idle { dispatch(_1) }
+    end
+
+    # Runs whatever is still queued before tearing down, so a queued block that
+    # raises fails the spec. The teardown happens either way.
+    # @return [void]
+    def close
+      return if state == :closed
+
+      begin
+        # Only for the queued blocks' sake: an idle repaint of a tree being torn
+        # down would only re-report a broken layout a spec built on purpose.
+        run_until_idle unless @event_queue.empty?
+      ensure
+        super
+      end
+    end
 
     # @param component [Component] the component to check.
     # @return [Boolean]
@@ -132,7 +180,7 @@ module Tuile
     # @param width [Integer]
     # @param height [Integer]
     # @return [void]
-    def resize_terminal(width, height) = dispatch(EventQueue::TTYSizeEvent.new(width, height))
+    def resize_terminal(width, height) = play(EventQueue::TTYSizeEvent.new(width, height))
 
     # Half a {#click}, for a spec about the grab — what is claimed, what the
     # drag does, what the release lands on.
@@ -140,20 +188,20 @@ module Tuile
     # @param y [Integer] 0-based row.
     # @param button [Symbol] `:left`, `:middle` or `:right`.
     # @return [void]
-    def press(x, y, button: :left) = dispatch(Mouse::DownEvent.new(button, x, y))
+    def press(x, y, button: :left) = play(Mouse::DownEvent.new(button, x, y))
 
     # The other half of {#press}.
     # @param x [Integer] 0-based column.
     # @param y [Integer] 0-based row.
     # @return [void]
-    def release(x, y) = dispatch(Mouse::UpEvent.new(x, y))
+    def release(x, y) = play(Mouse::UpEvent.new(x, y))
 
     # One wheel notch over a cell.
     # @param direction [Symbol] `:up`, `:down`, `:left` or `:right`.
     # @param x [Integer] 0-based column.
     # @param y [Integer] 0-based row.
     # @return [void]
-    def scroll(direction, x, y) = dispatch(Mouse::ScrollEvent.new(direction, x, y))
+    def scroll(direction, x, y) = play(Mouse::ScrollEvent.new(direction, x, y))
 
     # Moves the pointer, firing the enter/exit hooks the new position implies —
     # or, while a press is grabbed, one {Component#handle_mouse_drag}.
@@ -161,7 +209,7 @@ module Tuile
     # @param y [Integer] 0-based row.
     # @param button [Symbol, nil] the button held while moving, if any.
     # @return [void]
-    def move(x, y, button: nil) = dispatch(Mouse::MoveEvent.new(button, x, y))
+    def move(x, y, button: nil) = play(Mouse::MoveEvent.new(button, x, y))
 
     # The terminal reporting it lost or regained keyboard focus, routed as its
     # own report would be — a loss clears the hover and ends the grab:
@@ -170,7 +218,7 @@ module Tuile
     #   screen.terminal_focus(false)   # screen.hovered => nil
     # @param focused [Boolean] false for FocusOut, true for FocusIn.
     # @return [void]
-    def terminal_focus(focused) = dispatch(EventQueue::TerminalFocusEvent.new(focused))
+    def terminal_focus(focused) = play(EventQueue::TerminalFocusEvent.new(focused))
 
     # Plays a whole drag: the press at the first point, one move per point
     # after it, and the release at the last.
@@ -197,6 +245,18 @@ module Tuile
     end
 
     private
+
+    # One gesture is one loop turn: whatever was queued before the event runs
+    # first, as it would have reached the real loop first, and what the event
+    # queued runs after it.
+    # @param event [Object] see {Screen#dispatch}.
+    # @return [Object] whatever the handler returned.
+    def play(event)
+      run_until_idle
+      result = dispatch(event)
+      run_until_idle
+      result
+    end
 
     # Settles the layout on the way *in* as well as out. A spec mutates between
     # gestures, where the loop would have settled at the end of the previous

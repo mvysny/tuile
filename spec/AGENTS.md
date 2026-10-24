@@ -14,9 +14,9 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
 - **The fake runs no event loop, so the ordinary `check_locked` admits the example thread** — a spec
   mutating UI from a *spawned* thread raises, exactly as an app would. Don't add a bypass.
 - **A spec plays the user and may call components directly** — that is `:idle` startup code, and
-  it skips only the rest of the loop turn: the settle and the follow-up blocks. A {Tuile::FakeScreen}
-  gesture is a whole turn; after any other drive the spec finishes the turn itself. See
-  `D_direct_manipulation`.
+  it skips only the rest of the loop turn: the settle, the queued blocks, the repaint. Every
+  {Tuile::Testing} function and {Tuile::FakeScreen} gesture plays it; after any other drive, and
+  after joining a worker, call `Testing.loop`. See `D_direct_manipulation`.
 - **Assert painted content against `Screen.instance.buffer`**, not `prints` — `region_text(rect)` /
   `region_ansi(rect)` / `cell(x, y)` after a `Screen#repaint`, which a spec calls directly and
   production code never does. `prints` now holds only cursor escapes and
@@ -102,8 +102,10 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   every later example in the run reads the leak. `Screen#locale` needs none: `Screen.fake` resets it.
 - **A spec exercising locale detection calls `Locale.from_keywords` with canned answers**, never the
   machine's own; a PTY spec pins with `{"LC_ALL" => "C"}` in the env hash it already passes.
-- **`FakeEventQueue` runs submitted blocks synchronously and discards posted events**, which is what
-  lets a spec drive the system with no real loop.
+- **`FakeEventQueue` never runs a block inside `submit`** — it queues, from any thread, and only
+  `Testing.loop` runs the queue; don't restore an inline fast path, which hides a worker's hand-off.
+- **`tick_once` and `fire_timers` fire directly**, unlike a real firing's `submit`: a spec pumps a
+  frame and asserts on the next line. Call `Testing.loop` after if the turn's settle matters.
 - **The contract guard filters `ObjectSpace` to named, non-singleton `Tuile::` classes** — a
   full-suite run manufactures singleton, anonymous and app subclasses.
 

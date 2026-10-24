@@ -314,8 +314,9 @@ Tuile.logger = Logger.new(Tuile::Component::LogTextView::IO.new(view))
 Tuile ships with a `Tuile::FakeScreen` that you install in place of the real
 screen for unit tests. It fixes the viewport at 160×50,
 paints into an in-memory back buffer (assert on it for painted content) while
-capturing cursor/housekeeping escapes into an array, and uses a synchronous
-`FakeEventQueue` (submitted blocks run inline; posted events are discarded).
+capturing cursor/housekeeping escapes into an array, and uses a
+`FakeEventQueue` that holds submitted blocks until the spec runs them with
+`Tuile::Testing.loop`.
 No terminal IO happens, so the TTY running the tests is never painted over.
 
 The standard setup is `Screen.fake` / `Screen.close` as a before/after pair —
@@ -360,16 +361,20 @@ Key hooks:
 - `Screen.instance.clear` — drops accumulated `prints` without resetting
   invalidation.
 - `Tuile::Testing.get` / `.find` — locate a component to drive, by class,
-  mixin, `Component#id`, caption or a block:
-  `Testing.get(Component::Button, caption: "Save")`. `get` demands exactly
+  mixin, `Component#id` or a block:
+  `Testing.get(Component::Button, id: :save)`. `get` demands exactly
   one match and prints the tree it searched when it doesn't get one; `find`
   returns all matches and takes `count:`. Both take `in:` to scope the
   search, and default to the whole screen. Call them qualified.
+- `Tuile::Testing.loop` — runs what the event loop would after an event: every
+  block queued by `screen.event_queue.submit { … }`, then a repaint. Every
+  `Testing` function and every `FakeScreen` gesture already runs it on the way
+  in, so call it after poking a component directly, or after joining a worker:
 
-Because `FakeEventQueue#submit` runs the block immediately on the calling
-thread, code paths that marshal work back via `screen.event_queue.submit { … }`
-just work in tests. Posted events (`#post`) are dropped — if your test needs
-to drive a real event loop, you are in system-test territory.
+  ```ruby
+  Thread.new { screen.event_queue.submit { label.text = "done" } }.join
+  Tuile::Testing.loop                                  # runs the block here
+  ```
 
 For end-to-end tests of a runnable script, spawn it in a pseudo-TTY with
 `PTY.spawn`, wait for a known glyph to confirm the first paint landed, send
