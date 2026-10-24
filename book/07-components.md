@@ -1747,6 +1747,68 @@ A nested TextField still swallows printable keys first, so typing `q` into
 a field inside a popup doesn't dismiss it — the popup's own `q` handler sits
 on the ancestor, and only sees keys the field declined.
 
+### A dialog that closes itself
+
+Sooner or later a dialog wants to go away on its own — the user pressed
+Enter on a resize form, and the form is done. The tempting line is the one
+that reaches up and does it:
+
+```ruby
+def submit
+  apply_resize
+  parent.close if parent.is_a?(Component::Popup)   # don't
+end
+```
+
+It works on the day you write it, and it breaks the day someone wraps the
+form in a layout to add a hint row: `parent` is now a `Layout::Vertical`,
+the guard quietly fails, and Enter does nothing. Walking further up until an
+`Overlay` turns up only moves the problem. The form has learned *how it is
+mounted*, and a component should not care. The same form ought to work
+inside a popup, docked in a tiled pane or on a `TabSheet` page, and in each
+of those "done" means something different: close the popup, clear the pane,
+switch the tab.
+
+So split the two. **The component announces; whoever mounted it decides.**
+The form fires a listener, and the code that put it in a popup is the code
+that knows to close one:
+
+```ruby
+class DiskResizeWindow < Component::Window
+  SubmitEvent = Data.define(:source) { include Tuile::Event }
+  listener :on_submit
+
+  def self.open(disk)
+    window = new(disk)
+    popup = Component::Popup.new(content: window)
+    window.on_submit { popup.close }
+    popup.open
+  end
+
+  private
+
+  def submit
+    apply_resize
+    on_submit.fire(SubmitEvent.new(source: self))
+  end
+end
+```
+
+That class-level `open` is the shape the built-in windows already use —
+`PickerWindow.open` wires its own `on_pick` to the popup's `close` in exactly
+this way. It mentions `Popup`, and that is fine: it is one convenient way to
+*mount* the window, decided once at construction. The window's behaviour
+stays the same however it is mounted, and a caller who docks it in a layout
+instead wires `on_submit` to something else.
+
+The line being drawn is narrower than "never look up the tree". The
+framework walks ancestors all the time — a keystroke bubbles up them
+(chapter 5), and a click inside a dropdown counts as inside the dialog that
+owns it. A component *reading* its surroundings is fine. What bends the
+dependency the wrong way is a component *acting on* an ancestor: closing
+it, hiding it, reconfiguring it. That is the parent's job, so hand the
+parent a listener and let it do the job.
+
 ## The confirm dialog
 
 That Window-in-a-Popup assembly is how you build any dialog. One dialog is
