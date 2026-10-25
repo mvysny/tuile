@@ -48,6 +48,42 @@ module Tuile
       assert !p.open?
     end
 
+    context "with close_on_key: false" do
+      it "is close_on_key? by default, and the flag is writable" do
+        assert Component::Popup.new.close_on_key?
+        p = Component::Popup.new(close_on_key: false)
+        assert !p.close_on_key?
+        p.close_on_key = true
+        assert p.close_on_key?
+      end
+
+      # Swallowed, not passed on: an unhandled q/ESC would stop the loop
+      # (D_quit_key), so FakeScreen#key reporting it handled is what keeps the
+      # app running beneath the popup.
+      it "swallows q and ESC without closing" do
+        p = Component::Popup.new(content: list_of(%w[a b]), close_on_key: false)
+        p.open
+        assert Screen.instance.key("q")
+        assert Screen.instance.key(Keys::ESC)
+        assert p.open?
+      end
+
+      it "still closes from code" do
+        p = Component::Popup.new(close_on_key: false)
+        p.open
+        p.close
+        assert !p.open?
+      end
+
+      it "closes on q again once re-enabled" do
+        p = Component::Popup.new(close_on_key: false)
+        p.open
+        p.close_on_key = true
+        assert Screen.instance.key("q")
+        assert !p.open?
+      end
+    end
+
     it "returns false for unhandled keys" do
       p = Component::Popup.new
       p.open

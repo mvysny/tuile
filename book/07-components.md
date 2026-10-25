@@ -1747,6 +1747,15 @@ A nested TextField still swallows printable keys first, so typing `q` into
 a field inside a popup doesn't dismiss it — the popup's own `q` handler sits
 on the ancestor, and only sees keys the field declined.
 
+Sometimes dismissing would lie. A progress popup in front of work that
+can't be stopped once started — growing a disk image, resizing a
+filesystem — must not close on ESC, because the user would read that as
+"canceled" while the work goes on. `close_on_key: false` makes the popup
+swallow ESC and `q` instead; pair it with `close_on_outside_click: false`,
+and the popup leaves only when the work's owner calls `close`. Since the
+keys are swallowed rather than passed on, the app can't be quit by them
+underneath it either — which is exactly what you want while the work runs.
+
 ### A dialog that closes itself
 
 Sooner or later a dialog wants to go away on its own — the user pressed

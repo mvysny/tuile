@@ -4,7 +4,7 @@ module Tuile
   class Component
     # A modal dialog: an {Component::Overlay} centered on the screen, which
     # grabs focus, scopes keys to its own subtree, blocks clicks beneath it, and
-    # closes on ESC or `q`.
+    # closes on ESC or `q` (unless {#close_on_key?} is false).
     #
     #   window = Component::Window.new("Help")
     #   window.content = Component::List.new.tap { _1.lines = lines }
@@ -30,7 +30,8 @@ module Tuile
     # subtree, so the key only arrives after every component on the focus chain
     # declined it (see {ScreenPane#handle_key?}). That's why typing `q` into a
     # nested {Component::TextField} doesn't dismiss the popup: the field consumes
-    # it first.
+    # it first. A popup in front of work that cannot be stopped turns this off
+    # with {#close_on_key?}.
     #
     # A left click *outside* the popup closes it too — see
     # {Overlay#close_on_outside_click?} for the exact contract and
@@ -47,9 +48,32 @@ module Tuile
       # @param close_on_outside_click [Boolean] true (default) to dismiss on a
       #   left click that misses this popup. See
       #   {Overlay#close_on_outside_click?}.
-      def initialize(content: nil, declared_size: Fraction::HALF, close_on_outside_click: true)
+      # @param close_on_key [Boolean] true (default) to dismiss on ESC and `q`.
+      #   See {#close_on_key?}.
+      def initialize(content: nil, declared_size: Fraction::HALF, close_on_outside_click: true, close_on_key: true)
         super(content: content, close_on_outside_click: close_on_outside_click)
         @_declared_size = declared_size
+        @_close_on_key = close_on_key
+      end
+
+      # Whether ESC and `q` close this popup (default true). False makes the
+      # popup refuse both — for one in front of work that cannot be stopped
+      # once it starts, where a dismissal would read as a cancel while the work
+      # goes on. Pair it with `close_on_outside_click: false`, which refuses the
+      # other light dismissal; {#close} from code still works, and is how the
+      # work's owner takes the popup down when it is done.
+      #
+      # A refused key is *swallowed*, not passed on: the popup is modal, so the
+      # loop's unhandled-ESC/`q` quit (`D_quit_key`) does not fire beneath it
+      # either. A popup that cannot be dismissed also keeps the app from
+      # quitting by those keys.
+      # @return [Boolean]
+      def close_on_key? = @_close_on_key
+
+      # @param value [Boolean] see {#close_on_key?}.
+      # @return [void]
+      def close_on_key=(value)
+        @_close_on_key = value
       end
 
       # The box this popup asks for, *as set* — a {Fraction} comes back
@@ -91,14 +115,15 @@ module Tuile
       # @return [Overlay::Centered] a popup opens centered.
       def default_placement = Centered[]
 
-      # `q` and ESC close the popup. The popup sits on the focus chain of
-      # whatever it wraps, so the key reaches here by bubbling up from the
-      # focused content after that content declined to handle it.
+      # `q` and ESC close the popup, or are swallowed when {#close_on_key?} is
+      # false. The popup sits on the focus chain of whatever it wraps, so the
+      # key reaches here by bubbling up from the focused content after that
+      # content declined to handle it.
       # @param key [String]
       # @return [Boolean] true if the key was handled.
       def handle_key?(key)
         if [Keys::ESC, "q"].include?(key)
-          close
+          close if close_on_key?
           true
         else
           false
