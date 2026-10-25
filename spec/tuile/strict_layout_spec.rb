@@ -178,6 +178,23 @@ module Tuile
         label.flush_layout
         assert_equal 20, label.rect.width
       end
+
+      # Issue #70: a spec that ends without a loop turn leaves the pane owing a
+      # relayout, and unmounting clears focus, which fires the hooks.
+      it "says nothing to a hook Screen.close fires as it unmounts" do
+        label = Class.new(Component::Label) { def focusable? = true }.new("hi")
+        mount_at(label, Rect.new(0, 0, 20, 1))
+        Screen.instance.focused = label
+        widths = []
+        label.define_singleton_method(:handle_blur) { widths << width }
+        Tuile.strict_layout = :raise
+        Component::Overlay.new(content: Component::Label.new("floating"))
+                          .open(Component::Overlay::At[Rect.new(0, 0, 8, 1)])
+        assert_raises(Error) { label.rect }
+        Screen.close
+        assert_equal [20], widths
+        assert_equal :raise, Tuile.strict_layout, "teardown restores the mode"
+      end
     end
 
     it "reports on a tree with no screen" do

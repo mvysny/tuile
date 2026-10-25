@@ -834,7 +834,8 @@ module Tuile
 
     # Tears the screen down and vacates the singleton slot, moving {#state} to
     # the terminal `:closed`. Unmounts the tree first, so every component gets
-    # its {Component#handle_detached}. Idempotent.
+    # its {Component#handle_detached}. Idempotent. A rect read by a hook during
+    # teardown is never reported stale ({Tuile.strict_layout}): nothing paints after it.
     # @raise [Tuile::Error] if an event loop is still running — stop it with
     #   `event_queue.stop` and let {#run_event_loop} return first, since closing
     #   under a live loop drops the pane it is still painting — or if the caller
@@ -847,7 +848,9 @@ module Tuile
 
       check_locked
       begin
-        @_pane.detach_all
+        # Silenced rather than settled first: a tree whose layout never settles
+        # must still unmount, and a stale rect read here reaches no frame.
+        Tuile.without_strict_layout { @_pane.detach_all }
       ensure
         # A raising handle_detached propagates — it's a bug to fix, not something the
         # framework guards — but teardown still has to finish, or one such bug
