@@ -77,15 +77,20 @@ What a lazy rows-only pull would answer, point by point:
 4. **One channel per child.** `Auto` is the constraint that says "ask it". A `Fixed` child is never
    asked, so the two can never disagree.
 5. **Lost, but only where opted in.** Reading a `Vertical` with an `Auto` child means reading that
-   child's `rows_for`. Every other container stays verifiable on its own.
+   child's `measure_rows`. Every other container stays verifiable on its own.
 
 ## Sketch
 
 ### The query
 
-`Component#rows_for(width) → Integer | nil`: how many rows this component's content needs at
+`Component#measure_rows(width) → Integer | nil`: how many rows this component's content needs at
 `width` columns.
 
+- **The name is a verb on purpose.** `viewport_rows` and `scroll_top_row` are cheap readers, and
+  this recomputes on every call; `measure_` says so, and it names the "optional, read-only,
+  caller-side query" the re-grow rule admits. `row` is the grid unit (`D_scroll_nomenclature`). The
+  notice is `invalidate_rows`, in the `invalidate` family rather than echoing the verb.
+  `content_size` is the deleted name and would read as reverting 0.9.0.
 - **Pure.** Computed from the component's own state; it assigns no rect, runs no `relayout`, marks
   nothing. *Not* "lay the child out, then read its height": that assigns a rect with a made-up
   height, lets the child place its own children at it, and redoes everything once the real height is
@@ -100,19 +105,19 @@ What a lazy rows-only pull would answer, point by point:
   label, and then the row's own `relayout` asks that label again, so roughly depth × n asks per
   pass. Optimize when a real tree is measurably slow, with a profile of that case in hand; the
   10k-line wrapped `TextView` is the likely first one.
-- **A container's `rows_for` reuses the arithmetic its `relayout` runs.** For a `Box` both call
+- **A container's `measure_rows` reuses the arithmetic its `relayout` runs.** For a `Box` both call
   `main_sizes` (`box.rb`), which is already a pure function of the inner extent and each child's
   `placement` and never consults a child. A second copy of that arithmetic would drift.
 
-| answerer | `rows_for(width)` |
+| answerer | `measure_rows(width)` |
 |---|---|
 | `Label` | line count, independent of `width` (it truncates, never wraps). #73 wants a wrapping one: a `wrap:` knob, or `TextView` in a non-scrolling mode, answering like the row below |
 | `TextView` (wrapping) | wrapped row count at `width` |
 | `ConfirmWindow` | the height half of today's `measured_size`: the message wrapped at `width − WIDTH_CHROME`, plus `HEIGHT_CHROME` |
-| `Window` | `content.rows_for(width − 2) + 2`; `nil` if the content says `nil` |
+| `Window` | `content.measure_rows(width − 2) + 2`; `nil` if the content says `nil` |
 | `FormLayout` | `item_height` summed over the visible items |
-| `Vertical` | each shown child: `Fixed[n]` → `n`, `Auto` → `child.rows_for(its width)`, plus `spacing` and `padding`; any `Percent` / `Expand` child → `nil`, since it needs the height being computed |
-| `Horizontal` | `main_sizes` divides `width`, then the tallest shown child + `padding`: `cross:` `Fixed[n]` → `n` and the child is never asked, `Percent[100]` → `child.rows_for(w_i)` (`Q_cross_percent` covers the rest). A `nil` child contributes nothing, so a `List` beside a wrapped label doesn't set the row's height, and all-`nil` answers `nil` |
+| `Vertical` | each shown child: `Fixed[n]` → `n`, `Auto` → `child.measure_rows(its width)`, plus `spacing` and `padding`; any `Percent` / `Expand` child → `nil`, since it needs the height being computed |
+| `Horizontal` | `main_sizes` divides `width`, then the tallest shown child + `padding`: `cross:` `Fixed[n]` → `n` and the child is never asked, `Percent[100]` → `child.measure_rows(w_i)` (`Q_cross_percent` covers the rest). A `nil` child contributes nothing, so a `List` beside a wrapped label doesn't set the row's height, and all-`nil` answers `nil` |
 
 `Horizontal` is the **cross axis**, so it takes the max where `Vertical`'s main axis takes the sum.
 This is GTK's height-for-width with the width-for-height half left out.
@@ -125,9 +130,9 @@ height without the app writing anything.
 
 | # | consumer | asks | `nil` → | replaces |
 |---|---|---|---|---|
-| 1 | `Popup` with a `:content` height | `content.rows_for(declared width)`, clamped to the screen | `Fraction::HALF` height | `MeasuredPopup`, issue #67 |
-| 2 | `Scroller#content_rows = :content` | `content.rows_for(inner_width)` | the viewport | assigning `content_rows` |
-| 3 | `Vertical`'s `Auto` constraint | `child.rows_for(child_width)`, the width its `cross:` already resolved | `0`, with a logged warning | hand-synced `Fixed[n]` |
+| 1 | `Popup` with a `:content` height | `content.measure_rows(declared width)`, clamped to the screen | `Fraction::HALF` height | `MeasuredPopup`, issue #67 |
+| 2 | `Scroller#content_rows = :content` | `content.measure_rows(inner_width)` | the viewport | assigning `content_rows` |
+| 3 | `Vertical`'s `Auto` constraint | `child.measure_rows(child_width)`, the width its `cross:` already resolved | `0`, with a logged warning | hand-synced `Fixed[n]` |
 
 Order of cost: #1 changes nothing outside `Popup`, #2 amends `D_scroller`, #3 reverses
 `D_box_layouts`' headline. Each one ships separately.
@@ -149,7 +154,7 @@ popup's parent (the `ScreenPane`) offers, and resolves a `Fraction` or clamps a 
 The `:content` height splits that in two:
 
 - **The width stays declared**, as a `Fraction` or `Size` of the screen, resolved exactly as today.
-- **The height is `content.rows_for(width)`** at the width just resolved, clamped to the screen.
+- **The height is `content.measure_rows(width)`** at the width just resolved, clamped to the screen.
 
 `ConfirmWindow`'s widest-line width rule stays its own: a width declaration its private popup
 computes from its message. That is one hop between a popup and the content it was built for; a
@@ -168,7 +173,7 @@ complaint: the empty space was vertical.
   `Popup → Window → Label` breaks it: the label marks the window, the window's `relayout` doesn't
   depend on the label's rows, and the popup never hears.
 - **Climb to a boundary** (Flutter's `markNeedsLayout` / `parentUsesSize`, `R_layout_pass`): when a
-  parent calls `child.rows_for` inside its `relayout`, the child is flagged *asked-by-parent*. The
+  parent calls `child.measure_rows` inside its `relayout`, the child is flagged *asked-by-parent*. The
   flag is cleared at the start of the parent's next pass and re-set if the parent asks again. An
   answerer's change calls `invalidate_rows`, which marks the parent and climbs while that parent is
   itself flagged. The climb stops at the first component nobody asked, which is every container
@@ -183,13 +188,13 @@ consults.
 
 ### Staging
 
-1. `rows_for` on `Component` (base `nil`); `ConfirmWindow`'s height half moves into it; `Popup`
+1. `measure_rows` on `Component` (base `nil`); `ConfirmWindow`'s height half moves into it; `Popup`
    gains the `:content` height; `MeasuredPopup` keeps only `ConfirmWindow`'s width rule. Re-ask
    every pass, so the notice stays `ConfirmWindow`'s own. This closes #67 and is a narrow
    `D_declared_size` amendment.
 2. Answerers: `Label` (wrapping, for #73), `TextView`, `Window`, `FormLayout`, `Vertical`,
-   `Horizontal`, with `main_sizes` shared between `relayout` and `rows_for`.
-3. The climbing notice, with a `component_contract_spec` check: "non-`nil` `rows_for` ⇒ a mutation
+   `Horizontal`, with `main_sizes` shared between `relayout` and `measure_rows`.
+3. The climbing notice, with a `component_contract_spec` check: "non-`nil` `measure_rows` ⇒ a mutation
    that changes it calls `invalidate_rows`".
 4. `Scroller#content_rows = :content`, which was `content-height.md`'s goal.
 5. `Vertical`'s `Auto`, decided on its own, last. It has a consumer: #73 cannot be written without
@@ -197,8 +202,8 @@ consults.
 
 ## Gates
 
-- **The retained-tree promise** holds: a `rows_for` runs inside a marked drain, not per frame, and
-  is not a per-frame rebuild. It holds while `rows_for` runs only in an asker's `relayout` and
+- **The retained-tree promise** holds: a `measure_rows` runs inside a marked drain, not per frame, and
+  is not a per-frame rebuild. It holds while `measure_rows` runs only in an asker's `relayout` and
   `Screen` never calls it. A measurement *phase* the framework runs over the whole tree is the
   falsifier.
 - **`D_declared_size`' re-grow rule** ("optional, read-only, caller-side query, never a channel the
@@ -219,7 +224,7 @@ consults.
 | 1 | stay told, make staleness visible | **shipped**, generalized: `Screen#focused=` warns when a focus target's clip is still empty (`warn_if_unseen`). Every road keeps it |
 | 2 | make `MeasuredPopup` public, nothing more | closes #67 for `ConfirmWindow`-shaped content only; each app still writes `measured_size` per window, and Scroller and Box gain nothing |
 | 3 | `measure(available) → Size`, both axes (this idea's previous sketch) | buys a width from below, which only a popup wants and a one-hop declaration covers. Costs a `Size` answer in every answerer, a spelling for an unbounded axis, and a contract that more width never costs height, without which a `Vertical` stretching a child past its measured width has to measure twice |
-| 4 | Android's two-pass `MeasureSpec` (EXACTLY / AT_MOST / UNSPECIFIED, measured twice) | negotiation; Tuile refuses it. `rows_for` is one EXACTLY width and an UNSPECIFIED height, asked once |
+| 4 | Android's two-pass `MeasureSpec` (EXACTLY / AT_MOST / UNSPECIFIED, measured twice) | negotiation; Tuile refuses it. `measure_rows` is one EXACTLY width and an UNSPECIFIED height, asked once |
 | 5 | listener slot on the content (`on_size_changed`) | its only edge over the notice is a non-parent observer; `D_scroller` leans against it |
 | 6 | eager `content_size` again | 0.9.0's channel, rejected for point 1 above |
 | 7 | a dedicated stack container whose every child is implicitly counted, instead of `Auto` | `Auto` under another name, plus a second vertical container that copies `Box`'s spacing, padding and visibility rules |
@@ -230,10 +235,6 @@ consults.
 
 - `Q_notice_gate`: does a child-to-parent mark fall under `D_declared_size`'s ban? Everything past
   stage 1 waits on this.
-- `Q_query_name`: `rows_for(width)`, `content_rows_for(width)`, `rows_at(width)`? `row` is the grid
-  unit (`D_scroll_nomenclature`), and a verb-ish name with an argument reads as a computation, not a
-  property. `content_size` is the deleted name and reads as reverting 0.9.0. The lean is `rows_for`,
-  and the notice follows it (`invalidate_rows`).
 - `Q_fire_on_change`: the notice must fire only on a real change, or a wrapping `TextView` asked
   during its parent's pass re-marks it forever (the drain cap would raise). With no cached answer to
   compare against, the lean is: fire from a mutation of the answer's inputs (`text=`, `wrap=`,
@@ -261,7 +262,7 @@ cycles raises after `LayoutPass::MAX_ROUNDS` rounds).
 - The `D_declared_size` amendment (or a rejection line there); `D_scroller` (tracking mode); and,
   if `Auto` lands, `D_box_layouts`. The asymmetry section is the `D_` entry's core.
 - AGENTS.md's two Layout lines and book ch3's omissions list, rewritten together.
-- rdoc on `Component#rows_for`, each answerer, `Popup#declared_size=` and `Scroller#content_rows=`.
+- rdoc on `Component#measure_rows`, each answerer, `Popup#declared_size=` and `Scroller#content_rows=`.
 - The four registrations for any changed responsibility, plus the contract-spec check above.
 - The toolkit table below → one `R_` entry with provenance markers.
 - Issues #67 and #73 closed with a link.
@@ -283,7 +284,7 @@ cycles raises after `LayoutPass::MAX_ROUNDS` rounds).
 
 - Measurement splits by whether the toolkit has a layout pass. Tuile was in the told group by
   construction, and `D_deferred_layout` is what moves it toward the other one.
-- CSS normal flow and Qt's `heightForWidth` are the closest models to `rows_for`: one axis down,
+- CSS normal flow and Qt's `heightForWidth` are the closest models to `measure_rows`: one axis down,
   the other up, never the reverse.
 - Render-then-crop (Textual, brick, ncurses pads, notcurses, tui-scrollview) is per-component buffers
   under another name. Tuile clips at write and rejected that family (`D_clip`), though the
