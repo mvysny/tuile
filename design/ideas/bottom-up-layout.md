@@ -95,6 +95,11 @@ What a lazy rows-only pull would answer, point by point:
   an `Expand` child, a self-scrolling `TextView` in fill mode. It is not `0`: "fill" and "I need
   exactly this much" are different answers, and each consumer says what it does with `nil`.
 - **No height budget.** The asker clamps the answer to whatever it has.
+- **No cache, on either side.** An answerer recomputes on every ask, and an asker asks whenever its
+  `relayout` needs the answer. Nesting repeats work: an outer `Vertical` asks a row, which asks its
+  label, and then the row's own `relayout` asks that label again, so roughly depth × n asks per
+  pass. Optimize when a real tree is measurably slow, with a profile of that case in hand; the
+  10k-line wrapped `TextView` is the likely first one.
 - **A container's `rows_for` reuses the arithmetic its `relayout` runs.** For a `Box` both call
   `main_sizes` (`box.rb`), which is already a pure function of the inner extent and each child's
   `placement` and never consults a child. A second copy of that arithmetic would drift.
@@ -230,9 +235,10 @@ consults.
   property. `content_size` is the deleted name and reads as reverting 0.9.0. The lean is `rows_for`,
   and the notice follows it (`invalidate_rows`).
 - `Q_fire_on_change`: the notice must fire only on a real change, or a wrapping `TextView` asked
-  during its parent's pass re-marks it forever (the drain cap would raise). Should the answerer cache
-  its last answer (against `D_repaint_cascade`'s "derive, don't cache"), or should the asker compare
-  and the component fire freely?
+  during its parent's pass re-marks it forever (the drain cap would raise). With no cached answer to
+  compare against, the lean is: fire from a mutation of the answer's inputs (`text=`, `wrap=`,
+  `add`), never from being asked or from a rewrap during a pass. The alternative is for the asker
+  to compare old and new answers.
 - `Q_spelling`: the popup's `:content` height (`declared_size: Popup::Rows[width]`? a `height:`
   knob beside a `width:`?), `content_rows = :content`, and `Auto`. `:auto` collides with
   `D_box_layouts`' banned vocabulary, unless stage 5 retires that ban.
@@ -245,11 +251,6 @@ consults.
   computed, so it is circular. CSS resolves a percentage height in an auto-height parent as auto.
   The lean is the same: ask the child as if `Percent[100]`, and pass the answer through `Clamp`'s
   bounds. The alternative is to raise.
-- `Q_cost`: a `TextView` holding 10k lines wraps all of them per ask. Should the answerer cache
-  per width, and can the asker ask once per pass? Nesting multiplies it: an outer `Vertical` asks a
-  row, which asks its label, and then the row's own `relayout` asks that label again. That is
-  roughly depth × n asks per pass. It is fine for a form, and only a large wrapped text needs the
-  cache.
 
 Answered by `D_deferred_layout`: re-entrancy (a mark during the parent's pass lands in the same
 drain), batching (ten `form.add` calls coalesce into one settle) and the drain cap (an asker that
