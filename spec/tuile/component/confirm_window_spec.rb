@@ -268,26 +268,28 @@ module Tuile
       end
     end
 
-    describe "#measured_size" do
-      it "caps at half the screen" do
+    describe "#measured_width" do
+      it "caps at half the screen, and the popup's height at half too" do
         dialog = Component::ConfirmWindow.new("x")
         dialog.message = "word " * 2000
         dialog.button("OK")
-        assert_equal Size.new(80, 25), dialog.measured_size(Size.new(160, 50))
+        assert_equal 80, dialog.measured_width(Size.new(160, 50))
+        assert_equal Size.new(80, 25), dialog.open.rect.size
       end
 
       it "takes the full half-screen box for a Component message it cannot measure" do
         dialog = Component::ConfirmWindow.new("x")
         dialog.message = Component::Label.new("injected")
-        assert_equal Size.new(80, 25), dialog.measured_size(Size.new(160, 50))
+        assert_equal 80, dialog.measured_width(Size.new(160, 50))
+        assert_equal Size.new(80, 25), dialog.open.rect.size
       end
 
-      it "is as tall as measure_rows at the width it chose" do
+      it "opens as tall as measure_rows at that width" do
         dialog = Component::ConfirmWindow.new("x")
         dialog.message = "one\ntwo"
         dialog.button("OK")
-        size = dialog.measured_size(Size.new(160, 50))
-        assert_equal dialog.measure_rows(size.width), size.height
+        width = dialog.measured_width(Size.new(160, 50))
+        assert_equal Size.new(width, dialog.measure_rows(width)), dialog.open.rect.size
       end
 
       it "re-measures an open popup when the message changes" do

@@ -140,14 +140,7 @@ module Tuile
       # {Size} clamped, a {ShrinkToContent} box shrunk to the content's rows.
       # @param screen_size [Size]
       # @return [Size]
-      def declared_size_in(screen_size)
-        return box_in(@_declared_size, screen_size) unless @_declared_size.is_a?(ShrinkToContent)
-
-        box = box_in(@_declared_size.box, screen_size)
-        rows = content&.measure_rows(box.width)
-        # Floored at one row, so a zero answer can't leave an invisible modal.
-        rows.nil? ? box : Size.new(box.width, [[rows, 1].max, box.height].min)
-      end
+      def declared_size_in(screen_size) = resolve_declaration(@_declared_size, screen_size)
 
       # @return [Overlay::Centered] a popup opens centered.
       def default_placement = Centered[]
@@ -168,6 +161,20 @@ module Tuile
       end
 
       private
+
+      # The resolution {#declared_size_in} runs, for a subclass that builds its
+      # declaration per pass.
+      # @param declaration [Size, Fraction, ShrinkToContent]
+      # @param screen_size [Size]
+      # @return [Size]
+      def resolve_declaration(declaration, screen_size)
+        return box_in(declaration, screen_size) unless declaration.is_a?(ShrinkToContent)
+
+        box = box_in(declaration.box, screen_size)
+        rows = content&.measure_rows(box.width)
+        # Floored at one row, so a zero answer can't leave an invisible modal.
+        rows.nil? ? box : Size.new(box.width, [[rows, 1].max, box.height].min)
+      end
 
       # @param box [Size, Fraction]
       # @param screen_size [Size]

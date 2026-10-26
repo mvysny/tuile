@@ -37,9 +37,9 @@ module Tuile
     # its own.
     #
     # The popup sizes itself from what the dialog owns — caption, message,
-    # buttons — capped at half the screen ({#measured_size}), re-measured when
-    # any of them changes. Usable tiled too (add it to a {Layout}): buttons then
-    # fire their callbacks with nothing to close.
+    # buttons — capped at half the screen ({#measured_width}, {#measure_rows}),
+    # re-measured when any of them changes. Usable tiled too (add it to a
+    # {Layout}): buttons then fire their callbacks with nothing to close.
     #
     # There is deliberately no content slot: the body is prose ({#message=}
     # takes a component for the rare rich body, but the dialog then cannot
@@ -65,10 +65,10 @@ module Tuile
       RESERVED_MNEMONICS = %w[q g].freeze
 
       # Border rows plus the body-to-buttons spacing plus the button row — what
-      # {#measured_size} adds to the wrapped message rows.
+      # {#measure_rows} adds to the wrapped message rows.
       # @return [Integer]
       HEIGHT_CHROME = 4
-      # Border columns plus the body padding — what {#measured_size} adds to the
+      # Border columns plus the body padding — what {#measured_width} adds to the
       # widest message line, and subtracts to find the wrap width.
       # @return [Integer]
       WIDTH_CHROME = 4
@@ -184,9 +184,9 @@ module Tuile
         btn
       end
 
-      # Opens the dialog as a centered modal {Popup} sized by {#measured_size}
-      # and returns that popup. ESC, `q` and an outside click dismiss it
-      # (firing {#on_dismiss}); every button closes it too.
+      # Opens the dialog as a centered modal {Popup}, {#measured_width} wide and
+      # {#measure_rows} tall, and returns that popup. ESC, `q` and an outside
+      # click dismiss it (firing {#on_dismiss}); every button closes it too.
       # @raise [Tuile::Error] if this dialog is already open.
       # @return [Popup] the mounted popup; `popup.close` closes programmatically,
       #   as {#close} also does.
@@ -206,21 +206,19 @@ module Tuile
       # @return [void]
       def close = @_popup&.close
 
-      # The popup box this dialog wants: wide enough for the caption, the widest
-      # message line and the button row, tall as {#measure_rows} at that width —
-      # each capped at half of `reference`. The width rule is the dialog's own
-      # declaration, read only from what it owns, so a {Component} assigned to
-      # {#message=} yields the full half-screen box.
+      # The popup width this dialog wants: wide enough for the caption, the
+      # widest message line and the button row, capped at half of `reference`.
+      # Read only from what the dialog owns, so a {Component} assigned to
+      # {#message=} yields the full half width. The height is {#measure_rows} at
+      # this width, under the same half-screen cap.
       # @param reference [Size] the screen size to cap against.
-      # @return [Size]
-      def measured_size(reference = screen.size)
-        cap = Fraction::HALF.resolve(reference)
+      # @return [Integer]
+      def measured_width(reference = screen.size)
+        cap = Fraction::HALF.resolve(reference).width
         return cap if @_message.is_a?(Component)
 
         widest = message_text.lines.map(&:display_width).max || 0
-        width = [[caption.display_width + 2, button_row_width + WIDTH_CHROME, widest + WIDTH_CHROME].max,
-                 cap.width].min
-        Size.new(width, [measure_rows(width), cap.height].min)
+        [[caption.display_width + 2, button_row_width + WIDTH_CHROME, widest + WIDTH_CHROME].max, cap].min
       end
 
       # The border, the message wrapped at `width` less the border and padding,
@@ -323,9 +321,10 @@ module Tuile
         confirm(caption, message, confirm: "Yes", cancel: "No", on_dismiss:, &action)
       end
 
-      # The {Popup} that {#open} wraps the dialog in: its size is measured from
-      # the dialog on every layout pass, so a message change and a SIGWINCH both
-      # re-measure against the current screen.
+      # The {Popup} that {#open} wraps the dialog in: a {Popup::ShrinkToContent}
+      # half-screen-tall box at {ConfirmWindow#measured_width}, rebuilt on every
+      # layout pass, so a message change and a SIGWINCH both re-measure against
+      # the current screen.
       class MeasuredPopup < Popup
         # @param window [ConfirmWindow]
         def initialize(window)
@@ -334,8 +333,11 @@ module Tuile
         end
 
         # @param screen_size [Size]
-        # @return [Size] {ConfirmWindow#measured_size}.
-        def declared_size_in(screen_size) = @_window.measured_size(screen_size)
+        # @return [Size]
+        def declared_size_in(screen_size)
+          box = Size.new(@_window.measured_width(screen_size), Fraction::HALF.resolve(screen_size).height)
+          resolve_declaration(ShrinkToContent[box], screen_size)
+        end
       end
       private_constant :MeasuredPopup
 

@@ -3256,7 +3256,7 @@ Why not:
   Wrapping an existing box instead reuses their resolution, makes the box the
   ceiling, and gives `nil` an answer that needs no fallback: the whole box.
 - *Making `MeasuredPopup` public.* It fits `ConfirmWindow`-shaped content only, and
-  each app would still write a `measured_size` per window.
+  each app would still write a `measured_width` per window.
 
 ## D_extent — Why does a widget declare an `extent` rather than own its whole `rect`?
 
@@ -3580,6 +3580,15 @@ Everything else people put in a dialog body is not a confirm dialog, and
 returns as a named `remember:` seam whose state reaches the callback, never as a reopened content
 slot.
 
+**A `Window` that opens a private `MeasuredPopup`, not a `ConfirmPopup < Popup`.** The dialog is
+never tiled in practice, and a `Popup` subclass could size itself by overriding `declared_size_in`,
+as `Notification` does, with no second object. It was declined because the frame belongs to the
+window: the subclass would need a forwarding `caption=` duplicated beside `Window`'s, and it would
+inherit `Popup`'s public `content=` over a child that is private machinery, which then has to raise.
+`MeasuredPopup` is the price, and it stays small: each pass it builds a
+`Popup::ShrinkToContent[Size.new(measured_width, half-screen height)]`, so the height comes from
+the same `measure_rows` any content answers and only the width rule is the dialog's own.
+
 **Mnemonics take `MenuBar`'s shape, with `q`, `g` and `G` reserved.** Local sugar over the window's
 own `handle_key?` per `D_key_dispatch`'s re-grow rule, never a dispatch phase, with the letter
 underlined: Tuile has no status bar to advertise keys in (`D_status_bar`), so an unadvertised
@@ -3668,7 +3677,7 @@ an empty `List`.
 confirm dialog's body is prose by nature; the asymmetry is a decision, not an
 oversight. If a caller ever appears: a `List` of lines is measurable —
 widest-line × row-count, no wrap pass — so it would not fall into
-`#measured_size`'s "Component body ⇒ full half-screen box" hole.
+`ConfirmWindow`'s "Component body ⇒ full half-screen box" hole.
 
 **The coercion is a duplicate, on purpose.** This is copy two of
 `ConfirmWindow`'s `message=` case (per `D_float_field`'s shallow-shell rule —

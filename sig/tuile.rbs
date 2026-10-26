@@ -6235,6 +6235,14 @@ module Tuile
       # _@return_ — true if the key was handled.
       def handle_key?: (String key) -> bool
 
+      # The resolution {#declared_size_in} runs, for a subclass that builds its
+      # declaration per pass.
+      # 
+      # _@param_ `declaration`
+      # 
+      # _@param_ `screen_size`
+      def resolve_declaration: ((Size | Fraction | ShrinkToContent) declaration, Size screen_size) -> Size
+
       # _@param_ `box`
       # 
       # _@param_ `screen_size`
@@ -13663,9 +13671,9 @@ module Tuile
     # its own.
     # 
     # The popup sizes itself from what the dialog owns — caption, message,
-    # buttons — capped at half the screen ({#measured_size}), re-measured when
-    # any of them changes. Usable tiled too (add it to a {Layout}): buttons then
-    # fire their callbacks with nothing to close.
+    # buttons — capped at half the screen ({#measured_width}, {#measure_rows}),
+    # re-measured when any of them changes. Usable tiled too (add it to a
+    # {Layout}): buttons then fire their callbacks with nothing to close.
     # 
     # There is deliberately no content slot: the body is prose ({#message=}
     # takes a component for the rare rich body, but the dialog then cannot
@@ -13732,9 +13740,9 @@ module Tuile
       # _@return_ — the appended button.
       def button: ((String | StyledString) caption, ?mnemonic: (Symbol | String)?) -> Button
 
-      # Opens the dialog as a centered modal {Popup} sized by {#measured_size}
-      # and returns that popup. ESC, `q` and an outside click dismiss it
-      # (firing {#on_dismiss}); every button closes it too.
+      # Opens the dialog as a centered modal {Popup}, {#measured_width} wide and
+      # {#measure_rows} tall, and returns that popup. ESC, `q` and an outside
+      # click dismiss it (firing {#on_dismiss}); every button closes it too.
       # 
       # _@return_ — the mounted popup; `popup.close` closes programmatically,
       # as {#close} also does.
@@ -13744,14 +13752,14 @@ module Tuile
       # ({#on_dismiss} fires). No-op when not open, or when used tiled.
       def close: () -> void
 
-      # The popup box this dialog wants: wide enough for the caption, the widest
-      # message line and the button row, tall as {#measure_rows} at that width —
-      # each capped at half of `reference`. The width rule is the dialog's own
-      # declaration, read only from what it owns, so a {Component} assigned to
-      # {#message=} yields the full half-screen box.
+      # The popup width this dialog wants: wide enough for the caption, the
+      # widest message line and the button row, capped at half of `reference`.
+      # Read only from what the dialog owns, so a {Component} assigned to
+      # {#message=} yields the full half width. The height is {#measure_rows} at
+      # this width, under the same half-screen cap.
       # 
       # _@param_ `reference` — the screen size to cap against.
-      def measured_size: (?Size reference) -> Size
+      def measured_width: (?Size reference) -> Integer
 
       # The border, the message wrapped at `width` less the border and padding,
       # and the button row. `nil` for a {Component} message, which the dialog
@@ -13897,16 +13905,15 @@ module Tuile
         attr_reader source: ConfirmWindow
       end
 
-      # The {Popup} that {#open} wraps the dialog in: its size is measured from
-      # the dialog on every layout pass, so a message change and a SIGWINCH both
-      # re-measure against the current screen.
+      # The {Popup} that {#open} wraps the dialog in: a {Popup::ShrinkToContent}
+      # half-screen-tall box at {ConfirmWindow#measured_width}, rebuilt on every
+      # layout pass, so a message change and a SIGWINCH both re-measure against
+      # the current screen.
       class MeasuredPopup < Tuile::Component::Popup
         # _@param_ `window`
         def initialize: (ConfirmWindow window) -> void
 
         # _@param_ `screen_size`
-        # 
-        # _@return_ — {ConfirmWindow#measured_size}.
         def declared_size_in: (Size screen_size) -> Size
       end
     end

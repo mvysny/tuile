@@ -109,7 +109,7 @@ What a lazy rows-only pull would answer, point by point:
 |---|---|
 | `Label` | line count, independent of `width` (it truncates, never wraps). #73 wants a wrapping one: a `wrap:` knob, or `TextView` in a non-scrolling mode, answering like the row below |
 | `TextView` (wrapping) | wrapped row count at `width` |
-| `ConfirmWindow` | the height half of today's `measured_size`: the message wrapped at `width − WIDTH_CHROME`, plus `HEIGHT_CHROME` |
+| `ConfirmWindow` | **shipped**: the message wrapped at `width − WIDTH_CHROME`, plus `HEIGHT_CHROME` |
 | `Window` | `content.measure_rows(width − 2) + 2`; `nil` if the content says `nil` |
 | `FormLayout` | `item_height` summed over the visible items |
 | `Vertical` | each shown child: `Fixed[n]` → `n`, `Auto` → `child.measure_rows(its width)`, plus `spacing` and `padding`; any `Percent` / `Expand` child → `nil`, since it needs the height being computed |
@@ -169,7 +169,7 @@ consults.
 
 1. **Shipped.** `measure_rows` on `Component` (base `nil`), `ConfirmWindow` answering it, and
    `Popup::ShrinkToContent`. Re-asked every pass, so the notice stays `ConfirmWindow`'s own
-   `reposition`. `MeasuredPopup` stays, holding the widest-line width and the half-screen cap.
+   `reposition`. `MeasuredPopup` stays as a `ShrinkToContent` half-screen box at `measured_width`.
 2. Answerers: `Label` (wrapping, for #73), `TextView`, `Window`, `FormLayout`, `Vertical`,
    `Horizontal`, with `main_sizes` shared between `relayout` and `measure_rows`.
 3. The climbing notice, with a `component_contract_spec` check: "non-`nil` `measure_rows` ⇒ a mutation
@@ -279,5 +279,5 @@ Sources: [Textual widgets](https://textual.textualize.io/guide/widgets/),
 GitHub issues #67 and #73, `Box#main_sizes`, `D_scroller`, `D_declared_size`, `D_box_layouts`,
 `D_extent`, `D_relayout`, `D_deferred_layout`, `D_strict_layout`, `R_layout_pass`, `D_visibility`,
 `D_listeners`, `D_scroll_nomenclature`, `D_repaint_cascade`, `Component#scroll_to_visible`,
-`ConfirmWindow#measured_size`, book ch3 ("Sizing a popup", "What Tuile deliberately doesn't have"),
+`ConfirmWindow#measured_width`, book ch3 ("Sizing a popup", "What Tuile deliberately doesn't have"),
 `design/ideas/form-layout.md` (the first answerer).
