@@ -282,6 +282,14 @@ module Tuile
         assert_equal Size.new(80, 25), dialog.measured_size(Size.new(160, 50))
       end
 
+      it "is as tall as measure_rows at the width it chose" do
+        dialog = Component::ConfirmWindow.new("x")
+        dialog.message = "one\ntwo"
+        dialog.button("OK")
+        size = dialog.measured_size(Size.new(160, 50))
+        assert_equal dialog.measure_rows(size.width), size.height
+      end
+
       it "re-measures an open popup when the message changes" do
         dialog = Component::ConfirmWindow.new("x")
         dialog.message = "short"
@@ -291,6 +299,34 @@ module Tuile
         dialog.message = "a considerably longer single message line"
         popup.flush_layout
         assert popup.rect.width > narrow
+      end
+    end
+
+    describe "#measure_rows" do
+      it "adds the border, the spacing and the button row to the wrapped message" do
+        dialog = Component::ConfirmWindow.new("x")
+        dialog.message = "aaaa bbbb cccc"
+        # 14 columns of text in a 4-column chrome: one row at 18 wide, three at 8.
+        assert_equal 5, dialog.measure_rows(18)
+        assert_equal 7, dialog.measure_rows(8)
+      end
+
+      it "answers the chrome alone with no message" do
+        assert_equal 4, Component::ConfirmWindow.new("x").measure_rows(40)
+      end
+
+      it "answers nil for a Component message it does not own" do
+        dialog = Component::ConfirmWindow.new("x")
+        dialog.message = Component::Label.new("injected")
+        assert_nil dialog.measure_rows(40)
+      end
+
+      it "fits a plain Popup::ShrinkToContent" do
+        dialog = Component::ConfirmWindow.new("x")
+        dialog.message = "aaaa bbbb cccc"
+        box = Component::Popup::ShrinkToContent[Size.new(18, 20)]
+        popup = Component::Popup.new(content: dialog, declared_size: box).open
+        assert_equal Size.new(18, 5), popup.rect.size
       end
     end
 

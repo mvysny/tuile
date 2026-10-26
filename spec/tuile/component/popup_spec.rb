@@ -209,6 +209,88 @@ module Tuile
     end
   end
 
+  describe Component::Popup::ShrinkToContent do
+    before { Screen.fake } # 160x50
+    after { Screen.close }
+
+    # Answers `rows` and records every width it was asked at.
+    let(:content) do
+      klass = Class.new(Component::Label) do
+        attr_accessor :rows
+        attr_reader :asked
+
+        def measure_rows(width)
+          (@asked ||= []) << width
+          rows
+        end
+      end
+      klass.new.tap { _1.rows = 7 }
+    end
+
+    def shrink(box) = Component::Popup::ShrinkToContent[box]
+
+    def open_shrunk(box) = Component::Popup.new(content:, declared_size: shrink(box)).open
+
+    it "shrinks a Fraction box to the rows the content answers at its width, centered" do
+      p = open_shrunk(Fraction::HALF)
+      assert_equal 80, content.asked.last
+      # ((160-80)/2, (50-7)/2) = (40, 21).
+      assert_equal Rect.new(40, 21, 80, 7), p.rect
+    end
+
+    it "shrinks a Size box" do
+      assert_equal Size.new(60, 7), open_shrunk(Size.new(60, 20)).rect.size
+    end
+
+    it "caps the rows at the box's height" do
+      content.rows = 40
+      p = open_shrunk(Fraction::HALF)
+      assert_equal 25, p.rect.height
+      p.declared_size = shrink(Size.new(60, 12))
+      p.flush_layout
+      assert_equal Size.new(60, 12), p.rect.size
+      p.declared_size = shrink(Size.new(300, 100))
+      p.flush_layout
+      assert_equal Size.new(160, 40), p.rect.size
+    end
+
+    it "floors a zero answer at one row" do
+      content.rows = 0
+      assert_equal 1, open_shrunk(Fraction::HALF).rect.height
+    end
+
+    it "takes the whole box when the content answers nil, or there is none" do
+      content.rows = nil
+      assert_equal Size.new(60, 20), open_shrunk(Size.new(60, 20)).rect.size
+      assert_equal Size.new(80, 25), Component::Popup.new(declared_size: shrink(Fraction::HALF)).open.rect.size
+    end
+
+    it "re-asks on reposition, which is the content's notice" do
+      p = open_shrunk(Fraction::HALF)
+      content.rows = 12
+      p.flush_layout
+      assert_equal 7, p.rect.height
+      p.reposition
+      p.flush_layout
+      assert_equal 12, p.rect.height
+    end
+
+    it "re-asks at the new width on resize" do
+      p = open_shrunk(Fraction::HALF)
+      Screen.instance.resize_terminal(100, 30)
+      p.flush_layout
+      assert_equal 50, content.asked.last
+      assert_equal Size.new(50, 7), p.rect.size
+    end
+
+    it "raises on a box that is neither a Size nor a Fraction" do
+      [nil, 0.5, [60, 20], shrink(Fraction::HALF)].each do |bad|
+        assert_raises(ArgumentError) { shrink(bad) }
+      end
+      assert_equal Fraction::HALF, shrink(Fraction::HALF).box
+    end
+  end
+
   describe Component::Popup, "placement" do
     before { Screen.fake }
     after { Screen.close }

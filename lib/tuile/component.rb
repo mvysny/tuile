@@ -106,6 +106,30 @@ module Tuile
     # @return [Integer] `rect.height`.
     def height = rect.height
 
+    # How many rows this component's content needs at `width` columns, or `nil`
+    # for "no content height: I fill whatever I'm handed" — the base answer. The
+    # one bottom-up question Tuile asks; width only ever comes down:
+    #
+    #   popup = Popup.new(content: dialog, declared_size: Popup::ShrinkToContent[Fraction::HALF])
+    #   # each pass on a 160x50 screen: dialog.measure_rows(80) => 9, so 80x9
+    #
+    # Asked by a parent that was *told* to ask ({Popup::ShrinkToContent}), inside its
+    # own pass, and by nothing else — the re-grow rule's caller-side query
+    # (`D_declared_size`). Nobody is notified when the answer changes: the asker
+    # re-asks on its next pass, so a mutation that changes it owes the asker a
+    # mark ({Overlay#reposition} for a popup).
+    #
+    # == Implementation details
+    #
+    # **Pure**: computed from this component's own state, recomputed on every
+    # call. It assigns no rect, runs no {#relayout} and marks nothing — never
+    # "lay out, then read the height", which hands out a provisional rect
+    # {Tuile.strict_layout} rightly refuses to have read. `nil` is not `0`:
+    # fill and "exactly zero rows" are different answers. The asker clamps.
+    # @param _width [Integer] the columns the asker will assign.
+    # @return [Integer, nil]
+    def measure_rows(_width) = nil
+
     # The size of the region this component paints, or `nil` (the default) to
     # declare nothing — in which case the whole {#rect} is treated as fair game
     # and the default {#repaint} blanks all of it. Override it when you paint

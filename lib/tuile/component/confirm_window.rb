@@ -207,23 +207,33 @@ module Tuile
       def close = @_popup&.close
 
       # The popup box this dialog wants: wide enough for the caption, the widest
-      # message line and the button row, tall enough for the wrapped message
-      # plus the button row — each capped at half of `reference`. The re-grow
-      # rule's caller-side measure query: the dialog measures only content it
-      # *owns*, so a {Component} assigned to {#message=} yields the full
-      # half-screen box.
+      # message line and the button row, tall as {#measure_rows} at that width —
+      # each capped at half of `reference`. The width rule is the dialog's own
+      # declaration, read only from what it owns, so a {Component} assigned to
+      # {#message=} yields the full half-screen box.
       # @param reference [Size] the screen size to cap against.
       # @return [Size]
       def measured_size(reference = screen.size)
         cap = Fraction::HALF.resolve(reference)
         return cap if @_message.is_a?(Component)
 
-        styled = @_message.nil? ? StyledString::EMPTY : StyledString.parse(@_message)
-        widest = styled.lines.map(&:display_width).max || 0
+        widest = message_text.lines.map(&:display_width).max || 0
         width = [[caption.display_width + 2, button_row_width + WIDTH_CHROME, widest + WIDTH_CHROME].max,
                  cap.width].min
+        Size.new(width, [measure_rows(width), cap.height].min)
+      end
+
+      # The border, the message wrapped at `width` less the border and padding,
+      # and the button row. `nil` for a {Component} message, which the dialog
+      # does not own and so does not measure.
+      # @param width [Integer]
+      # @return [Integer, nil]
+      def measure_rows(width)
+        return nil if @_message.is_a?(Component)
+
+        styled = message_text
         rows = styled.empty? ? 0 : styled.wrap([width - WIDTH_CHROME, 1].max).size
-        Size.new(width, [rows + HEIGHT_CHROME, cap.height].min)
+        rows + HEIGHT_CHROME
       end
 
       # Focus lands on the first button rather than cascading into the message
@@ -432,6 +442,9 @@ module Tuile
         @_box.remove(@_button_row)
         @_box.add(@_button_row, Layout::Fixed[1], cross: Layout::Fixed[button_row_width], align: :center)
       end
+
+      # @return [StyledString] a text {#message}, empty when there is none.
+      def message_text = @_message.nil? ? StyledString::EMPTY : StyledString.parse(@_message)
 
       # @return [Integer] columns of the button row at its natural width.
       def button_row_width

@@ -1,22 +1,18 @@
 # Bottom-up layout — may a component say how many rows its content needs?
 
-**Status:** brainstorm, nothing decided. Takes in what was `content-height.md` (the Scroller
-half), GitHub issue #67 (the Popup half) and #73 (wrapped rows in a scrolled stack). Reverses part
-of 0.9.0, so every step past the first amends a `D_` and the owner decides. Until then `Scroller` is
-told (`content_rows=`) and a popup copies `ConfirmWindow`'s private `MeasuredPopup`. Every road here
-adds a new value next to what already exists, so waiting breaks nothing.
+**Status:** stage 1 shipped: `Component#measure_rows` and `Popup::ShrinkToContent[box]`,
+argued in `D_declared_size`, which also holds the roads it rejected. Stages 2–5 are still a
+brainstorm. Takes in what was `content-height.md` (the Scroller half) and #73 (wrapped rows in a
+scrolled stack). Every step past stage 1 amends a `D_` and the owner decides. Until then `Scroller`
+is told (`content_rows=`). Every road here adds a new value next to what already exists, so waiting
+breaks nothing.
 
 ## The problem
 
 Strict top-down layout has three consumers that need an answer only their child has:
 
-- **Popup**: `ConfirmWindow` wraps itself in a private `MeasuredPopup < Popup` whose
-  `declared_size_in(screen_size)` returns `measured_size(screen_size)`, and it hand-rolls the change
-  notice (`resize_popup` → `Overlay#reposition` → `parent&.invalidate_layout`) from `message=`,
-  `caption=` and `add_button`. Apps can't reach it, so virtui ended up with three different
-  approaches: a verbatim copy (`ProgressWindow`), a `Size` computed once at open that ignores
-  SIGWINCH (`DiskResizeWindow`), and a `Fraction.new(0.7, 0.8)` that is mostly empty
-  (`VMInfoWindow`).
+- **Popup**: shipped as `Popup::ShrinkToContent` (`D_declared_size`). Its open half is the notice:
+  `ConfirmWindow` still calls `reposition` itself from `message=`, `caption=` and `button`.
 - **Scroller**: `content_rows=` is assigned by the app (`D_scroller`). Add a field to the form inside
   and the last row is unreachable until someone re-assigns it, and nothing detects that.
 - **Box**: no `Auto` (`D_box_layouts`), so a `Label` whose text sets its height takes a `Fixed[n]`
@@ -130,7 +126,7 @@ height without the app writing anything.
 
 | # | consumer | asks | `nil` → | replaces |
 |---|---|---|---|---|
-| 1 | `Popup` with a `:content` height | `content.measure_rows(declared width)`, clamped to the screen | `Fraction::HALF` height | `MeasuredPopup`, issue #67 |
+| 1 | `Popup::ShrinkToContent` (**shipped**) | `content.measure_rows(box width)`, capped at the box's height | the whole box | issue #67 |
 | 2 | `Scroller#content_rows = :content` | `content.measure_rows(inner_width)` | the viewport | assigning `content_rows` |
 | 3 | `Vertical`'s `Auto` constraint | `child.measure_rows(child_width)`, the width its `cross:` already resolved | `0`, with a logged warning | hand-synced `Fixed[n]` |
 
@@ -146,23 +142,6 @@ vanished; revisit if that turns out to bite.
 **`Auto` is legal on `Vertical`'s main axis only.** On `Horizontal` it would need a width from the
 child, which is the question this sketch never asks; it raises there, as `Expand` raises as `cross:`
 today.
-
-### The popup's width: a declaration, one hop
-
-`Popup#declared_size_in(screen_size)` already receives the **budget**, the size of the space the
-popup's parent (the `ScreenPane`) offers, and resolves a `Fraction` or clamps a `Size` against it.
-The `:content` height splits that in two:
-
-- **The width stays declared**, as a `Fraction` or `Size` of the screen, resolved exactly as today.
-- **The height is `content.measure_rows(width)`** at the width just resolved, clamped to the screen.
-
-`ConfirmWindow`'s widest-line width rule stays its own: a width declaration its private popup
-computes from its message. That is one hop between a popup and the content it was built for; a
-`Window` never asks its child for columns, so no width channel runs through the tree. Whether apps
-get a public fit-to-widest-line width is `Q_fit_width`.
-
-virtui's `VMInfoWindow` becomes a declared `0.7` width with a `:content` height, which fixes its
-complaint: the empty space was vertical.
 
 ### The notice: who re-asks when the answer changes
 
@@ -188,10 +167,9 @@ consults.
 
 ### Staging
 
-1. `measure_rows` on `Component` (base `nil`); `ConfirmWindow`'s height half moves into it; `Popup`
-   gains the `:content` height; `MeasuredPopup` keeps only `ConfirmWindow`'s width rule. Re-ask
-   every pass, so the notice stays `ConfirmWindow`'s own. This closes #67 and is a narrow
-   `D_declared_size` amendment.
+1. **Shipped.** `measure_rows` on `Component` (base `nil`), `ConfirmWindow` answering it, and
+   `Popup::ShrinkToContent`. Re-asked every pass, so the notice stays `ConfirmWindow`'s own
+   `reposition`. `MeasuredPopup` stays, holding the widest-line width and the half-screen cap.
 2. Answerers: `Label` (wrapping, for #73), `TextView`, `Window`, `FormLayout`, `Vertical`,
    `Horizontal`, with `main_sizes` shared between `relayout` and `measure_rows`.
 3. The climbing notice, with a `component_contract_spec` check: "non-`nil` `measure_rows` ⇒ a mutation
@@ -222,14 +200,11 @@ consults.
 | # | road | verdict |
 |---|---|---|
 | 1 | stay told, make staleness visible | **shipped**, generalized: `Screen#focused=` warns when a focus target's clip is still empty (`warn_if_unseen`). Every road keeps it |
-| 2 | make `MeasuredPopup` public, nothing more | closes #67 for `ConfirmWindow`-shaped content only; each app still writes `measured_size` per window, and Scroller and Box gain nothing |
-| 3 | `measure(available) → Size`, both axes (this idea's previous sketch) | buys a width from below, which only a popup wants and a one-hop declaration covers. Costs a `Size` answer in every answerer, a spelling for an unbounded axis, and a contract that more width never costs height, without which a `Vertical` stretching a child past its measured width has to measure twice |
 | 4 | Android's two-pass `MeasureSpec` (EXACTLY / AT_MOST / UNSPECIFIED, measured twice) | negotiation; Tuile refuses it. `measure_rows` is one EXACTLY width and an UNSPECIFIED height, asked once |
 | 5 | listener slot on the content (`on_size_changed`) | its only edge over the notice is a non-parent observer; `D_scroller` leans against it |
 | 6 | eager `content_size` again | 0.9.0's channel, rejected for point 1 above |
 | 7 | a dedicated stack container whose every child is implicitly counted, instead of `Auto` | `Auto` under another name, plus a second vertical container that copies `Box`'s spacing, padding and visibility rules |
-| 8 | lay the child out at the width, then read its height | two passes per child with provisional rects; see "Pure" under the query |
-| 9 | `Auto` on `Horizontal` (a width from the child) | needs the width query road 3 carries; a non-wrapping row of fixed-width widgets takes `Fixed[n]` |
+| 9 | `Auto` on `Horizontal` (a width from the child) | needs the both-axes query `D_declared_size` rejects; a non-wrapping row of fixed-width widgets takes `Fixed[n]` |
 
 ## Open questions
 
@@ -240,9 +215,8 @@ consults.
   compare against, the lean is: fire from a mutation of the answer's inputs (`text=`, `wrap=`,
   `add`), never from being asked or from a rewrap during a pass. The alternative is for the asker
   to compare old and new answers.
-- `Q_spelling`: the popup's `:content` height (`declared_size: Popup::Rows[width]`? a `height:`
-  knob beside a `width:`?), `content_rows = :content`, and `Auto`. `:auto` collides with
-  `D_box_layouts`' banned vocabulary, unless stage 5 retires that ban.
+- `Q_spelling`: `content_rows = :content` and `Auto` (the popup's is `ShrinkToContent`). `:auto` collides
+  with `D_box_layouts`' banned vocabulary, unless stage 5 retires that ban.
 - `Q_fit_width`: does `ConfirmWindow`'s widest-line width become a public popup width declaration
   (`Popup::FitLines`?), or stay its own? It reads only the popup's own message, so it stays one hop
   either way. The lean is to wait for a second caller.
@@ -259,13 +233,13 @@ cycles raises after `LayoutPass::MAX_ROUNDS` rounds).
 
 ## Graduation owes
 
-- The `D_declared_size` amendment (or a rejection line there); `D_scroller` (tracking mode); and,
-  if `Auto` lands, `D_box_layouts`. The asymmetry section is the `D_` entry's core.
+- `D_scroller` (tracking mode) and, if `Auto` lands, `D_box_layouts`; the climbing notice is a
+  further `D_declared_size` amendment. The asymmetry section is the `D_` entry's core.
 - AGENTS.md's two Layout lines and book ch3's omissions list, rewritten together.
 - rdoc on `Component#measure_rows`, each answerer, `Popup#declared_size=` and `Scroller#content_rows=`.
 - The four registrations for any changed responsibility, plus the contract-spec check above.
 - The toolkit table below → one `R_` entry with provenance markers.
-- Issues #67 and #73 closed with a link.
+- Issue #73 closed with a link.
 
 ## Content size elsewhere (unverified)
 

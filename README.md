@@ -254,7 +254,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | component | what it is |
 |---|---|
 | `Overlay` | The bare floating layer: it wraps any component, paints nothing itself, and sits where its placement says — `open(Overlay::At[rect])`; the pane assigns the rect, again on every resize. Takes no focus and no keys — the building block for anchored panels and toasts. |
-| `Popup` | The modal dialog: an `Overlay` placed centered by default, which grabs focus, scopes keys to its own subtree and blocks clicks beneath it. Sized by `declared_size=` (a `Size` or a `Fraction` of the screen) rather than by its content; ESC or `q` dismisses. |
+| `Popup` | The modal dialog: an `Overlay` placed centered by default, which grabs focus, scopes keys to its own subtree and blocks clicks beneath it. Sized by `declared_size=`: a `Size`, a `Fraction` of the screen, or either wrapped in `Popup::ShrinkToContent`, which shrinks the box to the rows the content needs at its width; ESC or `q` dismisses. |
 | `Notification` | A transient corner toast — `Notification.show("Saved")` — stacking messages in one box that a single ticker drains. Non-modal, it never takes focus, and its inner `View` refuses the wheel so queued messages wait for the ticker. |
 | `ConfirmWindow` | The confirm dialog: a message and a row of buttons in a popup sized to fit. `alert` / `confirm` / `yes_no` cover the common shapes; `#button` builds any other. Every button closes; ESC, `q` or an outside click fire `on_dismiss`. See [The confirm dialog](book/07-components.md#the-confirm-dialog). |
 | `InfoWindow` | A `Window` with a read-only body, tiled or popped up: prose that wraps (`message=`), or rows that don't (`lines=`). |

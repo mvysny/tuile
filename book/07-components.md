@@ -1703,8 +1703,9 @@ The popup itself paints nothing — it's a transparent host that wraps any
 component as its content and manages the lifecycle (`open` / `close`,
 ESC/`q` to dismiss). Crucially, and per chapter 3, **it does not size
 itself to its content**: its box is set by `declared_size` — a `Fraction`
-(default `Fraction::HALF`, half the screen, re-resolved on every resize)
-or an absolute `Size`. The content then fills that box, so use content
+(default `Fraction::HALF`, half the screen, re-resolved on every resize),
+an absolute `Size`, or either one wrapped in `Popup::ShrinkToContent`, which
+shrinks the box to the rows the content's `measure_rows` answers. The content then fills that box, so use content
 that can cope with overflow — a TextView or TextArea that scrolls, not a
 bare Label that only truncates.
 
@@ -1914,9 +1915,12 @@ plain Popup takes half the screen whatever it wraps — absurd around a
 one-line "Delete?". The confirm dialog is the sanctioned exception *shape*:
 it measures **content it owns** — its caption, its message, its buttons —
 and asks the screen for exactly that box, still capped at half the screen
-(a message longer than the cap wraps and scrolls). Assign a `Component` as
-the message and the measuring honestly gives up: injected content is not
-the dialog's to measure, so the popup takes the full half-screen box.
+(a message longer than the cap wraps and scrolls). Its height half is the
+dialog's `measure_rows`, so a `ConfirmWindow` in a plain
+`Popup::ShrinkToContent` popup fits as well; the widest-line width is the dialog's
+own rule. Assign a `Component` as the message and the measuring honestly
+gives up: injected content is not the dialog's to measure, so the popup
+takes the full half-screen box.
 
 ### What it deliberately isn't
 

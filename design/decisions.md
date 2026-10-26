@@ -3178,7 +3178,7 @@ The cost we carry:
   `Popup` — is the right parent for a generically anchored layer; the trigger is
   unchanged, the first non-`List` content wanting anchoring.
 
-## D_declared_size — Why is `Popup#size` spelled `declared_size`, and why does no component report the size it wants?
+## D_declared_size — Why is `Popup#size` spelled `declared_size`, and why may a component answer only how many rows it needs?
 
 Rename `Popup#size` / `#size=` — and the `Popup.new` and
 `InfoWindow.open` keyword — to `declared_size`. Nothing else changes: it is still
@@ -3228,6 +3228,35 @@ claim `size` for a content-derived measurement. They are reports, never requests
 no writer, and no container consults them when dividing space. The top-down
 re-grow rule still governs, and a second component wanting a *declared* box
 copies `Popup`'s naming rather than overloading `size`.
+
+**The re-grow rule's one query: `Component#measure_rows(width)`.** A popup around
+a short message wants to be short, and without a query every app copied
+`ConfirmWindow`'s private `MeasuredPopup` or hard-coded a box that ignored SIGWINCH
+([#67](https://github.com/mvysny/tuile/issues/67)). The query takes the one
+asymmetry a terminal has: **width comes down, rows come up.** Wrapping is the only
+coupling between the axes and it runs one way, so with the width handed down the
+0.9.0 circularity cannot form. It is asked only by a parent that was *told* to ask
+(`Popup::ShrinkToContent`), inside that parent's own pass. `Screen` and `LayoutPass` never
+learn the word, which keeps it a pulled query rather than a channel. It is pure
+and uncached, and `nil` means "I fill what I'm handed", distinct from `0`. Nothing
+notifies the asker when the answer changes; the popup re-asks on every pass, and
+content that changes while open calls `reposition`, as `ConfirmWindow` does.
+
+Why not:
+- *`measure(available) → Size`, both axes.* It buys a width from below, which only
+  a popup wants, and a one-hop declaration covers that (`ConfirmWindow`'s
+  widest-line rule stays the dialog's own). It costs a `Size` answer in every
+  answerer, a spelling for an unbounded axis, and a promise that more width never
+  costs height.
+- *Lay the child out at the width, then read its height.* That is two passes per
+  child, with provisional rects that `D_strict_layout` rightly refuses to have read.
+- *A declaration with a width and a row cap of its own* (`FitRows[0.7, 0.5]`, the
+  first cut). It re-spells the two units `Size` and `Fraction` already carry, with
+  the type picking the unit, so `1` is a column and `1.0` the whole screen.
+  Wrapping an existing box instead reuses their resolution, makes the box the
+  ceiling, and gives `nil` an answer that needs no fallback: the whole box.
+- *Making `MeasuredPopup` public.* It fits `ConfirmWindow`-shaped content only, and
+  each app would still write a `measured_size` per window.
 
 ## D_extent — Why does a widget declare an `extent` rather than own its whole `rect`?
 

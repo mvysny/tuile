@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+- Add `Component::Popup::ShrinkToContent` — `declared_size: Popup::ShrinkToContent[Fraction::HALF]` (or any `Size` or `Fraction`) shrinks that box's height to the content's `measure_rows` at the box's width, re-asked every layout pass. See `design/decisions.md` `D_declared_size` and [#67](https://github.com/mvysny/tuile/issues/67).
+- Add `Component#measure_rows(width)` — the rows a component's content needs at `width` columns, `nil` (the default) for "fills what it is handed"; `ConfirmWindow` answers it, and only a parent told to ask, such as `Popup::ShrinkToContent`, consults it. See `design/decisions.md` `D_declared_size`.
 - Add `EventQueue#after(seconds)` — runs a block once on the event-loop thread after a delay (zero queues it at once, like `submit`), returning an `EventQueue::Timer` whose `cancel` drops it even once queued; the fake's `after` fires only on `FakeEventQueue#fire_timers`, never on `tick_once`.
 - Add `Component::HasValueChangeMode` — `value_change_mode` (`:eager` / `:commit` / `:lazy`) and `value_change_timeout` on `TextField`, `PasswordField`, `TextArea` and the number fields, choosing when a typed edit fires `on_value_change`; a write through `set_value` still fires at once. See `design/decisions.md` `D_value_change_mode`.
 - Add `Tuile::FormSyncer` — `FormSyncer::Buffered` (`read` / `write?` / `write!` / `changed?`) and `FormSyncer::Unbuffered` (`model=`, writing each valid edit through) bind fields to a model's attributes through a `bind(field, :attr)` chain of `required` / `validate` / `convert`, with `add_validator` for the whole model and a frozen `last_validation` map. See `design/decisions.md` `D_form_syncer_modes`.

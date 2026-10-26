@@ -3910,6 +3910,30 @@ module Tuile
     # _@return_ — `rect.height`.
     def height: () -> Integer
 
+    # How many rows this component's content needs at `width` columns, or `nil`
+    # for "no content height: I fill whatever I'm handed" — the base answer. The
+    # one bottom-up question Tuile asks; width only ever comes down:
+    # 
+    #   popup = Popup.new(content: dialog, declared_size: Popup::ShrinkToContent[Fraction::HALF])
+    #   # each pass on a 160x50 screen: dialog.measure_rows(80) => 9, so 80x9
+    # 
+    # Asked by a parent that was *told* to ask ({Popup::ShrinkToContent}), inside its
+    # own pass, and by nothing else — the re-grow rule's caller-side query
+    # (`D_declared_size`). Nobody is notified when the answer changes: the asker
+    # re-asks on its next pass, so a mutation that changes it owes the asker a
+    # mark ({Overlay#reposition} for a popup).
+    # 
+    # == Implementation details
+    # 
+    # **Pure**: computed from this component's own state, recomputed on every
+    # call. It assigns no rect, runs no {#relayout} and marks nothing — never
+    # "lay out, then read the height", which hands out a provisional rect
+    # {Tuile.strict_layout} rightly refuses to have read. `nil` is not `0`:
+    # fill and "exactly zero rows" are different answers. The asker clamps.
+    # 
+    # _@param_ `_width` — the columns the asker will assign.
+    def measure_rows: (Integer _width) -> Integer?
+
     # The size of the region this component paints, or `nil` (the default) to
     # declare nothing — in which case the whole {#rect} is treated as fair game
     # and the default {#repaint} blanks all of it. Override it when you paint
@@ -6105,14 +6129,19 @@ module Tuile
     # take focus or capture input — an autocomplete list anchored to a field, a
     # toast — use {Component::Overlay} directly.
     # 
-    # The popup does *not* size itself to its content. Its box is set by
-    # {#declared_size} — a {Fraction} (resolved against the screen every layout
-    # pass, so it tracks resize) or an absolute {Size} (clamped to the screen).
-    # The default is {Fraction::HALF}: half the screen, centered. The wrapped content
-    # then fills that box and handles its own overflow by wrapping and scrolling,
-    # so use content that can — a {Component::TextView} or
-    # {Component::TextArea} — for anything longer than fits. A
-    # {Component::Label} only truncates.
+    # Its box is set by {#declared_size}, resolved against the screen every
+    # layout pass, so it tracks resize:
+    # 
+    #   Popup.new(content: w)                                  # Fraction::HALF, the default
+    #   Popup.new(content: w, declared_size: Size.new(50, 12)) # clamped to the screen
+    #   Popup.new(content: w, declared_size: Popup::ShrinkToContent[Fraction::HALF])
+    #   # half the screen wide, as tall as w.measure_rows(that width), at most half
+    # 
+    # Only {ShrinkToContent} consults the content, and only for rows: the width
+    # is always declared. Otherwise the content fills the box and handles its own
+    # overflow by wrapping and scrolling, so use content that can — a
+    # {Component::TextView} or {Component::TextArea} — for anything longer than
+    # fits. A {Component::Label} only truncates.
     # 
     # == Implementation details
     # 
@@ -6129,16 +6158,16 @@ module Tuile
     # 
     # UI-thread-confined, like every component (see {Screen}).
     class Popup < Tuile::Component::Overlay
-      # _@param_ `content` — initial content; can be set later via {#content=}. The content fills the popup's {#rect}; it does not determine the popup's size.
+      # _@param_ `content` — initial content; can be set later via {#content=}. The content fills the popup's {#rect}.
       # 
-      # _@param_ `declared_size` — the popup's box, applied top-down. A {Fraction} is resolved against the screen each layout pass; a {Size} is clamped to the screen. Defaults to {Fraction::HALF}.
+      # _@param_ `declared_size` — the popup's box; see {#declared_size=}. Defaults to {Fraction::HALF}.
       # 
       # _@param_ `close_on_outside_click` — true (default) to dismiss on a left click that misses this popup. See {Overlay#close_on_outside_click?}.
       # 
       # _@param_ `close_on_key` — true (default) to dismiss on ESC and `q`. See {#close_on_key?}.
       def initialize: (
                         ?content: Component?,
-                        ?declared_size: (Size | Fraction),
+                        ?declared_size: (Size | Fraction | ShrinkToContent),
                         ?close_on_outside_click: bool,
                         ?close_on_key: bool
                       ) -> void
@@ -6166,7 +6195,7 @@ module Tuile
       # geometry.
       # 
       # _@return_ — see {#declared_size=}.
-      def declared_size: () -> (Size | Fraction)
+      def declared_size: () -> (Size | Fraction | ShrinkToContent)
 
       # _@return_ — true — a Popup scopes key dispatch, grabs focus on
       # open, and blocks clicks on the content beneath it.
@@ -6178,15 +6207,17 @@ module Tuile
 
       # Sets the popup's box; an open popup takes it on the next settle.
       # Accepts a {Fraction} (resolved against the screen every layout pass, so
-      # it tracks resize) or an absolute {Size} (clamped to the screen). This is **authoritative**, not
-      # a preference: the screen applies exactly what you ask for (clamped),
-      # with no negotiation — a popup has no siblings to compete with.
+      # it tracks resize), an absolute {Size} (clamped to the screen), or either
+      # one wrapped in {ShrinkToContent}. This is
+      # **authoritative**, not a preference: the screen applies exactly what
+      # you ask for (clamped), with no negotiation — a popup has no siblings to
+      # compete with.
       # 
       # _@param_ `new_size`
-      def declared_size=: ((Size | Fraction) new_size) -> void
+      def declared_size=: ((Size | Fraction | ShrinkToContent) new_size) -> void
 
       # {#declared_size} resolved against `screen_size`: a {Fraction} scaled, a
-      # {Size} clamped.
+      # {Size} clamped, a {ShrinkToContent} box shrunk to the content's rows.
       # 
       # _@param_ `screen_size`
       def declared_size_in: (Size screen_size) -> Size
@@ -6203,6 +6234,35 @@ module Tuile
       # 
       # _@return_ — true if the key was handled.
       def handle_key?: (String key) -> bool
+
+      # _@param_ `box`
+      # 
+      # _@param_ `screen_size`
+      def box_in: ((Size | Fraction) box, Size screen_size) -> Size
+
+      # A {Popup#declared_size} that shrinks its {#box} to the content's height:
+      # the width is the box's, the height whatever the content's
+      # {Component#measure_rows} answers at that width, never more than the
+      # box's:
+      # 
+      #   Popup::ShrinkToContent[Fraction::HALF]     # half the screen at most
+      #   Popup::ShrinkToContent[Size.new(60, 20)]   # 60 wide, 20 rows at most
+      # 
+      # Content answering `nil` (no content height) takes the whole box. The
+      # question is re-asked on every layout pass and nothing else: content
+      # whose rows change while open calls {Popup#reposition}.
+      # 
+      # @!attribute [r] box
+      #   @return [Size, Fraction] the ceiling, resolved as {Popup#declared_size}
+      #     resolves it.
+      class ShrinkToContent
+        # _@param_ `box` — see {#box}.
+        def initialize: (box: (Size | Fraction)) -> void
+
+        # _@return_ — the ceiling, resolved as {Popup#declared_size}
+        # resolves it.
+        attr_reader box: (Size | Fraction)
+      end
     end
 
     # A clickable button. Activated by Enter, Space, or a left mouse click;
@@ -13685,14 +13745,20 @@ module Tuile
       def close: () -> void
 
       # The popup box this dialog wants: wide enough for the caption, the widest
-      # message line and the button row, tall enough for the wrapped message
-      # plus the button row — each capped at half of `reference`. The re-grow
-      # rule's caller-side measure query: the dialog measures only content it
-      # *owns*, so a {Component} assigned to {#message=} yields the full
-      # half-screen box.
+      # message line and the button row, tall as {#measure_rows} at that width —
+      # each capped at half of `reference`. The width rule is the dialog's own
+      # declaration, read only from what it owns, so a {Component} assigned to
+      # {#message=} yields the full half-screen box.
       # 
       # _@param_ `reference` — the screen size to cap against.
       def measured_size: (?Size reference) -> Size
+
+      # The border, the message wrapped at `width` less the border and padding,
+      # and the button row. `nil` for a {Component} message, which the dialog
+      # does not own and so does not measure.
+      # 
+      # _@param_ `width`
+      def measure_rows: (Integer width) -> Integer?
 
       # Focus lands on the first button rather than cascading into the message
       # body, which sits before the button row in the tree. `super` is reached
@@ -13810,6 +13876,9 @@ module Tuile
       # only way to change a {Layout::Box} constraint; the row stays after the
       # body because both `add`s append.
       def recenter_button_row: () -> void
+
+      # _@return_ — a text {#message}, empty when there is none.
+      def message_text: () -> StyledString
 
       # _@return_ — columns of the button row at its natural width.
       def button_row_width: () -> Integer

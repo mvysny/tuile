@@ -298,7 +298,9 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   field, with deliberately no writer, and no container consults them. See `D_declared_size`.
 - **The deleted bottom-up channel must not return under a new name.** Re-grow rule: measurement may
   come back only as an *optional, read-only, caller-side query*, never as a channel the framework
-  consults. A box a component *asks for* is spelled `declared_size`, not `size`.
+  consults. That query is `measure_rows(width)` — rows only, asked only by a parent told to ask
+  (`Popup::ShrinkToContent`), never by `Screen` or `LayoutPass`. A box a component *asks for* is spelled
+  `declared_size`, not `size`. See `D_declared_size`.
 - **The pane owns no chrome and Tuile reserves no row** — `content` gets the whole terminal, and an
   app drives its own status line from `Screen#on_focus_changed`. A hint channel may come back only
   as a query the app *pulls*, never as a framework-placed row. See `D_status_bar`.

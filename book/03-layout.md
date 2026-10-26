@@ -459,6 +459,7 @@ popup.declared_size = Tuile::Fraction::HALF     # the default — half the scree
 popup.declared_size = Tuile::Fraction::FULL     # fullscreen
 popup.declared_size = Tuile::Fraction.new(0.8, 0.5)          # 80% wide, half tall
 popup.declared_size = Tuile::Size.new(50, 12)                # exact, clamped to screen
+popup.declared_size = Tuile::Component::Popup::ShrinkToContent[Tuile::Fraction::HALF]  # as tall as the content, at most half
 ```
 
 The default is `Fraction::HALF`, resolved on every layout pass, so a
@@ -481,15 +482,26 @@ a popup shows just what fits on its lines — fine for a short message,
 wrong for a paragraph.
 
 > **Why not size the popup to its content?** It's tempting to want a
-> popup that shrinks to wrap exactly around its text. Tuile deliberately
-> doesn't, and not only for consistency: content-sizing is circular on
-> wrapped text (the height depends on the width, which depends on the
-> height) and it isn't even reliably pretty — a single long line
-> collapses the popup to one row. Half-screen-and-wrap sidesteps all of
-> it. When you genuinely know the right size — an autocomplete dropdown
-> whose items you own — you set it yourself: `popup.declared_size =
-> Tuile::Size.new(longest_item, [items.size, 8].min)`. That's still
-> caller-decides, top-down.
+> popup that shrinks to wrap exactly around its text. Sizing *both* axes
+> from the content is circular on wrapped text (the height depends on the
+> width, which depends on the height) and it isn't even reliably pretty —
+> a single long line collapses the popup to one row.
+>
+> The circle has only one way to break, and `ShrinkToContent` takes it:
+> **width comes down, rows come up.** You declare a box, a `Size` or a
+> `Fraction` as above; the popup then asks its content one question at the
+> box's width, `measure_rows(width)` — "how many rows do you need at this
+> many columns?" — and shrinks the box to the answer, never taller than the
+> box itself. Nothing about the width is negotiated, so nothing can loop,
+> and the popup asks only because you told it to. A component that has no
+> answer returns `nil` (the default, and a `List`'s: it fills whatever it
+> gets), and the popup keeps the whole box.
+>
+> The answer is re-asked on every layout pass and at no other time, so
+> content whose rows change while the popup is open calls
+> `popup.reposition`. When you know the right size yourself — an
+> autocomplete dropdown whose items you own — set it:
+> `popup.declared_size = Tuile::Size.new(longest_item, [items.size, 8].min)`.
 
 ## The window footer: chrome vs. slot
 
@@ -565,7 +577,9 @@ them:
 
 - **No `min`/`preferred`/`max` size, and no `content_size` a parent
   consults.** Sizing decisions live on the parent, expressed as
-  arithmetic, not on the child as advertised constraints.
+  arithmetic, not on the child as advertised constraints. The one
+  question a child may be asked is `measure_rows(width)`, and only a
+  parent you told to ask (`Popup::ShrinkToContent`) asks it.
 - **No shrink-to-fit / intrinsic sizing.** A slot is sized top-down;
   content fills or scrolls within it.
 - **`Label` doesn't wrap.** It truncates long lines with an ellipsis by
