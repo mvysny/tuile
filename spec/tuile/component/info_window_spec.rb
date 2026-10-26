@@ -106,35 +106,41 @@ module Tuile
       assert_equal %w[c d], w.content.items.map(&:to_s)
     end
 
-    describe ".open" do
+    describe "#open_in_popup" do
+      it "refuses a window that already has a parent" do
+        window = Component::InfoWindow.new("Help", ["hello"])
+        window.open_in_popup.close
+        assert_raises(Tuile::Error) { window.open_in_popup }
+      end
+
       it "adds a Popup to the popup stack" do
-        Component::InfoWindow.open("Help", ["hello"])
+        Component::InfoWindow.new("Help", ["hello"]).open_in_popup
         assert_equal 1, Screen.instance.pane.popups.size
         assert Screen.instance.pane.popups.first.is_a?(Component::Popup)
       end
 
       it "wraps an InfoWindow as the popup's content" do
-        Component::InfoWindow.open("Help", ["hello"])
+        Component::InfoWindow.new("Help", ["hello"]).open_in_popup
         wrapped = Screen.instance.pane.popups.first.content
         assert wrapped.is_a?(Component::InfoWindow)
         assert_equal "Help", wrapped.caption.to_s
       end
 
       it "populates the inner list with the given lines" do
-        Component::InfoWindow.open("Help", %w[foo bar baz])
+        Component::InfoWindow.new("Help", %w[foo bar baz]).open_in_popup
         list = Screen.instance.pane.popups.first.content.content
         assert_equal %w[foo bar baz], list.items.map(&:to_s)
       end
 
       it "renders a String body in a TextView" do
-        Component::InfoWindow.open("Help", "wrapping prose")
+        Component::InfoWindow.new("Help", "wrapping prose").open_in_popup
         wrapped = Screen.instance.pane.popups.first.content
         assert wrapped.content.is_a?(Component::TextView)
         assert_equal "wrapping prose", wrapped.message
       end
 
       it "sizes the popup to the half-screen default (content wraps within it)" do
-        Component::InfoWindow.open("Help", ["hello"])
+        Component::InfoWindow.new("Help", ["hello"]).open_in_popup
         popup = Screen.instance.pane.popups.first
         # Popups are sized top-down, not to content: HALF of 160x50 = 80x25.
         assert_equal 80, popup.rect.width
@@ -142,20 +148,20 @@ module Tuile
       end
 
       it "accepts an explicit size" do
-        Component::InfoWindow.open("Help", ["hello"], declared_size: Fraction::FULL)
+        Component::InfoWindow.new("Help", ["hello"]).open_in_popup(declared_size: Fraction::FULL)
         popup = Screen.instance.pane.popups.first
         assert_equal 160, popup.rect.width
         assert_equal 50, popup.rect.height
       end
 
       it "accepts an empty list" do
-        Component::InfoWindow.open("Help", [])
+        Component::InfoWindow.new("Help", []).open_in_popup
         wrapped = Screen.instance.pane.popups.first.content
         assert_equal [], wrapped.content.items
       end
 
       it "closes on ESC like any popup" do
-        popup = Component::InfoWindow.open("Help", ["hello"])
+        popup = Component::InfoWindow.new("Help", ["hello"]).open_in_popup
         popup.handle_key? Keys::ESC
         assert !popup.open?
       end

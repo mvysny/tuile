@@ -6,7 +6,7 @@ module Tuile
     # the user to pick one, and fires a callback with the picked key. Each row
     # is `"<key> <caption>"`:
     #
-    #   PickerWindow.open("Sort by", [%w[n name], %w[s size]]) { sort_by(_1) }
+    #   PickerWindow.new("Sort by", [%w[n name], %w[s size]]) { sort_by(_1) }.open_in_popup
     #
     #   ┌Sort by───────┐
     #   │n name        │
@@ -14,15 +14,15 @@ module Tuile
     #   └──────────────┘
     #
     # Usable tiled (just add to a {Layout} and read picks via the block) or
-    # as a popup via {.open}, which wraps it in a {Popup} that closes itself
-    # after a pick. ESC / `q` close without firing the callback.
+    # as a popup via {#open_in_popup}, which wraps it in a {Popup} that closes
+    # itself after a pick. ESC / `q` close without firing the callback.
     #
     # Captions paint in the terminal's own foreground. To color them, hand in
     # {StyledString} captions — the picker styles nothing itself, so an app's
     # own token applies per option:
     #
-    #   PickerWindow.open("File", [["o", StyledString.plain("Open")],
-    #                              ["d", theme.fg(:danger, "Delete")]]) { … }
+    #   PickerWindow.new("File", [["o", StyledString.plain("Open")],
+    #                             ["d", theme.fg(:danger, "Delete")]]) { … }
     #
     # An option that doesn't apply right now is *disabled* by a third element
     # naming why. It paints in {Theme#disabled_color}, reason appended and any
@@ -30,7 +30,7 @@ module Tuile
     # or click — fires nothing and closes nothing; its key moves the cursor
     # onto it instead, so the reason is where the user is looking:
     #
-    #   PickerWindow.open("Maintenance", [
+    #   PickerWindow.new("Maintenance", [
     #     ["r", "Resize disk image…", { disabled: "shut the VM down first" }],
     #     ["g", "Grow root filesystem…"]
     #   ]) { … }
@@ -112,7 +112,7 @@ module Tuile
 
       # @!method on_pick
       #   Fired with a {PickEvent} after the user picks an option, after the
-      #   block fires. The {Popup} returned by {.open} registers its own `close`.
+      #   block fires. {#open_in_popup} registers its popup's `close` here.
       #   @return [Listeners]
       listener :on_pick
 
@@ -130,19 +130,16 @@ module Tuile
         true
       end
 
-      # Opens a picker as a popup. Picking an option fires `block`, then
-      # closes the popup; ESC / `q` close without firing `block`.
-      # @param caption [String]
-      # @param options [Array<Array(String, StyledString), Array(String, StyledString, Hash)>]
-      #   see {#initialize}.
-      # @yield [key]
-      # @yieldparam key [String]
-      # @yieldreturn [void]
-      # @return [Popup] the wrapping popup.
-      def self.open(caption, options, &block)
-        picker = PickerWindow.new(caption, options, &block)
-        popup = Popup.new(content: picker)
-        picker.on_pick { popup.close }
+      # Opens this picker in a centered {Popup} that closes after a pick; ESC /
+      # `q` close it without firing the block. One-shot: the closed popup keeps
+      # the picker as its content, so a second call raises.
+      # @raise [Tuile::Error] if this picker already has a parent.
+      # @return [Popup] the opened popup.
+      def open_in_popup
+        raise Tuile::Error, "#{inspect} already has a parent #{parent.inspect}" unless parent.nil?
+
+        popup = Popup.new(content: self)
+        on_pick { popup.close }
         popup.open
       end
 

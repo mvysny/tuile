@@ -7,11 +7,11 @@ module Tuile
     # ({#lines=}) stay one per row in a {List}, truncating instead of
     # wrapping — the presentation for columnar output, where a wrap would
     # destroy the alignment. Usable tiled (add it to a {Layout}) or as a
-    # popup via {.open}; the constructor and {.open} pick the presentation
-    # from the body's type:
+    # popup via {#open_in_popup}; the constructor picks the presentation from
+    # the body's type:
     #
-    #   Component::InfoWindow.open("Help", "A long explanation, wrapped to fit.")
-    #   Component::InfoWindow.open("Files", ["drwx  src/", "-rw-  README.md"])
+    #   Component::InfoWindow.new("Help", "A long explanation, wrapped to fit.").open_in_popup
+    #   Component::InfoWindow.new("Files", ["drwx  src/", "-rw-  README.md"]).open_in_popup
     #
     # Both write the same body slot — the last writer wins.
     class InfoWindow < Window
@@ -64,16 +64,17 @@ module Tuile
         self.message = list
       end
 
-      # Opens the info window as a popup.
-      # @param caption [String, StyledString, nil] the border title.
-      # @param body [String, StyledString, Component, Array, nil] dispatched
-      #   by type as in {#initialize}.
+      # Opens this window in a centered {Popup}, which ESC / `q` close.
+      # One-shot: the closed popup keeps the window as its content, so a second
+      # call raises.
       # @param declared_size [Size, Fraction] the popup's box, applied
-      #   top-down; the body wraps or scrolls within it. Defaults to
-      #   {Fraction::HALF}.
+      #   top-down; the body wraps or scrolls within it.
+      # @raise [Tuile::Error] if this window already has a parent.
       # @return [Popup] the opened popup.
-      def self.open(caption, body = nil, declared_size: Fraction::HALF)
-        Popup.new(content: InfoWindow.new(caption, body), declared_size: declared_size).open
+      def open_in_popup(declared_size: Fraction::HALF)
+        raise Tuile::Error, "#{inspect} already has a parent #{parent.inspect}" unless parent.nil?
+
+        Popup.new(content: self, declared_size:).open
       end
     end
   end

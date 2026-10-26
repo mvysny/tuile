@@ -1787,10 +1787,9 @@ class DiskResizeWindow < Component::Window
   SubmitEvent = Data.define(:source) { include Tuile::Event }
   listener :on_submit
 
-  def self.open(disk)
-    window = new(disk)
-    popup = Component::Popup.new(content: window)
-    window.on_submit { popup.close }
+  def open_in_popup
+    popup = Component::Popup.new(content: self)
+    on_submit { popup.close }
     popup.open
   end
 
@@ -1803,10 +1802,10 @@ class DiskResizeWindow < Component::Window
 end
 ```
 
-That class-level `open` is the shape the built-in windows already use —
-`PickerWindow.open` wires its own `on_pick` to the popup's `close` in exactly
-this way. It mentions `Popup`, and that is fine: it is one convenient way to
-*mount* the window, decided once at construction. The window's behaviour
+That `open_in_popup` is the shape the built-in windows already use —
+`PickerWindow#open_in_popup` wires its own `on_pick` to the popup's `close` in
+exactly this way. It mentions `Popup`, and that is fine: it is one convenient
+way to *mount* the window, chosen by whoever calls it. The window's behaviour
 stays the same however it is mounted, and a caller who docks it in a layout
 instead wires `on_submit` to something else.
 
@@ -1981,17 +1980,17 @@ lines wants a LogWindow, which is next.
 
 The last three components are conveniences: common Window-plus-content
 assemblies you'd otherwise build by hand. Each works tiled (add it to a
-layout) *or* as a popup (via a class-level `open`).
+layout); the first two also pop up via `open_in_popup`.
 
 - {Tuile::Component::InfoWindow} — a Window with a read-only body, in one
   of two presentations: `message=` is *prose*, wrapped by a scrollable
   TextView; `lines=` is *rows*, a List keeping one item per row and
   truncating — the choice for columnar output, where a wrap would destroy
-  the alignment. `InfoWindow.open(caption, body)` pops it up, picking the
-  presentation from the body's type (an Array is rows, text is prose).
+  the alignment. `InfoWindow.new(caption, body)` picks the presentation from the
+  body's type (an Array is rows, text is prose); `open_in_popup` pops it up.
 - {Tuile::Component::PickerWindow} — a menu of options each bound to a
-  single key, firing your block with the picked key. Popped up via `open`,
-  it closes itself after a pick; ESC/`q` cancels without firing. Captions
+  single key, firing your block with the picked key. Popped up via
+  `open_in_popup`, it closes itself after a pick; ESC/`q` cancels without firing. Captions
   paint in the terminal's own foreground; hand in a {Tuile::StyledString}
   (or the ANSI string `theme.fg` returns) to color one, per option. An
   option disabled with a reason paints in `disabled_color` and fires nothing

@@ -2323,11 +2323,21 @@ its trailing bare `popup` — and that method is the standing demonstration that
 the deleted factory could never have served the general case anyway, since it
 needs the popup *before* mounting it in order to wire `on_pick`.
 
-**Not extended to the batteries-included windows.** `InfoWindow.open` and
-`PickerWindow.open` stay: each names its own class explicitly, takes that class's
-own arguments, and wraps the popup rather than *being* one — none of them is an
-inherited factory, so the trap does not apply. `popup_spec` asserts that neither
-`Popup` nor `ListDropdown` responds to `open` at the class level.
+**The batteries-included windows got the same treatment — an instance
+`open_in_popup`, not a class-level `open`.** `InfoWindow.open` and
+`PickerWindow.open` once looked exempt: each named its own class and wrapped the
+popup rather than *being* one. But a subclass is the trap in another shape — an
+app's `PickerWindow` subclass built from domain data (#72) inherited a factory
+that built a plain `PickerWindow`, and late binding fails for the reason above,
+since the subclass's constructor is its own. An instance method needs no
+constructor at all: `PowerPicker.new(vm).open_in_popup`. It raises
+{Tuile::Error} when the window already has a parent — which includes the closed
+popup it last opened in, so it is one-shot, as befits a picker whose options are
+a construction-time snapshot. Named `open_in_popup`, not `open`: it returns a
+{Tuile::Component::Popup}, not `self`, so it must not read as `Overlay#open`.
+`ConfirmWindow#open` keeps its name — it *owns* its popup, pairs with `#close`
+and may reopen. `popup_spec` asserts that neither `Popup` nor `ListDropdown`
+responds to `open` at the class level.
 
 ## D_bracketed_paste — Why is a paste its own event rather than a burst of keys?
 

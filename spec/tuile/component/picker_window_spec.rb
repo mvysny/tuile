@@ -99,7 +99,7 @@ module Tuile
       def press(key) = Screen.instance.send(:handle_key?, key)
 
       it "moves the cursor onto it on its key, firing nothing and staying open" do
-        popup = Component::PickerWindow.open("foo", [%w[g Grow], *options]) { raise "should not be called" }
+        popup = Component::PickerWindow.new("foo", [%w[g Grow], *options]) { raise "never" }.open_in_popup
         list = popup.content.content
         assert_equal 0, list.cursor.position
         assert press("r")
@@ -108,13 +108,13 @@ module Tuile
       end
 
       it "fires nothing on Enter on its row" do
-        popup = Component::PickerWindow.open("foo", options) { raise "should not be called" }
+        popup = Component::PickerWindow.new("foo", options) { raise "should not be called" }.open_in_popup
         press(Keys::ENTER)
         assert popup.open?
       end
 
       it "fires nothing on a click on its row" do
-        popup = Component::PickerWindow.open("foo", options) { raise "should not be called" }
+        popup = Component::PickerWindow.new("foo", options) { raise "should not be called" }.open_in_popup
         row = popup.content.content.absolute_rect
         Screen.instance.click(row.left + 1, row.top)
         assert popup.open?
@@ -122,19 +122,38 @@ module Tuile
 
       it "still picks an enabled option beside it" do
         selected = nil
-        Component::PickerWindow.open("foo", options) { selected = _1 }
+        Component::PickerWindow.new("foo", options) { selected = _1 }.open_in_popup
         press("g")
         assert_equal "g", selected
       end
     end
 
-    describe ".open" do
-      it "opens as a popup wrapping a PickerWindow" do
-        popup = Component::PickerWindow.open("foo", [%w[a all]]) {}
+    describe "#open_in_popup" do
+      it "opens as a popup wrapping the picker" do
+        picker = Component::PickerWindow.new("foo", [%w[a all]]) {}
+        popup = picker.open_in_popup
         assert popup.is_a?(Component::Popup)
-        assert popup.content.is_a?(Component::PickerWindow)
+        assert_same picker, popup.content
         assert popup.open?
         popup.close
+      end
+
+      it "opens a subclass built from its own constructor arguments" do
+        sort_picker = Class.new(Component::PickerWindow) do
+          def initialize(columns, &) = super("Sort by", columns.map { [_1[0], _1] }, &)
+        end
+        selected = nil
+        popup = sort_picker.new(%w[name size]) { selected = _1 }.open_in_popup
+        assert popup.content.is_a?(sort_picker)
+        press("s")
+        assert_equal "s", selected
+        assert !popup.open?
+      end
+
+      it "refuses a picker that already has a parent" do
+        picker = Component::PickerWindow.new("foo", [%w[a all]]) {}
+        picker.open_in_popup.close
+        assert_raises(Tuile::Error) { picker.open_in_popup }
       end
 
       # Drive through the real dispatcher (Screen#handle_key?): opening the
@@ -143,14 +162,14 @@ module Tuile
       def press(key) = Screen.instance.send(:handle_key?, key)
 
       it "doesn't call block when closed via q" do
-        popup = Component::PickerWindow.open("foo", [%w[a all]]) { raise "should not be called" }
+        popup = Component::PickerWindow.new("foo", [%w[a all]]) { raise "should not be called" }.open_in_popup
         press("q")
         assert !popup.open?
       end
 
       it "selects first option on enter" do
         selected = nil
-        popup = Component::PickerWindow.open("foo", [%w[a all]]) { selected = _1 }
+        popup = Component::PickerWindow.new("foo", [%w[a all]]) { selected = _1 }.open_in_popup
         press(Keys::ENTER)
         assert_equal "a", selected
         assert !popup.open?
@@ -158,7 +177,7 @@ module Tuile
 
       it "selects correct option when its key is pressed" do
         selected = nil
-        popup = Component::PickerWindow.open("foo", [%w[a all]]) { selected = _1 }
+        popup = Component::PickerWindow.new("foo", [%w[a all]]) { selected = _1 }.open_in_popup
         press("a")
         assert_equal "a", selected
         assert !popup.open?
@@ -166,7 +185,7 @@ module Tuile
 
       it "does nothing if an unlisted key is pressed" do
         selected = nil
-        popup = Component::PickerWindow.open("foo", [%w[a all]]) { selected = _1 }
+        popup = Component::PickerWindow.new("foo", [%w[a all]]) { selected = _1 }.open_in_popup
         press("b")
         assert_nil selected
         assert popup.open?

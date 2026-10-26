@@ -100,7 +100,7 @@ module FileCommanderExample
       fire_cwd_changed
     rescue SystemCallError => e
       @cwd = previous
-      Tuile::Component::InfoWindow.open("Cannot open", "#{path}\n#{e.message}")
+      Tuile::Component::InfoWindow.new("Cannot open", "#{path}\n#{e.message}").open_in_popup
     end
 
     def load_entries

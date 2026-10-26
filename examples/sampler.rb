@@ -2035,15 +2035,15 @@ module SamplerExample
                    "constructor picks the presentation by the body's type."
       buttons = [
         Tuile::Component::Button.new("Prose") do
-          Tuile::Component::InfoWindow.open(
+          Tuile::Component::InfoWindow.new(
             "About",
             "InfoWindow renders a String as wrapping prose: this sentence is long " \
             "enough to wrap to the popup's width, and it scrolls when it outgrows " \
             "the box. Press ESC or q to close."
-          )
+          ).open_in_popup
         end,
         Tuile::Component::Button.new("Rows") do
-          Tuile::Component::InfoWindow.open(
+          Tuile::Component::InfoWindow.new(
             "Files",
             ["drwxr-xr-x  src/",
              "drwxr-xr-x  spec/",
@@ -2053,7 +2053,7 @@ module SamplerExample
              "Rows never wrap: a long row like this one is truncated at the popup's edge, keeping columns aligned.",
              "",
              "Press ESC or q to close."]
-          )
+          ).open_in_popup
         end
       ]
       strip = row do |r|
@@ -2075,12 +2075,12 @@ module SamplerExample
         # per option: a caption may be a String, an ANSI-coded String (what
         # `theme.fg` hands back) or a StyledString. A disabled option paints
         # in disabled_color with its reason, and picking it fires nothing.
-        Tuile::Component::PickerWindow.open(
+        Tuile::Component::PickerWindow.new(
           "Pick a fruit",
           [%w[a Apple], %w[b Banana],
            ["c", "Cherry #{screen.theme.fg(:hint, "(in season)")}"],
            ["d", "Durian", { disabled: "out of stock" }]]
-        ) { |key| Tuile.logger.info("Picked: #{key}") }
+        ) { |key| Tuile.logger.info("Picked: #{key}") }.open_in_popup
       end
     end
 

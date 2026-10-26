@@ -11898,11 +11898,11 @@ module Tuile
     # ({#lines=}) stay one per row in a {List}, truncating instead of
     # wrapping — the presentation for columnar output, where a wrap would
     # destroy the alignment. Usable tiled (add it to a {Layout}) or as a
-    # popup via {.open}; the constructor and {.open} pick the presentation
-    # from the body's type:
+    # popup via {#open_in_popup}; the constructor picks the presentation from
+    # the body's type:
     # 
-    #   Component::InfoWindow.open("Help", "A long explanation, wrapped to fit.")
-    #   Component::InfoWindow.open("Files", ["drwx  src/", "-rw-  README.md"])
+    #   Component::InfoWindow.new("Help", "A long explanation, wrapped to fit.").open_in_popup
+    #   Component::InfoWindow.new("Files", ["drwx  src/", "-rw-  README.md"]).open_in_popup
     # 
     # Both write the same body slot — the last writer wins.
     class InfoWindow < Tuile::Component::Window
@@ -11930,16 +11930,14 @@ module Tuile
       # _@param_ `lines` — entries are `String`, `StyledString`, or anything that responds to `#to_s`.
       def lines=: (::Array[untyped] lines) -> void
 
-      # Opens the info window as a popup.
+      # Opens this window in a centered {Popup}, which ESC / `q` close.
+      # One-shot: the closed popup keeps the window as its content, so a second
+      # call raises.
       # 
-      # _@param_ `caption` — the border title.
-      # 
-      # _@param_ `body` — dispatched by type as in {#initialize}.
-      # 
-      # _@param_ `declared_size` — the popup's box, applied top-down; the body wraps or scrolls within it. Defaults to {Fraction::HALF}.
+      # _@param_ `declared_size` — the popup's box, applied top-down; the body wraps or scrolls within it.
       # 
       # _@return_ — the opened popup.
-      def self.open: ((String | StyledString)? caption, ?(String | StyledString | Component | ::Array[untyped])? body, ?declared_size: (Size | Fraction)) -> Popup
+      def open_in_popup: (?declared_size: (Size | Fraction)) -> Popup
     end
 
     # Single-select from a set of typed items, one row each. Arrows move a
@@ -13217,7 +13215,7 @@ module Tuile
     # the user to pick one, and fires a callback with the picked key. Each row
     # is `"<key> <caption>"`:
     # 
-    #   PickerWindow.open("Sort by", [%w[n name], %w[s size]]) { sort_by(_1) }
+    #   PickerWindow.new("Sort by", [%w[n name], %w[s size]]) { sort_by(_1) }.open_in_popup
     # 
     #   ┌Sort by───────┐
     #   │n name        │
@@ -13225,15 +13223,15 @@ module Tuile
     #   └──────────────┘
     # 
     # Usable tiled (just add to a {Layout} and read picks via the block) or
-    # as a popup via {.open}, which wraps it in a {Popup} that closes itself
-    # after a pick. ESC / `q` close without firing the callback.
+    # as a popup via {#open_in_popup}, which wraps it in a {Popup} that closes
+    # itself after a pick. ESC / `q` close without firing the callback.
     # 
     # Captions paint in the terminal's own foreground. To color them, hand in
     # {StyledString} captions — the picker styles nothing itself, so an app's
     # own token applies per option:
     # 
-    #   PickerWindow.open("File", [["o", StyledString.plain("Open")],
-    #                              ["d", theme.fg(:danger, "Delete")]]) { … }
+    #   PickerWindow.new("File", [["o", StyledString.plain("Open")],
+    #                             ["d", theme.fg(:danger, "Delete")]]) { … }
     # 
     # An option that doesn't apply right now is *disabled* by a third element
     # naming why. It paints in {Theme#disabled_color}, reason appended and any
@@ -13241,7 +13239,7 @@ module Tuile
     # or click — fires nothing and closes nothing; its key moves the cursor
     # onto it instead, so the reason is where the user is looking:
     # 
-    #   PickerWindow.open("Maintenance", [
+    #   PickerWindow.new("Maintenance", [
     #     ["r", "Resize disk image…", { disabled: "shut the VM down first" }],
     #     ["g", "Grow root filesystem…"]
     #   ]) { … }
@@ -13264,7 +13262,7 @@ module Tuile
       def initialize: (String caption, ::Array[([String, StyledString] | [String, StyledString, ::Hash[untyped, untyped]])] options) ?{ (String key) -> void } -> void
 
       # Fired with a {PickEvent} after the user picks an option, after the
-      # block fires. The {Popup} returned by {.open} registers its own `close`.
+      # block fires. {#open_in_popup} registers its popup's `close` here.
       def on_pick: () -> Listeners
 
       # Handles an option-key press. Reached by bubbling: the inner {List}
@@ -13275,15 +13273,12 @@ module Tuile
       # _@param_ `key`
       def handle_key?: (String key) -> bool
 
-      # Opens a picker as a popup. Picking an option fires `block`, then
-      # closes the popup; ESC / `q` close without firing `block`.
+      # Opens this picker in a centered {Popup} that closes after a pick; ESC /
+      # `q` close it without firing the block. One-shot: the closed popup keeps
+      # the picker as its content, so a second call raises.
       # 
-      # _@param_ `caption`
-      # 
-      # _@param_ `options` — see {#initialize}.
-      # 
-      # _@return_ — the wrapping popup.
-      def self.open: (String caption, ::Array[([String, StyledString] | [String, StyledString, ::Hash[untyped, untyped]])] options) ?{ (String key) -> void } -> Popup
+      # _@return_ — the opened popup.
+      def open_in_popup: () -> Popup
 
       # Re-renders the rows, which {List} caches with the disabled ink baked in.
       def handle_theme_changed: () -> void
