@@ -14,6 +14,17 @@ module Tuile
       buffer
     end
 
+    describe "#border_size" do
+      it "is one column and one row on each side" do
+        assert_equal Size.new(2, 2), drawer.border_size
+      end
+
+      it "drops the right column while the right border is dropped" do
+        drawer.right_border = false
+        assert_equal Size.new(1, 2), drawer.border_size
+      end
+    end
+
     describe "#content_rect" do
       it "insets the box by one on every side" do
         assert_equal Rect.new(1, 1, 8, 2), drawer.content_rect(Size.new(10, 4))

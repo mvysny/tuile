@@ -12282,8 +12282,14 @@ module Tuile
 
       def handle_detached: () -> void
 
-      # Wraps the messages to the width the pane gave the box — the wrap the
-      # height in {#declared_size_in} was measured with.
+      # Paints the border; the messages are the view's.
+      # 
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (Canvas canvas) -> void
+
+      # Places the view inside the border and wraps the messages to its width —
+      # the wrap the height in {#declared_size_in} was measured with. Not
+      # `super`: {Overlay#relayout} would give the view the whole box.
       def relayout: () -> void
 
       # A message came or went: the text is re-wrapped here, and the box is
@@ -12294,6 +12300,8 @@ module Tuile
       # 
       # _@return_ — every message, wrapped inside the border.
       def wrapped_rows: (Integer width) -> ::Array[StyledString]
+
+      def border_size: () -> Size
 
       # Retires the oldest message, closing the box when it was the last. Runs on
       # the event-loop thread, from the ticker.
@@ -12332,7 +12340,7 @@ module Tuile
 
       # _@param_ `screen_size`
       # 
-      # _@return_ — at least 3: two border rows plus one row of message.
+      # _@return_ — at least the border plus one row of message.
       def cap_height: (Size screen_size) -> Integer
 
       # Wraps one message to `width` columns, capped at {MAX_ROWS_PER_MESSAGE}
@@ -18304,6 +18312,10 @@ module Tuile
 
     # _@param_ `value` — see {#right_border?}.
     def right_border=: (bool value) -> void
+
+    # The columns and rows the border takes from the box — what a component
+    # sizing itself from its content adds to it.
+    def border_size: () -> Size
 
     # The interior the content fills, in the component's own coordinates.
     # 

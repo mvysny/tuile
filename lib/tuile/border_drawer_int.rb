@@ -49,12 +49,17 @@ module Tuile
       @_right_border = value
     end
 
+    # The columns and rows the border takes from the box — what a component
+    # sizing itself from its content adds to it.
+    # @return [Size]
+    def border_size = Size.new(@_right_border ? 2 : 1, 2)
+
     # The interior the content fills, in the component's own coordinates.
     # @param size [Size] the component's size.
     # @return [Rect] may be {Rect#empty? empty}, for a box too small to have an
     #   inside.
     def content_rect(size)
-      Rect.new(1, 1, size.width - 1 - (@_right_border ? 1 : 0), size.height - 2)
+      Rect.new(1, 1, size.width - border_size.width, size.height - border_size.height)
     end
 
     # Paints the box at `(0, 0)`, through {Canvas#set_text} / {Canvas#set_char} so
