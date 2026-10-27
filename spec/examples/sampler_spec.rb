@@ -235,6 +235,41 @@ module Tuile
       assert_empty Screen.instance.popups
     end
 
+    # The Dialog subclass pane: the field takes focus on open, Enter reaches
+    # the subclass's own handle_key?, and ESC still closes through super.
+    describe "the Dialog subclass pane" do
+      def open_rename(sampler)
+        sampler.select_entry(SamplerExample::Sampler::ENTRIES.find { _1.caption == "Dialog subclass" })
+        Testing.get(Component::Button, in: sampler.demo_panel).handle_key?(Keys::ENTER)
+        Screen.instance.popups.last
+      end
+
+      def status_text(sampler)
+        Screen.instance.repaint
+        Screen.instance.buffer.region_text(sampler.demo_panel.absolute_rect).join
+      end
+
+      it "renames on Enter" do
+        sampler = build_sampler
+        dialog = open_rename(sampler)
+        assert_kind_of SamplerExample::RenameDialog, dialog
+        Testing.set_value(Testing.get(Component::TextField, in: dialog), "notes.md")
+        Screen.instance.key(Keys::ENTER)
+
+        assert_empty Screen.instance.popups
+        assert_includes status_text(sampler), "File: notes.md"
+      end
+
+      it "closes on ESC without renaming" do
+        sampler = build_sampler
+        open_rename(sampler)
+        Screen.instance.key(Keys::ESC)
+
+        assert_empty Screen.instance.popups
+        assert_includes status_text(sampler), "File: draft.txt"
+      end
+    end
+
     # The Visibility pane is the worked example of `visible=`: a conditional
     # form. Driven through Testing on purpose — the locator never returns a
     # hidden component, so the count *is* the assertion a user would make.

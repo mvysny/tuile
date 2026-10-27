@@ -7,7 +7,7 @@ module Tuile
     # beneath it, and closes on ESC or `q` (unless {#close_on_key?} is false).
     #
     #   list = Component::List.new.tap { _1.lines = lines }
-    #   Component::Dialog.new("Help", content: list).open
+    #   Component::Dialog.new("Help", content: list, footer_text: "q to close").open
     #
     #   ┌Help──────────────┐
     #   │first line        │
@@ -66,18 +66,20 @@ module Tuile
       #   applied top-down. A {Fraction} is resolved against the screen each
       #   layout pass; a {Size} is clamped to the screen. Defaults to
       #   {Fraction::HALF}.
+      # @param footer_text [String, StyledString, nil] see {#footer_text=}.
       # @param close_on_outside_click [Boolean] true (default) to dismiss on a
       #   left click that misses this dialog. See
       #   {Overlay#close_on_outside_click?}.
       # @param close_on_key [Boolean] true (default) to dismiss on ESC and `q`.
       #   See {#close_on_key?}.
-      def initialize(caption = nil, content: nil, declared_size: Fraction::HALF, close_on_outside_click: true,
-                     close_on_key: true)
+      def initialize(caption = nil, content: nil, declared_size: Fraction::HALF, footer_text: nil,
+                     close_on_outside_click: true, close_on_key: true)
         @_border_drawer = BorderDrawerInt.new
         super(content: content, close_on_outside_click: close_on_outside_click)
         @_declared_size = declared_size
         @_close_on_key = close_on_key
         self.caption = caption
+        self.footer_text = footer_text
       end
 
       # Whether ESC and `q` close this dialog (default true). False makes the

@@ -6252,7 +6252,7 @@ module Tuile
     # beneath it, and closes on ESC or `q` (unless {#close_on_key?} is false).
     # 
     #   list = Component::List.new.tap { _1.lines = lines }
-    #   Component::Dialog.new("Help", content: list).open
+    #   Component::Dialog.new("Help", content: list, footer_text: "q to close").open
     # 
     #   ┌Help──────────────┐
     #   │first line        │
@@ -6308,6 +6308,8 @@ module Tuile
       # 
       # _@param_ `declared_size` — the dialog's box, border included, applied top-down. A {Fraction} is resolved against the screen each layout pass; a {Size} is clamped to the screen. Defaults to {Fraction::HALF}.
       # 
+      # _@param_ `footer_text` — see {#footer_text=}.
+      # 
       # _@param_ `close_on_outside_click` — true (default) to dismiss on a left click that misses this dialog. See {Overlay#close_on_outside_click?}.
       # 
       # _@param_ `close_on_key` — true (default) to dismiss on ESC and `q`. See {#close_on_key?}.
@@ -6315,6 +6317,7 @@ module Tuile
                         ?(String | StyledString)? caption,
                         ?content: Component?,
                         ?declared_size: (Size | Fraction),
+                        ?footer_text: (String | StyledString)?,
                         ?close_on_outside_click: bool,
                         ?close_on_key: bool
                       ) -> void

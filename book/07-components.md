@@ -1700,9 +1700,8 @@ a bordered, captioned box around any component, with a lifecycle (`open` /
 
 ```ruby
 body = Component::TextView.new.tap { _1.text = help_text }
-dialog = Component::Dialog.new("Help", content: body)
-dialog.footer_text = "q/ESC to close"   # key hints, in the bottom border
-dialog.open
+# footer_text: key hints, embedded in the bottom border
+Component::Dialog.new("Help", content: body, footer_text: "q/ESC to close").open
 ```
 
 Crucially, and per chapter 3, **it does not size itself to its content**:
@@ -1712,7 +1711,9 @@ content then fills the inside of the border, so use content that can cope
 with overflow — a TextView or TextArea that scrolls, not a bare Label that
 only truncates. A dialog of your own — its own keys, its own result —
 subclasses `Dialog` and passes its size up:
-`super(caption, content: body, declared_size: Fraction.new(0.7, 0.6))`.
+`super(caption, content: body, declared_size: Fraction.new(0.7, 0.6))`. The
+sampler's `RenameDialog` is the worked example: it owns its field, claims
+Enter, fires `on_rename`, and hands every other key to `super`.
 
 A dialog is **always modal**: centered, it grabs focus, eats keys, and
 blocks clicks beneath it — that's what makes an open dialog trap Tab and

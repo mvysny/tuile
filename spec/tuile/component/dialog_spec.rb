@@ -178,6 +178,10 @@ module Tuile
       assert Component::Dialog.new.footer_text.empty?
     end
 
+    it "is taken by the constructor" do
+      assert_equal StyledString.plain("q to close"), Component::Dialog.new(footer_text: "q to close").footer_text
+    end
+
     it "coerces a String to a StyledString" do
       w = Component::Dialog.new
       w.footer_text = "gpt-4"

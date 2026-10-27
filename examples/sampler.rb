@@ -472,6 +472,52 @@ module SamplerExample
     end
   end
 
+  # An app's own dialog: it *is* a rename dialog, so it subclasses
+  # {Tuile::Component::Dialog} and owns its field, its Enter key and its
+  # result, handing its caption, body and size to `super`:
+  #
+  #   RenameDialog.new("draft.txt").tap { |d| d.on_rename { rename_to(_1.name) } }.open
+  #
+  #   ┌Rename──────────────────────────────┐
+  #   │ New name:                          │
+  #   │ draft.txt                          │
+  #   └Enter to rename · ESC to cancel─────┘
+  class RenameDialog < Tuile::Component::Dialog
+    # What `on_rename` fires.
+    RenameEvent = Data.define(:source, :name) { include Tuile::Event }
+
+    # @!method on_rename
+    #   Fired with the new name after Enter closed the dialog; ESC and an
+    #   outside click close it without firing.
+    #   @return [Tuile::Listeners]
+    listener :on_rename
+
+    # @param name [String] the current name, pre-filled.
+    def initialize(name)
+      @field = Tuile::Component::TextField.new
+      @field.value = name
+      # A field's first ESC only blurs it; here the field is the whole dialog,
+      # so ESC passes straight on to `super` and cancels, as the footer says.
+      @field.escape_clears_focus = false
+      body = Tuile::Component::Layout::Vertical.new(padding: Tuile::Component::Layout::Insets[left: 1, right: 1])
+      body.add(Tuile::Component::Label.new("New name:"), Tuile::Component::Layout::Fixed[1])
+      body.add(@field, Tuile::Component::Layout::Fixed[1])
+      super("Rename", content: body, declared_size: Tuile::Size.new(38, 4),
+                      footer_text: "Enter to rename · ESC to cancel")
+    end
+
+    # Enter renames. The field declines Enter (it has no `on_enter`) and ESC,
+    # so both bubble up to here; every other key goes to `super`, which is
+    # what keeps ESC closing the dialog.
+    def handle_key?(key)
+      return super unless key == Tuile::Keys::ENTER
+
+      close
+      on_rename.fire(RenameEvent.new(source: self, name: @field.value))
+      true
+    end
+  end
+
   # Top-level sampler component: a shell row across the top — a
   # {Tuile::Component::MenuBar} of the demos, grouped, and a
   # {Tuile::Component::ComboBox} jump box at its right end — over one demo
@@ -587,6 +633,7 @@ module SamplerExample
       Entry.new("Button", :build_buttons, "b"),
       Menu.new("Overlay", "o", [
                  Entry.new("Dialog", :build_dialog_launcher, "p"),
+                 Entry.new("Dialog subclass", :build_rename_launcher, "r"),
                  Entry.new("Notification", :build_notification_launcher, "n"),
                  Entry.new("ConfirmDialog", :build_confirm_launcher, "c"),
                  Entry.new("InfoDialog", :build_info_launcher, "i"),
@@ -2024,9 +2071,28 @@ module SamplerExample
       ) do
         list = Tuile::Component::List.new
         list.lines = ["Hello", "from", "a Dialog!"]
-        dialog = Tuile::Component::Dialog.new("Dialog", content: list)
-        dialog.footer_text = "ESC to close"
+        Tuile::Component::Dialog.new("Dialog", content: list, footer_text: "ESC to close").open
+      end
+    end
+
+    def build_rename_launcher
+      name = "draft.txt"
+      status = Tuile::Component::Label.new("File: #{name}")
+      button = Tuile::Component::Button.new("Rename…") do
+        dialog = RenameDialog.new(name)
+        dialog.on_rename do |e|
+          name = e.name
+          status.text = "File: #{name}"
+        end
         dialog.open
+      end
+      label = Tuile::Component::Label.new
+      label.text = "An app's own dialog subclasses Dialog: RenameDialog owns its field, claims\n" \
+                   "Enter and fires on_rename, and passes ESC on to super, which closes it."
+      form do |f|
+        f.add(label, Fixed[2])
+        f.add(button, Fixed[1], cross: Fixed[button_width(button)])
+        f.add(status, Fixed[1])
       end
     end
 
