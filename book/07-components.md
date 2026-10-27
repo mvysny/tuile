@@ -1710,8 +1710,11 @@ half the screen, re-resolved on every resize) or an absolute `Size`. The
 content then fills the inside of the border, so use content that can cope
 with overflow — a TextView or TextArea that scrolls, not a bare Label that
 only truncates. A dialog of your own — its own keys, its own result —
-subclasses `Dialog` and passes its size up:
-`super(caption, content: body, declared_size: Fraction.new(0.7, 0.6))`. The
+subclasses `Dialog`, passes its chrome up first —
+`super(caption, declared_size: Fraction.new(0.7, 0.6))` — then sets its
+ivars, builds the widgets that read them, and ends with `self.content = body`.
+`content:` is for the anonymous one-liner above; passed to `super`, it would
+make the subclass build its widgets before its own ivars exist. The
 sampler's `RenameDialog` is the worked example: it owns its field, claims
 Enter, fires `on_rename`, and hands every other key to `super`.
 

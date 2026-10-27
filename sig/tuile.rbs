@@ -6259,14 +6259,19 @@ module Tuile
     #   └q to close────────┘   ← footer_text, optional
     # 
     # A dialog that is a kind of its own — its keys, its buttons, its result —
-    # subclasses it and passes its size up:
+    # subclasses it, passes its chrome up, and sets its content last:
     # 
     #   class CpuFlagsDialog < Component::Dialog
     #     def initialize(flags)
-    #       body = Component::TextView.new.tap { _1.text = flags.join(" ") }
-    #       super("CPU flags", content: body, declared_size: Fraction.new(0.7, 0.7))
+    #       super("CPU flags", declared_size: Fraction.new(0.7, 0.7))
+    #       @flags = flags
+    #       self.content = Component::TextView.new.tap { _1.text = @flags.join(" ") }
     #     end
     #   end
+    # 
+    # `content:` is for the anonymous one-liner above: passed up from a
+    # subclass, it forces the widgets to be built before `super`, ahead of the
+    # ivars they read.
     # 
     # For a floating layer that does *not* take focus or capture input — an
     # autocomplete list anchored to a field, a toast — use {Component::Overlay}

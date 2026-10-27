@@ -474,7 +474,8 @@ module SamplerExample
 
   # An app's own dialog: it *is* a rename dialog, so it subclasses
   # {Tuile::Component::Dialog} and owns its field, its Enter key and its
-  # result, handing its caption, body and size to `super`:
+  # result, handing its caption, size and footer to `super` and setting its
+  # body last:
   #
   #   RenameDialog.new("draft.txt").tap { |d| d.on_rename { rename_to(_1.name) } }.open
   #
@@ -494,6 +495,7 @@ module SamplerExample
 
     # @param name [String] the current name, pre-filled.
     def initialize(name)
+      super("Rename", declared_size: Tuile::Size.new(38, 4), footer_text: "Enter to rename · ESC to cancel")
       @field = Tuile::Component::TextField.new
       @field.value = name
       # A field's first ESC only blurs it; here the field is the whole dialog,
@@ -502,8 +504,7 @@ module SamplerExample
       body = Tuile::Component::Layout::Vertical.new(padding: Tuile::Component::Layout::Insets[left: 1, right: 1])
       body.add(Tuile::Component::Label.new("New name:"), Tuile::Component::Layout::Fixed[1])
       body.add(@field, Tuile::Component::Layout::Fixed[1])
-      super("Rename", content: body, declared_size: Tuile::Size.new(38, 4),
-                      footer_text: "Enter to rename · ESC to cancel")
+      self.content = body
     end
 
     # Enter renames. The field declines Enter (it has no `on_enter`) and ESC,
