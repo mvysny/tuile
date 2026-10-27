@@ -1,18 +1,19 @@
 # Panel and Dialog — `Window` becomes `Panel`, `Popup` becomes a bordered `Dialog`
 
 **Status:** owner-decided in outline (2026-10-26), reframed by the owner (2026-10-27): the root
-cause is a hierarchy that encodes appearance, and the renames follow from fixing that. Not started.
-Wait until `bottom-up-layout` merges so the rename doesn't get mixed into its diff. **Scope: the component hierarchy only.** A configurable
+cause is a hierarchy that encodes appearance, and the renames follow from fixing that. Every open
+question was answered on 2026-10-27. Not started: wait until `bottom-up-layout` merges so the rename
+doesn't get mixed into its diff. **Scope: the component hierarchy only.** A configurable
 look-and-feel is v2 (`look-and-feel.md`), and nothing here is designed for it.
 
 **Problem:** the component hierarchy answers two questions at once, *what a component is* and *how
 it looks*, and the second keeps winning. `Window` is the bordered, captioned container. Four classes
 that are really dialogs (`ConfirmWindow`, `InfoWindow`, `PickerWindow`, `LogWindow`) extend it to
-get its border. Then each grows an `open_in_popup` or a private `MeasuredPopup` to become the dialog
-it was all along. `Notification` doesn't extend `Window`, but it holds one (`notification.rb:123`)
-for the same reason: a component in its subtree whose only job is to paint a frame. So `Window` is
-a class that is never a window. Tiled, it's a pane. Wrapped, it's a dialog. Inside a notification,
-it's a frame.
+get its border. Then each needs a `Popup` around it to become the dialog it was all along: an
+`open_in_popup`, a private `MeasuredPopup`, or (for `LogWindow`) one the app writes. `Notification`
+doesn't extend `Window`, but it holds one (`notification.rb:123`) for the same reason: a component
+in its subtree whose only job is to paint a border. So `Window` is a class that is never a window.
+Tiled, it's a pane. Wrapped, it's a dialog. Inside a notification, it's a border.
 
 The names are the visible symptom. `Window` is usually tiled (`file_commander`'s two panes,
 `sampler`, `hello_world`) and floats only when a `Popup` wraps it. `Popup` is a centered, modal,
@@ -78,7 +79,7 @@ Neither virtui nor pikuri-tui tiles a `Window` any more. Their redesign moved pa
 nothing"). What's left is always half of a pair, a `Window` subclass plus the `Popup` that wraps it:
 
 - virtui: `CpuFlagsWindow`, `HealthWindow`, `VMInfoWindow` and `DiskResizeWindow` each hand-roll
-  `Popup.new(content: new(...), declared_size: SIZE).open`, and `ProgressWindow` adds a private
+  `Popup.new(content: new(...), declared_size: ...).open`, and `ProgressWindow` adds a private
   `MeasuredPopup`.
 - pikuri-tui: `GitDiffPopup` and `Shared::Log::Popup` exist only to wrap a long-lived
   `GitDiffWindow` / `LogWindow`, and `LeaderMenu::CancelPopup` wraps a `PickerWindow`.
@@ -104,6 +105,13 @@ it gets no CHANGELOG line and no README row, and it isn't in `component_contract
 because it isn't a component. It may hold state (the caption, the scrollbar flag, whatever is
 convenient); its API is deliberately not settled, because the v2 look-and-feel redesigns it anyway.
 
+It is a plain class, not a component, and owns **both the ink and the insets**. It paints the
+border *and* answers the content rect inside it (`local_rect` shrunk by 1 on each side, 0 on the
+right while a scrollbar has that column). Each of the three components asks it for the content
+rect in its `relayout`, and nobody hard-codes a `1`. That's for the three components' sake: one
+answer for `relayout` and `repaint`. It is not groundwork for the v2 look-and-feel, which may reuse
+the helper or replace it.
+
 **The background stays `Window`'s** (owner, 2026-10-27), for `Dialog` and `Notification` too.
 None of the three sets `bg.default_color` or declares an `extent`. Each fills its rect, and
 `bg_color` tints the border and the body alike. Becoming an `Overlay` changes nothing. A `Dialog`'s
@@ -113,13 +121,6 @@ is not a well. The one requirement is on the helper: it paints through the canva
 (`set_text` / `set_char`, as `Window#repaint_border` does), so border cells inherit
 `bg.effective`. Merging also removes a choice: an app tinted either the `Popup` or its `Window`,
 and both are now `dialog.bg_color =`.
-
-It is a plain class, not a component, and owns **both the ink and the insets**. It
-paints the border *and* answers the content rect inside it (`local_rect` shrunk by 1 on each side,
-0 on the right while a scrollbar has that column). Each of the three components asks it for the
-content rect in its `relayout`, and nobody hard-codes a `1`. That's for the three components'
-sake: one answer for `relayout` and `repaint`. It is not groundwork for the v2
-look-and-feel, which may reuse the helper or replace it.
 
 ## What moves where
 
@@ -134,21 +135,26 @@ look-and-feel, which may reuse the helper or replace it.
   coupling).
 - **A subclass's size is its default `declared_size:`, passed to `super`** (owner, 2026-10-27),
   never an overridden `declared_size` reader. An overridden reader would quietly ignore
-  `declared_size=`, but a default passed to `super` leaves the setter working. virtui has three
-  shapes, and the merge settles two of them:
+  `declared_size=`, but a default passed to `super` leaves the setter working. virtui and Tuile size
+  their dialogs in three ways, and the first two are settled here:
   - A class constant: `CpuFlagsWindow`, `HealthWindow` and `VMInfoWindow` each have a `SIZE`
     `Fraction` and hand it to `Popup.new` in `.open`. It becomes `super(declared_size: SIZE)`.
   - Computed from data at construction: `DiskResizeWindow` derives its width from the volume path.
     It already has the volume in `initialize`, so it passes the result to `super` the same way.
   - Measured every layout pass: `ProgressWindow` and Tuile's `ConfirmWindow` each have a private
-    `MeasuredPopup` whose `declared_size_in(screen_size)` is overridden. That case belongs to
+    `MeasuredPopup` whose `declared_size_in(screen_size)` is overridden. That override ignores
+    `declared_size=` just as an overridden reader would, and fixing it belongs to
     `bottom-up-layout`, not to this idea. The merge only moves the override onto the dialog
     itself, so the `MeasuredPopup`s go away.
 - **`Notification`** stops building a `Window` (`notification.rb:123`) and paints the border with
   the helper. That is one fewer component in its subtree, and it stays a non-modal `Overlay`.
-- **`LogDialog` and `InfoDialog` each keep a class** (owner, 2026-10-27), though neither adds keys,
-  buttons or a result. `InfoDialog` takes domain data (`cop` rule 4: `InfoDialog.new("Help", text)`).
-  `LogDialog` is what an app too busy to tile a log needs. virtui found a tiled spot, so it uses
+- **`InfoDialog` and `LogDialog` each keep a class** (owner, 2026-10-27). Unlike `ConfirmDialog`
+  and `PickerDialog`, neither adds keys, buttons or a result. Each is a `Dialog` with a particular
+  body, but each still earns its class.
+- **`InfoDialog`** takes domain data (`cop` rule 4: `InfoDialog.new("Help", text)`). It loses
+  `InfoWindow`'s "usable tiled or as a popup" dual use. The tiled form is a `Panel` around a
+  `TextView` / `List` (`D_info_window_body`'s two presentations stay).
+- **`LogDialog`** is what an app too busy to tile a log needs. virtui found a tiled spot, so it uses
   `LogTextView` plus `LogTextView::IO` directly. pikuri-tui's three shells have none, so its log
   only ever shows as a dialog, and that's the case `LogDialog` serves:
   - It is built eagerly at boot, so `Pikuri.log_io` has a sink before the agent exists, and
@@ -158,8 +164,6 @@ look-and-feel, which may reuse the helper or replace it.
     `Popup`'s reopenability.
   - `Shared::Log::Popup` collapses into a `LogDialog` subclass whose only addition is a
     reset-the-error-count callback on `close`.
-- **`InfoDialog`** loses `InfoWindow`'s "usable tiled or as a popup" dual use. The tiled form is a
-  `Panel` around a `TextView` / `List` (`D_info_window_body`'s two presentations stay).
 - The popup stack keeps its name (`ScreenPane#popups`, `Screen#add_popup`): it holds every
   `Overlay`, and once no class is called `Popup`, "popup" is a fine everyday word for anything on
   the stack. `D_overlay` already declined renaming it.
