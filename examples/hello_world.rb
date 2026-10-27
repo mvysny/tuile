@@ -27,8 +27,8 @@ APP_THEME = Tuile::ThemeDef.new(
 screen = Tuile::Screen.new
 screen.theme_def = APP_THEME
 
-window = Tuile::Component::Panel.new("Tuile")
-window.content = Tuile::Component::Label.new("Hello, world!")
+panel = Tuile::Component::Panel.new("Tuile")
+panel.content = Tuile::Component::Label.new("Hello, world!")
 
 # The status line. `theme.fg` styles the *description* half of a "key what"
 # pair — dimmed, so the key is the element that pulls the eye — and bakes the
@@ -39,13 +39,13 @@ render_status = -> { status.text = "q #{screen.theme.fg(:hint, "quit")}" }
 render_status.call
 status.on_theme_changed << render_status
 
-# One row for the status line, everything else to the window.
+# One row for the status line, everything else to the panel.
 root = Tuile::Component::Layout::Vertical.new
-root.add(window, Tuile::Component::Layout::Expand[1])
+root.add(panel, Tuile::Component::Layout::Expand[1])
 root.add(status, Tuile::Component::Layout::Fixed[1])
 
 screen.content = root
-window.focus
+panel.focus
 begin
   screen.run_event_loop
 ensure

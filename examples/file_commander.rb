@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Tuile two-pane file commander. Two windows side by side, each showing a
+# Tuile two-pane file commander. Two panels side by side, each showing a
 # directory listing. Tab switches active pane; arrows / jk move the cursor;
 # Enter descends into a directory (no-op on a regular file); Backspace
 # ascends to the parent. The header label shows the active pane's cwd, and a
@@ -128,7 +128,7 @@ module FileCommanderExample
   end
 
   # Top-level layout. Header label on the first row, two side-by-side
-  # windows below. `relayout` re-runs on the initial mount and on every
+  # panels below. `relayout` re-runs on the initial mount and on every
   # WINCH, so the split tracks the terminal size automatically.
   class FileCommander < Tuile::Component::Layout
     def initialize(left_dir, right_dir)
@@ -136,19 +136,19 @@ module FileCommanderExample
       @header = Tuile::Component::Label.new
       add(@header)
 
-      @left_window = Tuile::Component::Panel.new
+      @left_panel = Tuile::Component::Panel.new
       @left_list = DirList.new(left_dir)
       @left_list.on_cwd_changed << method(:refresh_header)
-      @left_window.content = @left_list
-      @left_window.scrollbar = true
-      add(@left_window)
+      @left_panel.content = @left_list
+      @left_panel.scrollbar = true
+      add(@left_panel)
 
-      @right_window = Tuile::Component::Panel.new
+      @right_panel = Tuile::Component::Panel.new
       @right_list = DirList.new(right_dir)
       @right_list.on_cwd_changed << method(:refresh_header)
-      @right_window.content = @right_list
-      @right_window.scrollbar = true
-      add(@right_window)
+      @right_panel.content = @right_list
+      @right_panel.scrollbar = true
+      add(@right_panel)
 
       # The status line. Every key here works in both panes, so the row never
       # changes and nothing needs to watch focus — a status line is only worth
@@ -166,7 +166,7 @@ module FileCommanderExample
       add(@status)
     end
 
-    attr_reader :left_window
+    attr_reader :left_panel
 
     protected
 
@@ -179,8 +179,8 @@ module FileCommanderExample
       @status.rect = Tuile::Rect.new(0, height - 1, width, 1)
       body_height = [height - 2, 0].max
       half = width / 2
-      @left_window.rect = Tuile::Rect.new(0, 1, half, body_height)
-      @right_window.rect = Tuile::Rect.new(half, 1, width - half, body_height)
+      @left_panel.rect = Tuile::Rect.new(0, 1, half, body_height)
+      @right_panel.rect = Tuile::Rect.new(half, 1, width - half, body_height)
     end
 
     private
@@ -202,7 +202,7 @@ screen = Tuile::Screen.new
 screen.theme_def = FileCommanderExample::APP_THEME
 commander = FileCommanderExample::FileCommander.new(start_dir, start_dir)
 screen.content = commander
-commander.left_window.focus
+commander.left_panel.focus
 begin
   screen.run_event_loop
 ensure

@@ -27,7 +27,7 @@ module Tuile
     context "focused=" do
       before { screen.content = Component::Layout::Absolute.new }
 
-      def add_window
+      def add_panel
         w = Component::Panel.new
         w.content = Component::List.new
         screen.content.add(w)
@@ -45,20 +45,20 @@ module Tuile
       end
 
       it "sets focused to the given component" do
-        w = add_window
+        w = add_panel
         screen.focused = w
         assert_equal w.content, screen.focused
       end
 
       it "marks focused component as active" do
-        w = add_window
+        w = add_panel
         screen.focused = w
         assert w.active?
       end
 
       it "deactivates windows not in the focused path" do
-        w1 = add_window
-        w2 = add_window
+        w1 = add_panel
+        w2 = add_panel
         screen.focused = w1
         screen.focused = w2
         assert !w1.active?
@@ -66,7 +66,7 @@ module Tuile
       end
 
       it "with nil clears active on all components" do
-        w = add_window
+        w = add_panel
         screen.focused = w
         screen.focused = nil
         assert !w.active?
@@ -1162,7 +1162,7 @@ module Tuile
         screen.invalidated_clear
       end
 
-      def add_window
+      def add_panel
         w = Component::Panel.new
         w.content = Component::List.new
         screen.content.add(w)
@@ -1175,7 +1175,7 @@ module Tuile
       end
 
       it "calls repaint on each invalidated component" do
-        w = add_window
+        w = add_panel
         repainted = false
         w.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         screen.invalidate(w)
@@ -1184,14 +1184,14 @@ module Tuile
       end
 
       it "clears the invalidated set after repaint" do
-        w = add_window
+        w = add_panel
         screen.invalidate(w)
         screen.repaint
         assert !screen.invalidated?(w)
       end
 
       it "skips a component sitting under an empty-rect ancestor" do
-        w = add_window
+        w = add_panel
         repainted = false
         w.content.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         Testing.place(w, Rect.new(0, 0, 0, 0))
@@ -1218,7 +1218,7 @@ module Tuile
       # `D_visibility`: the flag rides the same ancestor walk as the empty rect,
       # one more term in the same AND.
       it "skips a hidden component" do
-        w = add_window
+        w = add_panel
         repainted = false
         w.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         w.visible = false
@@ -1228,7 +1228,7 @@ module Tuile
       end
 
       it "skips a component sitting under a hidden ancestor" do
-        w = add_window
+        w = add_panel
         repainted = false
         w.content.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         w.visible = false
@@ -1238,7 +1238,7 @@ module Tuile
       end
 
       it "repaints it again once shown" do
-        w = add_window
+        w = add_panel
         repainted = false
         w.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         w.visible = false
@@ -1252,7 +1252,7 @@ module Tuile
       end
 
       it "still repaints a component whose ancestors all have rects" do
-        w = add_window
+        w = add_panel
         repainted = false
         w.content.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         screen.invalidate(w.content)
@@ -1268,7 +1268,7 @@ module Tuile
       end
 
       it "repaints parent before child (sorted by depth)" do
-        w = add_window
+        w = add_panel
         order = []
         screen.content.define_singleton_method(:repaint) { |_canvas = nil| order << :parent }
         w.define_singleton_method(:repaint) { |_canvas = nil| order << :child }
@@ -1279,7 +1279,7 @@ module Tuile
       end
 
       it "also repaints open popups when tiled content is invalidated" do
-        w = add_window
+        w = add_panel
         popup = Component::Dialog.new
         screen.add_popup(popup)
         screen.invalidated_clear
@@ -1292,7 +1292,7 @@ module Tuile
       end
 
       it "does not repaint tiled content when only a popup is invalidated" do
-        w = add_window
+        w = add_panel
         popup = Component::Dialog.new
         screen.add_popup(popup)
         screen.invalidated_clear
@@ -1350,7 +1350,7 @@ module Tuile
         # their contents at depth 2. A tiled list at depth 3 would then sort *after*
         # popup.content and overdraw it, leaving the popup empty until the user
         # nudged the popup's cursor and triggered a fresh paint.
-        w = add_window
+        w = add_panel
         popup = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["option"] })
         screen.add_popup(popup)
         screen.invalidated_clear
@@ -1366,7 +1366,7 @@ module Tuile
       end
 
       it "hides the hardware cursor after repaint when no component owns it" do
-        w = add_window
+        w = add_panel
         screen.invalidate(w)
         screen.prints.clear
         screen.repaint
@@ -1374,7 +1374,7 @@ module Tuile
       end
 
       it "shows and positions the hardware cursor when a focused component supplies a cursor_position" do
-        w = add_window
+        w = add_panel
         w.content.define_singleton_method(:focusable?) { true }
         w.content.define_singleton_method(:cursor_position) { Point.new(7, 4) }
         screen.focused = w.content
@@ -1422,7 +1422,7 @@ module Tuile
       end
 
       it "prefers a cursor_position from a popup over tiled content" do
-        w = add_window
+        w = add_panel
         w.content.define_singleton_method(:focusable?) { true }
         w.content.define_singleton_method(:cursor_position) { Point.new(1, 1) }
         screen.focused = w.content
@@ -1443,7 +1443,7 @@ module Tuile
       # a cell nothing can show, so it is hidden rather than moved. Universal
       # clipping is what makes this reachable with nothing declared anywhere.
       it "hides a cursor the component's own rect cannot show" do
-        w = add_window
+        w = add_panel
         w.content.define_singleton_method(:focusable?) { true }
         w.content.define_singleton_method(:cursor_position) { Point.new(999, 999) }
         screen.focused = w.content
@@ -1456,7 +1456,7 @@ module Tuile
         # frame state, so teardown writes during crash unwind (mouse tracking
         # stop, cursor show, the host's screen.close#clear) still reach the
         # terminal instead of leaving it mid-paint with the trace on top.
-        w = add_window
+        w = add_panel
         w.define_singleton_method(:repaint) { |_canvas = nil| raise "boom" }
         screen.invalidate(w)
         assert_raises(RuntimeError) { screen.repaint }

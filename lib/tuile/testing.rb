@@ -103,9 +103,9 @@ module Tuile
       # at idle, and returns. It is the rest of the loop turn a spec skips by
       # calling components directly:
       #
-      #   log_window.log("saved")   # queued, as LogDialog#log always is
+      #   log_dialog.log("saved")   # queued, as LogDialog#log always is
       #   Testing.loop
-      #   assert_equal "saved", log_window.content.text.to_s
+      #   assert_equal "saved", log_dialog.content.text.to_s
       #
       # Every other function here, and every {FakeScreen} gesture, already calls
       # it on the way in, so a spec needs it only after a direct call, or after
@@ -160,7 +160,7 @@ module Tuile
       # The one component matching the spec — {.find} with `count: 1`, so it
       # raises rather than returning nil, and raises on an ambiguous spec too.
       #
-      #   get(Component::ComboBox, in: sampler.demo_window)
+      #   get(Component::ComboBox, in: sampler.demo_panel)
       #
       # @param klass [Module] see {.find}.
       # @param in [Component, nil] see {.find}.

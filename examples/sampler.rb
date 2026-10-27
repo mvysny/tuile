@@ -4,7 +4,7 @@
 # Tuile sampler. Demo app showcasing the components shipped with the framework.
 # A menu bar across the top groups the demos the way the README's Components
 # table does; the combo box at its right end jumps to one by name. Either way
-# the demo loads into the window below, and focus returns to the menu bar.
+# the demo loads into the panel below, and focus returns to the menu bar.
 #
 # Run from the gem root:
 #   bundle exec ruby -Ilib examples/sampler.rb
@@ -222,7 +222,7 @@ module SamplerExample
     TRAIL = "."
 
     # Which ink each button drags — `nil` erases. The middle button is absent:
-    # a press this component declines bubbles on to the window around it.
+    # a press this component declines bubbles on to the panel around it.
     # @return [Hash{Symbol => String, nil}]
     DRAG_INK = { left: STROKE, right: nil }.freeze
 
@@ -299,7 +299,7 @@ module SamplerExample
     # @return [Boolean]
     def handle_mouse_down?(event)
       unless DRAG_INK.key?(event.button)
-        report("down #{event.button} at #{event.x},#{event.y} — declined, bubbles to the window")
+        report("down #{event.button} at #{event.x},#{event.y} — declined, bubbles to the panel")
         return false
       end
 
@@ -475,7 +475,7 @@ module SamplerExample
   # Top-level sampler component: a shell row across the top — a
   # {Tuile::Component::MenuBar} of the demos, grouped, and a
   # {Tuile::Component::ComboBox} jump box at its right end — over one demo
-  # window filling the rest. Each load rebuilds the demo from scratch, so it
+  # panel filling the rest. Each load rebuilds the demo from scratch, so it
   # always starts in a clean state.
   #
   # The two navigators are two *inputs to one selection*, not two selections:
@@ -486,15 +486,15 @@ module SamplerExample
       super()
       @menu_bar = build_shell_bar
       @jump_box = build_jump_box
-      @demo_window = Tuile::Component::Panel.new
+      @demo_panel = Tuile::Component::Panel.new
       @status = Tuile::Component::Label.new
       add(shell_row, Fixed[1])
-      add(@demo_window, Expand[1])
+      add(@demo_panel, Expand[1])
       add(@status, Fixed[1])
       select_entry(ENTRIES.first)
     end
 
-    attr_reader :demo_window, :menu_bar, :jump_box
+    attr_reader :demo_panel, :menu_bar, :jump_box
 
     # The bottom row. Tuile draws no status bar and reserves no row
     # (`D_status_bar`) — this one is the sampler's own, kept current by
@@ -509,7 +509,7 @@ module SamplerExample
     end
 
     # Chrome for a demo pane: a blank row top and bottom, two columns either
-    # side, so content doesn't run flush to the window border.
+    # side, so content doesn't run flush to the panel border.
     FORM_PADDING = Insets[top: 1, bottom: 1, left: 2, right: 2]
 
     # Shows `entry`'s demo. **The jump box is the selection model** — every
@@ -661,8 +661,8 @@ module SamplerExample
       # demos or it would linger over the next one.
       @slash_overlay.close if @slash_overlay&.open?
       @slash_overlay = nil
-      @demo_window.caption = entry.caption
-      @demo_window.content = send(entry.builder)
+      @demo_panel.caption = entry.caption
+      @demo_panel.content = send(entry.builder)
       # Focus goes home to the strip after every load, whichever navigator ran:
       # a no-op on the menu path (the bar holds focus through the cascade), and
       # what pulls focus back out of the jump box after a commit. Guarded
@@ -1291,7 +1291,7 @@ module SamplerExample
       prompt.text = "Read-only viewer for prose. Word-wraps to width; ANSI formatting passes through.\n" \
                     "Tab here, then: ↑↓ / jk scroll a line; PgUp/PgDn a page; Ctrl+U/D half a page; " \
                     "Home/End / g/G jump to the edges."
-      window = Tuile::Component::Panel.new("Excerpt")
+      panel = Tuile::Component::Panel.new("Excerpt")
       view = Tuile::Component::TextView.new
       view.text = "#{Rainbow("Tuile").green} is a small component-oriented terminal-UI framework built on top of " \
                   "the TTY toolkit. Apps build a tree of Components under a singleton Screen; the screen runs " \
@@ -1308,11 +1308,11 @@ module SamplerExample
                   "marshals back via screen.event_queue.submit { … }. Most UI methods check the lock and " \
                   "raise if you violate the contract; FakeScreen short-circuits the check so tests can mutate " \
                   "freely."
-      window.content = view
-      window.scrollbar = true
+      panel.content = view
+      panel.scrollbar = true
       form do |f|
         f.add(prompt, Fixed[2])
-        f.add(window, Expand[1])
+        f.add(panel, Expand[1])
       end
     end
 
@@ -1875,7 +1875,7 @@ module SamplerExample
                     "The underlined letters are mnemonics: press f then q for File ▸ Quit. Each level has\n" \
                     "its own set, so 'o' is File ▸ Open and also Edit ▸ Copy — try f,o then e,o.\n" \
                     "A letter that matches nothing in the open menu just beeps; it won't switch menus.\n" \
-                    "The panels overdraw this window and the nav list — they are overlays, not children.\n" \
+                    "The panels overdraw this panel and the nav list — they are overlays, not children.\n" \
                     "\"About\" is a top-level leaf, so it acts as a button; \"Inert\" does nothing at all."
 
       form do |f|
@@ -2146,7 +2146,7 @@ module SamplerExample
     # --- Helpers -----------------------------------------------------------
 
     # The standard demo shell: children stacked with a blank row between them,
-    # inset from the window border. Every constraint below reads unqualified —
+    # inset from the panel border. Every constraint below reads unqualified —
     # `Fixed`, `Expand`, `Insets` all live on {Tuile::Component::Layout}, which
     # is an ancestor of this class.
     #
