@@ -299,7 +299,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **The deleted bottom-up channel must not return under a new name.** Re-grow rule: measurement may
   come back only as an *optional, read-only, caller-side query*, never as a channel the framework
   consults. That query is `measure_rows(width)` — rows only, asked only by a parent told to ask
-  (`Dialog::ShrinkToContent`, `Scroller`'s `:content`), never by `Screen` or `LayoutPass`. A box a component *asks for* is spelled
+  (`Dialog::ShrinkToContent`, a `Scroller` not told a count), never by `Screen` or `LayoutPass`. A box a component *asks for* is spelled
   `declared_size`, not `size`. See `D_declared_size`.
 - **The rows notice, `invalidate_rows`, is the one exception, and stays bounded** — fired from a
   mutation of the answer's inputs, never from a rect change or from being asked, carrying no value;

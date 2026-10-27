@@ -7,15 +7,16 @@ module Tuile
     #
     #   form = Component::FormLayout.new
     #   # …nine fields, 27 rows of them…
-    #   panel.content = Component::Scroller.new(form, content_rows: 27)
+    #   panel.content = Component::Scroller.new(form)
     #
-    # **Say how tall the content is, or tell the scroller to ask.** The child
-    # is handed {#content_rows} rows or the viewport's height, whichever is more
-    # — a rect taller than this component's, whose `top` goes negative as you
-    # scroll. A count you assign is yours to keep current; `:content` asks the
-    # content's {Component#measure_rows} instead, and follows it as it grows:
+    # **It asks the content how tall it is**, through {Component#measure_rows},
+    # and follows the answer as the content grows. The child is handed that
+    # many rows or the viewport's height, whichever is more — a rect taller
+    # than this component's, whose `top` goes negative as you scroll. Content
+    # with no answer of its own (a {Layout::Absolute}) is told a count instead,
+    # which is then yours to keep current:
     #
-    #   Component::Scroller.new(form, content_rows: :content)
+    #   Component::Scroller.new(canvas, content_rows: 40)
     #
     # Four things scroll it: the wheel, the bar's handle (dragging it is
     # dead under `run_event_loop(capture_mouse: :clicks)`; pressing the track
@@ -36,8 +37,9 @@ module Tuile
 
       # @param content [Component, nil] the content child, also settable later
       #   through {HasContent#content=}.
-      # @param content_rows [Integer, Symbol] see {#content_rows=}.
-      def initialize(content = nil, content_rows: 0)
+      # @param content_rows [Integer, Symbol] `:content` (the default) or a
+      #   count; see {#content_rows=}.
+      def initialize(content = nil, content_rows: :content)
         super()
         @_content = nil
         @_scroll_top_row = 0
@@ -52,7 +54,8 @@ module Tuile
       # @return [Integer] the content row painted at the top of the viewport.
       def scroll_top_row = @_scroll_top_row
 
-      # @return [Integer, Symbol] the count you assigned, or `:content`.
+      # @return [Integer, Symbol] `:content` (the default), or the count you
+      #   assigned.
       def content_rows = @_content_rows
 
       # @return [Symbol] `:visible` (the default), `:gone`, or `:auto` — shown
@@ -63,11 +66,11 @@ module Tuile
       #   the bar taking a column rather than a row.
       def viewport_rows = rect.height
 
-      # How many rows the content occupies: a count you keep current, or
-      # `:content` to ask the content on every pass.
+      # How many rows the content occupies: `:content` (the default) asks the
+      # content on every pass, a count is yours to keep current.
       #
-      #   scroller.content_rows = 27         # told: re-assign as the form grows
       #   scroller.content_rows = :content   # asked: form.measure_rows(inner width)
+      #   scroller.content_rows = 27         # told: re-assign as the form grows
       #
       # Under `:content` the scroller asks at the width it hands the content,
       # re-asks when the content's answer changes ({Component#invalidate_rows}),
@@ -176,8 +179,8 @@ module Tuile
 
       # @return [Array<String>]
       def inspect_details
-        asked = @_content_rows == :content ? " (:content)" : ""
-        super + ["#{scroll_top_row}/#{total_rows} rows#{asked}"]
+        told = @_content_rows == :content ? "" : " (told)"
+        super + ["#{scroll_top_row}/#{total_rows} rows#{told}"]
       end
 
       protected

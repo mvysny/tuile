@@ -2,8 +2,8 @@
 
 **Status:** stages 1–4 shipped: `Component#measure_rows`, `Dialog::ShrinkToContent[box]`, an
 answer from every component and the rows notice (`invalidate_rows` / `handle_child_rows_changed`),
-argued in `D_declared_size`, which also holds the roads they rejected; and
-`Scroller#content_rows = :content`, argued in `D_scroller`. Stage 5 (`Auto`) is still a
+argued in `D_declared_size`, which also holds the roads they rejected; and `Scroller` asking by
+default (`content_rows = :content`), argued in `D_scroller`. Stage 5 (`Auto`) is still a
 brainstorm. Takes in what was `content-height.md` (the Scroller half) and #73 (wrapped rows in a
 scrolled stack). Every step past stage 1 amends a `D_` and the owner decides. Every road here adds
 a new value next to what already exists, so waiting breaks nothing.
@@ -283,8 +283,8 @@ one-hop arithmetic.
    `constant_rows` with a reason), and a container whose answer moves when a stubbed child's does
    passes that child's notice on. Each consumer adds its own row to the hook when it lands
    (`Scroller` at 4, `Auto` at 5).
-4. **Shipped.** `Scroller#content_rows = :content`, opt-in (the default stays a told `0`, since
-   only a parent told to ask asks), argued in `D_scroller`. An `:auto` bar is decided from the
+4. **Shipped.** `Scroller#content_rows = :content`, the default (owner: constructing a scroller is
+   the telling), argued in `D_scroller`. An `:auto` bar is decided from the
    answer at the full width, so showing it can't flip it, and `:content` needed no refusal of
    `:auto`. Every pass under `:content` clamps the scroll to the measured rows. The sampler's
    scrolled form asks.

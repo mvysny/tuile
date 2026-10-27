@@ -113,8 +113,8 @@ module Tuile
     #   dialog = Dialog.new("Notes", content: view, declared_size: Dialog::ShrinkToContent[Fraction::HALF])
     #   # each pass on a 160x50 screen: view.measure_rows(78) => 7, so 80x9 with the border
     #
-    # Asked by a parent that was *told* to ask ({Dialog::ShrinkToContent},
-    # {Scroller#content_rows=} `:content`), inside its own pass, and by nothing
+    # Asked by a parent whose job needs it ({Dialog::ShrinkToContent}, a
+    # {Scroller} not told a count), inside its own pass, and by nothing
     # else — the re-grow rule's caller-side query (`D_declared_size`).
     # **An override owes {#invalidate_rows} from every
     # mutation that can change its answer**, the way a paint input owes

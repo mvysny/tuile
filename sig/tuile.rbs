@@ -3917,8 +3917,8 @@ module Tuile
     #   dialog = Dialog.new("Notes", content: view, declared_size: Dialog::ShrinkToContent[Fraction::HALF])
     #   # each pass on a 160x50 screen: view.measure_rows(78) => 7, so 80x9 with the border
     # 
-    # Asked by a parent that was *told* to ask ({Dialog::ShrinkToContent},
-    # {Scroller#content_rows=} `:content`), inside its own pass, and by nothing
+    # Asked by a parent whose job needs it ({Dialog::ShrinkToContent}, a
+    # {Scroller} not told a count), inside its own pass, and by nothing
     # else — the re-grow rule's caller-side query (`D_declared_size`).
     # **An override owes {#invalidate_rows} from every
     # mutation that can change its answer**, the way a paint input owes
@@ -8826,15 +8826,16 @@ module Tuile
     # 
     #   form = Component::FormLayout.new
     #   # …nine fields, 27 rows of them…
-    #   panel.content = Component::Scroller.new(form, content_rows: 27)
+    #   panel.content = Component::Scroller.new(form)
     # 
-    # **Say how tall the content is, or tell the scroller to ask.** The child
-    # is handed {#content_rows} rows or the viewport's height, whichever is more
-    # — a rect taller than this component's, whose `top` goes negative as you
-    # scroll. A count you assign is yours to keep current; `:content` asks the
-    # content's {Component#measure_rows} instead, and follows it as it grows:
+    # **It asks the content how tall it is**, through {Component#measure_rows},
+    # and follows the answer as the content grows. The child is handed that
+    # many rows or the viewport's height, whichever is more — a rect taller
+    # than this component's, whose `top` goes negative as you scroll. Content
+    # with no answer of its own (a {Layout::Absolute}) is told a count instead,
+    # which is then yours to keep current:
     # 
-    #   Component::Scroller.new(form, content_rows: :content)
+    #   Component::Scroller.new(canvas, content_rows: 40)
     # 
     # Four things scroll it: the wheel, the bar's handle (dragging it is
     # dead under `run_event_loop(capture_mouse: :clicks)`; pressing the track
@@ -8855,13 +8856,14 @@ module Tuile
 
       # _@param_ `content` — the content child, also settable later through {HasContent#content=}.
       # 
-      # _@param_ `content_rows` — see {#content_rows=}.
+      # _@param_ `content_rows` — `:content` (the default) or a count; see {#content_rows=}.
       def initialize: (?Component? content, ?content_rows: (Integer | Symbol)) -> void
 
       # _@return_ — the content row painted at the top of the viewport.
       def scroll_top_row: () -> Integer
 
-      # _@return_ — the count you assigned, or `:content`.
+      # _@return_ — `:content` (the default), or the count you
+      # assigned.
       def content_rows: () -> (Integer | Symbol)
 
       # _@return_ — `:visible` (the default), `:gone`, or `:auto` — shown
@@ -8872,11 +8874,11 @@ module Tuile
       # the bar taking a column rather than a row.
       def viewport_rows: () -> Integer
 
-      # How many rows the content occupies: a count you keep current, or
-      # `:content` to ask the content on every pass.
+      # How many rows the content occupies: `:content` (the default) asks the
+      # content on every pass, a count is yours to keep current.
       # 
-      #   scroller.content_rows = 27         # told: re-assign as the form grows
       #   scroller.content_rows = :content   # asked: form.measure_rows(inner width)
+      #   scroller.content_rows = 27         # told: re-assign as the form grows
       # 
       # Under `:content` the scroller asks at the width it hands the content,
       # re-asks when the content's answer changes ({Component#invalidate_rows}),

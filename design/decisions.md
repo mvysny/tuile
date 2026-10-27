@@ -3234,7 +3234,7 @@ a short message wants to be short, and without a query every app copied
 asymmetry a terminal has: **width comes down, rows come up.** Wrapping is the only
 coupling between the axes and it runs one way, so with the width handed down the
 0.9.0 circularity cannot form. It is asked only by a parent that was *told* to ask
-(`Dialog::ShrinkToContent`, `Scroller`'s `:content`), inside that parent's own pass.
+(`Dialog::ShrinkToContent`, a `Scroller` not told a count), inside that parent's own pass.
 `Screen` and `LayoutPass` never learn the word, which keeps it a pulled query rather
 than a channel. It is pure
 and uncached, and `nil` means "I fill what I'm handed", distinct from `0`. The asker
@@ -7285,7 +7285,7 @@ draws itself, so no clip reaches it: `Screen#cursor_position` answers `nil` when
 the caret falls outside what `clip_for` allows — including a caret outside the box
 the component was given at all.
 
-## D_scroller — Why is scrolling a container you compose, told how tall its content is unless told to ask?
+## D_scroller — Why is scrolling a container you compose, which asks how tall its content is unless told?
 
 {Tuile::Component::Scroller} is a one-child viewport: it gives its content a rect
 `content_rows` tall — taller than its own, with a negative `top` once scrolled —
@@ -7300,14 +7300,17 @@ out — a container computes rectangles in plain Ruby in its `rect=`
 invisible term into every one of those computations. Composed, `FormLayout` needs
 to know nothing, which is what retired the seed's "make the form scroll itself".
 
-**Why the count is told unless the app says to ask.** `content_rows = :content`
-asks the content's `measure_rows` at the width the scroller hands it, on every
-pass, and again on the content's rows notice (`D_declared_size`), so a field added
-to a form deep inside is reachable with no call from the app. It is opt-in, not the
-default, because the re-grow rule admits the query only for a parent *told* to ask.
-A told count stays for content with no answer of its own (an `Absolute`, a
-component that fills) and for a count cheaper to know than to measure; its
-supplier is the content's own arithmetic, a `FormLayout`'s summed `rows:`. The TUI
+**Why it asks unless told** (owner, 2026-10-27). `content_rows = :content`, the
+default, asks the content's `measure_rows` at the width the scroller hands it, on
+every pass, and again on the content's rows notice (`D_declared_size`), so a field
+added to a form deep inside is reachable with no call from the app. Constructing a
+scroller *is* the telling the re-grow rule asks for: you reach for one because you
+expect its content to scroll, and either you know the height and set it, or you
+don't and the question is the right default. A told count stays for content with
+no answer of its own (an `Absolute`, a component that fills) and for a count
+cheaper to know than to measure; its supplier is the content's own arithmetic. The
+first cut made asking opt-in and kept a told `0`, which made the stale count below
+every fresh scroller's starting state. The TUI
 toolkits with no measurement pass are told the same way (Terminal.Gui's
 `SetContentSize`, ratatui's `tui-scrollview`); the ones that ask have a layout pass
 to ask through (Swing's `Scrollable`, Textual's `virtual_size`), which since

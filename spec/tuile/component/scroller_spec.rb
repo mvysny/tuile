@@ -80,6 +80,13 @@ module Tuile
 
       def bar(scroller) = Testing.get(Component::VerticalScrollBar, in: scroller)
 
+      it "is the default" do
+        assert_equal :content, Component::Scroller.new.content_rows
+        label = Component::Label.new(lines(12))
+        mount_at(Component::Scroller.new(label), Rect.new(0, 0, 10, 5))
+        assert_equal 12, label.rect.height
+      end
+
       it "is accepted by the constructor and the setter, and read back" do
         assert_equal :content, asking(Component::Label.new("a")).content_rows
         s = scroller
