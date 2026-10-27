@@ -294,7 +294,7 @@ class LoginForm < Tuile::Component::Layout::Vertical
 end
 ```
 
-### The three constraints
+### The constraints
 
 - **`Fixed[n]`** — exactly `n` cells, clamped to what's still unassigned.
 - **`Percent[n]`** — `n`% of the space *available*, measured after padding
@@ -302,10 +302,24 @@ end
   exactly instead of overflowing by the gap between them.
 - **`Expand[weight]`** — a share of whatever is left once the `Fixed` and
   `Percent` children have taken theirs, split in proportion to the weights.
+- **`Auto[]`** — a height of exactly the rows the child says it needs, at
+  the width the box gives it:
 
-That's the entire vocabulary, and the omission is the point: **there is no
-`Auto`.** Nothing asks a child how big it would like to be. This is the same
-rule as the rest of the chapter, wearing a friendlier face.
+  ```ruby
+  stack.add(Tuile::Component::Label.new(paragraph, wrap: true), Tuile::Component::Layout::Auto[])
+  ```
+
+  It is the one constraint that asks the child anything, and it asks only
+  for rows: the width is still the box's to hand down, so `Auto` works on a
+  `Vertical`'s main axis and a `Horizontal`'s `cross:`, and raises anywhere
+  it would need a width from the child. When the paragraph's text changes,
+  the label tells the box, which lays out again. A child with no answer
+  (one that fills, like a bare `Layout::Absolute`) gets no rows and a
+  warning in the log.
+
+That's the entire vocabulary. Nothing else asks a child how big it would
+like to be — the same rule as the rest of the chapter, wearing a friendlier
+face, with one question let back in.
 
 Two more knobs, both on the box rather than on each child: `spacing:` (blank
 cells between adjacent children) and `padding:` (an inset from the box's own
@@ -560,10 +574,11 @@ them:
   consults.** Sizing decisions live on the parent, expressed as
   arithmetic, not on the child as advertised constraints. The one
   question a child may be asked is `measure_rows(width)`, and only a
-  parent whose job needs it (`Dialog::ShrinkToContent`, a `Scroller`) asks
+  parent whose job needs it (`Dialog::ShrinkToContent`, a `Scroller`, a box
+  told `Auto`) asks it.
+- **No shrink-to-fit on width.** Rows may come up from a child; columns
+  never do. A slot is sized top-down, and content fills or scrolls within
   it.
-- **No shrink-to-fit / intrinsic sizing.** A slot is sized top-down;
-  content fills or scrolls within it.
 - **`Label` doesn't scroll.** It truncates long lines with an ellipsis by
   default — it's the component for one-liners — and `wrap: true` wraps
   them onto the rows it is given, cutting off whatever doesn't fit. For

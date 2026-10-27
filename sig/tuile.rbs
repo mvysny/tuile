@@ -6671,7 +6671,8 @@ module Tuile
     #   exactly that.
     # - {Box} / {Vertical} / {Horizontal} — you declare each child's extent as
     #   a {Fixed}, {Percent} or {Expand} constraint — a {Percent} optionally
-    #   bounded with {Percent#clamp} — and the layout does the arithmetic.
+    #   bounded with {Percent#clamp} — or a height as {Auto}, and the layout
+    #   does the arithmetic.
     # 
     # Children that fully tile the layout's rect repaint themselves and
     # cover everything; children that leave gaps (e.g. a form with widgets
@@ -6705,9 +6706,9 @@ module Tuile
       # read — see {ConstraintMap}. Built on first read; {#remove} prunes it.
       def constraints: () -> ConstraintMap
 
-      # What {Fixed}, {Percent}, {Expand} and {Clamp} have in common: each is a
-      # value a {Box} resolves against the space it has. The set is closed —
-      # {Box#add} accepts these four and nothing else, so an app never
+      # What {Fixed}, {Percent}, {Expand}, {Clamp} and {Auto} have in common:
+      # each is a value a {Box} resolves against the space it has. The set is
+      # closed — {Box#add} accepts these five and nothing else, so an app never
       # implements the protocol.
       module Constraint
         # _@param_ `available` — the extent a {Box} divides.
@@ -6811,6 +6812,26 @@ module Tuile
 
         # _@return_ — relative share of the leftover space.
         attr_reader weight: Integer
+      end
+
+      # A height of exactly the rows the child says it needs at the width it is
+      # given — its {Component#measure_rows}, asked on every pass:
+      # 
+      #   stack.add(Label.new(paragraph, wrap: true), Auto[])        # rows of the wrap
+      #   row.add(button, Fixed[10], cross: Auto[])                  # a Horizontal's height
+      # 
+      # **Height only**: {Vertical}'s main axis and {Horizontal}'s `cross:`.
+      # Anywhere else it would need a width from the child, and rows come up but
+      # widths never do, so {Box#add} raises there. The answer is clamped to
+      # what is still unassigned, like a {Fixed}, and re-asked when the child
+      # says it changed ({Component#invalidate_rows}). A child answering `nil`
+      # (it fills) gets `0` rows and a logged warning: it was asked, and has no
+      # answer to give. See `D_box_layouts`.
+      class Auto
+        include Tuile::Component::Layout::Constraint
+
+        # _@param_ `_available`
+        def resolve: (Integer _available) -> Integer?
       end
 
       # A {Percent} whose cells are bounded by {#range} — what {Percent#clamp}
@@ -6958,9 +6979,11 @@ module Tuile
       # Main-axis resolution order, against
       # `available = extent - padding - spacing * (children - 1)`:
       # 
-      # 1. In declaration order, each {Fixed}, {Percent} or {Clamp} takes the
-      #    cells it resolves to — a {Percent} its share *of `available`*, a
-      #    {Clamp} that share bounded — clamped to what is still unassigned.
+      # 1. In declaration order, each {Fixed}, {Percent}, {Clamp} or {Auto}
+      #    takes the cells it resolves to — a {Percent} its share *of
+      #    `available`*, a {Clamp} that share bounded, an {Auto} the rows the
+      #    child answers at the width its `cross:` resolved to — clamped to what
+      #    is still unassigned.
       # 2. {Expand} children split the residue by weight; the integer remainder
       #    goes to the earliest of them, one cell each.
       # 
@@ -7034,6 +7057,13 @@ module Tuile
                          ?align: Symbol?
                        ) -> void
 
+        # An {Auto} child's rows are both this box's division and part of its
+        # own {Component#measure_rows}, so its notice re-runs the pass and climbs
+        # on. Any other child's rows are read by neither, and it stops.
+        # 
+        # _@param_ `child`
+        def handle_child_rows_changed: (Component child) -> void
+
         # Re-divides the space, giving each child an empty rect when this
         # layout's own — or {#inner_rect} — is empty. A child that went hidden
         # gives its slot *and* the {#spacing} around it to its siblings, and one
@@ -7089,9 +7119,24 @@ module Tuile
         # 
         # _@param_ `available` — cross extent of {#inner_rect}.
         # 
+        # _@param_ `main_size` — the child's main-axis extent, which an {Auto} `cross:` is asked at; only a {Horizontal} has one.
+        # 
         # _@return_ — offset from `inner`'s start edge, and
         # extent, along the cross axis.
-        def cross_placement: (Component child, Integer available) -> [Integer, Integer]
+        def cross_placement: (Component child, Integer available, ?Integer? main_size) -> [Integer, Integer]
+
+        # An {Auto} child's rows at `width`; `nil` (a child that fills) is `0`.
+        # 
+        # Uncached, so nesting repeats work: an outer box asks a row, which asks
+        # its label, then the row's own pass asks that label again. Should a
+        # stack of many {Auto} children profile slow, cache here, on the asker —
+        # each child's last answer, dropped by that child's notice — never on
+        # the answerer, which doesn't know the width it will be asked at.
+        # 
+        # _@param_ `child`
+        # 
+        # _@param_ `width`
+        def auto_rows: (Component child, Integer width) -> Integer
 
         # _@param_ `align` — one of {ALIGNMENTS}.
         # 
@@ -7102,6 +7147,11 @@ module Tuile
         # 
         # _@return_ — the child's `main`/`cross`/`align`.
         def placement: (Component child) -> ::Hash[Symbol, Object]
+
+        # Which axis is the height, so the only one {Auto} is legal on.
+        # 
+        # _@return_ — `:main` or `:cross`.
+        def rows_axis: () -> Symbol
 
         # _@param_ `rect`
         # 
@@ -7142,6 +7192,11 @@ module Tuile
 
         # _@param_ `constraint`
         def validate_cross: (Object constraint) -> void
+
+        # _@param_ `constraint`
+        # 
+        # _@param_ `axis` — `:main` or `:cross`.
+        def validate_auto: (Object constraint, Symbol axis) -> void
 
         # _@param_ `align`
         def validate_align: (Object align) -> void
@@ -7200,20 +7255,25 @@ module Tuile
         DEFAULT_PLACEMENT: ::Hash[Symbol, Object]
         ALIGNMENTS: ::Array[Symbol]
 
-        # The rows the shown children stack into: their {Fixed} heights, the
+        # The rows the shown children stack into: their {Fixed} heights, each
+        # {Auto} child's answer at the width its `cross:` resolves to, the
         # {#spacing} between them and the {#padding}. A {Percent} or {Expand}
         # child is a share of the height being asked for, so a box holding one
         # fills instead.
         # 
         #   stack = Component::Layout::Vertical.new(spacing: 1)
         #   stack.add(title, Component::Layout::Fixed[1])
-        #   stack.add(field, Component::Layout::Fixed[1])
-        #   stack.measure_rows(40)   # => 3: two rows and the gap between them
+        #   stack.add(Component::Label.new("a long sentence", wrap: true), Component::Layout::Auto[])
+        #   stack.measure_rows(6)   # => 5: one row, the gap, and three wrapped ones
         # 
-        # _@param_ `_width`
+        # _@param_ `width`
         # 
-        # _@return_ — `nil` when a shown child's height is not {Fixed}.
-        def measure_rows: (Integer _width) -> Integer?
+        # _@return_ — `nil` when a shown child's height is neither
+        # {Fixed} nor {Auto}.
+        def measure_rows: (Integer width) -> Integer?
+
+        # _@return_ — `:main`: a stack's height is its main axis.
+        def rows_axis: () -> Symbol
 
         # _@param_ `rect`
         def main_extent: (Rect rect) -> Integer
@@ -7254,21 +7314,26 @@ module Tuile
         DEFAULT_PLACEMENT: ::Hash[Symbol, Object]
         ALIGNMENTS: ::Array[Symbol]
 
-        # The tallest shown child's {Fixed} `cross:` height, plus the {#padding}.
-        # A {Percent} `cross:` fills the row's height rather than setting it, so
-        # it adds nothing, and a row of only those fills too.
+        # The tallest shown child, plus the {#padding}: a {Fixed} `cross:` is its
+        # height, an {Auto} one the child's answer at the width this row's
+        # division hands it. A {Percent} `cross:` fills the row's height rather
+        # than setting it, so it adds nothing, and a row of only those fills too.
         # 
         #   row = Component::Layout::Horizontal.new
-        #   row.add(field, Component::Layout::Fixed[20], cross: Component::Layout::Fixed[1])
-        #   row.add(list, Component::Layout::Expand[1])   # Percent[100] across: fills
-        #   row.measure_rows(80)                          # => 1
+        #   row.add(Component::Label.new(finding, wrap: true), Component::Layout::Expand[1],
+        #           cross: Component::Layout::Auto[])
+        #   row.add(fix_button, Component::Layout::Fixed[7], cross: Component::Layout::Fixed[1])
+        #   row.measure_rows(80)   # => the finding's rows at 73 columns, at least 1
         # 
         # A row with nothing shown answers just its padding.
         # 
-        # _@param_ `_width`
+        # _@param_ `width`
         # 
-        # _@return_ — `nil` when no shown child is {Fixed} across.
-        def measure_rows: (Integer _width) -> Integer?
+        # _@return_ — `nil` when no shown child is {Fixed} or {Auto} across.
+        def measure_rows: (Integer width) -> Integer?
+
+        # _@return_ — `:cross`: a row's height runs across it.
+        def rows_axis: () -> Symbol
 
         # _@param_ `rect`
         def main_extent: (Rect rect) -> Integer

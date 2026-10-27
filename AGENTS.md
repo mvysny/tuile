@@ -265,8 +265,9 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 ### Layout
 
 - **A component never advertises how big it wants to be; its parent assigns its `rect`.** No
-  `content_size`, no `Sizing`, no min/preferred/max, no shrink-to-fit — a container computes
-  rectangles in plain Ruby in its `relayout`. Keeps the retained-tree promise. See `D_box_layouts`.
+  `content_size`, no `Sizing`, no min/preferred/max — a container computes rectangles in plain Ruby
+  in its `relayout`, asking a child's rows only where told to (`Auto`, a `Scroller`,
+  `ShrinkToContent`), and `Auto` is a height only. Keeps the retained-tree promise. See `D_box_layouts`.
 - **{Tuile::Component#relayout} is the sole place a container assigns its children's rects** —
   *`relayout` : geometry :: `repaint` : ink*: framework-invoked, idempotent, never called directly.
   Every other input to it ends in `invalidate_layout`. See `D_relayout`.

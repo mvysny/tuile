@@ -42,9 +42,11 @@ module Tuile
       # Main-axis resolution order, against
       # `available = extent - padding - spacing * (children - 1)`:
       #
-      # 1. In declaration order, each {Fixed}, {Percent} or {Clamp} takes the
-      #    cells it resolves to — a {Percent} its share *of `available`*, a
-      #    {Clamp} that share bounded — clamped to what is still unassigned.
+      # 1. In declaration order, each {Fixed}, {Percent}, {Clamp} or {Auto}
+      #    takes the cells it resolves to — a {Percent} its share *of
+      #    `available`*, a {Clamp} that share bounded, an {Auto} the rows the
+      #    child answers at the width its `cross:` resolved to — clamped to what
+      #    is still unassigned.
       # 2. {Expand} children split the residue by weight; the integer remainder
       #    goes to the earliest of them, one cell each.
       #
@@ -158,6 +160,21 @@ module Tuile
                                  align: align || current[:align] }
         end
 
+        protected
+
+        # An {Auto} child's rows are both this box's division and part of its
+        # own {Component#measure_rows}, so its notice re-runs the pass and climbs
+        # on. Any other child's rows are read by neither, and it stops.
+        # @param child [Component]
+        # @return [void]
+        def handle_child_rows_changed(child)
+          super
+          return unless placement(child).values_at(:main, :cross).any?(Auto)
+
+          invalidate_layout
+          invalidate_rows
+        end
+
         private
 
         # Re-divides the space, giving each child an empty rect when this
@@ -198,7 +215,7 @@ module Tuile
           available = cross_extent(inner)
           offset = 0
           kids.each_with_index do |child, i|
-            cross_offset, cross_size = cross_placement(child, available)
+            cross_offset, cross_size = cross_placement(child, available, sizes[i])
             child.rect = build_rect(inner, offset, sizes[i], cross_offset, cross_size)
             offset += sizes[i] + spacing
           end
@@ -225,7 +242,12 @@ module Tuile
           unassigned = available
 
           kids.each_with_index do |child, i|
-            cells = placement(child)[:main].resolve(available)
+            main = placement(child)[:main]
+            cells = if main.is_a?(Auto)
+                      auto_rows(child, cross_placement(child, cross_extent(inner))[1])
+                    else
+                      main.resolve(available)
+                    end
             if cells.nil?
               expanding << i
             else
@@ -257,12 +279,35 @@ module Tuile
 
         # @param child [Component]
         # @param available [Integer] cross extent of {#inner_rect}.
+        # @param main_size [Integer, nil] the child's main-axis extent, which an
+        #   {Auto} `cross:` is asked at; only a {Horizontal} has one.
         # @return [Array(Integer, Integer)] offset from `inner`'s start edge, and
         #   extent, along the cross axis.
-        def cross_placement(child, available)
+        def cross_placement(child, available, main_size = nil)
           spec = placement(child)
-          size = spec[:cross].resolve(available).clamp(0, available)
+          cross = spec[:cross]
+          cells = cross.is_a?(Auto) ? auto_rows(child, main_size) : cross.resolve(available)
+          size = cells.clamp(0, available)
           [align_offset(spec[:align], available - size), size]
+        end
+
+        # An {Auto} child's rows at `width`; `nil` (a child that fills) is `0`.
+        #
+        # Uncached, so nesting repeats work: an outer box asks a row, which asks
+        # its label, then the row's own pass asks that label again. Should a
+        # stack of many {Auto} children profile slow, cache here, on the asker —
+        # each child's last answer, dropped by that child's notice — never on
+        # the answerer, which doesn't know the width it will be asked at.
+        # @param child [Component]
+        # @param width [Integer]
+        # @return [Integer]
+        def auto_rows(child, width)
+          rows = child.measure_rows(width)
+          return rows unless rows.nil?
+
+          Tuile.logger.warn("#{child.inspect} is placed Auto in #{inspect} but answers measure_rows nil; " \
+                            "it gets 0 rows")
+          0
         end
 
         # @param align [Symbol] one of {ALIGNMENTS}.
@@ -279,6 +324,10 @@ module Tuile
         # @param child [Component]
         # @return [Hash{Symbol => Object}] the child's `main`/`cross`/`align`.
         def placement(child) = constraints[child] || DEFAULT_PLACEMENT
+
+        # Which axis is the height, so the only one {Auto} is legal on.
+        # @return [Symbol] `:main` or `:cross`.
+        def rows_axis = raise(NotImplementedError, "#{self.class} must implement rows_axis")
 
         # @param rect [Rect]
         # @return [Integer] the extent along the main axis.
@@ -313,9 +362,10 @@ module Tuile
         # @raise [ArgumentError] unless it is a {Constraint}.
         # @return [void]
         def validate_main(constraint)
+          validate_auto(constraint, :main)
           return if constraint.is_a?(Constraint)
 
-          raise ArgumentError, "expected Fixed, Percent, Expand or Clamp, got #{constraint.inspect}"
+          raise ArgumentError, "expected Fixed, Percent, Expand, Clamp or Auto, got #{constraint.inspect}"
         end
 
         # @param constraint [Object]
@@ -326,9 +376,21 @@ module Tuile
             raise ArgumentError, "Expand is main-axis only — a child has no siblings competing " \
                                  "across the axis; use Fixed or Percent for cross:"
           end
+          validate_auto(constraint, :cross)
           return if constraint.is_a?(Constraint)
 
-          raise ArgumentError, "expected Fixed, Percent or Clamp for cross:, got #{constraint.inspect}"
+          raise ArgumentError, "expected Fixed, Percent, Clamp or Auto for cross:, got #{constraint.inspect}"
+        end
+
+        # @param constraint [Object]
+        # @param axis [Symbol] `:main` or `:cross`.
+        # @raise [ArgumentError] for an {Auto} on the axis that is not the height.
+        # @return [void]
+        def validate_auto(constraint, axis)
+          return unless constraint.is_a?(Auto) && axis != rows_axis
+
+          raise ArgumentError, "Auto is a height — Vertical's main axis or Horizontal's cross:; " \
+                               "rows come up from a child, but widths never do"
         end
 
         # @param align [Object]

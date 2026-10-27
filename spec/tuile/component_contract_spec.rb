@@ -157,14 +157,16 @@ module Tuile
 
     # Every other answering component, with each mutation that changes its
     # answer, run on a fresh catalog instance after `rows_prepare` (if any).
-    # The answer must actually change, so an entry cannot test nothing.
+    # The answer must actually change, so an entry cannot test nothing. The
+    # notice check below prepares the same way, so the boxes' Auto children
+    # are covered there too.
     rows_prepare = {
       Component::Label => -> { _1.text = "word " * 20 },
       Component::FormLayout => -> { _1.caption_position = :above },
-      Component::Layout::Vertical => -> { _1.constrain(_1.children.last, Component::Layout::Fixed[1]) },
+      Component::Layout::Vertical => -> { _1.constrain(_1.children.last, Component::Layout::Auto[]) },
       Component::Layout::Horizontal => lambda { |row|
-        row.constrain(row.children.first, cross: Component::Layout::Fixed[1])
-        row.constrain(row.children.last, cross: Component::Layout::Fixed[2])
+        row.constrain(row.children.first, cross: Component::Layout::Fixed[2])
+        row.constrain(row.children.last, cross: Component::Layout::Auto[])
       },
       Component::TextView => -> { _1.text = "x" * 39 },
       Component::TabSheet => lambda { |sheet|
@@ -206,7 +208,7 @@ module Tuile
           _1.add(Component::Label.new("tall"), Component::Layout::Fixed[4], cross: Component::Layout::Fixed[3])
         },
         "constrain" => -> { _1.constrain(_1.children.first, cross: Component::Layout::Fixed[4]) },
-        "remove" => -> { _1.remove(_1.children.last) },
+        "remove" => -> { _1.remove(_1.children.first) },
         "padding=" => -> { _1.padding = 1 }
       },
       Component::TextArea => { "value=" => -> { _1.value = "a\nb\nc" } },
@@ -625,6 +627,7 @@ module Tuile
       catalog.each_key do |klass|
         it klass.name do
           component = instance_exec(&catalog[klass])
+          rows_prepare[klass]&.call(component)
           notices = spy_on_rows_notices(component)
           width = contract_rect.width
           readers = component.children.select do |child|

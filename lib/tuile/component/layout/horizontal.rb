@@ -15,27 +15,40 @@ module Tuile
       #
       # See {Box} for the constraint vocabulary and how the space is divided.
       class Horizontal < Box
-        # The tallest shown child's {Fixed} `cross:` height, plus the {#padding}.
-        # A {Percent} `cross:` fills the row's height rather than setting it, so
-        # it adds nothing, and a row of only those fills too.
+        # The tallest shown child, plus the {#padding}: a {Fixed} `cross:` is its
+        # height, an {Auto} one the child's answer at the width this row's
+        # division hands it. A {Percent} `cross:` fills the row's height rather
+        # than setting it, so it adds nothing, and a row of only those fills too.
         #
         #   row = Component::Layout::Horizontal.new
-        #   row.add(field, Component::Layout::Fixed[20], cross: Component::Layout::Fixed[1])
-        #   row.add(list, Component::Layout::Expand[1])   # Percent[100] across: fills
-        #   row.measure_rows(80)                          # => 1
+        #   row.add(Component::Label.new(finding, wrap: true), Component::Layout::Expand[1],
+        #           cross: Component::Layout::Auto[])
+        #   row.add(fix_button, Component::Layout::Fixed[7], cross: Component::Layout::Fixed[1])
+        #   row.measure_rows(80)   # => the finding's rows at 73 columns, at least 1
         #
         # A row with nothing shown answers just its padding.
-        # @param _width [Integer]
-        # @return [Integer, nil] `nil` when no shown child is {Fixed} across.
-        def measure_rows(_width)
+        # @param width [Integer]
+        # @return [Integer, nil] `nil` when no shown child is {Fixed} or {Auto} across.
+        def measure_rows(width)
           kids = shown_children
           return padding.vertical if kids.empty?
 
-          heights = kids.map { placement(_1)[:cross] }.grep(Fixed).map(&:cells)
+          # The division relayout runs, so the widths asked at are the widths handed out.
+          sizes = main_sizes(Rect.new(0, 0, [width - padding.horizontal, 0].max, 0), kids)
+          heights = kids.each_with_index.filter_map do |child, i|
+            cross = placement(child)[:cross]
+            case cross
+            when Fixed then cross.cells
+            when Auto then auto_rows(child, sizes[i])
+            end
+          end
           heights.empty? ? nil : heights.max + padding.vertical
         end
 
         private
+
+        # @return [Symbol] `:cross`: a row's height runs across it.
+        def rows_axis = :cross
 
         # @param rect [Rect]
         # @return [Integer]
