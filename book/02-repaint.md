@@ -39,7 +39,7 @@ the number of repaints independent of the number of changes.
 component. You mutate a component through its public setters (`text=`,
 `content=`, `rect=`, …) and *they* invalidate. And it's a no-op on a
 component that isn't attached to the live tree, so mutating a component
-you've stashed off-screen (say, inside a closed popup) is silent rather
+you've stashed off-screen (say, inside a closed overlay) is silent rather
 than an error.
 
 ## When a component does paint, it paints into a buffer
@@ -94,16 +94,16 @@ invalidated set and draws it in a specific order:
    for a container with gaps between its children, re-clears them) *first*,
    so a child drawing afterward paints on top of a clean surface rather
    than fighting whatever was there before.
-2. **Popups last, on top.** Any popups (chapter 7) repaint after the tiled
+2. **Overlays last, on top.** Any overlays (chapter 7) repaint after the tiled
    layer, in stacking order, so they overdraw the content beneath them.
    No layer clips another, and there is no "punch a hole in the content"
-   step — popups simply draw over what's below. If a tiled repaint
-   touched cells a popup also covers, the whole popup stack is reasserted
+   step — overlays simply draw over what's below. If a tiled repaint
+   touched cells an overlay also covers, the whole overlay stack is reasserted
    on top so it stays visually in front.
 
 Notice what's *absent*: no region tracking, no dirty-rectangle geometry,
 no z-buffer, no clip stack to push and pop. The order is just "tree
-order, then popups," and the correctness comes from painting in that
+order, then overlays," and the correctness comes from painting in that
 order into a buffer that sorts out the rest.
 
 ## Overdraw is free; the wire is minimal
@@ -116,7 +116,7 @@ emits escape sequences only for the cells that actually changed. An
 unchanged cell is never rewritten, no matter how many components painted
 over it this tick.
 
-So "overdraw is free" is literal. A popup can repaint over the entire
+So "overdraw is free" is literal. An overlay can repaint over the entire
 content area, a parent can re-clear a region a child then fills — none of
 it reaches the terminal unless the *net* result differs from what was
 already on screen. You get to write dead-simple paint code (just draw

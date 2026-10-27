@@ -183,7 +183,7 @@ module Tuile
       #   open, and blocks clicks on the content beneath it.
       def modal? = true
 
-      # @return [Boolean] true — {ScreenPane#add_popup} focuses a dialog on open,
+      # @return [Boolean] true — {ScreenPane#add_overlay} focuses a dialog on open,
       #   and focus repair falls back to it when its subtree has no tab stop.
       def focusable? = true
 
@@ -228,7 +228,7 @@ module Tuile
       # @return [Boolean] true if the key was handled.
       def handle_key?(key)
         if [Keys::ESC, "q"].include?(key)
-          close if close_on_key?
+          close(reason: :key) if close_on_key?
           true
         else
           false

@@ -336,7 +336,7 @@ module Tuile
     end
 
     describe "the mouse" do
-      # Routed through the pane, as the event loop does: popups first, so a click
+      # Routed through the pane, as the event loop does: overlays first, so a click
       # on the open dropdown reaches its list rather than the tiled tree.
       def click(x, y, button: :left)
         Screen.instance.click(x, y, button: button)

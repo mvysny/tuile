@@ -21,7 +21,7 @@ syncer.bind(age, :age).validate { |v| "Must be positive" unless v.positive? }
 
 syncer.read(person)            # model → fields
 save.on_click do
-  next popup.close if syncer.write?(person)   # fields → model, only if valid
+  next overlay.close if syncer.write?(person)   # fields → model, only if valid
 
   messages = syncer.last_validation.values.flatten.map(&:message)
   Component::ConfirmDialog.alert("Cannot save", messages.join("\n"))
@@ -37,8 +37,8 @@ it. There is nothing for you to subscribe to.
 There are two classes because there are two jobs, and which one a form needs
 is known before the form opens:
 
-- **`FormSyncer::Buffered`** is for the OK/Cancel popup. The fields hold a copy
-  until `write?`, so Cancel costs nothing: close the popup, and the model
+- **`FormSyncer::Buffered`** is for the OK/Cancel overlay. The fields hold a copy
+  until `write?`, so Cancel costs nothing: close the overlay, and the model
   never saw the edit.
 - **`FormSyncer::Unbuffered`** writes every valid edit straight through. It is
   for a settings panel or a live filter, where the model *is* what the user is
@@ -193,9 +193,9 @@ deleting it counts as a change.
 
 ```ruby
 cancel.on_click do
-  next popup.close unless syncer.changed?
+  next overlay.close unless syncer.changed?
 
-  Component::ConfirmDialog.yes_no("Discard changes?", "Your edits will be lost.") { popup.close }
+  Component::ConfirmDialog.yes_no("Discard changes?", "Your edits will be lost.") { overlay.close }
 end
 ```
 
@@ -233,14 +233,14 @@ class BookingForm < Component::FormLayout
 end
 
 syncer = FormSyncer::Buffered.new
-popup_content = BookingForm.new(syncer)
+overlay_content = BookingForm.new(syncer)
 syncer.read(booking)
 ```
 
 This splits the work cleanly. The **form** owns its fields, their captions and
 its validators, so no caller ever reaches in for a `TextField`. The **caller** owns
 the choice of mode, the model and the Save button, because only the caller
-knows whether this form sits in an OK/Cancel popup or a live panel. Both modes
+knows whether this form sits in an OK/Cancel overlay or a live panel. Both modes
 share one base class, so `booking_form` takes a `FormSyncer` and serves either one
 unchanged.
 

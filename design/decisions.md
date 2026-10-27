@@ -24,7 +24,7 @@ belongs in the rdoc or the book.
 
 Tracks [issue #1](https://github.com/mvysny/tuile/issues/1).
 
-Overlays (a slash/autocomplete popup) need a distinctive
+Overlays (a slash/autocomplete overlay) need a distinctive
 background across a whole `List` — content rows *and* the blank filler
 below — so the panel reads as one solid tint. Today there is no knob:
 `bg:` on a row's `StyledString` tints only that row, leaving filler on
@@ -316,7 +316,7 @@ The cost we carry:
   suppress-filter guard, so they don't spring the dropdown open (see AGENTS.md).
 - The dropdown `List` is deliberately **non-focusable**: the combo forwards
   keys to it while focus stays in the field, and a click selects without
-  stealing focus — which also keeps popup close/reopen free of focus
+  stealing focus — which also keeps overlay close/reopen free of focus
   re-entrancy.
 - Enter **and** Down open the dropdown when it is closed; when open, Enter
   commits.
@@ -476,7 +476,7 @@ bubble, and beats the gate on every axis it was covering. Suppression is free an
 focused `TextField` consumes the key at delivery and returns true, so the ancestor never sees it, not
 via a proxy but because the field genuinely handled it — `handle_key?` returning true *is* the per-key
 "I am in text-entry mode" declaration. It is scoped, not global: the bubble stops at the scope root,
-so an open modal popup owns its own `1` and two popups get two different defaults. There is no
+so an open modal overlay owns its own `1` and two overlays get two different defaults. There is no
 lifecycle bookkeeping and nothing to unregister. And one mechanism
 per job: the registry runs an app-wide *action*, an ancestor's `handle_key?` claims a *scope-wide
 key*.
@@ -518,7 +518,7 @@ Why not:
   preserves the proxy indefinitely.
 - **Keep `key_shortcut` and tell apps to use `Alt+1` via the registry** — the framing that opened the
   discussion. Alt-based accelerators are a poor fit for a terminal on three counts
-  (`R_key_dispatch`), and bare ESC closing popups makes the ambiguity expensive here specifically.
+  (`R_key_dispatch`), and bare ESC closing overlays makes the ambiguity expensive here specifically.
   Modified-key accelerators remain fine when genuinely app-global; that is what the registry is for.
 - **Gate the registry at runtime instead of reserving keys** (suppress a global `ENTER` while a text
   widget is focused) — reintroduces the deleted proxy one rung higher, and fails *silently*, the
@@ -1058,7 +1058,7 @@ have to fire *through*. Two shapes fix it, and they are not equivalent:
 - **A** — `Component` owns an `@children` array; `children` is a plain
   reader; protected `add_child(child, at:)` / `remove_child(child)` write the
   array *and* the parent pointer. Containers keep slot ivars (`@content`,
-  `@popups`, `@footer`) as references and choose an insert index.
+  `@overlays`, `@footer`) as references and choose an insert index.
 - **B** — containers keep deriving `children` from their slots (as they do
   today), and only the *wiring* moves into shared mutators.
 
@@ -1089,13 +1089,13 @@ Why not:
   structures the hook walk depends on independent. Also gives up a measured
   0-vs-6 objects per `children` read — and `walk_tree` reads `children` once per
   node on every repaint, so it is a per-node, per-frame path.
-- **Derive `popups` from `@children`** to avoid the one real duplication A
-  costs (`@popups` and `@children` both carry popup order). Every spelling is
+- **Derive `overlays` from `@children`** to avoid the one real duplication A
+  costs (`@overlays` and `@children` both carry overlay order). Every spelling is
   worse: an index slice (`@children[offset..-2]`) is fragile and allocates on
-  the hot path where `popups` is read, and `grep(Dialog)` breaks the moment a
-  popup is used as tiled content. `@popups` stays, guarded by a drift
+  the hot path where `overlays` is read, and `grep(Dialog)` breaks the moment an
+  overlay is used as tiled content. `@overlays` stays, guarded by a drift
   assertion in `screen_pane_spec`.
-- **`size - 1` for the popup insert index.** Works, but silently assumes the
+- **`size - 1` for the overlay insert index.** Works, but silently assumes the
   status bar is last. `at: @children.index(@status_bar)` names the anchor.
 
 The cost we carry: Migrating the two slot containers forced a third mutator:
@@ -1837,7 +1837,7 @@ Why not:
   timeout leans on inter-keystroke timing, exactly the signal a terminal degrades
   (`R_esc_ambiguity`). Retiring type-ahead also retires the "make labels prefix-unique" workaround
   that existed only to rescue it.
-- **Cycle-in-place** (`◂ Dark ▸`, Space/Left/Right, no popup) for 2–4 options: you select blindly,
+- **Cycle-in-place** (`◂ Dark ▸`, Space/Left/Right, no overlay) for 2–4 options: you select blindly,
   the values you choose *between* never on screen, discovered one at a time with no way to see the
   set or its size. The dropdown is better at every item count, so the vocabulary does not grow a
   fourth closed-choice widget. **Re-grow rule:** if it returns it is a **face** on this component (a
@@ -2221,9 +2221,9 @@ box** (one box holds an error line and an info line), and duration, cap and corn
 `self.show` calls bare `new`, so a subclass's `show` builds the subclass; this widget is what
 surfaced `Popup.open` as a subclass trap (`D_popup_open`).
 
-**The singleton lives in the popups stack, never in a class ivar.** `@@current` would be
+**The singleton lives in the overlays stack, never in a class ivar.** `@@current` would be
 *process*-global while the notification is *screen*-global — surviving `Screen.close` to leak a
-detached popup into the next `Screen.fake` — and clearing it needs either `Screen#close` knowing
+detached overlay into the next `Screen.fake` — and clearing it needs either `Screen#close` knowing
 about a component (dependencies point toward data, never toward UI) or a reset hook nothing else
 wants. The stack already answers what overlays are up, and `detach_all` empties it on close; cost is
 an `is_a?` scan of 0–3 elements.
@@ -2315,7 +2315,7 @@ Opening is one expression, no `.tap`:
 dialog = Component::Dialog.new("Help", content: body, declared_size: Fraction::FULL).open
 ```
 
-The previous return value was undocumented junk (whatever `Screen#add_popup`
+The previous return value was undocumented junk (whatever `Screen#add_overlay`
 happened to hand back), so nothing could depend on it.
 
 **The batteries-included dialogs open the same way.** An app's {Tuile::Component::PickerDialog}
@@ -2324,8 +2324,8 @@ forward its constructor, and reopens after it closes. Why not:
 - *A class-level `PickerWindow.open` / `InfoWindow.open`.* Each named its own class, so an app's
   subclass inherited a factory building the parent — the trap above in another shape (#72).
 - *An instance `open_in_popup` returning the wrapping `Popup`.* What #72 shipped while those
-  classes were `Window`s a popup wrapped: the window was not the dialog, so opening it took a
-  second verb, a second object and a one-shot rule (the closed popup kept the window as its
+  classes were `Window`s a `Popup` wrapped: the window was not the dialog, so opening it took a
+  second verb, a second object and a one-shot rule (the closed `Popup` kept the window as its
   content). Once the window *is* the dialog (`D_panel_dialog`), `Overlay#open` covers it.
 
 `dialog_spec` and `overlay_spec` assert that neither `Dialog` nor `ListDropdown` responds to
@@ -2633,10 +2633,10 @@ Why not:
   the hierarchy" readout that is the cascade's whole point, and cannot be the default with a cascade
   bolted on later: the cascade is the harder mechanism and would be built against a shape assuming
   one panel.
-- **A modal level-0 popup**, which would give real modality (keys scoped, clicks outside blocked),
-  rejected on a mechanical fact rather than a preference: `ScreenPane#add_popup` **centers** every
-  modal popup and focuses it, so an anchored modal is impossible without changing `ScreenPane` — and
-  it would move key handling off the bar into the popup.
+- **A modal level-0 overlay**, which would give real modality (keys scoped, clicks outside blocked),
+  rejected on a mechanical fact rather than a preference: `ScreenPane#add_overlay` **centers** every
+  modal overlay and focuses it, so an anchored modal is impossible without changing `ScreenPane` — and
+  it would move key handling off the bar into the overlay.
 - **Focusable panels**, focus descending as you drill: a focus-taking non-modal overlay lands focus
   outside the key scope and kills *every* keystroke until Tab recovers — that bug once per level.
 - **Extracting `Popover` now.** The roadmap's trigger ("the second *kind* of anchoring") arguably
@@ -2712,64 +2712,64 @@ The cost we carry:
   `Keys` to grow function keys first: with no Alt, the only way to *reach* the bar is Tab, which is
   what separates `Alt+F, X` from a Tab-hunt.
 
-## D_outside_click — Why does an outside click dismiss a popup by a flag on the popup rather than by a notice to the app?
+## D_outside_click — Why does an outside click dismiss an overlay by a flag on the overlay rather than by a notice to the app?
 
 Whether an open overlay closed when you clicked elsewhere depended on what you clicked *on*: a click
 on a focusable widget moved focus, and losing focus is what closed `Select`'s dropdown and
 `MenuBar`'s cascade, so it worked by accident; a click on decoration did nothing and the overlay
-stayed open over content it no longer belonged to. A click that misses every popup is never reported
+stayed open over content it no longer belonged to. A click that misses every overlay is never reported
 to the open overlay, no driver can poll for it and nothing below can forward it: a `ScreenPane`
 change or nothing.
 
-**Why a flag and not `on_outside_click(event)`.** The notice-shaped alternative — every missed popup
+**Why a flag and not `on_outside_click(event)`.** The notice-shaped alternative — every missed overlay
 gets the event, default no-op, with a driver-facing proc beside it — works and is more expressive,
 but it hands a `MouseEvent` to a component *not* on the chain the event was delivered to, the same
 second delivery this project rejects for a `Screen`-level broadcast. Under the flag nothing is
-delivered twice: `ScreenPane` closes popups that asked in advance to be closed. **The popup receives
+delivered twice: `ScreenPane` closes overlays that asked in advance to be closed. **The overlay receives
 a fate, not an event.** The price is expressiveness, paid once by `ComboBox`: clicking your own
 input to reposition the caret closes the list you are filtering — transient, since the next
 keystroke reopens it, and the Java web toolkit behaves the same way (`R_overlay_dismissal`). If
 per-click nuance is ever needed, widen the reader to take the event — a pure widening — rather than
 reaching for a notice or a veto.
 
-**The ordering rule, both halves load-bearing.** Snapshot the open popups *before* routing, close
-the opted-in misses *after*. *Snapshot before*, or a popup the delivered click **opened** is in the
+**The ordering rule, both halves load-bearing.** Snapshot the open overlays *before* routing, close
+the opted-in misses *after*. *Snapshot before*, or an overlay the delivered click **opened** is in the
 set and dismisses itself instantly, making every `Select` unopenable by mouse. *Close after*, or a
 widget toggling its own overlay from a click on its face sees a shut overlay and **reopens** it, so
 the dropdown could never be dismissed by clicking the Select. Both mutations also break pre-existing
 `Select` specs.
 
 **"Outside" spans the owner chain; stacking order plays no part.** `Overlay#owner` names the
-component an overlay is *part of*; a click keeps the popup it hit and, transitively, every popup
+component an overlay is *part of*; a click keeps the overlay it hit and, transitively, every overlay
 that one belongs to, and everything else dismissable closes. Two bugs forced this, both found by
 clicking after the naive "closed if it missed my rect" rule shipped: **a cascade panel is beside its
 parent, not inside it**, so drilling by mouse dismissed every shallower panel and the File menu
 vanished as you clicked into its own submenu; and **a dropdown routinely hangs past its dialog's
 border**, so clicking a `Select` row on a dialog's lower rows dismissed the dialog — the most common
-form layout there is. Neither is reachable widget-locally: they are different popups with no way to
+form layout there is. Neither is reachable widget-locally: they are different overlays with no way to
 speak for each other.
 
 Why not:
 
-- **Dismiss the popups stacked above the one you clicked** — standard light-dismiss layering, fixing
-  both bugs with no new API. `@popups` is insertion order and Tuile has no click-to-raise, so the
+- **Dismiss the overlays stacked above the one you clicked** — standard light-dismiss layering, fixing
+  both bugs with no new API. `@overlays` is insertion order and Tuile has no click-to-raise, so the
   same click would land differently depending on which overlay opened first. Order is only the
   *shadow* of ownership — a child overlay cannot exist before its host — so reading it works for
-  related popups and is meaningless for unrelated ones.
+  related overlays and is meaningless for unrelated ones.
 - **A click on any overlay dismisses nothing.** Also fixes both bugs and needs no API, but declares
   unrelated overlays related: it leaves a dropdown open when you click the dialog beneath it, and
   stops two window-like overlays from dismissing each other.
-- **A veto** — `on_close` returning false. `on_close` fires from `handle_detached`, after the popup is
+- **A veto** — `on_close` returning false. `on_close` fires from `handle_detached`, after the overlay is
   off the screen, and you cannot un-detach; any veto needs a *new*, earlier hook, which is the
   notice again with a return channel, and it makes every grouped overlay re-implement the geometry
   test the pane just did.
 - **A `Screen`-level "a click landed at P" broadcast** — a second mouse-dispatch path beside the
   one-chain rule. **Making `ListDropdown` modal** so it hears every click — `ComboBox` and `Select`
   would lose the events their own faces need. **A generation counter** making close-and-reopen
-  within one click safe — over-engineering for a case nothing hits, and reopening the same popup
+  within one click safe — over-engineering for a case nothing hits, and reopening the same overlay
   object during delivery of one click is out of contract.
-- **Hanging `on_close` off `#close`.** A popup leaves the screen three ways — `Overlay#close`, a
-  direct `Screen#remove_popup`, and `Screen#close` → `detach_all` — so two would vanish silently,
+- **Hanging `on_close` off `#close`.** An overlay leaves the screen three ways — `Overlay#close`, a
+  direct `Screen#remove_overlay`, and `Screen#close` → `detach_all` — so two would vanish silently,
   reintroducing the desync the mechanism exists to kill. A proc over `handle_detached` keeps `parent=`
   the sole firing site and makes the notice unconditional.
 - **Right-click or scroll dismissing.** A menu opens on the press and never on a release, so there is no drag case;
@@ -2783,7 +2783,7 @@ The cost we carry:
   open, so nothing to forget on reopen), and `Cascade#push` chains each panel to the one it dropped
   out of. Level 0 owns nothing on purpose — a click on a dialog hosting the bar *should* close the
   whole menu and keep the dialog.
-- **Every dismissable popup closes, not just the topmost**, so a cascade vanishes whole rather than
+- **Every dismissable overlay closes, not just the topmost**, so a cascade vanishes whole rather than
   peeling a panel per click, and two *unrelated* stacked modals both close where a modality curtain
   would close only the top — though closing a modal there closes those opened after it too
   (`R_overlay_dismissal`).
@@ -2816,13 +2816,13 @@ by weight:
 2. **No host wants one.** Not the sampler, not `file_commander`, and the TUI lineages are thin: mc
    spends F9 on a menu bar instead, Turbo Vision and LazyGit have none. LazyVim does ship one — an
    argument for revisiting when a host asks, not for building on spec.
-3. **It would cost two new framework concepts to serve nobody** — an invisible modal popup as a focus
+3. **It would cost two new framework concepts to serve nobody** — an invisible modal overlay as a focus
    grab, and a `ScreenPane` notice for modality-blocked clicks. (The second outlived it as
    `D_outside_click`.)
 
 **The design that would have been built,** recorded so a revival starts here. One structural fact
-drives all of it: **a popup can only hold focus if it is modal.** Key delivery is scoped to
-`modal_popup || content`, so a *focused non-modal* popup sits outside the key scope and every
+drives all of it: **an overlay can only hold focus if it is modal.** Key delivery is scoped to
+`modal_overlay || content`, so a *focused non-modal* overlay sits outside the key scope and every
 keystroke goes dead — the non-modal-overlay trap; and unlike a menu bar, a context menu has no strip
 to park focus on. So: `ContextMenu < Popup(modal: true)` with a **zero-size rect that paints
 nothing** — not a picture but a *grab*, playing the role `MenuBar`'s strip plays (focus holder, key
@@ -2839,11 +2839,11 @@ Why not:
   the trap: `MenuBar` encodes five invariants *once* because it is a component — close on focus loss,
   on detach, on resize, swallow keys while open, forward the mouse — and every host would re-encode
   all five; forgetting `handle_detached` strands panels on the pane with nothing to take them down.
-- **The level-0 panel *as* the modal popup**, deleting the invisible component. Level 0 then becomes
+- **The level-0 panel *as* the modal overlay**, deleting the invisible component. Level 0 then becomes
   structurally unlike every deeper level, so the panel-driving logic — movement to the highlight,
   Enter to drill-or-fire, mnemonic match, truncate-on-cursor-move — exists twice for panels identical
   on screen, buying only the deletion of a zero-size rect.
-- **Recursive modal popups, one per level, no `Cascade`** — each level an ordinary modal `Popup` over
+- **Recursive modal overlays, one per level, no `Cascade`** — each level an ordinary modal `Popup` over
   a *focusable* `List`, with `Popup`'s own ESC/`q` closing a level. Genuinely tiny and free of every
   non-modal trap, rejected on the smell: it is a *second* menu mechanism, so item trees, mnemonics,
   submenu arrows, width measurement and the key map would each get a second implementation. If it is
@@ -2856,7 +2856,7 @@ Why not:
   already reaches *every* component along the rect chain, ancestor first and deepest last, so "which
   target owns this click" has no answer. (That ordering *would* give deepest-wins free, if a revival
   adds "opening one closes any other open context menu" — the `D_notification` shape, found by
-  scanning the popups stack rather than a class ivar.)
+  scanning the overlays stack rather than a class ivar.)
 - **Type-ahead search inside an open menu**, which `List#select_next` makes nearly free — the same
   rejection as in `D_menu_bar`: it competes with explicit mnemonics for the same keystroke and owes a
   precedence rule.
@@ -2901,7 +2901,7 @@ Why deletion beat a better hint source:
 Why not:
 
 - **Walk the focus chain and concatenate** (the drafted fix). It matched the delivery bubble,
-  subsumed the popup special case and would have deleted `active_window` — but fixes *reachability*
+  subsumed the overlay special case and would have deleted `active_window` — but fixes *reachability*
   while leaving ownership where it hurts: pikuri's re-registration hack survives untouched, and
   `MenuBar`'s flickering, redundant hint becomes *visible* rather than merely dead. It also forced a
   ruling on hint ordering that is really truncation policy, `Label` ellipsizing the rightmost hint
@@ -2961,7 +2961,7 @@ open question.
 - **It is a convention, not an invention.** `q` quits `less`, `man`, `top`,
   `htop` and every pager git shells out to; ESC dismisses. A user arriving at a
   full-screen terminal app already tries both. That is the same argument that
-  settled the popup's lost `q Close` hint in `D_status_bar` — a convention the
+  settled the overlay's lost `q Close` hint in `D_status_bar` — a convention the
   user brings is not something each app must teach.
 - **The escape hatch already exists and needs no new surface.** A component
   keeps `q` by consuming it, which is the whole of `D_key_dispatch`'s
@@ -2969,7 +2969,7 @@ open question.
   printable — this is why pikuri-tui's shells never quit on a typed `q`), and an
   app wanting `q` as a command binds it in the scope root's `handle_key?`. ESC
   likewise never reaches the loop while a {Component::Dialog} is open, because
-  the popup consumes it first.
+  the overlay consumes it first.
 - **It is genuinely useful for the small app.** `examples/hello_world.rb` is
   eleven lines and needs no quit handler. Deleting the fallback would make every
   example and both downstream apps grow one, buying nothing.
@@ -3114,7 +3114,7 @@ now a constant on each class.
 `Notification` and `ListDropdown` both reparent onto `Overlay`.
 
 **Why.** The cut line was not invented — it is exactly what `ScreenPane` calls on
-a member of `@popups` (`rect`, `modal?`, `reposition`, `owner`,
+a member of `@overlays` (`rect`, `modal?`, `reposition`, `owner`,
 `close_on_outside_click?`, `close`, `walk_tree`), so `Overlay` makes an interface
 that already existed implicitly into a class. What forced it was the tally: both
 non-modal subclasses *rejected* most of `Popup`. `Notification` overrode
@@ -3144,15 +3144,19 @@ written in types.
 
 Why not:
 - *The inverse cut — base stays `Popup`, the modal one becomes `Dialog`.* It
-  would have kept `ScreenPane#popups` accurate at zero renaming cost, but every
+  would have kept the then `ScreenPane#popups` accurate at zero renaming cost, but every
   existing `Popup.new(content: w).open` would **silently** become non-modal,
   uncentered and un-ESC-able. A loud `ArgumentError` on a removed `modal: false`
   beats a silent behaviour change. The modal class is called `Dialog` now, but by a later
   rename that removed `Popup` outright (`D_panel_dialog`): a `NameError` is loud.
-- *Renaming the pane/screen vocabulary to `overlays` / `add_overlay`.* Considered
-  and declined: the break reaches `Screen#add_popup`, which apps call, and
-  "popup stack" remains a defensible name for the stack. The `@param` types and
-  rdoc say `Overlay` instead, which is what a caller actually needs to know.
+- *Keeping the pane/screen vocabulary as "popup"* (`popups`, `add_popup`, `modal_popup`,
+  `over_popups:`). Declined here at first, to spare apps the `add_popup` break, and reversed:
+  "popup" named no class, so it was a third word beside `Overlay` and `Dialog` that a reader had
+  to map — downstream code read `modal_popup` returning a `Dialog`. An open overlay *is* the
+  stack's member, and a phrase composed from existing words ("open overlay", "modal overlay")
+  beats a glossary term. Nor `modal_dialog`: `Dialog` is not about modality — a floating,
+  non-modal dialog is a plausible future — so the shortcut flag says `over_modal:`, the thing it
+  actually tests.
 - *Keeping `modal:` as a kwarg on `Popup` alongside `Overlay`.* Two ways to build
   the same thing, with the trap-laden one still reachable. The whole point is
   that the inert defaults are the ones you get by default.
@@ -3413,7 +3417,7 @@ isn't meant to: the goal is catching the accident, not defeating an adversary.
 **Why not `Screen` holds a private tree of its own**, authoritative regardless
 of what `parent` / `children` say. Two sources of truth that can drift is
 strictly worse than one that can be lied about, and this is `D_tree_api`'s
-slot-desync rule raised to framework scale — `ScreenPane#popups` needed an
+slot-desync rule raised to framework scale — `ScreenPane#overlays` needed an
 explicit carve-out and a drift assertion just to duplicate *ordering* for one
 list. Every operation would also have to pick a tree, and the right pick differs
 per operation (paint and focus want the physical one, a named slot wants the
@@ -3550,7 +3554,7 @@ deleting the `cancelable` / `rejectable` boolean surface a Java API pays for (`R
 does not exist: a dialog staying open after a press is either collecting input (excluded below) or
 chaining — "Copy files" → a copy-progress dialog — and chaining is the callback's job, since it
 opens the *next* dialog. Activation order is **mark chosen → close → fire**, not fire-then-close:
-firing last means a follow-up popup snapshots the right prior focus, and a raising block cannot
+firing last means a follow-up overlay snapshots the right prior focus, and a raising block cannot
 strand a half-open dialog.
 
 **The component is the builder**, against `X.new.tap { … }` already being the house idiom. *Kwargs
@@ -3612,8 +3616,8 @@ Why not:
 - **Dropping the OK button from an alert**, since ESC / `q` / outside-click already close it: Tuile
   advertises no quit key (`D_quit_key`, `D_status_bar`), so the button *is* the discoverability
   affordance — and it is clickable, which the keys are not.
-- **Naming it `ConfirmWindow`**, as it was while it subclassed `Window` for the border and a popup
-  wrapped it: the widget-suffix rule named it after that superclass, and it read as tiled-or-popup
+- **Naming it `ConfirmWindow`**, as it was while it subclassed `Window` for the border and an overlay
+  wrapped it: the widget-suffix rule named it after that superclass, and it read as tiled-or-overlay
   for free. A tiled confirm is not a dialog anyone asked for; it extends `Dialog`
   (`D_panel_dialog`), and the name is what a searcher types.
 - **Folding `PickerDialog` in.** A keystroke-addressed, scrollable `List` with a cursor vs. a short
@@ -4748,7 +4752,7 @@ marking the call as not the component's own API — the scheme the gestures took
 **`find` returns an Array and takes `count:`; that is Karibu's `_expect`**, and `get` is
 `find(count: 1).first` rather than a second search — which is what makes it report an ambiguous spec
 instead of resolving it. `count: 0` is legal because it falls out of the same check, but it is
-**not** the idiom for "nothing is open": a direct assertion on the popups list beats a lookup that
+**not** the idiom for "nothing is open": a direct assertion on the overlays list beats a lookup that
 finds nothing.
 
 **The handles are structural — a class, an `id`, a subtree — and never what a component *says*.**
@@ -4811,7 +4815,7 @@ not a rename.
 
 **Additive to the assertion channel:** a spec asserting what a component *shows* still asserts
 against the buffer; the locator replaces the *driving* half, plus about a dozen
-`instance_variable_get(:@overlay)` reach-ins, an open overlay being a popup under the pane and so
+`instance_variable_get(:@overlay)` reach-ins, an open overlay being a child of the pane and so
 reachable by class.
 
 Deferred, not rejected: **checked interactions** (refuse when the component could not really have
@@ -4856,7 +4860,7 @@ blur, then focus, then the app notice. Its shape:
   (`screen_spec` pins it).
 - **No listener writer**, as for `handle_focus`; `handle_blur=` is additive whenever a stock-assembly
   consumer turns up, in the `on_theme_changed=` shape — public writer over protected hook.
-- **It fires wherever focus is *dropped*,** not only where a user moved it: the popup-close repair
+- **It fires wherever focus is *dropped*,** not only where a user moved it: the overlay-close repair
   blurs an **already-detached** component (an `invalidate` there is a silent no-op, as in
   `handle_detached`), and `Screen#close` blurs on the way out, while the tree is still mounted — both
   invisible from the call site, hence written down and specced.
@@ -5429,9 +5433,9 @@ whole, and Windows' gate never opens anyway.
 
 pikuri-tui's coding shell hides its sidebar column by handing it a zero-width rect. The two panes
 inside it are `Layout::Vertical`s, which kept the rects they had while visible. Nothing painted them
-— until the user closed a popup, and the full-repaint path invalidated **every** component directly.
+— until the user closed an overlay, and the full-repaint path invalidated **every** component directly.
 The sidebar came straight back, and, being later in tree order, over the conversation pane's
-scrollbar column; every subsequent popup open/close flickered it away and back.
+scrollbar column; every subsequent overlay open/close flickered it away and back.
 
 **The mechanism.** `Box#relayout` opened with `return if rect.empty?`, so a box whose own rect went
 empty never assigned its children — while the branch immediately below it does exactly the right
@@ -5612,7 +5616,7 @@ message counts the hidden matches it excluded, since "I *know* it's there" is th
 confusion.
 
 **Overlays refuse the flag, and `TabSheet` stays on detachment.** `visible=` raises on an `Overlay`:
-it is dismissed, not hidden (`D_overlay`), live-while-hidden does not apply, and a hidden popup still
+it is dismissed, not hidden (`D_overlay`), live-while-hidden does not apply, and a hidden overlay still
 modal and still catching clicks is the `focusable?`-and-`modal?` trap again. `TabSheet` keeps
 detaching because the lifecycle hooks on switch are a feature the book teaches; switchers split
 evenly in the survey (`R_visibility_flags`), and a keep-alive pane would want GTK's container-only
@@ -6344,7 +6348,7 @@ none of the last three tells the grabbed component.
 event, rather than toggled by moves. A pointer leaving the window sends nothing (`R_mouse_reporting`),
 so the position is *forgotten* on the evidence that it may be stale — a FocusOut (mode 1004), a key, a
 paste — and the hover stays clear until the next report. Re-resolving rather than pruning also moves
-the hover off a component a popup opens over, or a pane scrolls away, under a still pointer; the price
+the hover off a component an overlay opens over, or a pane scrolls away, under a still pointer; the price
 is an enter with no motion behind it, which GTK's synthesized crossings pay too.
 
 **Click-to-focus moved into the router**, ahead of every handler, so a widget cannot opt out by
@@ -6364,8 +6368,8 @@ Why not:
   job. Flutter is the one surveyed toolkit that still delivers to the whole hit path, and it pays
   with a gesture arena to pick the winner.
 - **Dispatch on `Component`, or spread over `Screen` and `ScreenPane`** — the walk lived three times
-  over before 0.14.0. popup semantics stay on the pane (`D_tree_first`): the router asks it which
-  popup is topmost and lets it own the outside-click dismissal, rather than reaching into `@popups`.
+  over before 0.14.0. overlay semantics stay on the pane (`D_tree_first`): the router asks it which
+  overlay is topmost and lets it own the outside-click dismissal, rather than reaching into `@overlays`.
 - **An explicit `grab_mouse` / `release_mouse` pair**, as Qt, WPF and Textual expose — the claim *is*
   the request, so the framework never guesses and a component cannot forget; and a claimant that has
   no use for its drags (a `List` selecting a row) ignores them for free. One fewer API, one fewer
@@ -6388,7 +6392,7 @@ The cost we carry:
 - **Overlapping tiled siblings, already forbidden, now matter to input too**: the descent takes one
   child per level, where the old walk visited every child containing the point.
 - **A scope-wide mouse binding has no home above the claimant** — the bubble stops at the tiled
-  content or the topmost popup, exactly as keys do, and there is no registry rung for the mouse.
+  content or the topmost overlay, exactly as keys do, and there is no registry rung for the mouse.
 
 ## D_form_item — Why is a form row a component wrapping the field, and why is it always three rows?
 
@@ -6550,7 +6554,7 @@ none is spent on a field concept.
 
 A form syncer can have both modes on one class — `readBean` / `writeBean` buffered, `setBean`
 write-through (`R_web_binder`) — and each has its use: **`FormSyncer::Buffered`** is the OK/Cancel
-popup, where Cancel is free because nothing was written; **`FormSyncer::Unbuffered`** is the settings
+overlay, where Cancel is free because nothing was written; **`FormSyncer::Unbuffered`** is the settings
 panel, the live filter, and the complex form whose sub-editors write as they go, bound as a draft
 the app copied. Both ship, **as two classes**: the split deletes the mode-switch questions outright
 (`read` after `model=`, `model=` after `read`), and each API stays small — `changed?` is
@@ -6923,7 +6927,7 @@ Why not:
 - **Cache the absolute position on the component**, refreshed from `rect=`. It
   would make `absolute_rect` O(1) instead of O(depth). But a subtree moves when
   an *ancestor*'s rect changes, and nothing walks down to tell it, so the cache
-  would be stale exactly when a popup or a resize moved things. And it buys
+  would be stale exactly when an overlay or a resize moved things. And it buys
   little: `to_screen` measures 0.7 µs at depth 7, against a full-screen repaint
   of 8 ms, once the walk sums into two locals instead of recursing through a
   `Point` per level (which is worth 3× on its own, and is why it is iterative).
@@ -6950,7 +6954,7 @@ are tripwires rather than proofs: a call split across two lines slips through.
 
 `Testing.get` refuses to hand back a hidden component, because it simulates a
 user. Nothing carried that over to *driving* one: `handle_key?` and `value=` do
-as they are told, so a spec operates a button behind an open modal popup, or a
+as they are told, so a spec operates a button behind an open modal overlay, or a
 field in a collapsed panel, and passes green against a feature nobody can reach.
 `Testing.click` and `Testing.set_value` close it, and {Tuile::Testing::Gestures}
 gives them receiver syntax — `field._value = 25`, `button._click`.
@@ -7186,7 +7190,7 @@ router and `cursor_position` would each learn an offset the rect does not carry.
 And a component need not fill its rect and inherits its background through the
 canvas (`D_bg_surface`), so a buffer needs a transparent cell and the compositor
 a second resolution of the background chain, silently wrong when the two drift.
-A popup, the other regime, is a few rows repainted whole. Argued, not
+An overlay, the other regime, is a few rows repainted whole. Argued, not
 prototyped; past a hundred-odd children in one viewport, the cull comes first.
 
 **Why the clip sits beside the origin in backend coordinates.** The canvas's
@@ -7310,18 +7314,18 @@ So the framework marks after `rect=`, after the three tree mutators and after a 
 flips, and a container marks for every *other* input to its own arithmetic. Same shape as the
 standing *a hook-owned resource is synced from an invariant, not toggled by the hooks*.
 
-**Sole writer is enforced, and it covers every child, popups included.** Each container keeps, per
+**Sole writer is enforced, and it covers every child, overlays included.** Each container keeps, per
 child, where that child wants to be — `Box` a `Fixed` / `Percent` / `Expand`, `Absolute` a `Rect`,
-`ScreenPane` a placement per popup (`Overlay::At`, `Centered`, `TopRight`,
+`ScreenPane` a placement per overlay (`Overlay::At`, `Centered`, `TopRight`,
 `ListDropdown::Anchored`) — and moving a child means changing that record, which marks the parent.
 `rect=` is protected and raises unless the parent's pass is running; the `Screen` stands in for the
-pane's. The popups had grown a second layout path: each overlay assigned its own rect, and
-`ScreenPane#rect=` repositioned them on a resize, so the mark `add_child` left on the pane for a
-popup owed a pass that placed nothing — a mark a stale-rect diagnostic then read as "everything
-below is stale". A placement is a rule, so a resize or a second popup re-derives the same rect. An
+pane's. The overlays had grown a second layout path: each overlay assigned its own rect, and
+`ScreenPane#rect=` repositioned them on a resize, so the mark `add_child` left on the pane for an
+overlay owed a pass that placed nothing — a mark a stale-rect diagnostic then read as "everything
+below is stale". A placement is a rule, so a resize or a second overlay re-derives the same rect. An
 anchored dropdown reads its anchor during the pane's pass, which runs *before* the content it hangs
 from, so `Screen#flush_layout` re-checks the anchors once the drain is empty: one more round for
-every anchor in `lib/`, since placing a popup never moves content, and one per level for a popup an
+every anchor in `lib/`, since placing an overlay never moves content, and one per level for an overlay an
 app anchors inside another.
 
 Why not:
@@ -7341,19 +7345,19 @@ Why not:
   in `AGENTS.md` went together. A child's flag flip always dirties its parent's own cells (it
   vacated them, and a hidden component paints nothing itself), so the condition was never
   per-container in the first place.
-- **A `ScreenPane#relayout` that re-derives popups from their rects.** It did, briefly, and
-  snapped a hand-placed popup back to centre whenever a second one opened, because the rect was the
-  only record of where the popup wanted to be. The pass now places each popup from a stored
+- **A `ScreenPane#relayout` that re-derives overlays from their rects.** It did, briefly, and
+  snapped a hand-placed overlay back to centre whenever a second one opened, because the rect was the
+  only record of where the overlay wanted to be. The pass now places each overlay from a stored
   placement — `Overlay::At[rect]` for a hand-placed one — so re-running it moves nothing.
 - **Declaring which children a pass places** (`places_child?`, never released).
-  It skipped the pane's mark for a popup, and was right only while the declaration matched the
-  `relayout` beside it — a promise kept by hand. Placing popups in the pass made the mark honest
+  It skipped the pane's mark for an overlay, and was right only while the declaration matched the
+  `relayout` beside it — a promise kept by hand. Placing overlays in the pass made the mark honest
   instead.
 - **`protected` alone.** Ruby lets any `Component` call it, so a widget could still move a sibling;
   the runtime check costs one identity comparison per *write*, so it is always on. It also rules out
   overriding `rect=`: a protected override is callable only from its own class, which the parent
   is not, hence `handle_rect_changed`.
-- **Keeping a popup's placement on the overlay**, as `declared_size` was. An overlay can only sit
+- **Keeping an overlay's placement on the overlay**, as `declared_size` was. An overlay can only sit
   on the pane, and what changes from inside it is its *size*, which a placement reads live
   (`declared_size_in`, a dropdown's row count) — so the record stays the container's, set once at
   `open`, the way a `Box` child's `Fixed[1]` outlives its content changing.
@@ -7363,7 +7367,7 @@ Why not:
 - **A root-only writer (`root_rect=`) for a tree with no screen.** Holding it in an `Absolute`,
   whose rects do not depend on its own size, sizes it with no exception to the rule but the pane.
 - **Following an anchor from its source** — `rect=` asking whether it holds a registered anchor —
-  gives the post-drain answer at a cost on every rect write in every app; **a separate popup phase
+  gives the post-drain answer at a cost on every rect write in every app; **a separate overlay phase
   after the content** is simpler and is the second layout path this removed; **a snapshot of the
   anchor at open**, what `Select` did, never follows the field.
 - **A `ListDropdown` that decides its gutter beside whichever anchor method placed it.** Both
@@ -7544,10 +7548,10 @@ read an unsettled rect *on purpose* — whether a rect survived a round trip is 
 stale value answers — and that is what `without_strict_layout` is for. On the way it also caught
 four real spec bugs, each an assertion against a rect no pass had assigned.
 
-**The third is a false alarm, and it is accepted.** Every popup open marks the pane, because the
-pane's pass is what places popups, and the mark is honest; what the walk cannot know is that the
-pass will hand content the rect it already has. The cost is one `settle` in a spec that opens a
-popup and then reads a rect under it in the same turn — reading mid-configuration, which is the
+**The third is a false alarm, and it is accepted.** Every overlay open marks the pane, because the
+pane's pass is what places overlays, and the mark is honest; what the walk cannot know is that the
+pass will hand content the rect it already has. The cost is one `settle` in a spec that opens an
+overlay and then reads a rect under it in the same turn — reading mid-configuration, which is the
 smell this diagnostic exists to point at whether or not the value happened to hold.
 
 **`:raise` is what `true` means, because `:warn` is invisible to the audience.** `Tuile.logger`
@@ -7570,7 +7574,7 @@ Why not:
 - **Reporting a framework-entered read too, behind a fourth mode.** A mode to see those 265 reads
   measures the marking, and where the marking is wrong the answer is to fix it, not to watch it.
 - **Recording a suspect read and reporting it after the settle, only if the rect changed.** Precise
-  where the walk guesses, and it would have silenced the popup case. It was worked through and
+  where the walk guesses, and it would have silenced the overlay case. It was worked through and
   declined: the report lands at the settle, so the read site has to travel in the message and the
   example's own assertion diff usually fails first; an absolute read (`absolute_rect`, `to_screen`)
   needs its own comparison, since a parent can move while the child's local rect holds; a read no

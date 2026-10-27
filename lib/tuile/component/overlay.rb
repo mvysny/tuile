@@ -30,7 +30,7 @@ module Tuile
     # defaults here are inert (`false`, `false`): a bare overlay floats without
     # disturbing focus or key dispatch. {Component::Dialog} flips both. What must
     # not appear is a *focusable non-modal* overlay: {ScreenPane#handle_key?}
-    # scopes delivery to the topmost modal popup or else the tiled content, so
+    # scopes delivery to the topmost modal overlay or else the tiled content, so
     # such an overlay would hold focus outside the key scope, where delivery
     # reaches nobody and *every* keystroke goes dead until Tab recovers. A
     # non-modal overlay is therefore driven from its owner's key handler
@@ -166,6 +166,7 @@ module Tuile
         @_close_on_outside_click = close_on_outside_click
         @_owner = nil
         @_content = nil
+        @_close_reason = nil
         self.content = content unless content.nil?
       end
 
@@ -186,7 +187,7 @@ module Tuile
       # hiding would buy — or hide the *content* if only a piece of it comes
       # and goes.
       #
-      # The pane resolves clicks and key scope from its popup list, which does
+      # The pane resolves clicks and key scope from its overlay list, which does
       # not consult this flag, so a hidden overlay would paint nothing while
       # still swallowing every click and, if modal, scoping every key: the
       # invisible-modal trap the class docs warn about for {#focusable?} and
@@ -199,7 +200,7 @@ module Tuile
       end
 
       # Whether a left click outside this overlay closes it (default true). The
-      # pane does the closing — {ScreenPane#dismissing_popups_outside} snapshots
+      # pane does the closing — {ScreenPane#dismissing_overlays_outside} snapshots
       # the open overlays *before* the press is routed and closes the
       # dismissable ones *after*, so a widget that toggles its own overlay from a click on its
       # face (a {Component::Select}, a {Component::MenuBar} title) still toggles
@@ -250,19 +251,38 @@ module Tuile
         @_owner = value
       end
 
-      # What {#on_close} fires.
+      # What {#on_close} fires. One event carrying a reason, not a second
+      # `on_dismiss` slot: a driver that must hear every exit would otherwise
+      # subscribe to both and dedupe.
       #
       # @!attribute [r] source
       #   @return [Overlay] the overlay that left the screen.
-      CloseEvent = Data.define(:source) { include Tuile::Event }
+      # @!attribute [r] reason
+      #   @return [Symbol] why it left, one of {CloseEvent::REASONS}:
+      #
+      #   - `:key` — ESC or `q` on a {Component::Dialog}, or a driver's own
+      #     `close(reason: :key)`.
+      #   - `:outside_click` — a left press missed it ({#close_on_outside_click?}).
+      #   - `:code` — any other {#close} or {Screen#remove_overlay}, framework
+      #     widgets included (a {Component::ConfirmDialog} button, a
+      #     {Component::Notification} expiring).
+      #   - `:teardown` — {Screen#close} unmounted the tree; nobody dismissed it.
+      CloseEvent = Data.define(:source, :reason) { include Tuile::Event }
+
+      # @return [Array<Symbol>] every {CloseEvent#reason}, in no meaningful order.
+      CloseEvent::REASONS = %i[key outside_click code teardown].freeze
 
       # @!method on_close
       #   Fired with a {CloseEvent} once this overlay has left the screen —
-      #   **however it left**: {#close}, a direct {Screen#remove_popup}, an
+      #   **however it left**: {#close}, a direct {Screen#remove_overlay}, an
       #   outside click, or teardown via {Screen#close}. That unconditionality is
       #   the point, so it hangs off {#handle_detached} rather than {#close}; a
       #   driver keeping its own record of open overlays reconciles it here and
-      #   cannot drift ({Component::MenuBar::Cascade} is the worked example).
+      #   cannot drift ({Component::MenuBar::Cascade} is the worked example). A
+      #   listener that only cares about some exits filters on
+      #   {CloseEvent#reason}:
+      #
+      #     log_dialog.on_close { reset_unread unless _1.reason == :teardown }
       #
       #   It fires *after* the overlay is detached, so {#open?} is already false
       #   and the usual {Component#handle_detached} caveats apply: release state,
@@ -317,19 +337,46 @@ module Tuile
       # @raise [TypeError] if `placement` does not include {Placement}.
       # @return [self]
       def open(placement = default_placement)
-        screen.add_popup(self, placement)
+        screen.add_overlay(self, placement)
         self
       end
 
       # Removes this overlay from the {Screen}. No-op if not currently open.
+      #
+      #   overlay.close                  # on_close says :code
+      #   dropdown.close(reason: :key)   # a driver closing it on the user's ESC
+      #
+      # An override must take and pass on `reason:` — {Dialog} and the
+      # outside-click path call `close(reason: …)`.
+      # @param reason [Symbol] what {CloseEvent#reason} reports: `:key`,
+      #   `:outside_click` or `:code`; `:teardown` is {Screen#close}'s alone.
+      # @raise [ArgumentError] on any other reason.
       # @return [void]
-      def close
-        screen.remove_popup(self)
+      def close(reason: :code)
+        unless CloseEvent::REASONS.include?(reason) && reason != :teardown
+          raise ArgumentError, "#{reason.inspect} is not a close reason: :key, :outside_click or :code"
+        end
+        return unless open?
+
+        # Read back by handle_detached, which parent= fires and which takes no argument.
+        @_close_reason = reason
+        screen.remove_overlay(self)
+      ensure
+        @_close_reason = nil
+      end
+
+      # Internal — {ScreenPane#detach_all} calls it on every open overlay just
+      # before unmounting the tree, so the {#on_close} teardown fires says
+      # `:teardown`.
+      # @api private
+      # @return [void]
+      def mark_teardown
+        @_close_reason = :teardown
       end
 
       # @return [Boolean] true if this overlay is currently mounted on the screen.
       def open?
-        screen.has_popup?(self)
+        screen.has_overlay?(self)
       end
 
       # Where this overlay wants to be, or `nil` while closed.
@@ -361,7 +408,10 @@ module Tuile
       # @return [void]
       def handle_detached
         super
-        on_close.fire(CloseEvent.new(source: self))
+        # Unset means nothing stamped it: a direct Screen#remove_overlay.
+        reason = @_close_reason || :code
+        @_close_reason = nil
+        on_close.fire(CloseEvent.new(source: self, reason:))
       end
 
       protected

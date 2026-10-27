@@ -1,4 +1,4 @@
-# Modal backdrop — dim the content under a popup, or cast a shadow
+# Modal backdrop — dim the content under an overlay, or cast a shadow
 
 **Status:** seed, not brainstormed. Spun off `D_confirm_window`, whose sizing ruled that a tiny
 yes/no box lost on a busy screen "is really a backdrop problem" — so `ConfirmWindow` has no size floor.
@@ -7,11 +7,11 @@ yes/no box lost on a busy screen "is really a backdrop problem" — so `ConfirmW
 `ConfirmWindow` mid-screen can go unnoticed.
 
 **Candidates** (every GUI stack ships at least one):
-- **dim / tint** every non-popup cell under the topmost modal (`ScreenPane#modal_popup`);
+- **dim / tint** every non-overlay cell under the topmost modal (`ScreenPane#modal_overlay`);
 - **drop shadow** — a one-cell dark offset below and right of the box.
 
 **What exists:**
-- `Screen#repaint` collects the tiled layer, then appends popups in stacking order — a dim pass has
+- `Screen#repaint` collects the tiled layer, then appends overlays in stacking order — a dim pass has
   a natural slot between them.
 - Cells are opaque (`D_bg_inherit`), so "dim" restyles cells; there is no compositing.
 - `Color` has no darken / blend yet, which a dim factor needs.

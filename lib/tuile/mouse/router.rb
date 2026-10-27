@@ -8,8 +8,8 @@ module Tuile
     #
     #   screen.handle_mouse(Mouse::DownEvent.new(:left, 5, 2))   # what the loop does
     #
-    # Every event resolves against one **path**: the topmost popup containing the
-    # point, else the tiled content unless a modal popup is open
+    # Every event resolves against one **path**: the topmost overlay containing the
+    # point, else the tiled content unless a modal overlay is open
     # ({ScreenPane#mouse_root_at}), then down through the shown children whose
     # {Component#rect} contains it. A `rect` is parent-relative, so the walk
     # converts the point as it descends and each component is handed the event
@@ -47,7 +47,7 @@ module Tuile
     # since the terminal lost focus, or since a key or a paste, after which the
     # pointer may be anywhere, the terminal never reporting it leaving.
     # {#sync_hover} is its sole writer, run after every event and every repaint,
-    # so a popup opening over the pointer or a pane scrolling under it moves the
+    # so an overlay opening over the pointer or a pane scrolling under it moves the
     # hover with no motion at all. While a press is grabbed, hover is suspended:
     # the chain only loses members that were detached, hidden or reparented.
     class Router
@@ -163,7 +163,7 @@ module Tuile
         pane = @_screen.pane
         root = pane.mouse_root_at(point)
         path = rect_path(root, point)
-        pane.dismissing_popups_outside(point, left: event.button == :left) do
+        pane.dismissing_overlays_outside(point, left: event.button == :left) do
           focus_innermost(root, path) if event.button == :left
           claimant = bubble(within_extent(path), :handle_mouse_down?, event)
           unless claimant.nil?

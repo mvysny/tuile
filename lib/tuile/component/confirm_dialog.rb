@@ -88,7 +88,7 @@ module Tuile
         @_box.add(@_body_slot, Layout::Expand[1])
         @_box.add(@_button_row, Layout::Fixed[1], cross: Layout::Fixed[0], align: :center)
         self.content = @_box
-        on_close { notice_dismissed }
+        on_close { notice_dismissed(_1) }
       end
 
       # What {#on_dismiss} fires.
@@ -99,8 +99,9 @@ module Tuile
 
       # @!method on_dismiss
       #   Fired with a {DismissEvent} when the dialog is dismissed — ESC, `q`, an
-      #   outside click, or a {#button} declared without a block. Fires exactly
-      #   once per {#open}, and never when an action button was chosen.
+      #   outside click, {#close}, or a {#button} declared without a block. Fires
+      #   at most once per {#open}: never when an action button was chosen, and
+      #   never when {Screen#close} tears the dialog down with the app.
       #   @return [Listeners]
       listener :on_dismiss
 
@@ -333,12 +334,15 @@ module Tuile
         action.nil? ? fire_dismissed : action.call
       end
 
-      # The {#on_close} listener: fires {#on_dismiss} unless a button was chosen —
-      # which makes ESC, `q`, an outside click, {#close}, a direct
-      # {Screen#remove_popup} and teardown all one event, fired exactly once.
+      # The {#on_close} listener: fires {#on_dismiss} unless a button was chosen
+      # or the screen is being torn down — which makes ESC, `q`, an outside
+      # click, {#close} and a direct {Screen#remove_overlay} one event, fired
+      # exactly once. Teardown is no dismissal: the app is ending, and a
+      # callback would run mid-unmount.
+      # @param event [Overlay::CloseEvent]
       # @return [void]
-      def notice_dismissed
-        return if @_chosen
+      def notice_dismissed(event)
+        return if @_chosen || event.reason == :teardown
 
         @_chosen = true
         fire_dismissed

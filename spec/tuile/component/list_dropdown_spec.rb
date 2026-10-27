@@ -215,7 +215,7 @@ module Tuile
         assert_equal Rect.new(0, 3, 20, 3), drop.rect
       end
 
-      # The pane places popups before the content settles, so the anchor it
+      # The pane places overlays before the content settles, so the anchor it
       # read was the old one; the re-check after the drain catches it.
       it "follows the field when the content around it moves" do
         column, spacer, _field, drop = field_and_drop(top: 2)

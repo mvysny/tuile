@@ -3,7 +3,7 @@
 module Tuile
   class FormSyncer
     # Binds fields to a model and writes them back only on Save, and only when
-    # every validator passes — the form syncer for a form in an OK/Cancel popup, where
+    # every validator passes — the form syncer for a form in an OK/Cancel overlay, where
     # Cancel is free because nothing reached the model:
     #
     #   syncer = FormSyncer::Buffered.new
@@ -13,7 +13,7 @@ module Tuile
     #
     #   save.on_click do
     #     if syncer.write?(person)
-    #       popup.close
+    #       overlay.close
     #     else
     #       messages = syncer.last_validation.values.flatten.map(&:message)
     #       Component::ConfirmDialog.alert("Cannot save", messages.join("\n"))

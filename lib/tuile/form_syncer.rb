@@ -6,7 +6,7 @@ module Tuile
   #
   # - {Buffered} — `read` the model into the fields, `write?` it back on
   #   Save; nothing reaches the model until every validator passes. An
-  #   OK/Cancel popup.
+  #   OK/Cancel overlay.
   # - {Unbuffered} — `model=`, and every valid edit writes through at
   #   once. A settings panel, a live filter, or a draft the app deep-copied.
   #

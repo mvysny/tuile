@@ -860,7 +860,7 @@ query: it reverts to the selection's label when you dismiss the dropdown,
 and only a real commit fires `on_value_change`. Being a text field, it takes
 the editing keys above — Ctrl+U empties a query you want to start over in one
 press, rather than holding Backspace down. The dropdown itself is a
-borderless popup tinted apart from the content beneath it (chapter 6's
+borderless overlay tinted apart from the content beneath it (chapter 6's
 background inheritance again), floating below the field or flipping above
 when it's near the bottom of the screen.
 
@@ -1820,6 +1820,27 @@ dependency the wrong way is a component *acting on* an ancestor: closing
 it, hiding it, reconfiguring it. That is the parent's job, so hand the
 parent a listener and let it do the job.
 
+### Hearing it close
+
+The other direction is `on_close`: whoever opened an overlay listens, and
+hears it leave the screen. It fires **however** the overlay left — ESC, an
+outside click, `close` from anywhere, even `screen.close` taking the whole
+UI down at the end of `main`. That's what a caller keeping its own record of
+open overlays wants, because no exit can slip past it.
+
+It is not what "the user has seen this" wants, because the app quitting is
+not the user dismissing anything. So the event says why, and you filter:
+
+```ruby
+log = Component::LogDialog.new
+log.on_close { reset_unread_count unless _1.reason == :teardown }
+log.open
+```
+
+The reasons are `:key` (ESC or `q`), `:outside_click`, `:code` (any `close`)
+and `:teardown`. A `ConfirmDialog`'s `on_dismiss` already makes that cut for
+you: teardown never fires it.
+
 ## The confirm dialog
 
 A `Dialog` around your own content is how you build any dialog. One dialog is
@@ -1946,7 +1967,7 @@ Component::Notification.show("Disk almost full", color: Color::RED)
 That class method is the *only* way in — `new` is private. The reason is
 worth understanding, because it's the design in one line: there is never
 more than one notification box on screen. `show` looks for the live one in
-the popups stack and appends to it, so a burst of messages stacks as
+the overlays stack and appends to it, so a burst of messages stacks as
 entries inside a single frame:
 
 ```

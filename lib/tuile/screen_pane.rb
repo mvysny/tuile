@@ -5,9 +5,9 @@ module Tuile
   #
   # {Screen} is a singleton runtime owner (event loop, lock, terminal IO,
   # invalidation set). All actual UI lives under a {ScreenPane}: the tiled
-  # {#content} and the {#popups} stack. Putting them under a single Component
+  # {#content} and the {#overlays} stack. Putting them under a single Component
   # parent gives focus traversal a real root, makes {Component#attached?} a
-  # one-liner, and lets popup-focus repair fall out of the standard
+  # one-liner, and lets overlay-focus repair fall out of the standard
   # {Component#handle_child_removed} hook.
   #
   # The pane owns no chrome of its own — no status bar, no reserved row.
@@ -15,22 +15,22 @@ module Tuile
   # builds one into its own layout and drives it from
   # {Screen#on_focus_changed} (`D_status_bar`).
   #
-  # The pane is not a {Component::Layout}: popups deliberately overlap content
+  # The pane is not a {Component::Layout}: overlays deliberately overlap content
   # (Z-ordered, full overdraw, no clipping) and key/mouse dispatch follows
-  # modal-popup rules rather than active-child dispatch.
+  # modal-overlay rules rather than active-child dispatch.
   class ScreenPane < Component
     def initialize
       super
-      @_popups = []
-      # Per-popup snapshot of {Screen#focused} taken just before the popup was
-      # added. Restored when the popup closes so focus returns to where the
+      @_overlays = []
+      # Per-overlay snapshot of {Screen#focused} taken just before the overlay was
+      # added. Restored when the overlay closes so focus returns to where the
       # user was, instead of falling through to {#content} and getting
       # cascaded to the first focusable child.
-      @_popup_prior_focus = {}
-      # Where each open popup wants to be, and the anchor rect its last
+      @_overlay_prior_focus = {}
+      # Where each open overlay wants to be, and the anchor rect its last
       # placement used (`:lost` once the anchor went away) — see #relayout.
       # Hand-rolled rather than a Layout::ConstraintMap: the pane is no Layout,
-      # removes through #remove_popup, and keeps a second map in lockstep.
+      # removes through #remove_overlay, and keeps a second map in lockstep.
       @_placements = {}.compare_by_identity
       @_placed_anchors = {}.compare_by_identity
     end
@@ -41,7 +41,7 @@ module Tuile
     #   last is topmost. Holds both {Component::Dialog} modals and bare
     #   {Component::Overlay}s ({Component::Overlay#modal?}). The array must not
     #   be mutated by callers.
-    def popups = @_popups
+    def overlays = @_overlays
 
     def focusable? = false
 
@@ -68,7 +68,7 @@ module Tuile
     # content, driven from app code.
     #
     # The *whole subtree* is invalidated, not just the overlay wrapper (which
-    # paints nothing on its own): a reopened popup may land on cells that the
+    # paints nothing on its own): a reopened overlay may land on cells that the
     # tiled content has since overpainted, and if its rect is unchanged from
     # last time its content components won't re-invalidate themselves — so
     # without this the overlay's contents would stay blank on reopen.
@@ -78,63 +78,63 @@ module Tuile
     # @raise [TypeError] if `placement` does not include
     #   {Component::Overlay::Placement}.
     # @return [void]
-    def add_popup(overlay, placement = nil)
+    def add_overlay(overlay, placement = nil)
       raise TypeError, "expected Overlay, got #{overlay.inspect}" unless overlay.is_a? Component::Overlay
       raise ArgumentError, "#{overlay} already has a parent #{overlay.parent}" unless overlay.parent.nil?
 
       placement ||= overlay.default_placement
       check_placement(placement)
-      @_popup_prior_focus[overlay] = screen.focused
+      @_overlay_prior_focus[overlay] = screen.focused
       @_placements[overlay] = placement
-      @_popups << overlay
-      add_child(overlay) # appended: popups paint over the tiled content
+      @_overlays << overlay
+      add_child(overlay) # appended: overlays paint over the tiled content
       screen.focused = overlay if overlay.modal?
       overlay.walk_tree { |c| screen.invalidate(c) }
     end
 
-    # @param popup [Component::Overlay] an open popup.
+    # @param overlay [Component::Overlay] an open overlay.
     # @return [Component::Overlay::Placement, nil] where it wants to be; `nil`
     #   if it isn't open here.
-    def placement(popup) = @_placements[popup]
+    def placement(overlay) = @_placements[overlay]
 
-    # Moves an open popup; it takes the new rect on the next settle.
+    # Moves an open overlay; it takes the new rect on the next settle.
     # {Component::Overlay#placement=} is the usual way in.
-    # @param popup [Component::Overlay] an open popup.
+    # @param overlay [Component::Overlay] an open overlay.
     # @param placement [Component::Overlay::Placement] where it wants to be.
-    # @raise [ArgumentError] if `popup` isn't open on this pane.
+    # @raise [ArgumentError] if `overlay` isn't open on this pane.
     # @raise [TypeError] if `placement` does not include
     #   {Component::Overlay::Placement}.
     # @return [void]
-    def constrain(popup, placement)
-      raise ArgumentError, "#{popup} is not an open popup on this pane" unless has_popup?(popup)
+    def constrain(overlay, placement)
+      raise ArgumentError, "#{overlay} is not an open overlay on this pane" unless has_overlay?(overlay)
 
       check_placement(placement)
-      return if @_placements[popup] == placement
+      return if @_placements[overlay] == placement
 
-      @_placements[popup] = placement
+      @_placements[overlay] = placement
       invalidate_layout
     end
 
-    # Removes a popup. If the popup held focus, focus shifts to the now-topmost
-    # remaining popup, falling back to the focus snapshotted when the popup
+    # Removes an overlay. If the overlay held focus, focus shifts to the now-topmost
+    # remaining overlay, falling back to the focus snapshotted when the overlay
     # was opened (if still attached), then to {#content}, then to nil.
     # @param overlay [Component]
     # @return [void]
-    def remove_popup(overlay)
-      raise Tuile::Error, "#{overlay} is not an open popup on this pane" unless @_popups.delete(overlay)
+    def remove_overlay(overlay)
+      raise Tuile::Error, "#{overlay} is not an open overlay on this pane" unless @_overlays.delete(overlay)
 
-      prior = @_popup_prior_focus.delete(overlay)
+      prior = @_overlay_prior_focus.delete(overlay)
       @_placements.delete(overlay)
       @_placed_anchors.delete(overlay)
-      @_removing_popup_prior = prior
+      @_removing_overlay_prior = prior
       remove_child(overlay)
-      # Runs after the detach, so a prior pointing *inside* the removed popup is
+      # Runs after the detach, so a prior pointing *inside* the removed overlay is
       # detectable via `p.root == overlay`: forward it to *our* prior, so chained
       # closures climb back to the original owner instead of stopping at a
       # detached component.
-      @_popup_prior_focus.transform_values! { |p| p && p.root == overlay ? prior : p }
+      @_overlay_prior_focus.transform_values! { |p| p && p.root == overlay ? prior : p }
     ensure
-      @_removing_popup_prior = nil
+      @_removing_overlay_prior = nil
     end
 
     # Unmounts everything: each child is detached — firing {Component#handle_detached}
@@ -144,47 +144,48 @@ module Tuile
     # Deliberately not named `close` ({Component::Dialog#close} already means
     # "remove *me* from the pane"), and deliberately not a generic
     # `Component#remove_all_children`: a slot container calling that would empty
-    # `@_children` while `#content` / `#popups` still pointed at detached
+    # `@_children` while `#content` / `#overlays` still pointed at detached
     # components, which is the desync the tree API exists to prevent.
     # @return [void]
     def detach_all
       screen.focused = nil # …so the focus repair in handle_child_removed has nothing to do
+      @_overlays.each(&:mark_teardown)
       children.dup.each { detach_child(_1) }
       @_content = nil
-      @_popups.clear
-      @_popup_prior_focus.clear
+      @_overlays.clear
+      @_overlay_prior_focus.clear
       @_placements.clear
       @_placed_anchors.clear
     end
 
     # @param overlay [Component]
-    # @return [Boolean] true if this pane currently hosts the popup.
-    def has_popup?(overlay) = @_popups.include?(overlay) # rubocop:disable Naming/PredicatePrefix
+    # @return [Boolean] true if this pane currently hosts the overlay.
+    def has_overlay?(overlay) = @_overlays.include?(overlay) # rubocop:disable Naming/PredicatePrefix
 
-    # @return [Component::Dialog, nil] the topmost modal overlay, or nil when
-    #   only bare {Component::Overlay}s (or none) are open. This is the "modal
-    #   owner": the popup that scopes key dispatch, blocks mouse clicks, and
+    # @return [Component::Overlay, nil] the topmost modal overlay, or nil when
+    #   only non-modal overlays (or none) are open. This is the "modal
+    #   owner": the overlay that scopes key dispatch, blocks mouse clicks, and
     #   confines Tab cycling. Bare overlays are excluded — they float above the
     #   content without capturing input.
-    def modal_popup = @_popups.reverse_each.find(&:modal?)
+    def modal_overlay = @_overlays.reverse_each.find(&:modal?)
 
-    # The root of the current **key scope**: the topmost modal popup when one
+    # The root of the current **key scope**: the topmost modal overlay when one
     # is open, else the tiled {#content}. Keys bubble up to it and no further,
     # a paste reaches only a focus chain inside it, and Tab cycles only the
     # stops beneath it — so a component outside it is one the keyboard cannot
     # reach at all. The mouse resolves against a *point* instead
     # ({#mouse_root_at}).
     # @return [Component, nil] nil when the pane holds neither.
-    def key_scope = modal_popup || @_content
+    def key_scope = modal_overlay || @_content
 
     # Gives {#content} the whole pane rect — the pane reserves nothing for
-    # itself — and each popup the rect its placement asks for, in stacking
+    # itself — and each overlay the rect its placement asks for, in stacking
     # order, so a submenu is placed after the panel it hangs from.
     #
     # Re-running it moves nothing that stood still: a placement is a rule, so
-    # a second popup opening re-derives the first one's rect unchanged.
+    # a second overlay opening re-derives the first one's rect unchanged.
     #
-    # An empty pane collapses every popup rather than placing it — an `At` rect
+    # An empty pane collapses every overlay rather than placing it — an `At` rect
     # would otherwise stand in a pane with no cells — and has no `return if
     # rect.empty?` guard, which would strand the content at its last rect
     # (`D_empty_ancestor`).
@@ -192,9 +193,9 @@ module Tuile
     def relayout
       @_content&.rect = local_rect
       if rect.empty?
-        @_popups.each { _1.rect = Rect.new(0, 0, 0, 0) }
+        @_overlays.each { _1.rect = Rect.new(0, 0, 0, 0) }
       else
-        @_popups.each { place(_1) }
+        @_overlays.each { place(_1) }
       end
     end
 
@@ -206,9 +207,9 @@ module Tuile
     # Delivers a key to {Screen#focused}, then bubbles it up the focus chain —
     # the first component whose `handle_key?` returns true wins.
     #
-    # Bubbling stops at the *scope* root: the topmost *modal* popup when one is
+    # Bubbling stops at the *scope* root: the topmost *modal* overlay when one is
     # open, else the tiled {#content}. Focus that is nil or sits outside the
-    # scope receives nothing, which is what keeps an open modal popup modal.
+    # scope receives nothing, which is what keeps an open modal overlay modal.
     # Non-modal overlays are never the scope: focus stays in the content
     # beneath them, and the overlay is driven by app code (which forwards keys
     # to it explicitly), so it doesn't appear in this path at all.
@@ -230,7 +231,7 @@ module Tuile
     # Delivers pasted text to {Screen#focused} — and to nobody else.
     #
     # Scoped exactly like {#handle_key?} (focus that is nil or sits outside the
-    # modal scope receives nothing, which is what keeps a popup modal) but
+    # modal scope receives nothing, which is what keeps an overlay modal) but
     # **not bubbled**: an ancestor is never offered a paste its descendant
     # declined, and unhandled text is dropped. Why keys bubble and pastes
     # don't: `D_bracketed_paste`.
@@ -247,22 +248,22 @@ module Tuile
     end
 
     # Where {Mouse::Router} starts its walk for a pointer at `point`: the
-    # topmost popup containing it, else {#content} — unless a modal popup is
+    # topmost overlay containing it, else {#content} — unless a modal overlay is
     # open, which eats the event even outside its rect. A non-modal overlay
     # blocks nothing: a point outside it reaches the content beneath.
     # @api private
     # @param point [Point]
     # @return [Component, nil]
-    def mouse_root_at(point) = popup_at(point) || (@_content if modal_popup.nil?)
+    def mouse_root_at(point) = overlay_at(point) || (@_content if modal_overlay.nil?)
 
-    # Runs the press delivery in the block, then *dismisses* the open popups a
+    # Runs the press delivery in the block, then *dismisses* the open overlays a
     # left press landed outside of that asked for it
-    # ({Component::Overlay#close_on_outside_click?}). A dismissed popup is
+    # ({Component::Overlay#close_on_outside_click?}). A dismissed overlay is
     # closed rather than told.
     #
     # "Outside" is measured against the {Component::Overlay#owner} chain, not
-    # against one rect and not against stacking order: the popup the press hit
-    # is kept, and so is every popup that one *belongs to*, transitively. That
+    # against one rect and not against stacking order: the overlay the press hit
+    # is kept, and so is every overlay that one *belongs to*, transitively. That
     # is what stops a dialog being dismissed by a click on a dropdown its own
     # field opened, and a menu cascade being dismissed by a click on one of its
     # own deeper panels. Order carries no meaning here — between unrelated
@@ -271,7 +272,7 @@ module Tuile
     #
     # Two halves of the ordering are load-bearing, and both are specced:
     #
-    # - **Snapshot before the block.** A popup the delivered press *opens* must
+    # - **Snapshot before the block.** An overlay the delivered press *opens* must
     #   not be in the set (it would immediately dismiss itself — every
     #   {Component::Select} would be unopenable by mouse).
     # - **Close after the block.** A widget toggling its own overlay from a press
@@ -281,28 +282,28 @@ module Tuile
     #   dismissed by clicking the Select.
     #
     # The snapshot is a fresh array for a third reason: a handler may close
-    # further popups, and `@_popups` must not be mutated mid-iteration.
+    # further overlays, and `@_overlays` must not be mutated mid-iteration.
     # @api private
     # @param point [Point]
     # @param left [Boolean] whether the press was the left button; no other
     #   button dismisses.
     # @yield the press delivery.
     # @return [void]
-    def dismissing_popups_outside(point, left:)
-      dismissable = left ? @_popups - kept_by(popup_at(point)) : []
+    def dismissing_overlays_outside(point, left:)
+      dismissable = left ? @_overlays - kept_by(overlay_at(point)) : []
       yield
-      dismissable.each { _1.close if _1.close_on_outside_click? }
+      dismissable.each { _1.close(reason: :outside_click) if _1.close_on_outside_click? }
     end
 
     # Focus repair when a child detaches. Default {Component#handle_child_removed}
     # would refocus to `self` (the pane), which isn't a useful focus target.
     # Instead, route focus to the first interactable widget in the now-topmost
-    # modal popup; falling back to the focus snapshotted when this popup was opened
+    # modal overlay; falling back to the focus snapshotted when this overlay was opened
     # (if still attached and still focusable); then to the first interactable
     # widget in {#content}; then to {#content} itself; then nil.
     #
     # "First interactable widget" = first {Component#tab_stop?} in pre-order;
-    # if a scope has no tab stops at all (a borderless ESC-to-close popup, or
+    # if a scope has no tab stops at all (a borderless ESC-to-close overlay, or
     # tiled content made entirely of {Label}s), we focus the scope's root so
     # `q`/ESC still has somewhere to dispatch from.
     # @param child [Component]
@@ -316,9 +317,9 @@ module Tuile
       cursor = f
       while cursor
         if cursor == child
-          fallback = first_tab_stop_or_root(modal_popup)
-          if fallback.nil? && @_removing_popup_prior&.attached? && @_removing_popup_prior.focusable?
-            fallback = @_removing_popup_prior
+          fallback = first_tab_stop_or_root(modal_overlay)
+          if fallback.nil? && @_removing_overlay_prior&.attached? && @_removing_overlay_prior.focusable?
+            fallback = @_removing_overlay_prior
           end
           fallback ||= first_tab_stop_or_root(@_content)
           screen.focused = fallback
@@ -354,46 +355,46 @@ module Tuile
       ComponentUtil.effectively_visible?(anchor) ? anchor.absolute_extent_rect : nil
     end
 
-    # @param popup [Component::Overlay]
+    # @param overlay [Component::Overlay]
     # @return [void]
-    def place(popup)
-      placement = @_placements.fetch(popup)
+    def place(overlay)
+      placement = @_placements.fetch(overlay)
       anchor = placement.anchor
       anchor_rect = resolve_anchor(anchor)
       unless anchor.nil?
-        return lose_anchor(popup) if anchor_rect.nil?
+        return lose_anchor(overlay) if anchor_rect.nil?
 
-        @_placed_anchors[popup] = anchor_rect
+        @_placed_anchors[overlay] = anchor_rect
       end
-      popup.rect = placement.rect_for(popup, rect.size, anchor_rect)
+      overlay.rect = placement.rect_for(overlay, rect.size, anchor_rect)
     end
 
-    # Leaves a popup whose anchor was detached or hidden at its last rect. It
-    # warns, once, because closing the popup is its owner's job and an owner
+    # Leaves an overlay whose anchor was detached or hidden at its last rect. It
+    # warns, once, because closing the overlay is its owner's job and an owner
     # that forgot leaves it floating over nothing.
-    # @param popup [Component::Overlay]
+    # @param overlay [Component::Overlay]
     # @return [void]
-    def lose_anchor(popup)
-      return if @_placed_anchors[popup] == :lost
+    def lose_anchor(overlay)
+      return if @_placed_anchors[overlay] == :lost
 
-      @_placed_anchors[popup] = :lost
-      Tuile.logger.warn("#{popup} lost its anchor; left where it was — close it when the anchor goes")
+      @_placed_anchors[overlay] = :lost
+      Tuile.logger.warn("#{overlay} lost its anchor; left where it was — close it when the anchor goes")
     end
 
-    # Re-marks the pane when an anchored popup's anchor now resolves elsewhere
+    # Re-marks the pane when an anchored overlay's anchor now resolves elsewhere
     # than where its last placement read it. {Screen#flush_layout} asks once
     # its drain is empty, because this pane's pass runs *before* the content an
     # anchor sits in, so a settle that moved the content handed the pass a
     # stale anchor. Anchors in `lib/` converge in one more round — the content
-    # never moves for a popup, and a cascade anchors to a `Rect` — but a popup
+    # never moves for an overlay, and a cascade anchors to a `Rect` — but an overlay
     # anchored inside another takes one round per level.
     # @return [Boolean] whether it marked, so the screen drains again.
     def remark_moved_anchors
       return false if rect.empty? # #relayout collapses rather than places then, so nothing records
 
-      moved = @_popups.any? do |popup|
-        anchor = @_placements[popup].anchor
-        !anchor.nil? && (resolve_anchor(anchor) || :lost) != @_placed_anchors[popup]
+      moved = @_overlays.any? do |overlay|
+        anchor = @_placements[overlay].anchor
+        !anchor.nil? && (resolve_anchor(anchor) || :lost) != @_placed_anchors[overlay]
       end
       invalidate_layout if moved
       moved
@@ -413,19 +414,19 @@ module Tuile
       overlay = hit
       while overlay && !kept.include?(overlay)
         kept << overlay
-        overlay = enclosing_popup(overlay.owner)
+        overlay = enclosing_overlay(overlay.owner)
       end
       kept
     end
 
     # @param point [Point]
-    # @return [Component::Overlay, nil] the topmost popup containing `point`.
-    def popup_at(point) = @_popups.reverse_each.find { _1.rect.contains?(point) }
+    # @return [Component::Overlay, nil] the topmost overlay containing `point`.
+    def overlay_at(point) = @_overlays.reverse_each.find { _1.rect.contains?(point) }
 
     # @param component [Component, nil]
     # @return [Component::Overlay, nil] `component` itself when it is an
     #   overlay, else the nearest overlay above it, else nil.
-    def enclosing_popup(component)
+    def enclosing_overlay(component)
       component = component.parent until component.nil? || component.is_a?(Component::Overlay)
       component
     end
@@ -433,10 +434,10 @@ module Tuile
     # Delivers `key` to {Screen#focused} and bubbles it up the ancestor chain,
     # stopping at (and including) `scope`. Delivers to no one — returning false
     # — when focus is nil or sits outside `scope`; the latter is what makes an
-    # open popup modal, since focus is always inside it and content beneath
+    # open overlay modal, since focus is always inside it and content beneath
     # never receives keys.
     # @param key [String]
-    # @param scope [Component] the modal scope root (topmost popup or content).
+    # @param scope [Component] the modal scope root (topmost overlay or content).
     # @return [Boolean] true if some component on the chain handled the key.
     def bubble_key(key, scope)
       chain = focus_chain(scope)
@@ -447,7 +448,7 @@ module Tuile
     end
 
     # {Screen#focused} and its ancestors up to and including `scope`.
-    # @param scope [Component] the modal scope root (topmost popup or content).
+    # @param scope [Component] the modal scope root (topmost overlay or content).
     # @return [Array<Component>, nil] the chain, innermost first; nil when
     #   focus is nil or sits outside `scope`.
     def focus_chain(scope)

@@ -414,8 +414,8 @@ module Tuile
 
       it "snaps to the bottom when rect becomes non-empty after the items arrive" do
         # Mirrors the Dialog-with-LogDialog case: items are appended while the
-        # list has no viewport (popup closed -> list rect is 0x0), then the
-        # popup opens and a real rect arrives. scroll_top_row must not leak the
+        # list has no viewport (overlay closed -> list rect is 0x0), then the
+        # overlay opens and a real rect arrives. scroll_top_row must not leak the
         # garbage `@lines.size` value the formula yields with viewport == 0.
         l = Component::List.new
         l.auto_scroll = true

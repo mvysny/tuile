@@ -46,19 +46,19 @@ The two axes are not symmetric in a terminal, and the sketch builds on that inst
   from its content. Readers already know it.
 
 So **width is always assigned top-down, and the only bottom-up question is "how many rows at this
-width?"**. The one place that wants a width from below is a popup fitting its message, and that
+width?"**. The one place that wants a width from below is an overlay fitting its message, and that
 stays a one-hop declaration (below), never a channel through the tree.
 
 ## What 0.9.0 deleted, and what has changed since
 
 Deleted (CHANGELOG 0.9.0, book ch3): `Component#content_size`, its protected `content_size=` setter
 firing `parent.on_child_content_size_changed`, `Sizing::WRAP_CONTENT`, and
-`popup_min_height` / `popup_max_height`. The case against it:
+`overlay_min_height` / `overlay_max_height`. The case against it:
 
 1. **Eager push.** Every component maintained a size whether anyone wanted it or not, and the
    framework consulted it. That is "the road back to the constraint solver" (book ch3).
 2. **Circular on wrapped text.** Height depends on width, which depends on height.
-3. **Not even pretty.** One long line collapses a content-sized popup to one row.
+3. **Not even pretty.** One long line collapses a content-sized overlay to one row.
 4. **Two channels that must agree.** A component with its own size *and* a parent-side constraint is
    Vaadin's "`setExpandRatio` does nothing" (`D_box_layouts`' cost paragraph).
 5. **Auditability.** A container's arithmetic can be verified by reading the container alone
@@ -72,7 +72,7 @@ What a lazy rows-only pull would answer, point by point:
    lands in the same drain, and a cycle raises after `LayoutPass::MAX_ROUNDS`.
 2. **Width never comes up, so the loop can't form.** The asker hands the width down, the answerer
    counts rows at it, and nothing about the width is negotiated.
-3. **The popup's width is declared, so one long line no longer decides it.** The rows are counted at
+3. **The overlay's width is declared, so one long line no longer decides it.** The rows are counted at
    that width; a one-row answer is right for a one-row message.
 4. **One channel per child.** `Auto` is the constraint that says "ask it". A `Fixed` child is never
    asked, so the two can never disagree.

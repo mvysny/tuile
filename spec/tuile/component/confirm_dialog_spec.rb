@@ -27,12 +27,12 @@ module Tuile
     end
 
     describe "#open" do
-      it "opens a popup sized from caption, message and buttons, capped at half the screen" do
-        popup = build_dialog.open
-        assert popup.open?
+      it "opens an overlay sized from caption, message and buttons, capped at half the screen" do
+        overlay = build_dialog.open
+        assert overlay.open?
         # widest: the button row "[ Delete ]  [ Cancel ]" (22) + 4 chrome; the
         # 22-column message line wraps to one row.
-        assert_equal Size.new(26, 5), popup.rect.size
+        assert_equal Size.new(26, 5), overlay.rect.size
       end
 
       it "focuses the first button" do
@@ -41,9 +41,9 @@ module Tuile
       end
 
       it "paints caption, message and buttons" do
-        popup = build_dialog.open
+        overlay = build_dialog.open
         Screen.instance.repaint
-        rows = Screen.instance.buffer.region_text(popup.absolute_rect)
+        rows = Screen.instance.buffer.region_text(overlay.absolute_rect)
         assert rows[0].include?("Delete Report Q4?")
         assert rows[1].include?("This cannot be undone.")
         assert rows[3].include?("[ Delete ]  [ Cancel ]")
@@ -65,9 +65,9 @@ module Tuile
     describe "activation" do
       it "Enter on the focused button closes, then fires the block, and never on_dismiss" do
         dialog = build_dialog
-        popup = dialog.open
+        overlay = dialog.open
         open_at_fire = nil
-        dialog.button("Probe") { open_at_fire = popup.open? }
+        dialog.button("Probe") { open_at_fire = overlay.open? }
         press("p")
         assert_equal false, open_at_fire
         assert_nil @dismissed
@@ -81,30 +81,30 @@ module Tuile
       end
 
       it "a button without a block dismisses, exactly once" do
-        popup = build_dialog.open
+        overlay = build_dialog.open
         press(Keys::RIGHT_ARROW) # focus Cancel
         press(Keys::ENTER)
         assert_equal 1, @dismissed
-        assert !popup.open?
+        assert !overlay.open?
         assert_nil @deleted
       end
 
       it "a left click on a button activates it" do
-        popup = build_dialog.open
+        overlay = build_dialog.open
         Screen.instance.repaint
         delete_rect = Screen.instance.focused.absolute_rect
         Screen.instance.click(delete_rect.left, delete_rect.top)
         assert @deleted
-        assert !popup.open?
+        assert !overlay.open?
       end
     end
 
     describe "dismissal" do
       %W[q #{Keys::ESC}].each do |key|
         it "fires on_dismiss exactly once on #{key.inspect}" do
-          popup = build_dialog.open
+          overlay = build_dialog.open
           press(key)
-          assert !popup.open?
+          assert !overlay.open?
           assert_equal 1, @dismissed
           assert_nil @deleted
         end
@@ -112,10 +112,25 @@ module Tuile
 
       it "#close dismisses programmatically" do
         dialog = build_dialog
-        popup = dialog.open
+        overlay = dialog.open
         dialog.close
-        assert !popup.open?
+        assert !overlay.open?
         assert_equal 1, @dismissed
+      end
+
+      it "an outside click dismisses" do
+        build_dialog.open
+        Screen.instance.click(0, 0)
+        assert_equal 1, @dismissed
+      end
+
+      # The app is ending, not the user saying "no": a dismiss callback must not
+      # run mid-unmount.
+      it "teardown does not dismiss" do
+        build_dialog.open
+        Screen.close
+        assert_nil @dismissed
+        Screen.fake # the `after` hook closes again
       end
     end
 
@@ -171,11 +186,11 @@ module Tuile
         dialog = Component::ConfirmDialog.new
         dialog.button("Quit") { @quit = true }
         dialog.on_dismiss { @dismissed = true }
-        popup = dialog.open
+        overlay = dialog.open
         press("q")
         assert_nil @quit
         assert @dismissed
-        assert !popup.open?
+        assert !overlay.open?
       end
 
       %w[q g G].each do |letter|
@@ -293,11 +308,11 @@ module Tuile
         dialog = Component::ConfirmDialog.new("x")
         dialog.message = "short"
         dialog.button("OK")
-        popup = dialog.open
-        narrow = popup.rect.width
+        overlay = dialog.open
+        narrow = overlay.rect.width
         dialog.message = "a considerably longer single message line"
-        popup.flush_layout
-        assert popup.rect.width > narrow
+        overlay.flush_layout
+        assert overlay.rect.width > narrow
       end
     end
 
@@ -338,10 +353,10 @@ module Tuile
 
     describe ".alert" do
       it "opens one acknowledgement button whose press dismisses" do
-        popup = Component::ConfirmDialog.alert("Oops", "It broke.")
-        assert popup.open?
+        overlay = Component::ConfirmDialog.alert("Oops", "It broke.")
+        assert overlay.open?
         press(Keys::ENTER)
-        assert !popup.open?
+        assert !overlay.open?
       end
     end
 
@@ -351,12 +366,12 @@ module Tuile
       end
 
       it "wires the action, the cancel and on_dismiss" do
-        popup = Component::ConfirmDialog.confirm("Delete?", "Gone forever.",
-                                                 confirm: "Delete",
-                                                 on_dismiss: -> { @dismissed = true }) { @deleted = true }
+        overlay = Component::ConfirmDialog.confirm("Delete?", "Gone forever.",
+                                                   confirm: "Delete",
+                                                   on_dismiss: -> { @dismissed = true }) { @deleted = true }
         press("d")
         assert @deleted
-        assert !popup.open?
+        assert !overlay.open?
         assert_nil @dismissed
       end
     end

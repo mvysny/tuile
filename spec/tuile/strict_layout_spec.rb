@@ -162,18 +162,18 @@ module Tuile
         assert select.instance_variable_get(:@_overlay).open?
       end
 
-      # Opening a popup marks the pane, whose pass places popups — and so
+      # Opening an overlay marks the pane, whose pass places overlays — and so
       # re-derives the content's rect, unchanged. The diagnostic cannot tell
       # that apart from a real change and reports it; a settle answers it
       # (`D_strict_layout`).
-      it "reports the tree under a popup opened in the same turn, until a settle" do
+      it "reports the tree under an overlay opened in the same turn, until a settle" do
         label = Component::Label.new("hi")
         holder = Component::Layout::Vertical.new
         holder.add(label, Component::Layout::Fixed[1])
         mount_at(holder, Rect.new(0, 0, 20, 10))
         Tuile.strict_layout = :raise
-        popup = Component::Overlay.new(content: Component::Label.new("floating"))
-        popup.open(Component::Overlay::At[Rect.new(0, 0, 8, 1)])
+        overlay = Component::Overlay.new(content: Component::Label.new("floating"))
+        overlay.open(Component::Overlay::At[Rect.new(0, 0, 8, 1)])
         assert_raises(Error) { label.rect }
         label.flush_layout
         assert_equal 20, label.rect.width

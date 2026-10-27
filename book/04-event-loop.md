@@ -195,8 +195,8 @@ the snippet above can't search for a stale prefix.
 ## Owning a resource for as long as you're on screen
 
 Both examples above end with a loose thread: *who calls `cancel`, and
-when?* If the spinner lives in a popup the user can close, then someone
-has to remember to stop the ticker at exactly the moment the popup goes
+when?* If the spinner lives in an overlay the user can close, then someone
+has to remember to stop the ticker at exactly the moment the overlay goes
 away — and "someone remembers" is how you end up with a timer firing
 against a component nobody can see, forever.
 
@@ -220,9 +220,9 @@ end
 ```
 
 `handle_attached` fires the moment this component's tree is mounted on the
-screen; `handle_detached` fires the moment it's unmounted. Add the spinner to a
-popup and it starts; close the popup and it stops. Nothing at the call site
-remembers anything — `popup.close` is the whole teardown.
+screen; `handle_detached` fires the moment it's unmounted. Add the spinner to an
+overlay and it starts; close the overlay and it stops. Nothing at the call site
+remembers anything — `overlay.close` is the whole teardown.
 
 The contract is a mirror: **`handle_attached` starts what `handle_detached` stops.**
 Keep both cheap and idempotent, because a component *moved* from one parent

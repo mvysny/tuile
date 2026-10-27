@@ -13,7 +13,7 @@ module Tuile
   #
   # Everything on screen hangs off {#pane} (a {ScreenPane}): the tiled
   # {#content} (set via {#content=}, filling the whole terminal and laying
-  # out its own children), the modal/overlay {#popups} stack (opened via
+  # out its own children), the modal/overlay {#overlays} stack (opened via
   # {Component::Dialog#open}, drawn on top of the content). Overlays are *not*
   # sized from their content — each carries its own top-down
   # {Component::Dialog#declared_size} — and they deliberately overdraw the content
@@ -99,7 +99,7 @@ module Tuile
       @_theme_source = @_theme_def.for(@_color_scheme)
       @_theme = @_theme_source.resolve(@_background_color)
       # Structural root of the component tree: holds tiled content and the
-      # popup stack. Sized here rather than waiting for the first {#resize},
+      # overlay stack. Sized here rather than waiting for the first {#resize},
       # for the same reason {#size} is seeded from {EventQueue::TTYSizeEvent}:
       # an empty pane rect is an *ancestor* empty rect, and {#repaint}'s drain
       # filter would take the whole tree with it.
@@ -117,9 +117,9 @@ module Tuile
     end
 
     # Entry in the global shortcut registry: the block to run, and whether it
-    # pre-empts open popups.
+    # pre-empts open overlays.
     # @api private
-    Shortcut = Data.define(:block, :over_popups)
+    Shortcut = Data.define(:block, :over_modal)
     private_constant :Shortcut
 
     # Keys {#register_global_shortcut} refuses because every editable widget
@@ -412,7 +412,7 @@ module Tuile
     # @return [Array<Component::Overlay>] the open overlay stack — both
     #   {Component::Dialog} modals and bare {Component::Overlay}s — in stacking
     #   order (forwarded to {ScreenPane}). The array must not be modified!
-    def popups = @_pane.popups
+    def overlays = @_pane.overlays
 
     # @return [EventQueue] the event queue.
     def event_queue = @_event_queue
@@ -501,7 +501,7 @@ module Tuile
     #
     # {LayoutPass.drain} over the pane, the same fixpoint a detached tree's
     # {Component#flush_layout} runs. Then two follow-ups the pane's tree owes
-    # once it has settled: the pane places anchored popups before the content
+    # once it has settled: the pane places anchored overlays before the content
     # they hang from, so a moved anchor re-marks it and the drain runs again
     # ({ScreenPane#remark_moved_anchors}); and the half of a {#focused=} that was
     # deferred because it happened inside a pass — see there.
@@ -528,7 +528,7 @@ module Tuile
         next if @_pane.__send__(:remark_moved_anchors)
         break unless @_focus_deferred
 
-        # Last, so the scroll sees popups at their final place; and looped, so
+        # Last, so the scroll sees overlays at their final place; and looped, so
         # what an on_focus_changed callback marks is settled before we return.
         @_focus_deferred = false
         follow_up_focus(@_focus_deferred_from)
@@ -540,7 +540,7 @@ module Tuile
 
     # Sets the focused {Component}. Focused component receives keyboard events.
     # All focusable components live under {#pane}, so this is a single uniform
-    # path (no separate popup-vs-content branches).
+    # path (no separate overlay-vs-content branches).
     #
     # A hidden target — or one under a hidden ancestor — raises, exactly as a
     # detached one does: focusing it would park the hardware cursor inside
@@ -602,7 +602,7 @@ module Tuile
     end
 
     # Called after the focused component *changes* — including to and from
-    # `nil`, and including the focus repair that runs when a popup closes.
+    # `nil`, and including the focus repair that runs when an overlay closes.
     # Takes no arguments; read {#focused} (and walk its `parent` chain) for the
     # new state.
     #
@@ -637,10 +637,10 @@ module Tuile
     # @param placement [Component::Overlay::Placement, nil] where it wants to
     #   be; `nil` takes the overlay's default.
     # @return [void]
-    def add_popup(window, placement = nil)
+    def add_overlay(window, placement = nil)
       check_locked
-      @_pane.add_popup(window, placement)
-      # No need to fully repaint the scene: a popup simply paints over the
+      @_pane.add_overlay(window, placement)
+      # No need to fully repaint the scene: an overlay simply paints over the
       # current screen contents.
     end
 
@@ -713,8 +713,8 @@ module Tuile
     end
 
     # Advances focus to the next {Component#tab_stop?} in tree order, wrapping
-    # around. Scope is the topmost popup if one is open, otherwise {#content}
-    # — this keeps Tab confined inside a modal popup. No-op (returns false) if
+    # around. Scope is the topmost overlay if one is open, otherwise {#content}
+    # — this keeps Tab confined inside a modal overlay. No-op (returns false) if
     # the modal scope has no tab stops or no content at all.
     # @return [Boolean] true if focus moved.
     def focus_next = cycle_focus(forward: true)
@@ -741,17 +741,17 @@ module Tuile
     # - **{EDITING_KEYS}** — `ENTER`, `BACKSPACE`, `DELETE` and the arrows,
     #   which every editable widget needs.
     #
-    #   screen.register_global_shortcut(Keys::CTRL_L, over_popups: true) do
-    #     log_popup.open
+    #   screen.register_global_shortcut(Keys::CTRL_L, over_modal: true) do
+    #     log_overlay.open
     #   end
     #
     # @param key [String] unprintable key (e.g. {Keys::CTRL_L}, {Keys::ESC}).
-    # @param over_popups [Boolean] when true, fires even while a modal popup is
-    #   open (pre-empting the popup); when false (default), suppressed while any
-    #   popup is open so the popup gets the key.
+    # @param over_modal [Boolean] when true, fires even while a modal overlay is
+    #   open (pre-empting it); when false (default), suppressed while one is open
+    #   so it gets the key. A non-modal overlay never suppresses a shortcut.
     # @yield invoked with no arguments when `key` is pressed.
     # @return [void]
-    def register_global_shortcut(key, over_popups: false, &block)
+    def register_global_shortcut(key, over_modal: false, &block)
       raise ArgumentError, "block required" if block.nil?
       raise ArgumentError, "key must be a String, got #{key.inspect}" unless key.is_a?(String)
       raise ArgumentError, "key cannot be empty" if key.empty?
@@ -759,7 +759,7 @@ module Tuile
         raise ArgumentError,
               "global shortcut key must be unprintable; got #{key.inspect}. " \
               "For a one-key binding, override handle_key? on the scope root " \
-              "(your content layout, or the popup) — a focused text field then " \
+              "(your content layout, or the overlay) — a focused text field then " \
               "consumes the key first, so typing isn't hijacked."
       end
       if [Keys::TAB, Keys::SHIFT_TAB].include?(key)
@@ -773,7 +773,7 @@ module Tuile
               "button, handle ENTER in the form's own handle_key? instead — a focused " \
               "TextArea/TextField gets first refusal there."
       end
-      @_global_shortcuts[key] = Shortcut.new(block: block, over_popups: over_popups)
+      @_global_shortcuts[key] = Shortcut.new(block: block, over_modal: over_modal)
     end
 
     # Removes a shortcut previously installed by {#register_global_shortcut}.
@@ -791,20 +791,20 @@ module Tuile
     # @api private
     # @param window [Component::Overlay] any overlay, modal or not.
     # @return [void]
-    def remove_popup(window)
+    def remove_overlay(window)
       check_locked
-      return unless @_pane.has_popup?(window)
+      return unless @_pane.has_overlay?(window)
 
-      @_pane.remove_popup(window)
+      @_pane.remove_overlay(window)
       needs_full_repaint
     end
 
     # Invalidates the entire attached tree, forcing every component to repaint
     # on the next cycle. Needed whenever something overdraws the scene without
-    # clipping and then exposes what was underneath — a closing popup
-    # ({#remove_popup}), or a popup that shrinks or moves so its new {#rect} no
+    # clipping and then exposes what was underneath — a closing overlay
+    # ({#remove_overlay}), or an overlay that shrinks or moves so its new {#rect} no
     # longer covers the cells it previously painted ({Component::Overlay#handle_rect_changed}).
-    # The popup-only fast path in {#repaint} can't clear those vacated cells on
+    # The overlay-only fast path in {#repaint} can't clear those vacated cells on
     # its own, so we accept the cost of a full repaint.
     # @api private
     # @return [void]
@@ -816,9 +816,9 @@ module Tuile
     # @api private
     # @param window [Component::Overlay] any overlay, modal or not.
     # @return [Boolean] true if this overlay is currently mounted.
-    def has_popup?(window) # rubocop:disable Naming/PredicatePrefix
+    def has_overlay?(window) # rubocop:disable Naming/PredicatePrefix
       check_locked
-      @_pane.has_popup?(window)
+      @_pane.has_overlay?(window)
     end
 
     # Testing only — creates new screen, locks the UI, and prevents any
@@ -921,7 +921,7 @@ module Tuile
       # the hover must follow it before the paint.
       settle
       # This simple TUI framework doesn't support window clipping since tiled
-      # windows are not expected to overlap. If there rarely is a popup, we
+      # windows are not expected to overlap. If there rarely is an overlay, we
       # just repaint all windows in correct order — sure they will paint over
       # other windows, but if this is done in the right order, the final
       # drawing will look okay. Not the most effective algorithm, but very
@@ -930,7 +930,7 @@ module Tuile
       did_paint = false
       until @_invalidated.empty?
         # Defensive filter, two ways a queued component has no place on the
-        # screen by the time we drain it. It became *detached* since (popup
+        # screen by the time we drain it. It became *detached* since (overlay
         # close, sibling removed mid-event-handling, focus repair) — which
         # Component#invalidate gates at enqueue, so this catches only a change
         # since. Or it sits under an *empty rect*, its own or any ancestor's,
@@ -961,39 +961,39 @@ module Tuile
         break if @_invalidated.empty?
 
         did_paint = true
-        popups = @_pane.popups
+        overlays = @_pane.overlays
 
         # Build the repaint list in z-order, leaning on the tree itself rather
         # than a depth sort. The pane's pre-order traversal already orders the
-        # tiled layer (the content subtree) parent-before-child; the popups are
+        # tiled layer (the content subtree) parent-before-child; the overlays are
         # the top layer and must paint last, so we collect the tiled layer first
-        # and append popups rather than taking a single pane.walk_tree walk.
-        popup_members = Set.new
-        popups.each { |p| p.walk_tree { popup_members << _1 } }
+        # and append overlays rather than taking a single pane.walk_tree walk.
+        overlay_members = Set.new
+        overlays.each { |p| p.walk_tree { overlay_members << _1 } }
 
-        # Tiled layer: invalidated non-popup components, in tree order.
+        # Tiled layer: invalidated non-overlay components, in tree order.
         repaint = []
         tiled_invalidated = false
         @_pane.walk_tree do |c|
-          next if popup_members.include?(c)
+          next if overlay_members.include?(c)
           next unless @_invalidated.include?(c)
 
           repaint << c
           tiled_invalidated = true
         end
 
-        # Popups on top: a layer repaints whole whenever anything *beneath* it —
-        # the tiled tree, or a lower popup — repaints, else just its invalidated
+        # Overlays on top: a layer repaints whole whenever anything *beneath* it —
+        # the tiled tree, or a lower overlay — repaints, else just its invalidated
         # members. Layer-by-layer rather than one tiled_invalidated bool because
-        # the drain loops: a lower popup's repaint cascade re-invalidates
+        # the drain loops: a lower overlay's repaint cascade re-invalidates
         # children into the *next* iteration (its gap-clearing Layout wipes and
         # re-queues a button, say), and that iteration has no tiled repaint —
         # only the full re-assert of every layer above keeps the stacking order
         # true across iterations (screen_spec pins it with two overlapping
-        # popups). Overdraw into the buffer is free (only net-visible cell
+        # overlays). Overdraw into the buffer is free (only net-visible cell
         # changes reach the terminal), so reasserting layers is cheap.
         below_repainted = tiled_invalidated
-        popups.each do |p|
+        overlays.each do |p|
           layer_invalidated = false
           p.walk_tree { |c| layer_invalidated ||= @_invalidated.include?(c) }
           p.walk_tree { |c| repaint << c if below_repainted || @_invalidated.include?(c) }
@@ -1220,7 +1220,7 @@ module Tuile
 
     # Walks the current modal scope in pre-order, collects tab stops, and
     # advances focus by one (wrapping). When the focused component isn't in
-    # the tab order (e.g. focus is parked on a popup/window chrome with no
+    # the tab order (e.g. focus is parked on an overlay/window chrome with no
     # interactable widgets), Tab goes to the first stop and Shift+Tab to the
     # last.
     # @param forward [Boolean]
@@ -1286,9 +1286,9 @@ module Tuile
     #      anything else so a focused {Component::TextField} (which swallows
     #      printable keys) can't trap them.
     #   2. App-level shortcuts from {#register_global_shortcut}. An entry
-    #      registered with `over_popups: true` always fires; one with the
-    #      default `over_popups: false` fires only when no modal popup is open
-    #      (otherwise the modal popup receives the key normally). A non-modal
+    #      registered with `over_modal: true` always fires; one with the
+    #      default `over_modal: false` fires only when no modal overlay is open
+    #      (otherwise the modal overlay receives the key normally). A non-modal
     #      overlay doesn't suppress global shortcuts.
     #   3. {ScreenPane#handle_key?} — delivery to {#focused}, bubbling up the
     #      focus chain to the scope root.
@@ -1310,7 +1310,7 @@ module Tuile
         true
       else
         shortcut = @_global_shortcuts[key]
-        if !shortcut.nil? && (shortcut.over_popups || @_pane.modal_popup.nil?)
+        if !shortcut.nil? && (shortcut.over_modal || @_pane.modal_overlay.nil?)
           shortcut.block.call
           true
         else
@@ -1390,7 +1390,7 @@ module Tuile
     # event reads it": whatever a handler *marks*, this is where it is *done*,
     # so a queued mouse press never routes against what the key before it left
     # half-finished. The hover follows the settled tree here, which is what
-    # moves it when a popup opens over a still pointer.
+    # moves it when an overlay opens over a still pointer.
     # @return [void]
     def settle
       flush_layout

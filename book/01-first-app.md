@@ -136,15 +136,15 @@ it holds two things:
 ```
 ScreenPane                (structural root — paints nothing itself)
 ├── content               your panel (the tiled UI)
-└── popups                modal overlays, when you open them (none yet)
+└── overlays                modal overlays, when you open them (none yet)
 ```
 
 You only ever manage the `content` slot directly (via `screen.content=`);
-the pane and the popup stack are the framework's. The reason everything —
-including popups — lives under one parent is uniformity: focus traversal,
+the pane and the overlay stack are the framework's. The reason everything —
+including overlays — lives under one parent is uniformity: focus traversal,
 "is this component still on screen?", and cleanup when a component is
 removed all work the same way for every node, with no special cases.
-You'll meet popups in chapter 7; for now it's enough to know the pane is
+You'll meet overlays in chapter 7; for now it's enough to know the pane is
 up there, quietly being the root.
 
 ## Run the loop, and always close

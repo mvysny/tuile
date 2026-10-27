@@ -27,7 +27,7 @@ module Tuile
     # subsequent write until {SYNC_END}, then composites the whole batch
     # atomically — so a multi-cell repaint is never shown half-drawn. This is
     # what stops flicker when a frame redraws a large region (e.g. the
-    # full-scene repaint a shrinking popup forces). Terminals without support
+    # full-scene repaint a shrinking overlay forces). Terminals without support
     # ignore the private-mode set, so it's a safe no-op there. {Screen#repaint}
     # wraps its single frame-buffer flush in this pair.
     # @return [String]

@@ -652,7 +652,7 @@ module Tuile
     # descendants — down the chain, root first, and after every
     # {#handle_mouse_exit} the same change fires. Needs `capture_mouse: :hover`,
     # and is suspended while a press is grabbed. May fire with no motion: a
-    # popup closing can uncover this component under a still pointer.
+    # overlay closing can uncover this component under a still pointer.
     #
     # **Never a commit point**: no terminal reports the pointer leaving the
     # window, so the matching {#handle_mouse_exit} waits for a key or the
@@ -894,14 +894,14 @@ module Tuile
     # Adopts `child`: places it in {#children} and wires its parent pointer.
     #
     #   add_child(content, at: 0)   # the tiled layer, painted beneath …
-    #   add_child(popup)            # … and a popup appended, painted over it
+    #   add_child(overlay)            # … and an overlay appended, painted over it
     #
     # @param child [Component] must not already have a parent.
     # @param at [Integer, nil] index to insert at; appends when nil.
     # @raise [TypeError] if `child` is not a {Component}.
     # @raise [ArgumentError] if `child` already has a parent.
     # @raise [Tuile::Error] if `child` is a {Component::Overlay} not being
-    #   adopted as one of {ScreenPane#popups}.
+    #   adopted as one of {ScreenPane#overlays}.
     # @return [void]
     #
     # Final: one of the three mutators that write {#children} and the parent
@@ -911,12 +911,12 @@ module Tuile
       raise ArgumentError, "#{child} already has a parent #{child.parent}" unless child.parent.nil?
 
       # An overlay's placement, `open?`, `visible=` and outside-click dismissal
-      # all come from the pane's popup list, so anywhere else it would be
+      # all come from the pane's overlay list, so anywhere else it would be
       # unplaceable and undismissable. Membership, not the pane's identity,
       # which would let the `content` slot through; checked before the push, so
       # a refusal leaves the tree untouched.
-      if child.is_a?(Component::Overlay) && !(is_a?(ScreenPane) && has_popup?(child))
-        raise Tuile::Error, "#{child.class} belongs on the popup stack — open it (#{child.class}#open) " \
+      if child.is_a?(Component::Overlay) && !(is_a?(ScreenPane) && has_overlay?(child))
+        raise Tuile::Error, "#{child.class} belongs on the overlay stack — open it (#{child.class}#open) " \
                             "rather than adding it to #{self.class}"
       end
       at.nil? ? @_children.push(child) : @_children.insert(at, child)
@@ -1083,7 +1083,7 @@ module Tuile
     # == Implementation details
     #
     # It fires wherever focus is *dropped*, not only where a user moved it, so
-    # two paths reach it with the tree mid-flight: the popup-close repair blurs
+    # two paths reach it with the tree mid-flight: the overlay-close repair blurs
     # an **already-detached** component, where {#invalidate} is the same silent
     # no-op as in {#handle_detached}, and {Screen#close} blurs on its way out. Keep
     # it cheap; a raise propagates out of {Screen#focused=}. Protected because
@@ -1092,7 +1092,7 @@ module Tuile
     # @return [void]
     def handle_blur; end
 
-    # Called on every attached component (pre-order, popups included) when
+    # Called on every attached component (pre-order, overlays included) when
     # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=} and on
     # OS appearance flips. The hook exists for app *content* whose colors were
     # baked in from the old theme (a {Label#text} / {List#lines=} {StyledString}
@@ -1113,7 +1113,7 @@ module Tuile
       on_theme_changed.fire(ThemeChangedEvent.new(source: self))
     end
 
-    # Called on every attached component (pre-order, popups included) when
+    # Called on every attached component (pre-order, overlays included) when
     # {Screen#locale} changes — for state derived from the old conventions and
     # **pushed** somewhere, such as a date already rendered into a {Label}'s
     # text. Anything read at paint or parse time needs no override: the locale

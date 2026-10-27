@@ -11,7 +11,7 @@ should support.
   an ancestor's `handle_key?`, never a dispatch phase** (`D_key_dispatch`). Not reopened here.
 - **The global registry** (`Screen#register_global_shortcut`) is the only mechanism above
   the tree; printables, Tab and `Screen::EDITING_KEYS` raise at registration, and
-  `over_popups:` scopes it. It already covers app-global `Ctrl+letter`.
+  `over_modal:` scopes it. It already covers app-global `Ctrl+letter`.
 - **`MenuBar#handle_mnemonic?`** is the one existing answer: bare letters, scoped to the
   focused bar and its live level, underlined always ("no Alt key to reveal them"). A
   widget shortcut must not be a second unrelated answer.

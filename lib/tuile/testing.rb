@@ -10,7 +10,7 @@ module Tuile
   #
   # {.get} demands exactly one match and raises with a {.dump} of the tree it
   # searched; {.find} returns every match and takes an optional `count:`. Both
-  # search {Screen}'s whole tree by default — popups included, since they live
+  # search {Screen}'s whole tree by default — overlays included, since they live
   # under the same {ScreenPane} as the content — or the subtree given as `in:`.
   #
   # **The handles are structural — a class, an {Component#id}, a subtree — never
@@ -80,7 +80,7 @@ module Tuile
   # == Painting
   #
   # {.paint} returns what one component paints, in a {Buffer} of its own whose
-  # `(0, 0)` is the component's top-left. For what the *user* sees, popups
+  # `(0, 0)` is the component's top-left. For what the *user* sees, overlays
   # included, call {Screen#repaint} and read {Screen#buffer} at the component's
   # {Component#absolute_rect}.
   #
@@ -209,7 +209,7 @@ module Tuile
 
       # Clicks `component` as the terminal would: a press and a release at the
       # top-left cell of its {Component#absolute_extent_rect}, played through
-      # {FakeScreen#click}, so it focuses and dismisses popups exactly as a
+      # {FakeScreen#click}, so it focuses and dismisses overlays exactly as a
       # real click does.
       #
       #   Testing.click(Testing.get(Component::Button, id: :save))
@@ -226,7 +226,7 @@ module Tuile
         point = gesture_point(component)
         path = component_path_at(point)
         unless path.include?(component)
-          reached = path.empty? ? "nothing — a modal popup is open" : brief(path.last)
+          reached = path.empty? ? "nothing — a modal overlay is open" : brief(path.last)
           raise AssertionError, "#{brief(component)} is not clickable at #{point.x},#{point.y}: " \
                                 "a press there reaches #{reached}\n" \
                                 "searched:\n#{dump(Screen.instance.pane, [component])}"
@@ -249,7 +249,7 @@ module Tuile
       # @param value [Object] whatever the field's {Component::HasValue#set_value} takes.
       # @raise [AssertionError] unless `component` is a {Component::HasValue}
       #   the keyboard can reach: shown with every ancestor shown, and inside
-      #   {ScreenPane#key_scope}, so a field behind a modal popup refuses.
+      #   {ScreenPane#key_scope}, so a field behind a modal overlay refuses.
       # @return [void]
       def set_value(component, value)
         finish_turn
@@ -277,7 +277,7 @@ module Tuile
       #
       #   Testing.place(label, Rect.new(0, 0, 10, 1))      # a parentless root
       #   Testing.place(field, Rect.new(2, 1, 20, 1))      # moves it in its Layout::Absolute
-      #   Testing.place(popup, Rect.new(5, 5, 30, 10))     # an open overlay: At[rect]
+      #   Testing.place(overlay, Rect.new(5, 5, 30, 10))     # an open overlay: At[rect]
       #
       # A parentless root is sized in a throwaway {Component::Layout::Absolute}
       # and released again, so it stays unattached.
@@ -321,7 +321,7 @@ module Tuile
       #   buffer.text                  # => ["┌Caption─────┐", "│ alpha      │", …]
       #   buffer.cell(1, 1).style      # component coordinates, no absolute_rect
       #
-      # What the component paints, not what the user sees: popups over it don't
+      # What the component paints, not what the user sees: overlays over it don't
       # show, and ancestors don't clip it — only their background shows through.
       # {Screen#buffer} is left untouched.
       #

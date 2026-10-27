@@ -78,7 +78,7 @@ module Tuile
       area.handle_key?("/") # typed, so the caret lands after the token
       Screen.instance.focused = area # the caret has to exist for anchoring
 
-      overlay = Screen.instance.popups.last
+      overlay = Screen.instance.overlays.last
       refute_nil overlay, "typing a slash command should open the menu"
       refute overlay.rect.empty?, "the overlay must be sized by the pane"
 
@@ -164,7 +164,7 @@ module Tuile
       SamplerNav.paths(SamplerExample::Sampler::MENUS).each do |keys, caption|
         keys.each { |key| sampler.menu_bar.handle_key?(key) }
         assert_equal caption, sampler.demo_panel.caption.to_s, "#{keys.join} did not reach #{caption}"
-        assert_empty Screen.instance.popups, "#{keys.join} left a cascade panel open"
+        assert_empty Screen.instance.overlays, "#{keys.join} left a cascade panel open"
       end
     end
 
@@ -210,10 +210,10 @@ module Tuile
         # the pane's tree) if a pane ever loses its launcher.
         button = Testing.find(Component::Button, in: sampler.demo_panel, count: 1..).last
 
-        before = Screen.instance.popups.size
+        before = Screen.instance.overlays.size
         button.handle_key?(Keys::ENTER)
         Screen.instance.repaint
-        assert_equal before + 1, Screen.instance.popups.size
+        assert_equal before + 1, Screen.instance.overlays.size
       end
     end
 
@@ -232,7 +232,7 @@ module Tuile
 
       painted = Screen.instance.buffer.region_text(sampler.demo_panel.absolute_rect).join
       assert_includes painted, "Outcome: deleted the report"
-      assert_empty Screen.instance.popups
+      assert_empty Screen.instance.overlays
     end
 
     # The Dialog subclass pane: the field takes focus on open, Enter reaches
@@ -241,7 +241,7 @@ module Tuile
       def open_rename(sampler)
         sampler.select_entry(SamplerExample::Sampler::ENTRIES.find { _1.caption == "Dialog subclass" })
         Testing.get(Component::Button, in: sampler.demo_panel).handle_key?(Keys::ENTER)
-        Screen.instance.popups.last
+        Screen.instance.overlays.last
       end
 
       def status_text(sampler)
@@ -256,7 +256,7 @@ module Tuile
         Testing.set_value(Testing.get(Component::TextField, in: dialog), "notes.md")
         Screen.instance.key(Keys::ENTER)
 
-        assert_empty Screen.instance.popups
+        assert_empty Screen.instance.overlays
         assert_includes status_text(sampler), "File: notes.md"
       end
 
@@ -265,7 +265,7 @@ module Tuile
         open_rename(sampler)
         Screen.instance.key(Keys::ESC)
 
-        assert_empty Screen.instance.popups
+        assert_empty Screen.instance.overlays
         assert_includes status_text(sampler), "File: draft.txt"
       end
     end
@@ -354,7 +354,7 @@ module Tuile
 
       save.handle_key?(Keys::ENTER)
       Screen.instance.repaint
-      alert = Screen.instance.popups.last
+      alert = Screen.instance.overlays.last
       assert_includes Screen.instance.buffer.region_text(alert.absolute_rect).join, "Amount: not a whole number"
     end
 
@@ -398,7 +398,7 @@ module Tuile
       Screen.instance.repaint
       assert_nil username.error_message
       refute_includes Screen.instance.buffer.row_ansi(username.absolute_rect.top), "48;5;88"
-      painted = Screen.instance.buffer.region_text(Screen.instance.popups.last.absolute_rect).join
+      painted = Screen.instance.buffer.region_text(Screen.instance.overlays.last.absolute_rect).join
       assert_includes painted, "Welcome, abc."
     end
 
@@ -475,10 +475,10 @@ module Tuile
       bar.handle_key?(Keys::DOWN_ARROW)
       bar.handle_key?(Keys::DOWN_ARROW)
       bar.handle_key?(Keys::RIGHT_ARROW) # into "Open recent"
-      assert_equal 2, Screen.instance.popups.size
+      assert_equal 2, Screen.instance.overlays.size
 
       sampler.select_entry(entries.first)
-      assert_empty Screen.instance.popups
+      assert_empty Screen.instance.overlays
     end
 
     # The pane is also the mnemonic demo, and its captions carry the one case
@@ -500,7 +500,7 @@ module Tuile
       bar.handle_key?("e")
       bar.handle_key?("o")
       assert_equal "Activated: Edit ▸ Copy", status.text.to_s
-      assert_empty Screen.instance.popups
+      assert_empty Screen.instance.overlays
     end
 
     # The Mouse pane is the only demo of the drag, move, enter/exit and grab

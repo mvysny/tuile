@@ -995,7 +995,7 @@ module Tuile
       it "fires detach then attach for a cross-container move" do
         a = Component::Layout::Absolute.new
         b = Component::Layout::Absolute.new
-        pane.add_popup(Component::Dialog.new(content: b))
+        pane.add_overlay(Component::Dialog.new(content: b))
         Screen.instance.content = a
         a.add(spy)
         spy.events.clear
@@ -1088,26 +1088,26 @@ module Tuile
           child = spy_class.new
           spy.add(child)
           Screen.instance.content = spy
-          popup_body = spy_class.new
-          pane.add_popup(Component::Dialog.new(content: popup_body))
-          [spy, child, popup_body].each { _1.events.clear }
+          overlay_body = spy_class.new
+          pane.add_overlay(Component::Dialog.new(content: overlay_body))
+          [spy, child, overlay_body].each { _1.events.clear }
 
           Screen.close
 
           assert_equal [[:detached, false]], spy.events
           assert_equal [[:detached, false]], child.events
-          assert_equal [[:detached, false]], popup_body.events, "popups unmount too"
+          assert_equal [[:detached, false]], overlay_body.events, "overlays unmount too"
         end
 
         it "leaves nothing claiming to be attached" do
           Screen.instance.content = spy
-          popup = Component::Dialog.new
-          pane.add_popup(popup)
+          overlay = Component::Dialog.new
+          pane.add_overlay(overlay)
 
           Screen.close
 
           refute spy.attached?
-          refute popup.attached?, "popups unmount too"
+          refute overlay.attached?, "overlays unmount too"
           assert_empty pane.children
         end
 
@@ -1202,8 +1202,8 @@ module Tuile
         layout.add(window)
         layout.add(Component::Label.new)
         Screen.instance.content = layout
-        popup = Component::Dialog.new(content: Component::Button.new("ok"))
-        Screen.instance.add_popup(popup)
+        overlay = Component::Dialog.new(content: Component::Button.new("ok"))
+        Screen.instance.add_overlay(overlay)
 
         Screen.instance.pane.walk_tree do |c|
           assert_equal c.children, c.instance_variable_get(:@_children),
@@ -1225,11 +1225,11 @@ module Tuile
         assert layout.attached?
       end
 
-      it "is true when root is a popup" do
+      it "is true when root is an overlay" do
         list = Component::List.new
-        popup = Component::Dialog.new(content: list)
-        Screen.instance.add_popup(popup)
-        assert popup.attached?
+        overlay = Component::Dialog.new(content: list)
+        Screen.instance.add_overlay(overlay)
+        assert overlay.attached?
         assert list.attached?
       end
 

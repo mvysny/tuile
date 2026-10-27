@@ -165,7 +165,7 @@ module Tuile
     # it would not keep the rect: the pane hands its content the whole screen
     # at the next settle, swallowing the margin the stray sweep needs.
     #
-    # An {Component::Overlay} opens at `rect` instead: the popup stack is the
+    # An {Component::Overlay} opens at `rect` instead: the overlay stack is the
     # only parent one accepts ({Component#add_child}).
     # @param component [Component]
     # @param rect [Rect]

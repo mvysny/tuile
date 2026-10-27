@@ -94,7 +94,7 @@ active-background, say, or that a theme flip changed a hint's hue. And
 pinpoint check. Everything is scoped to a `rect`, so you assert about a
 component's own region without caring what surrounds it.
 
-That is what the *user* sees at those cells, a popup drawn over them
+That is what the *user* sees at those cells, an overlay drawn over them
 included. Often a test wants something narrower — what this one component
 paints — and {Tuile::Testing.paint} answers that without a screen round
 trip. It paints the component and its whole subtree into a {Tuile::Buffer}
@@ -115,7 +115,7 @@ raises anywhere but a parent's `relayout`. It never attaches, and
 own, `cell(1, 0)` means column 1 *of the panel*, and the classic mistake of
 reading the screen at `rect` instead of `absolute_rect` has nowhere to
 happen. Ancestors don't clip the paint, though their background shows
-through; popups aren't in the subtree, so they don't show at all.
+through; overlays aren't in the subtree, so they don't show at all.
 
 What you do *not* assert content against is `prints`. On a FakeScreen,
 `prints` captures only what actually went "to the wire" — cursor
@@ -196,7 +196,7 @@ searched:
 
 Which usually tells you the fix immediately: narrow the search. Every
 lookup takes `in:` to scope it to a subtree, and by default searches the
-whole screen — popups included, since chapter 1's pane holds them under the
+whole screen — overlays included, since chapter 1's pane holds them under the
 same root as the content.
 
 ```ruby
@@ -253,7 +253,7 @@ list.handle_mouse_scroll?(Mouse::ScrollEvent.new(:up, 5, 2))  # false at the top
 ```
 
 **A press, though, wants the high altitude.** It does not only *do* something:
-it focuses, it dismisses popups, and which component it even reaches is the
+it focuses, it dismisses overlays, and which component it even reaches is the
 router's answer rather than the component's — so calling `handle_mouse_down?`
 by hand tests a third of what a click is. Drive it through
 {Tuile::FakeScreen}, which posts the gesture the terminal would:
@@ -289,8 +289,8 @@ assert screen.pane.handle_key?("1")   # the layout's ancestor binding fires
 The two rungs *above* the pane have their own doors, because `Screen`'s own
 `handle_key?` — the top of the ladder — is private: it belongs to the key
 thread, not to app code. Tab cycling is {Tuile::Screen#focus_next} /
-`focus_previous`, both already scoped to the topmost modal popup, which is
-what "a popup traps Tab" means. A global shortcut is a block you registered,
+`focus_previous`, both already scoped to the topmost modal overlay, which is
+what "an overlay traps Tab" means. A global shortcut is a block you registered,
 so test the action it calls; the registry itself is a lookup table `Screen`
 consults before handing the key to the pane, and `register_global_shortcut`
 is worth a test only for what it *rejects* (printables, Tab, `EDITING_KEYS`).
@@ -310,7 +310,7 @@ assert on the set directly.
 Put the two halves together and a gap appears between them. `Testing.get`
 refuses to hand you a hidden component, because it simulates a user — but the
 moment you have a handle, `handle_key?` and `value=` will do as they are told
-no matter what. A button under an open modal popup, a field in a collapsed
+no matter what. A button under an open modal overlay, a field in a collapsed
 panel: both drive perfectly from a test, and both are unreachable in the app
 you are shipping. The test passes; the feature is broken.
 
@@ -329,7 +329,7 @@ everything that would have clicked nothing — hidden, collapsed, or covered:
 
 ```
 #<Button id=:save rect=(1,1 8x1) caption="Save"> is not clickable at 1,1:
-a press there reaches nothing — a modal popup is open
+a press there reaches nothing — a modal overlay is open
 ```
 
 It does *not* raise when the press lands and nobody claims it. Clicking a
