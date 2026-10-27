@@ -338,7 +338,7 @@ module Tuile
         assert_equal %i[enter exit enter], r.log.grep(Symbol)
       end
 
-      it "moves off a component a popup opens over, with no motion" do
+      it "moves off a component an overlay opens over, with no motion" do
         r = recorder
         content_with(r)
         screen.move(1, 1)
@@ -405,10 +405,10 @@ module Tuile
       end
     end
 
-    describe "popups" do
+    describe "overlays" do
       def list_of(line) = Component::List.new.tap { _1.lines = [line] }
 
-      it "routes a press to the topmost popup containing it" do
+      it "routes a press to the topmost overlay containing it" do
         beneath = recorder(claims: true)
         content_with(beneath)
         Testing.place(beneath, Rect.new(0, 0, 80, 40))

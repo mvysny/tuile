@@ -323,7 +323,7 @@ module Tuile
 
       # The {#on_close} listener: fires {#on_dismiss} unless a button was chosen —
       # which makes ESC, `q`, an outside click, {#close}, a direct
-      # {Screen#remove_popup} and teardown all one event, fired exactly once.
+      # {Screen#remove_overlay} and teardown all one event, fired exactly once.
       # @return [void]
       def notice_dismissed
         return if @_chosen

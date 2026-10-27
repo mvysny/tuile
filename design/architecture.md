@@ -15,7 +15,7 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
   {Tuile::Screen} itself names only {Tuile::ScreenPane} and {Tuile::Component}.
 - **`Screen` is the service and `ScreenPane` is the UI** — the queue, the UI-thread rule, terminal
   IO, the back buffer, the invalidation set and the detected theme/locale/color-depth live on the
-  singleton; the tree, attachedness, the popup stack and focus repair live on the pane. New
+  singleton; the tree, attachedness, the overlay stack and focus repair live on the pane. New
   machinery goes on one, new tree semantics on the other (`D_tree_first`).
 - **An app constructs the tree, then hands ownership to the loop.** `Screen.new` → build
   components → `screen.content =` → `run_event_loop` → the loop's thread owns every mutation until
@@ -71,13 +71,13 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
 3. Handlers mutate components; each mutation calls `invalidate`, which records the component in
    `Screen`'s invalidated set. Nothing paints yet — **a retained tree, not a redraw loop**.
 4. On `EmptyQueueEvent`, `Screen#repaint` drains the set: drop anything with an empty rect on its
-   ancestor chain, paint the tiled tree parent-first by depth, then re-assert every popup subtree
+   ancestor chain, paint the tiled tree parent-first by depth, then re-assert every overlay subtree
    above it in stacking order.
 5. `Buffer#flush` emits the **minimal diff** — only cells that changed — plus the focused
    component's `cursor_position`, wrapped in one synchronized-output batch, through `Screen#emit`.
 
-**A mouse event** (`Mouse::Router#dispatch`) resolves a walk first: the topmost popup containing the
-point, else the tiled content unless a modal popup is open (`ScreenPane#mouse_root_at`), then down
+**A mouse event** (`Mouse::Router#dispatch`) resolves a walk first: the topmost overlay containing the
+point, else the tiled content unless a modal overlay is open (`ScreenPane#mouse_root_at`), then down
 through shown children whose `rect` contains the point — converting the point at each level, so
 every component is handed the event in its own coordinates. A left press focuses the innermost
 `focusable?` on that path *before* any handler runs, then `handle_mouse_down?` bubbles back up the

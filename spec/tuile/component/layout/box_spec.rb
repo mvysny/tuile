@@ -234,9 +234,9 @@ module Tuile
         refute Screen.instance.invalidated?(layout)
       end
 
-      it "keeps a collapsed pane off the screen across a popup close" do
+      it "keeps a collapsed pane off the screen across an overlay close" do
         # The reported bug (`D_empty_ancestor`): the pane's own labels kept their
-        # rects, and Screen#remove_popup's needs_full_repaint painted them back.
+        # rects, and Screen#remove_overlay's needs_full_repaint painted them back.
         screen = Screen.instance
         root = Component::Layout::Horizontal.new
         sidebar = box
@@ -251,10 +251,10 @@ module Tuile
         screen.repaint
         refute_includes screen.buffer.row_text(0), "SIDEBAR"
 
-        popup = Component::Dialog.new
-        screen.add_popup(popup)
+        overlay = Component::Dialog.new
+        screen.add_overlay(overlay)
         screen.repaint
-        popup.close
+        overlay.close
         screen.repaint
         refute_includes screen.buffer.row_text(0), "SIDEBAR"
       end

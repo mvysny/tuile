@@ -243,7 +243,7 @@ module Tuile
           drop.list.on_item_chosen { |e| activate(level, e.item) }
           drop.list.on_cursor_changed { truncate(level + 1) }
           # The cascade's own record of what is open is reconciled from the
-          # popup's own closure, not maintained alongside it: an outside click
+          # overlay's own closure, not maintained alongside it: an outside click
           # closes panels behind our back ({Overlay#close_on_outside_click?}), and
           # a level left in `@_levels` after its panel is gone would have `depth`,
           # `deepest` and `highlighted` all lying. Identity-keyed and idempotent,

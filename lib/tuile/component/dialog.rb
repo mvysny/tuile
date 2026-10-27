@@ -155,7 +155,7 @@ module Tuile
       #   open, and blocks clicks on the content beneath it.
       def modal? = true
 
-      # @return [Boolean] true — {ScreenPane#add_popup} focuses a dialog on open,
+      # @return [Boolean] true — {ScreenPane#add_overlay} focuses a dialog on open,
       #   and focus repair falls back to it when its subtree has no tab stop.
       def focusable? = true
 

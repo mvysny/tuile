@@ -57,7 +57,7 @@ one, not to fill an outline.
    grid, the `relayout` override, `Layout::Absolute`, the `Vertical` /
    `Horizontal` box layouts and their three constraints (`Fixed` /
    `Percent` / `Expand`) as sugar over that same rule, `Fraction` for
-   sizing a popup against the screen, and resize as a discrete
+   sizing an overlay against the screen, and resize as a discrete
    recompute. Geometry primitives (`Point` / `Size` / `Rect`) live here.
 4. **[The event loop and background work](04-event-loop.md).** The
    single-threaded rule: all UI mutation happens on the loop thread.

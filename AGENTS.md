@@ -3,7 +3,7 @@
 ## What this is
 
 Tuile is a small component-oriented terminal-UI framework for Ruby. You build
-your interface as a tree of components — windows, lists, text fields, popups —
+your interface as a tree of components — windows, lists, text fields, overlays —
 and Tuile runs a single-threaded event loop that dispatches keys and mouse
 events, then repaints everything that was invalidated since the last tick. The
 name is French for "roof tile": small pieces that compose into a larger whole.
@@ -107,16 +107,16 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   which every later component misses the hook. See `D_hook_visibility`, `D_on_blur`.
 - **`Screen#close` unmounts the tree, so teardown fires `handle_detached`; a process exiting without it
   fires nothing** — these are lifecycle hooks, not destructors, and there is no `at_exit`. See `D_attach_hooks`.
-- **An {Tuile::Component::Overlay} lives on the popup stack and nowhere else** — `add_child` checks
-  before adopting, and anything but a `ScreenPane#popups` adoption raises: a layout could not
+- **An {Tuile::Component::Overlay} lives on the overlay stack and nowhere else** — `add_child` checks
+  before adopting, and anything but a `ScreenPane#overlays` adoption raises: a layout could not
   place it, hide it, or have it dismissed, and the pane's `content` slot is refused too.
-- **Named slots are readers over the array, never a second copy** — `ScreenPane#popups` is the one
+- **Named slots are readers over the array, never a second copy** — `ScreenPane#overlays` is the one
   exception. See `D_tree_api`.
 - **A per-child *attribute* map, not a second copy of ordering** — a layout keeps one in
   {Tuile::Component::Layout#constraints}, deliberately not enumerable; `children` stays the sole
-  ordering authority, and `ScreenPane`'s popup placements are the one hand-roll. See `D_tree_api`.
+  ordering authority, and `ScreenPane`'s overlay placements are the one hand-roll. See `D_tree_api`.
 - **Order is maintained at insert, so the index is part of the contract** — content at `at: 0`,
-  chrome appended, popups appended; changing an index changes paint and Tab order.
+  chrome appended, overlays appended; changing an index changes paint and Tab order.
 - **A container with several swappable regions gives each one a {Tuile::Component::Slot}, wired at
   construction**, so the insert index never has to be computed; an empty slot keeps its rect and
   clears it rather than collapsing, and is never detached. See `D_slots`.
@@ -159,7 +159,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **`Screen#repaint`'s drain filter is the backstop, not the fix** — it drops anything with an empty
   rect on its ancestor chain; don't promote it to a public `Component#paintable?`.
 - **A layer repaints whole whenever anything beneath it repaints** — tiled invalidation re-paints
-  every popup above in stacking order, per drain iteration; popups overdraw, no layer clips another.
+  every overlay above in stacking order, per drain iteration; overlays overdraw, no layer clips another.
 - **A widget that paints less than its `rect` declares an `extent`** and then paints, clears,
   hit-tests and anchors against that; `nil` (undeclared) is not `rect.size`. See `D_extent`.
 - **Declaring one is the whole job — `repaint` still just calls `super`**, which blanks the rect
@@ -219,7 +219,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   leaving; a key or the terminal losing focus is what clears it), so it must stay cosmetic and
   never become a commit point.
 - **The hovered chain is derived from the last reported pointer position, and `sync_hover` is its
-  sole writer** — run after every event, so a popup opening over a still pointer moves the hover; a
+  sole writer** — run after every event, so an overlay opening over a still pointer moves the hover; a
   hook toggling it from an event would miss that. See `D_mouse_dispatch`.
 - **The mouse is additive: no capability may be reachable only through it.** Every gesture owes a
   key that already does the job. See `D_mouse`.
@@ -237,7 +237,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **The registry is the only mechanism above the tree and nothing suppresses it**, so it accepts
   only keys no widget can need — printables and `Screen::EDITING_KEYS` raise *at registration*. A
   runtime gate here is the wart `D_key_dispatch` deleted; reserve a key, don't gate it.
-- **Delivery bubbles *up* to the scope root, `ScreenPane#key_scope` (topmost modal popup, else content)** —
+- **Delivery bubbles *up* to the scope root, `ScreenPane#key_scope` (topmost modal overlay, else content)** —
   the only home for scope-wide keys. There is deliberately **no downward delegation**: neither
   `Layout#handle_key?` nor `Panel#handle_key?` exists.
 - **Below all three rungs, an unhandled `q` or ESC stops the loop**, so a scope root binding bare
@@ -258,8 +258,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   owns the reason, never both.
 - **An input filter goes on `insert_text`, never on a key seam** — a key handler never sees a paste.
   See `D_input_filters`.
-- **Popup focus repair has a fixed order, and an out-of-order close rewrites the snapshots** so no
-  saved focus strands inside a detached popup ({Tuile::ScreenPane#handle_child_removed} carries the
+- **Overlay focus repair has a fixed order, and an out-of-order close rewrites the snapshots** so no
+  saved focus strands inside a detached overlay ({Tuile::ScreenPane#handle_child_removed} carries the
   order; read `screen_pane_spec`'s regression cases before refactoring it).
 
 ### Layout

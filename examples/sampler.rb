@@ -1350,7 +1350,7 @@ module SamplerExample
                   "the terminal to see the wrap recompute, and scroll to see the rest.\n\n" \
                   "Components do not paint immediately. They call invalidate (which records them in the " \
                   "Screen's pending-repaint set); after an event-loop tick drains the queue, Screen#repaint " \
-                  "walks the set, sorts by depth, and paints parents before children. Popups deliberately " \
+                  "walks the set, sorts by depth, and paints parents before children. Overlays deliberately " \
                   "overdraw the tiled tree on top.\n\n" \
                   "All UI mutations must run on the thread that owns Screen#run_event_loop. Background work " \
                   "marshals back via screen.event_queue.submit { … }. Most UI methods check the lock and " \

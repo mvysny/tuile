@@ -29,41 +29,41 @@ module Tuile
       # The order *is* the paint order (and the Tab order), and it is now
       # maintained by add_child's insert position rather than recomputed on
       # every read — so it needs a guard.
-      it "is content, then popups in stacking order" do
+      it "is content, then overlays in stacking order" do
         content = Component::Layout::Absolute.new
         first = Component::Dialog.new
         second = Component::Dialog.new
 
         Screen.instance.content = content
-        pane.add_popup(first)
-        pane.add_popup(second)
+        pane.add_overlay(first)
+        pane.add_overlay(second)
 
         assert_equal [content, first, second], pane.children
       end
 
-      it "keeps content first when it is swapped under open popups" do
-        popup = Component::Dialog.new
-        pane.add_popup(popup)
+      it "keeps content first when it is swapped under open overlays" do
+        overlay = Component::Dialog.new
+        pane.add_overlay(overlay)
         replacement = Component::Layout::Absolute.new
 
         Screen.instance.content = Component::Layout::Absolute.new
         Screen.instance.content = replacement
 
-        assert_equal [replacement, popup], pane.children
+        assert_equal [replacement, overlay], pane.children
       end
 
-      it "closes a popup out of order without disturbing the rest" do
+      it "closes an overlay out of order without disturbing the rest" do
         content = Component::Layout::Absolute.new
         first = Component::Dialog.new
         second = Component::Dialog.new
         Screen.instance.content = content
-        pane.add_popup(first)
-        pane.add_popup(second)
+        pane.add_overlay(first)
+        pane.add_overlay(second)
 
-        pane.remove_popup(first)
+        pane.remove_overlay(first)
 
         assert_equal [content, second], pane.children
-        assert_equal [second], pane.popups, "the slot list and the child list must not drift"
+        assert_equal [second], pane.overlays, "the slot list and the child list must not drift"
       end
     end
 
@@ -86,19 +86,19 @@ module Tuile
       end
 
       # D_empty_ancestor: a pass that skipped an empty pane stranded both at
-      # their last rects, and an `At` popup would keep its rect in a pane with
+      # their last rects, and an `At` overlay would keep its rect in a pane with
       # no cells.
-      it "collapses content and popups when the terminal shrinks to nothing, and restores them" do
+      it "collapses content and overlays when the terminal shrinks to nothing, and restores them" do
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
-        popup = Component::Overlay.new
-        popup.open(at(Rect.new(1, 1, 5, 2)))
+        overlay = Component::Overlay.new
+        overlay.open(at(Rect.new(1, 1, 5, 2)))
         Screen.instance.resize_terminal(0, 0)
         layout.flush_layout
-        assert_equal [Rect.new(0, 0, 0, 0)] * 2, [layout.rect, popup.rect]
+        assert_equal [Rect.new(0, 0, 0, 0)] * 2, [layout.rect, overlay.rect]
         Screen.instance.resize_terminal(40, 10)
         layout.flush_layout
-        assert_equal [Rect.new(0, 0, 40, 10), Rect.new(1, 1, 5, 2)], [layout.rect, popup.rect]
+        assert_equal [Rect.new(0, 0, 40, 10), Rect.new(1, 1, 5, 2)], [layout.rect, overlay.rect]
       end
     end
 
@@ -109,40 +109,40 @@ module Tuile
         assert_equal pane, layout.parent
       end
 
-      it "parents popups when added" do
+      it "parents overlays when added" do
         list = Component::List.new
         list.lines = ["a"]
-        popup = Component::Dialog.new(content: list)
-        Screen.instance.add_popup(popup)
-        assert_equal pane, popup.parent
+        overlay = Component::Dialog.new(content: list)
+        Screen.instance.add_overlay(overlay)
+        assert_equal pane, overlay.parent
       end
 
-      it "detaches popup parent when removed" do
+      it "detaches overlay parent when removed" do
         list = Component::List.new
         list.lines = ["a"]
-        popup = Component::Dialog.new(content: list)
-        Screen.instance.add_popup(popup)
-        Screen.instance.remove_popup(popup)
-        assert_nil popup.parent
+        overlay = Component::Dialog.new(content: list)
+        Screen.instance.add_overlay(overlay)
+        Screen.instance.remove_overlay(overlay)
+        assert_nil overlay.parent
       end
 
-      it "repaints popup content on reopen even when its rect is unchanged" do
-        # Tiled content that covers the popup's cells, so closing the popup and
+      it "repaints overlay content on reopen even when its rect is unchanged" do
+        # Tiled content that covers the overlay's cells, so closing the overlay and
         # repainting the scene overpaints them — the reopen must repaint the
-        # popup's *content*, not just the (blank) wrapper. Regression: add_popup
+        # overlay's *content*, not just the (blank) wrapper. Regression: add_overlay
         # invalidated only the wrapper, so an unchanged-rect reopen stayed blank.
         Screen.instance.content = Component::Label.new.tap { _1.text = "\n" * 20 }
         list = Component::List.new.tap { _1.lines = %w[alpha] }
-        popup = Component::Overlay.new(content: list)
-        region = -> { Screen.instance.buffer.region_text(popup.absolute_rect).first.strip }
+        overlay = Component::Overlay.new(content: list)
+        region = -> { Screen.instance.buffer.region_text(overlay.absolute_rect).first.strip }
 
-        Screen.instance.add_popup(popup, at(Rect.new(0, 5, 10, 1)))
+        Screen.instance.add_overlay(overlay, at(Rect.new(0, 5, 10, 1)))
         Screen.instance.repaint
         assert_equal "alpha", region.call
 
-        Screen.instance.remove_popup(popup)
-        Screen.instance.repaint # scene repaint overpaints the popup's old cells
-        Screen.instance.add_popup(popup, at(Rect.new(0, 5, 10, 1))) # same rect, same content
+        Screen.instance.remove_overlay(overlay)
+        Screen.instance.repaint # scene repaint overpaints the overlay's old cells
+        Screen.instance.add_overlay(overlay, at(Rect.new(0, 5, 10, 1))) # same rect, same content
         Screen.instance.repaint
         assert_equal "alpha", region.call
       end
@@ -159,21 +159,21 @@ module Tuile
         assert_raises(ArgumentError) { Screen.instance.content = layout }
       end
 
-      it "rejects a non-Dialog as a popup" do
-        assert_raises(TypeError) { Screen.instance.add_popup(Component::Label.new) }
+      it "rejects a non-Dialog as an overlay" do
+        assert_raises(TypeError) { Screen.instance.add_overlay(Component::Label.new) }
       end
 
-      it "rejects a popup that already has a parent" do
-        popup = Component::Dialog.new(content: Component::Label.new)
-        Screen.instance.add_popup(popup)
-        assert_raises(ArgumentError) { Screen.instance.add_popup(popup) }
+      it "rejects an overlay that already has a parent" do
+        overlay = Component::Dialog.new(content: Component::Label.new)
+        Screen.instance.add_overlay(overlay)
+        assert_raises(ArgumentError) { Screen.instance.add_overlay(overlay) }
       end
 
-      it "rejects removing a popup that is not open" do
-        popup = Component::Dialog.new(content: Component::Label.new)
-        # Screen#remove_popup silently no-ops on a non-open popup, so reach the
+      it "rejects removing an overlay that is not open" do
+        overlay = Component::Dialog.new(content: Component::Label.new)
+        # Screen#remove_overlay silently no-ops on a non-open overlay, so reach the
         # pane's guard directly.
-        assert_raises(Tuile::Error) { pane.remove_popup(popup) }
+        assert_raises(Tuile::Error) { pane.remove_overlay(overlay) }
       end
     end
 
@@ -239,32 +239,32 @@ module Tuile
         assert_equal "", f.text
       end
 
-      it "bubbles an undeclined key up to an ancestor (popup closes on q)" do
+      it "bubbles an undeclined key up to an ancestor (overlay closes on q)" do
         list = Component::List.new
         list.lines = ["a"]
         list.cursor = Component::List::Cursor.new
-        popup = Component::Dialog.new(content: list)
-        popup.open
+        overlay = Component::Dialog.new(content: list)
+        overlay.open
         assert_equal list, Screen.instance.focused # open cascades focus onto the list
 
-        assert pane.handle_key?("q") # list declines q; popup handles it
-        assert !popup.open?
+        assert pane.handle_key?("q") # list declines q; overlay handles it
+        assert !overlay.open?
       end
 
-      it "does not deliver to content beneath an open popup (modal)" do
+      it "does not deliver to content beneath an open overlay (modal)" do
         beneath = field
         content_with(beneath)
         Screen.instance.focused = beneath
 
-        popup_got = []
+        overlay_got = []
         inner = Class.new(Component) { def focusable? = true }.new
         Testing.place(inner, Rect.new(0, 0, 5, 1))
-        inner.define_singleton_method(:handle_key?) { |k| popup_got << k }
+        inner.define_singleton_method(:handle_key?) { |k| overlay_got << k }
         Component::Dialog.new(content: inner).open # cascades focus onto `inner`
 
         pane.handle_key?("z")
-        assert_equal ["z"], popup_got               # the open popup's content receives it
-        assert_equal "", beneath.text               # content beneath is untouched
+        assert_equal ["z"], overlay_got # the open overlay's content receives it
+        assert_equal "", beneath.text # content beneath is untouched
       end
     end
 
@@ -314,7 +314,7 @@ module Tuile
         assert_equal [], seen # the ancestor is never offered it
       end
 
-      it "does not deliver to content beneath an open modal popup" do
+      it "does not deliver to content beneath an open modal overlay" do
         beneath = field
         content_with(beneath)
         Screen.instance.focused = beneath
@@ -347,13 +347,13 @@ module Tuile
         Component::List.new.tap { _1.lines = [line] }
       end
 
-      it "modal_popup ignores non-modal overlays but finds a modal popup" do
-        Screen.instance.add_popup(Component::Overlay.new(content: Component::Label.new), at(Rect.new(0, 0, 5, 1)))
-        assert_nil pane.modal_popup
+      it "modal_overlay ignores non-modal overlays but finds a modal overlay" do
+        Screen.instance.add_overlay(Component::Overlay.new(content: Component::Label.new), at(Rect.new(0, 0, 5, 1)))
+        assert_nil pane.modal_overlay
 
         modal = Component::Dialog.new(content: Component::Label.new)
-        Screen.instance.add_popup(modal)
-        assert_equal modal, pane.modal_popup
+        Screen.instance.add_overlay(modal)
+        assert_equal modal, pane.modal_overlay
       end
 
       it "delivers keys to the focused content while an overlay floats above it" do
@@ -413,25 +413,25 @@ module Tuile
         end
       end
 
-      it "closes an open popup on a left click that misses it" do
+      it "closes an open overlay on a left click that misses it" do
         o = overlay_at(Rect.new(50, 1, 5, 3))
         Screen.instance.click(2, 2)
         assert !o.open?
       end
 
-      it "leaves a popup open when the click lands inside it" do
+      it "leaves an overlay open when the click lands inside it" do
         o = overlay_at(Rect.new(50, 1, 5, 3))
         Screen.instance.click(51, 2)
         assert o.open?
       end
 
-      it "leaves a popup open when it opted out" do
+      it "leaves an overlay open when it opted out" do
         o = overlay_at(Rect.new(50, 1, 5, 3), close_on_outside_click: false)
         Screen.instance.click(2, 2)
         assert o.open?
       end
 
-      it "dismisses a modal popup too, and still swallows the click" do
+      it "dismisses a modal overlay too, and still swallows the click" do
         clicks = []
         beneath = Class.new(Component) { def focusable? = true }.new
         Testing.place(beneath, Rect.new(0, 0, 80, 40))
@@ -450,7 +450,7 @@ module Tuile
 
       # A MenuBar cascade must vanish whole on one click, not peel one panel
       # per click — so this is every miss, not just the topmost.
-      it "closes every popup the click missed, not just the topmost" do
+      it "closes every overlay the click missed, not just the topmost" do
         a = overlay_at(Rect.new(50, 1, 5, 3))
         b = overlay_at(Rect.new(60, 1, 5, 3))
         Screen.instance.click(2, 2)
@@ -465,16 +465,16 @@ module Tuile
         assert o.open?
       end
 
-      # The snapshot half of the ordering rule: a popup the delivered click
+      # The snapshot half of the ordering rule: an overlay the delivered click
       # *opened* is not in the set, so it does not immediately eat itself.
-      it "does not dismiss a popup that the delivered click opened" do
+      it "does not dismiss an overlay that the delivered click opened" do
         opener = Class.new(Component) do
-          attr_accessor :popup
+          attr_accessor :overlay
 
           def focusable? = true
 
           def handle_mouse_down?(_event)
-            popup.open(Component::Overlay::At[Rect.new(50, 1, 5, 3)])
+            overlay.open(Component::Overlay::At[Rect.new(50, 1, 5, 3)])
             true
           end
         end.new
@@ -482,22 +482,22 @@ module Tuile
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         layout.add(opener)
-        opener.popup = Component::Overlay.new(content: list_of("a"))
+        opener.overlay = Component::Overlay.new(content: list_of("a"))
 
         Screen.instance.click(2, 2)
-        assert opener.popup.open?
+        assert opener.overlay.open?
       end
 
       # The other half: the delivered click closes it first, and the dismissal
       # then no-ops instead of reopening it.
       it "lets a widget toggle its own overlay shut from a click on its face" do
         toggler = Class.new(Component) do
-          attr_accessor :popup
+          attr_accessor :overlay
 
           def focusable? = true
 
           def handle_mouse_down?(_event)
-            popup.open? ? popup.close : popup.open(Component::Overlay::At[Rect.new(50, 1, 5, 3)])
+            overlay.open? ? overlay.close : overlay.open(Component::Overlay::At[Rect.new(50, 1, 5, 3)])
             true
           end
         end.new
@@ -505,19 +505,19 @@ module Tuile
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         layout.add(toggler)
-        toggler.popup = Component::Overlay.new(content: list_of("a"))
-        toggler.popup.open(at(Rect.new(50, 1, 5, 3)))
+        toggler.overlay = Component::Overlay.new(content: list_of("a"))
+        toggler.overlay.open(at(Rect.new(50, 1, 5, 3)))
 
-        Screen.instance.click(2, 2) # on the face, missing the popup
-        assert !toggler.popup.open?
+        Screen.instance.click(2, 2) # on the face, missing the overlay
+        assert !toggler.overlay.open?
       end
 
-      # "Outside" spans the owner chain: the popup the click hit is kept, and so
-      # is every popup that one belongs to. Ownership is declared, never
+      # "Outside" spans the owner chain: the overlay the click hit is kept, and so
+      # is every overlay that one belongs to. Ownership is declared, never
       # inferred from stacking order — between unrelated overlays that order is
       # merely the order they opened in.
       context "the owner chain" do
-        # A host popup with a component inside it, plus an overlay that
+        # A host overlay with a component inside it, plus an overlay that
         # component opened — the ComboBox-in-a-dialog shape.
         def host_and_owned
           driver = Class.new(Component) { def focusable? = true }.new
@@ -574,7 +574,7 @@ module Tuile
         end
       end
 
-      it "survives a handler that closes further popups mid-dismissal" do
+      it "survives a handler that closes further overlays mid-dismissal" do
         a = overlay_at(Rect.new(50, 1, 5, 3))
         b = overlay_at(Rect.new(60, 1, 5, 3))
         a.on_close { b.close }

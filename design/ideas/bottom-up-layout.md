@@ -3,7 +3,7 @@
 **Status:** brainstorm, nothing decided. Takes in what was `content-height.md` (the Scroller
 half), GitHub issue #67 (the Popup half) and #73 (wrapped rows in a scrolled stack). Reverses part
 of 0.9.0, so every step past the first amends a `D_` and the owner decides. Until then `Scroller` is
-told (`content_rows=`) and a popup copies `ConfirmWindow`'s private `MeasuredPopup`. Every road here
+told (`content_rows=`) and an overlay copies `ConfirmWindow`'s private `MeasuredPopup`. Every road here
 adds a new value next to what already exists, so waiting breaks nothing.
 
 **`panel-and-dialog` landed first** (owner, 2026-10-27; `D_panel_dialog`). That rebase is this branch's to absorb.
@@ -17,7 +17,7 @@ Strict top-down layout has three consumers that need an answer only their child 
 
 - **Popup**: `ConfirmWindow` wraps itself in a private `MeasuredPopup < Popup` whose
   `declared_size_in(screen_size)` returns `measured_size(screen_size)`, and it hand-rolls the change
-  notice (`resize_popup` → `Overlay#reposition` → `parent&.invalidate_layout`) from `message=`,
+  notice (`resize_overlay` → `Overlay#reposition` → `parent&.invalidate_layout`) from `message=`,
   `caption=` and `add_button`. Apps can't reach it, so virtui ended up with three different
   approaches: a verbatim copy (`ProgressWindow`), a `Size` computed once at open that ignores
   SIGWINCH (`DiskResizeWindow`), and a `Fraction.new(0.7, 0.8)` that is mostly empty
@@ -51,19 +51,19 @@ The two axes are not symmetric in a terminal, and the sketch builds on that inst
   from its content. Readers already know it.
 
 So **width is always assigned top-down, and the only bottom-up question is "how many rows at this
-width?"**. The one place that wants a width from below is a popup fitting its message, and that
+width?"**. The one place that wants a width from below is an overlay fitting its message, and that
 stays a one-hop declaration (below), never a channel through the tree.
 
 ## What 0.9.0 deleted, and what has changed since
 
 Deleted (CHANGELOG 0.9.0, book ch3): `Component#content_size`, its protected `content_size=` setter
 firing `parent.on_child_content_size_changed`, `Sizing::WRAP_CONTENT`, and
-`popup_min_height` / `popup_max_height`. The case against it:
+`overlay_min_height` / `overlay_max_height`. The case against it:
 
 1. **Eager push.** Every component maintained a size whether anyone wanted it or not, and the
    framework consulted it. That is "the road back to the constraint solver" (book ch3).
 2. **Circular on wrapped text.** Height depends on width, which depends on height.
-3. **Not even pretty.** One long line collapses a content-sized popup to one row.
+3. **Not even pretty.** One long line collapses a content-sized overlay to one row.
 4. **Two channels that must agree.** A component with its own size *and* a parent-side constraint is
    Vaadin's "`setExpandRatio` does nothing" (`D_box_layouts`' cost paragraph).
 5. **Auditability.** A container's arithmetic can be verified by reading the container alone
@@ -77,7 +77,7 @@ What a lazy rows-only pull would answer, point by point:
    lands in the same drain, and a cycle raises after `LayoutPass::MAX_ROUNDS`.
 2. **Width never comes up, so the loop can't form.** The asker hands the width down, the answerer
    counts rows at it, and nothing about the width is negotiated.
-3. **The popup's width is declared, so one long line no longer decides it.** The rows are counted at
+3. **The overlay's width is declared, so one long line no longer decides it.** The rows are counted at
    that width; a one-row answer is right for a one-row message.
 4. **One channel per child.** `Auto` is the constraint that says "ask it". A `Fixed` child is never
    asked, so the two can never disagree.
@@ -128,7 +128,7 @@ What a lazy rows-only pull would answer, point by point:
 This is GTK's height-for-width with the width-for-height half left out.
 
 `Window` is a **forwarding** answerer: its answer depends on its child's. That makes it a
-non-boundary for the notice (below), and it is what gives a plain `Window(Label)` a fitted popup
+non-boundary for the notice (below), and it is what gives a plain `Window(Label)` a fitted overlay
 height without the app writing anything.
 
 ### The consumers (the only places it is asked)
@@ -152,17 +152,17 @@ vanished; revisit if that turns out to bite.
 child, which is the question this sketch never asks; it raises there, as `Expand` raises as `cross:`
 today.
 
-### The popup's width: a declaration, one hop
+### The overlay's width: a declaration, one hop
 
 `Popup#declared_size_in(screen_size)` already receives the **budget**, the size of the space the
-popup's parent (the `ScreenPane`) offers, and resolves a `Fraction` or clamps a `Size` against it.
+overlay's parent (the `ScreenPane`) offers, and resolves a `Fraction` or clamps a `Size` against it.
 The `:content` height splits that in two:
 
 - **The width stays declared**, as a `Fraction` or `Size` of the screen, resolved exactly as today.
 - **The height is `content.measure_rows(width)`** at the width just resolved, clamped to the screen.
 
-`ConfirmWindow`'s widest-line width rule stays its own: a width declaration its private popup
-computes from its message. That is one hop between a popup and the content it was built for; a
+`ConfirmWindow`'s widest-line width rule stays its own: a width declaration its private overlay
+computes from its message. That is one hop between an overlay and the content it was built for; a
 `Window` never asks its child for columns, so no width channel runs through the tree. Whether apps
 get a public fit-to-widest-line width is `Q_fit_width`.
 
@@ -171,19 +171,19 @@ complaint: the empty space was vertical.
 
 ### The notice: who re-asks when the answer changes
 
-`ConfirmWindow`'s `resize_popup` is the notice, hand-rolled across two hops. Generalized:
+`ConfirmWindow`'s `resize_overlay` is the notice, hand-rolled across two hops. Generalized:
 
 - **One hop** (`content-height.md`'s road 3): an answerer calls `parent&.invalidate_layout` after
   its answer may have changed. This works only while the asker is the direct parent.
   `Popup → Window → Label` breaks it: the label marks the window, the window's `relayout` doesn't
-  depend on the label's rows, and the popup never hears.
+  depend on the label's rows, and the overlay never hears.
 - **Climb to a boundary** (Flutter's `markNeedsLayout` / `parentUsesSize`, `R_layout_pass`): when a
   parent calls `child.measure_rows` inside its `relayout`, the child is flagged *asked-by-parent*. The
   flag is cleared at the start of the parent's next pass and re-set if the parent asks again. An
   answerer's change calls `invalidate_rows`, which marks the parent and climbs while that parent is
   itself flagged. The climb stops at the first component nobody asked, which is every container
   today. Answerers then only call `invalidate_rows` the way they call `invalidate`, and
-  `ConfirmWindow` deletes `resize_popup`.
+  `ConfirmWindow` deletes `resize_overlay`.
 - **No notice; re-ask every pass.** `MeasuredPopup` does this today, and it covers SIGWINCH only.
   It is a fine first stage for consumer #1 if `ConfirmWindow` keeps its hand-rolled notice.
 
@@ -228,7 +228,7 @@ consults.
 |---|---|---|
 | 1 | stay told, make staleness visible | **shipped**, generalized: `Screen#focused=` warns when a focus target's clip is still empty (`warn_if_unseen`). Every road keeps it |
 | 2 | make `MeasuredPopup` public, nothing more | closes #67 for `ConfirmWindow`-shaped content only; each app still writes `measured_size` per window, and Scroller and Box gain nothing |
-| 3 | `measure(available) → Size`, both axes (this idea's previous sketch) | buys a width from below, which only a popup wants and a one-hop declaration covers. Costs a `Size` answer in every answerer, a spelling for an unbounded axis, and a contract that more width never costs height, without which a `Vertical` stretching a child past its measured width has to measure twice |
+| 3 | `measure(available) → Size`, both axes (this idea's previous sketch) | buys a width from below, which only an overlay wants and a one-hop declaration covers. Costs a `Size` answer in every answerer, a spelling for an unbounded axis, and a contract that more width never costs height, without which a `Vertical` stretching a child past its measured width has to measure twice |
 | 4 | Android's two-pass `MeasureSpec` (EXACTLY / AT_MOST / UNSPECIFIED, measured twice) | negotiation; Tuile refuses it. `measure_rows` is one EXACTLY width and an UNSPECIFIED height, asked once |
 | 5 | listener slot on the content (`on_size_changed`) | its only edge over the notice is a non-parent observer; `D_scroller` leans against it |
 | 6 | eager `content_size` again | 0.9.0's channel, rejected for point 1 above |
@@ -245,11 +245,11 @@ consults.
   compare against, the lean is: fire from a mutation of the answer's inputs (`text=`, `wrap=`,
   `add`), never from being asked or from a rewrap during a pass. The alternative is for the asker
   to compare old and new answers.
-- `Q_spelling`: the popup's `:content` height (`declared_size: Popup::Rows[width]`? a `height:`
+- `Q_spelling`: the overlay's `:content` height (`declared_size: Popup::Rows[width]`? a `height:`
   knob beside a `width:`?), `content_rows = :content`, and `Auto`. `:auto` collides with
   `D_box_layouts`' banned vocabulary, unless stage 5 retires that ban.
-- `Q_fit_width`: does `ConfirmWindow`'s widest-line width become a public popup width declaration
-  (`Popup::FitLines`?), or stay its own? It reads only the popup's own message, so it stays one hop
+- `Q_fit_width`: does `ConfirmWindow`'s widest-line width become a public overlay width declaration
+  (`Popup::FitLines`?), or stay its own? It reads only the overlay's own message, so it stays one hop
   either way. The lean is to wait for a second caller.
 - `Q_hidden`: summing answerers skip hidden children (`D_visibility`), and `visible=` already marks
   the parent. Is a hidden *content* child `nil` or `0`?
@@ -310,5 +310,5 @@ Sources: [Textual widgets](https://textual.textualize.io/guide/widgets/),
 GitHub issues #67 and #73, `Box#main_sizes`, `D_scroller`, `D_declared_size`, `D_box_layouts`,
 `D_extent`, `D_relayout`, `D_deferred_layout`, `D_strict_layout`, `R_layout_pass`, `D_visibility`,
 `D_listeners`, `D_scroll_nomenclature`, `D_repaint_cascade`, `Component#scroll_to_visible`,
-`ConfirmWindow#measured_size`, book ch3 ("Sizing a popup", "What Tuile deliberately doesn't have"),
+`ConfirmWindow#measured_size`, book ch3 ("Sizing an overlay", "What Tuile deliberately doesn't have"),
 `design/ideas/form-layout.md` (the first answerer).

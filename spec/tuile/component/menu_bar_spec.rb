@@ -46,7 +46,7 @@ module Tuile
     # Screen#handle_key? is the (private) key-dispatch entry the event loop
     # drives; poke it directly to simulate typing without a real loop.
     def key(code) = Screen.instance.send(:handle_key?, code)
-    def popups = Screen.instance.pane.popups
+    def overlays = Screen.instance.pane.overlays
 
     def strip(bar)
       Testing.paint(bar).text.first
@@ -54,7 +54,7 @@ module Tuile
 
     # The open panel's painted rows, rstripped.
     def panel_rows
-      list = popups.last.instance_variable_get(:@_list)
+      list = overlays.last.instance_variable_get(:@_list)
       Testing.paint(list).text.map(&:rstrip)
     end
 
@@ -170,7 +170,7 @@ module Tuile
         menu_bar(width: 9)
         2.times { key(Keys::RIGHT_ARROW) } # "View", painted at column 3
         key(Keys::ENTER)
-        assert_equal 3, popups.last.rect.left
+        assert_equal 3, overlays.last.rect.left
       end
 
       it "opens the menu under a click on the scrolled strip" do
@@ -217,7 +217,7 @@ module Tuile
         [Keys::ENTER, " ", Keys::DOWN_ARROW].each do |code|
           bar = menu_bar
           assert key(code)
-          assert_equal 1, popups.size
+          assert_equal 1, overlays.size
           assert_equal [" New", " Open"], panel_rows
           bar.active = false
         end
@@ -228,7 +228,7 @@ module Tuile
         refute key("s")
         refute key(Keys::UP_ARROW)
         refute key(Keys::ESC)
-        assert_empty popups
+        assert_empty overlays
       end
 
       it "fires a childless top-level item instead of opening a menu" do
@@ -239,7 +239,7 @@ module Tuile
         bar.focus
         assert key(Keys::ENTER)
         assert_equal [:quit], log
-        assert_empty popups
+        assert_empty overlays
       end
 
       it "handles nothing at all while empty" do
@@ -256,7 +256,7 @@ module Tuile
         key(Keys::ENTER)
         assert key(Keys::DOWN_ARROW)
         assert key(Keys::ESC)
-        assert_empty popups
+        assert_empty overlays
       end
 
       # Quasi-modal, unlike the closed strip: an app key firing behind a visible
@@ -265,7 +265,7 @@ module Tuile
         menu_bar
         key(Keys::ENTER)
         assert key("s")
-        assert_equal 1, popups.size
+        assert_equal 1, overlays.size
       end
 
       it "RIGHT on a leaf row steps to the next menu and opens it" do
@@ -287,7 +287,7 @@ module Tuile
         bar.focus
         key(Keys::ENTER) # File
         assert key(Keys::RIGHT_ARROW) # "New" is a leaf, so this steps onto Edit
-        assert_equal(-1, popups.last.cursor.position)
+        assert_equal(-1, overlays.last.cursor.position)
         assert key(Keys::RIGHT_ARROW) # …and this steps on, rather than drilling in
         assert_equal 2, bar.highlighted_index
         assert_equal [" Zoom"], panel_rows
@@ -298,7 +298,7 @@ module Tuile
         key(Keys::ENTER)
         key(Keys::RIGHT_ARROW)
         assert key(Keys::DOWN_ARROW)
-        assert_equal 0, popups.last.cursor.position
+        assert_equal 0, overlays.last.cursor.position
         assert_equal 1, bar.highlighted_index
       end
 
@@ -323,7 +323,7 @@ module Tuile
         assert key(Keys::RIGHT_ARROW) # …onto "View", then onto "About"
         assert_equal 3, bar.highlighted_index
         assert_empty log, "arrowing past a button must not fire it"
-        assert_empty popups, "the stepped-away-from menu must not be left open"
+        assert_empty overlays, "the stepped-away-from menu must not be left open"
       end
 
       it "Enter then fires the button it stepped onto" do
@@ -340,7 +340,7 @@ module Tuile
         bar = menu_bar_with_gap
         key(Keys::ENTER) # File's menu
         assert key(Keys::RIGHT_ARROW) # onto "Edit": nothing to show
-        assert_empty popups
+        assert_empty overlays
         assert key(Keys::RIGHT_ARROW) # onto "View", which has a menu again
         assert_equal 2, bar.highlighted_index
         assert_equal [" Zoom"], panel_rows
@@ -353,7 +353,7 @@ module Tuile
         assert key(Keys::ESC), "an unclaimed ESC stops the loop (D_quit_key)"
         assert key(Keys::RIGHT_ARROW) # out of menu mode: the highlight moves alone
         assert_equal 2, bar.highlighted_index
-        assert_empty popups
+        assert_empty overlays
       end
 
       # The swallow is argued from a *visible* panel, and there is none here.
@@ -372,7 +372,7 @@ module Tuile
         assert_equal [:edit], log
         assert key(Keys::RIGHT_ARROW)
         assert_equal 2, bar.highlighted_index
-        assert_empty popups, "firing a button is not menu navigation"
+        assert_empty overlays, "firing a button is not menu navigation"
       end
 
       # Reopening the same menu would throw away the submenu the user is
@@ -382,7 +382,7 @@ module Tuile
         key(Keys::ENTER)
         assert key(Keys::LEFT_ARROW)
         assert_equal 0, bar.highlighted_index
-        assert_equal 1, popups.size
+        assert_equal 1, overlays.size
         assert_equal [" New", " Open"], panel_rows
       end
     end
@@ -399,24 +399,24 @@ module Tuile
         menu_bar
         Screen.instance.click(1, 0)
         Screen.instance.click(1, 0)
-        assert_empty popups
+        assert_empty overlays
       end
 
       it "closes an open menu before firing a clicked top-level button" do
         log = []
         menu_bar_with_button(log)
         Screen.instance.click(1, 0) # open File
-        assert_equal 1, popups.size
+        assert_equal 1, overlays.size
         Screen.instance.click(19, 0) # "About"
         assert_equal [:about], log
-        assert_empty popups
+        assert_empty overlays
       end
 
       it "focuses but opens nothing from the blank tail" do
         bar = menu_bar(focused: false)
         Screen.instance.click(30, 0)
         assert_same bar, Screen.instance.focused
-        assert_empty popups
+        assert_empty overlays
       end
 
       # The pane dismisses every panel the click missed
@@ -437,14 +437,14 @@ module Tuile
           mount_at(bar, Rect.new(0, 0, 60, 1))
           Screen.instance.click(20, 0) # open "Deep"
           key(Keys::RIGHT_ARROW) # drill into "Sub"
-          assert_equal 2, popups.size
+          assert_equal 2, overlays.size
           bar
         end
 
         it "closes the whole cascade, however deep" do
           nested_bar
           click(50, 0) # the strip's dead tail
-          assert_empty popups
+          assert_empty overlays
         end
 
         # Panels sit *beside* each other, so a deeper one does not lie within
@@ -453,10 +453,10 @@ module Tuile
         # panel — File would vanish the moment you clicked into its submenu.
         it "does not dismiss the shallower panels when a deeper one is clicked" do
           bar = nested_bar
-          l0, l1 = popups
+          l0, l1 = overlays
           click(l1.absolute_rect.left + 1, l1.absolute_rect.top) # "Leaf" -> drills a third level
 
-          assert_equal 3, popups.size
+          assert_equal 3, overlays.size
           assert l0.open?, "the File panel must survive a click on its own submenu"
           assert l1.open?
           assert_equal 3, bar.instance_variable_get(:@_cascade).depth
@@ -466,16 +466,16 @@ module Tuile
         # the cursor, and `on_cursor_changed` drops the levels below it.
         it "still truncates when a shallower panel's sibling is clicked" do
           bar = nested_bar
-          l0 = popups.first
+          l0 = overlays.first
           click(l0.absolute_rect.left + 1, l0.absolute_rect.top + 1) # "Other", the sibling of "Sub"
 
-          assert_equal 2, popups.size, "levels 1-2 replaced by Other's own panel"
+          assert_equal 2, overlays.size, "levels 1-2 replaced by Other's own panel"
           assert_equal 2, bar.instance_variable_get(:@_cascade).depth
         end
 
-        # The direct guard on the on_close wiring: popups going away is not
+        # The direct guard on the on_close wiring: overlays going away is not
         # enough, the cascade's own level stack has to shrink with them.
-        it "reconciles the cascade's level stack, not just the popups" do
+        it "reconciles the cascade's level stack, not just the overlays" do
           bar = nested_bar
           cascade = bar.instance_variable_get(:@_cascade)
 
@@ -490,7 +490,7 @@ module Tuile
           click(50, 0)
 
           key(Keys::ENTER)
-          assert_equal 1, popups.size, "a stale level stack would swallow this"
+          assert_equal 1, overlays.size, "a stale level stack would swallow this"
         end
       end
     end
@@ -500,28 +500,28 @@ module Tuile
         bar = menu_bar
         key(Keys::ENTER)
         Testing.place(bar, Rect.new(0, 0, 30, 1))
-        assert_empty popups
+        assert_empty overlays
       end
 
       it "an unchanged rect does not, so a relayout can't dismiss a menu" do
         bar = menu_bar
         key(Keys::ENTER)
         Testing.place(bar, Rect.new(0, 0, 40, 1)) # equal, but a different object
-        assert_equal 1, popups.size
+        assert_equal 1, overlays.size
       end
 
       it "detaching closes it, so the panels can't outlive the bar" do
         menu_bar
         key(Keys::ENTER)
         Screen.instance.content = Component::Label.new
-        assert_empty popups
+        assert_empty overlays
       end
 
       it "leaving the focus chain closes it" do
         bar = menu_bar
         key(Keys::ENTER)
         Screen.instance.focused = nil
-        assert_empty popups
+        assert_empty overlays
         refute_nil bar.parent # sanity: closing the menu didn't detach the bar
       end
     end
@@ -593,7 +593,7 @@ module Tuile
         it "matches case-insensitively" do
           mnemonic_bar
           assert key("F")
-          assert_equal 1, popups.size
+          assert_equal 1, overlays.size
         end
 
         # 'f' then 'q' — two keystrokes, each against a different live set.
@@ -602,7 +602,7 @@ module Tuile
           key("f")
           assert key("q")
           assert_equal :quit, @fired
-          assert_empty popups
+          assert_empty overlays
         end
 
         # The Export/Edit case: with File open, top-level Edit is not a
@@ -623,7 +623,7 @@ module Tuile
 
           key("f")
           key("e")
-          assert_equal 2, popups.size, "the submenu should be open beside its parent"
+          assert_equal 2, overlays.size, "the submenu should be open beside its parent"
           assert key("p")
           assert_equal :pdf, @fired
         end
@@ -633,7 +633,7 @@ module Tuile
           bar.add_item("About", mnemonic: "a") { @fired = :about }
           assert key("a")
           assert_equal :about, @fired
-          assert_empty popups
+          assert_empty overlays
         end
 
         # No fallback: 'v' matches nothing in File's menu, and must not reach
@@ -744,7 +744,7 @@ module Tuile
         it "underlines the mnemonic in an open menu's rows too" do
           mnemonic_bar
           key("f")
-          list = popups.last.instance_variable_get(:@_list)
+          list = overlays.last.instance_variable_get(:@_list)
           painted = Testing.paint(list)
 
           assert_includes painted.region_ansi(list.local_rect).join, "\e[4m"
@@ -756,7 +756,7 @@ module Tuile
         mnemonic_bar
         Screen.instance.paste("fq")
 
-        assert_empty popups
+        assert_empty overlays
         assert_nil @fired
       end
     end

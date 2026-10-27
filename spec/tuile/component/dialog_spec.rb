@@ -17,7 +17,7 @@ module Tuile
       assert !p.open?
     end
 
-    it "close is a no-op when the popup is not open" do
+    it "close is a no-op when the overlay is not open" do
       p = Component::Dialog.new
       p.close # never opened
       assert !p.open?
@@ -59,7 +59,7 @@ module Tuile
 
       # Swallowed, not passed on: an unhandled q/ESC would stop the loop
       # (D_quit_key), so FakeScreen#key reporting it handled is what keeps the
-      # app running beneath the popup.
+      # app running beneath the overlay.
       it "swallows q and ESC without closing" do
         p = Component::Dialog.new(content: list_of(%w[a b]), close_on_key: false)
         p.open
@@ -105,7 +105,7 @@ module Tuile
       assert_equal Rect.new(1, 1, p.width - 2, p.height - 2), list.rect
     end
 
-    it "content inside a closed popup does not invalidate or paint" do
+    it "content inside a closed overlay does not invalidate or paint" do
       list = Component::List.new
       p = Component::Dialog.new(content: list)
       p.open
@@ -250,7 +250,7 @@ module Tuile
     end
 
     it "does not size itself to its content (content fills the box)" do
-      # A bare TextField reports Size::ZERO; the popup stays HALF regardless.
+      # A bare TextField reports Size::ZERO; the overlay stays HALF regardless.
       p = Component::Dialog.new(content: Component::TextField.new)
       p.open
       assert_equal 80, p.rect.width
@@ -282,7 +282,7 @@ module Tuile
       assert_equal Rect.new(0, 0, 160, 50), p.rect
     end
 
-    it "size= re-sizes and re-centers an open popup" do
+    it "size= re-sizes and re-centers an open overlay" do
       p = Component::Dialog.new
       p.open
       p.declared_size = Size.new(20, 6)
@@ -335,9 +335,9 @@ module Tuile
       assert_equal Rect.new(60, 20, 40, 10), p.rect
     end
 
-    # A hand-placed popup's placement *is* its rect, so re-running the pane's
-    # pass — a second popup opening — leaves it where it was put.
-    it "stays hand-placed when a second popup opens" do
+    # A hand-placed overlay's placement *is* its rect, so re-running the pane's
+    # pass — a second overlay opening — leaves it where it was put.
+    it "stays hand-placed when a second overlay opens" do
       first = Component::Dialog.new.open(Component::Overlay::At[Rect.new(3, 4, 20, 5)])
       Component::Dialog.new.open
       first.flush_layout
@@ -346,11 +346,11 @@ module Tuile
   end
 
   describe Component::Dialog, "full-repaint escalation" do
-    # A shrinking/moving popup vacates cells that the popup-only fast path in
-    # Screen#repaint can't clear (nothing paints underneath a popup), so the
+    # A shrinking/moving overlay vacates cells that the overlay-only fast path in
+    # Screen#repaint can't clear (nothing paints underneath an overlay), so the
     # whole scene must repaint. `tiled` is a component in the tiled layer, so
     # its invalidation is a proxy for "full repaint requested" — it has to be
-    # installed *before* the popup moves, hence the before block.
+    # installed *before* the overlay moves, hence the before block.
     attr_reader :tiled
 
     before do
@@ -360,7 +360,7 @@ module Tuile
     end
     after { Screen.close }
 
-    it "fully repaints the scene when an open popup shrinks" do
+    it "fully repaints the scene when an open overlay shrinks" do
       p = Component::Dialog.new # HALF, (40,12,80,25)
       p.open
       Screen.instance.invalidated_clear
@@ -370,7 +370,7 @@ module Tuile
       assert Screen.instance.invalidated?(tiled)
     end
 
-    it "uses the popup-only fast path when an open popup only grows" do
+    it "uses the overlay-only fast path when an open overlay only grows" do
       p = Component::Dialog.new(declared_size: Size.new(10, 5))
       p.open
       Screen.instance.invalidated_clear
@@ -381,13 +381,13 @@ module Tuile
       refute Screen.instance.invalidated?(tiled)
     end
 
-    it "does not request a full repaint when a closed popup is resized" do
+    it "does not request a full repaint when a closed overlay is resized" do
       p = Component::Dialog.new
       p.open
       p.close
       Screen.instance.invalidated_clear
 
-      p.declared_size = Size.new(10, 5) # resizing a detached popup touches nothing on screen
+      p.declared_size = Size.new(10, 5) # resizing a detached overlay touches nothing on screen
       refute Screen.instance.invalidated?(tiled)
     end
   end
@@ -400,20 +400,20 @@ module Tuile
       assert Component::Dialog.new.modal?
     end
 
-    # Unlike a bare Overlay: ScreenPane#add_popup focuses a popup on open, and
+    # Unlike a bare Overlay: ScreenPane#add_overlay focuses an overlay on open, and
     # focus repair falls back to it when its subtree holds no tab stop.
     it "is focusable" do
       assert Component::Dialog.new.focusable?
     end
 
-    # ScreenPane#add_popup focuses the popup, and the handle_focus cascade then
+    # ScreenPane#add_overlay focuses the overlay, and the handle_focus cascade then
     # forwards into its content — so what is pinned here is that focus lands
-    # *inside* the popup, not that it rests on the wrapper.
+    # *inside* the overlay, not that it rests on the wrapper.
     it "grabs focus when opened" do
       p = Component::Dialog.new(content: Component::List.new)
       p.open
       assert p.active?
-      assert_equal p, Screen.instance.focused.root.popups.first
+      assert_equal p, Screen.instance.focused.root.overlays.first
     end
   end
 

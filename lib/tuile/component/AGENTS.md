@@ -115,7 +115,7 @@ are `Box`'s rdoc and `D_box_layouts`.
   focus outside the key scope makes every keystroke go dead. See `D_overlay`.
 - **`Overlay#on_close` fires from `handle_detached`, never `#close`**, so a `handle_detached` override must
   `super`; and an overlay is closed, not hidden — `visible=` is refused. See `D_visibility`.
-- **Outside-click: snapshot the open popups *before* routing the press, close the misses *after***, as a fresh
+- **Outside-click: snapshot the open overlays *before* routing the press, close the misses *after***, as a fresh
   array — either half reversed breaks opening or closing a `Select` by mouse. See `D_outside_click`.
 - **A new overlay that is *part of* another owes an `Overlay#owner`**, set to the *driver* at
   construction; forget it and a click on the panel dismisses its host. See `D_outside_click`.

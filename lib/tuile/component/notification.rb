@@ -102,11 +102,11 @@ module Tuile
         Screen.instance.check_locked
         return nil if StyledString.parse(text).empty?
 
-        live = Screen.instance.pane.popups.find { _1.is_a?(Notification) }
+        live = Screen.instance.pane.overlays.find { _1.is_a?(Notification) }
         return live.tap { _1.add_message(text, color: color) } unless live.nil?
 
         # Message first, so the box is sized before it is mounted: opening an
-        # empty 0×0 popup and then growing it would paint a frame of nothing.
+        # empty 0×0 overlay and then growing it would paint a frame of nothing.
         new.tap do |notification|
           notification.add_message(text, color: color)
           notification.open

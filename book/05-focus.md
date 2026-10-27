@@ -67,7 +67,7 @@ and stop on the actual inputs inside it). So:
 - **TextField, List, Button** — both. Real inputs you can click *and*
   Tab to.
 
-Tab cycling is confined to a **modal scope**: the topmost modal popup if
+Tab cycling is confined to a **modal scope**: the topmost modal overlay if
 one is open, otherwise the tiled content. Tab collects the tab stops in
 that scope in tree order and advances by one, wrapping around; Shift+Tab
 walks backward. This is what keeps Tab from escaping an open dialog — the
@@ -112,7 +112,7 @@ sees the key. These are for app-wide actions — "Ctrl+L opens the log,"
 ```ruby
 screen.register_global_shortcut(Tuile::Keys::CTRL_L,
                                 hint: "^L #{screen.theme.fg(:hint, "log")}") do
-  log_popup.open
+  log_overlay.open
 end
 ```
 
@@ -125,8 +125,8 @@ are `Screen::EDITING_KEYS` — Enter, Backspace, Delete and the arrows —
 because every editable widget needs those, and a global binding would
 break text entry app-wide with no way for a field to defend itself. What's
 left is yours: control keys, ESC, PgUp/PgDn, function keys. A shortcut can
-opt to fire even while a modal popup is open (`over_popups: true`); by
-default it's suppressed while a popup is up, so the popup stays modal.
+opt to fire even while a modal overlay is open (`over_modal: true`); by
+default it's suppressed while an overlay is up, so the overlay stays modal.
 
 **3. `handle_key?`, delivered to focus and bubbling up.** Everything else
 goes to the focused component's {Tuile::Component#handle_key?}, and if that
@@ -139,7 +139,7 @@ A component only ever receives a key when it's on the focus chain, so
 `handle_key?` implementations act on the key alone — they never need to
 check their own `active?` state. And if focus is `nil`, or sits outside
 the current modal scope, delivery reaches no one: that's precisely what
-makes an open modal popup modal.
+makes an open modal overlay modal.
 
 Three rungs, and that's the whole ladder. Tuile used to have a fourth — a
 scan of the scope for a component carrying a matching "shortcut key,"
@@ -152,7 +152,7 @@ loop stops and your program exits. That is what a `q quit` hint in an app's
 status line is describing — not a binding anyone registered, but the fate
 of an unclaimed quit key. It also explains why ESC means different
 things in different places: an open {Tuile::Component::Dialog} handles ESC
-itself (dismissing is its job), so the loop never sees it and the popup
+itself (dismissing is its job), so the loop never sees it and the overlay
 closes instead of the app. And a widget keeps a stray `q` from quitting
 simply by consuming it, which a focused {Tuile::Component::TextField} was
 doing anyway — it's a printable character.
@@ -183,7 +183,7 @@ special case at all: **the focused field consumes the key at step 3 and
 returns `true`, so the layout never sees it.** An ancestor only hears the
 keys its descendants declined. That's the whole protection.
 
-The same mechanism gives you a form's default button, one form per popup:
+The same mechanism gives you a form's default button, one form per overlay:
 
 | focused widget | Enter | outcome |
 |---|---|---|
@@ -195,7 +195,7 @@ The same mechanism gives you a form's default button, one form per popup:
 | `Select` | consumes it (opens, then commits) | the form never sees it |
 | `Tabs` | declines | bubbles up → submit |
 
-Because bubbling stops at the scope root, two forms in two popups each get
+Because bubbling stops at the scope root, two forms in two overlays each get
 their own Enter — something a global registry structurally cannot do. This
 is also why registering Enter globally is refused in step 2: the registry
 would take it away from all of them at once.
@@ -296,8 +296,8 @@ class Tile < Component
 end
 ```
 
-The router resolves a path first: the topmost popup containing the point,
-else the tiled content (a modal popup eats everything outside itself), then
+The router resolves a path first: the topmost overlay containing the point,
+else the tiled content (a modal overlay eats everything outside itself), then
 down through the children whose rects contain it. A left press **focuses the
 innermost focusable on that path before any handler runs** — you never write
 click-to-focus, and you cannot forget it. Then `handle_mouse_down?` is
@@ -398,7 +398,7 @@ that's exactly what the combo box does to close its dropdown when you tab away.
 It is a notification, not a veto — focus has already moved by the time you
 hear about it, and a handler that tries to hold focus is picking a fight with
 the one key nothing can suppress. It also fires wherever focus is *dropped*,
-not only where a user moved it: when a popup closes, the component being
+not only where a user moved it: when an overlay closes, the component being
 blurred has usually been detached already, so an `invalidate` there does
 nothing; and `screen.close` blurs the focused component on its way out. Keep
 the handler cheap and it won't matter.
@@ -452,7 +452,7 @@ screen.on_focus_changed { status.text = hint_for(screen.focused) }
 ```
 
 It fires after every focus *change* — to and from `nil` included, and after
-the repair that runs when a popup closes. It's edge-triggered, so
+the repair that runs when an overlay closes. It's edge-triggered, so
 re-focusing what already has focus fires nothing and your callback can
 rebuild the string unconditionally. Two things it must tolerate: `focused`
 being `nil`, and firing during `screen.close`, which clears focus as it

@@ -289,7 +289,7 @@ module Tuile
       # don't accept input themselves but they need to participate in the
       # {HasContent} focus cascade so a Dialog wrapping a Layout wrapping a
       # {TextField} ends up focusing the field rather than parking focus on
-      # the popup. Layouts don't paint any visible chrome of their own
+      # the overlay. Layouts don't paint any visible chrome of their own
       # (the auto-cleared background is just blank space), so this has no
       # mouse-routing consequences — clicks on a gap area land back on the
       # Layout itself and the handle_focus cascade forwards to a tab stop.

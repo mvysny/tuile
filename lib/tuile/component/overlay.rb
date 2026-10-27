@@ -30,7 +30,7 @@ module Tuile
     # defaults here are inert (`false`, `false`): a bare overlay floats without
     # disturbing focus or key dispatch. {Component::Dialog} flips both. What must
     # not appear is a *focusable non-modal* overlay: {ScreenPane#handle_key?}
-    # scopes delivery to the topmost modal popup or else the tiled content, so
+    # scopes delivery to the topmost modal overlay or else the tiled content, so
     # such an overlay would hold focus outside the key scope, where delivery
     # reaches nobody and *every* keystroke goes dead until Tab recovers. A
     # non-modal overlay is therefore driven from its owner's key handler
@@ -186,7 +186,7 @@ module Tuile
       # hiding would buy — or hide the *content* if only a piece of it comes
       # and goes.
       #
-      # The pane resolves clicks and key scope from its popup list, which does
+      # The pane resolves clicks and key scope from its overlay list, which does
       # not consult this flag, so a hidden overlay would paint nothing while
       # still swallowing every click and, if modal, scoping every key: the
       # invisible-modal trap the class docs warn about for {#focusable?} and
@@ -199,7 +199,7 @@ module Tuile
       end
 
       # Whether a left click outside this overlay closes it (default true). The
-      # pane does the closing — {ScreenPane#dismissing_popups_outside} snapshots
+      # pane does the closing — {ScreenPane#dismissing_overlays_outside} snapshots
       # the open overlays *before* the press is routed and closes the
       # dismissable ones *after*, so a widget that toggles its own overlay from a click on its
       # face (a {Component::Select}, a {Component::MenuBar} title) still toggles
@@ -258,7 +258,7 @@ module Tuile
 
       # @!method on_close
       #   Fired with a {CloseEvent} once this overlay has left the screen —
-      #   **however it left**: {#close}, a direct {Screen#remove_popup}, an
+      #   **however it left**: {#close}, a direct {Screen#remove_overlay}, an
       #   outside click, or teardown via {Screen#close}. That unconditionality is
       #   the point, so it hangs off {#handle_detached} rather than {#close}; a
       #   driver keeping its own record of open overlays reconciles it here and
@@ -317,19 +317,19 @@ module Tuile
       # @raise [TypeError] if `placement` does not include {Placement}.
       # @return [self]
       def open(placement = default_placement)
-        screen.add_popup(self, placement)
+        screen.add_overlay(self, placement)
         self
       end
 
       # Removes this overlay from the {Screen}. No-op if not currently open.
       # @return [void]
       def close
-        screen.remove_popup(self)
+        screen.remove_overlay(self)
       end
 
       # @return [Boolean] true if this overlay is currently mounted on the screen.
       def open?
-        screen.has_popup?(self)
+        screen.has_overlay?(self)
       end
 
       # Where this overlay wants to be, or `nil` while closed.

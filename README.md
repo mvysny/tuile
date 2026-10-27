@@ -1,7 +1,7 @@
 # Tuile
 
 Tuile is a small component-oriented terminal-UI framework for Ruby. You build
-your interface as a tree of components — windows, lists, text fields, popups —
+your interface as a tree of components — windows, lists, text fields, overlays —
 and Tuile runs a single-threaded event loop that dispatches keys and mouse
 events, then repaints everything that was invalidated since the last tick. The
 name is French for "roof tile": small pieces that compose into a larger whole.
@@ -99,7 +99,7 @@ Shift+Tab move focus between the list and the demo's widgets.
 **A retained tree, not a redraw loop.** Everything on screen is a
 `Tuile::Component` with a `parent`, `children` and a `rect`. A singleton
 `Tuile::Screen` owns the tree; under it a `ScreenPane` holds the tiled
-content and a stack of popups. You build the tree once and mutate it —
+content and a stack of overlays. You build the tree once and mutate it —
 there is no per-frame rebuild and no immediate-mode redraw. Tuile paints no
 chrome of its own and reserves no row: your content gets the whole
 terminal, and a status line is yours to build if you want one.
@@ -111,7 +111,7 @@ back buffer when the loop asks them to; one flush per tick emits the
 **minimal diff** — only the cells that actually changed — inside a
 synchronized-output batch. There is no damage tracking to maintain and no
 clipping to manage — a component is bounded by its own rectangle for you, and
-popups simply overdraw, because overdraw into a buffer is free.
+overlays simply overdraw, because overdraw into a buffer is free.
 → [chapter 2](book/02-repaint.md)
 
 **Layout is top-down, and that is the whole model.** A parent computes its
@@ -227,7 +227,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | `IntegerField` | A one-row field whose `value` is an `Integer` or `nil`, filtering input to digits and one leading `-`. |
 | `FloatField` | The same, one Ruby type over: `value` is a `Float` or `nil`. |
 | `BigDecimalField` | The same for money, where a binary `Float` is the wrong answer. Tuile's one optional dependency — add `bigdecimal` yourself if you name this component. |
-| `DateField` | A one-row field whose `value` is a `Date` or `nil`, over a list of strftime formats taken from `Screen#locale`: it accepts any of them and writes the first one back when you leave the field. Manual entry — there is no calendar popup yet. |
+| `DateField` | A one-row field whose `value` is a `Date` or `nil`, over a list of strftime formats taken from `Screen#locale`: it accepts any of them and writes the first one back when you leave the field. Manual entry — there is no calendar overlay yet. |
 | `TimeField` | A one-row field whose `value` is a time of day — a `Time` on a fixed epoch date, or `nil` — spelled the way `Screen#locale` says. `step` is both the Up/Down stride and the precision: it shows seconds only when set below a minute. |
 | `DateTimeField` | The two above side by side on one row, behind a single `DateTime` at `+00:00`. Each half reddens its own bad input; the field reddens whole only for the fault no half can wear — one half filled and the other empty. |
 
@@ -282,10 +282,10 @@ syncer = FormSyncer::Buffered.new
 syncer.bind(name, :name).required("Name is required")
 syncer.bind(age, :age).validate { |v| "Must be positive" unless v.positive? }
 syncer.read(person)                                    # model → fields
-save.on_click { popup.close if syncer.write?(person) } # fields → model, only if valid
+save.on_click { overlay.close if syncer.write?(person) } # fields → model, only if valid
 ```
 
-`FormSyncer::Buffered` suits an OK/Cancel popup: nothing reaches the model until
+`FormSyncer::Buffered` suits an OK/Cancel overlay: nothing reaches the model until
 `write?` succeeds. `FormSyncer::Unbuffered` suits a settings panel or a live
 filter: it writes each valid edit through. `convert` handles a model that
 stores a different type, and `add_validator` checks the model as a whole.

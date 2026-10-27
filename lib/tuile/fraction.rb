@@ -3,7 +3,7 @@
 module Tuile
   # A width/height ratio, each a float in `0.0..1.0` — the single relational
   # sizing primitive in Tuile, scoped to one job: sizing a {Component::Dialog}
-  # against the screen (a popup has no siblings competing for space, so "half
+  # against the screen (an overlay has no siblings competing for space, so "half
   # the screen, centered" beats a hard-coded cell count that breaks on the next
   # terminal size). It is deliberately *not* a general layout primitive — tiled
   # components get explicit integer rects computed by their parent's `rect=`.

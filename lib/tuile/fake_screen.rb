@@ -165,7 +165,7 @@ module Tuile
     #   screen.click(save_button.absolute_rect.left, save_button.absolute_rect.top)
     #
     # Routed exactly as the terminal's own report would be ({Mouse::Router}), so
-    # it focuses, dismisses popups and bubbles.
+    # it focuses, dismisses overlays and bubbles.
     # @param x [Integer] 0-based column.
     # @param y [Integer] 0-based row.
     # @param button [Symbol] `:left`, `:middle` or `:right`.
@@ -176,7 +176,7 @@ module Tuile
     end
 
     # The terminal reporting a new size, routed as its own report would be: the
-    # pane takes the whole screen, and every popup is placed again.
+    # pane takes the whole screen, and every overlay is placed again.
     # @param width [Integer]
     # @param height [Integer]
     # @return [void]

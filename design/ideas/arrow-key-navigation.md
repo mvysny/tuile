@@ -56,7 +56,7 @@ any layout, and its every child being one `FormItem` makes "walk direct children
   wrapping stays Tab's distinguishing job.
 - **Descend via the focus cascade**: `screen.focused = sibling`, and `Layout#handle_focus`
   (`layout.rb:320`) forwards to its first tab stop.
-- **Mouse and popups untouched** — the bubble is already scoped to the topmost modal popup.
+- **Mouse and overlays untouched** — the bubble is already scoped to the topmost modal overlay.
 - **Enter does not participate** (`dialog(1)` moves on Enter): `Checkbox`, `Button` and `TextArea`
   claim it, and book ch5 has the per-widget Enter table.
 

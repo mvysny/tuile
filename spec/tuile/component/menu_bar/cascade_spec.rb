@@ -60,7 +60,7 @@ module Tuile
         c, = open_cascade
         assert c.open?
         assert_equal 1, c.depth
-        assert_equal [panel(c)], Screen.instance.pane.popups
+        assert_equal [panel(c)], Screen.instance.pane.overlays
         refute panel(c).modal?
         assert_equal 1, panel(c).rect.top # the row below a one-row anchor
       end
@@ -91,14 +91,14 @@ module Tuile
         c = Component::MenuBar::Cascade.new
         c.open_below(anchor, Component::MenuBar.new.add_item("Lonely"))
         refute c.open?
-        assert_empty Screen.instance.pane.popups
+        assert_empty Screen.instance.pane.overlays
       end
 
       it "reopening closes what was open first" do
         c, log = open_cascade
         c.open_below(anchor, file_menu(log))
         assert_equal 1, c.depth
-        assert_equal 1, Screen.instance.pane.popups.size
+        assert_equal 1, Screen.instance.pane.overlays.size
       end
     end
 
@@ -290,15 +290,15 @@ module Tuile
         assert c.handle_key?(Keys::ENTER) # "New"
         assert_equal ["New"], log
         refute c.open?
-        assert_empty Screen.instance.pane.popups
+        assert_empty Screen.instance.pane.overlays
       end
 
-      it "closes before the listener runs, so an action can open its own popup" do
+      it "closes before the listener runs, so an action can open its own overlay" do
         content
         log = []
         c = Component::MenuBar::Cascade.new
         item = Component::MenuBar.new.add_item("File")
-        item.add_item("About") { log << Screen.instance.pane.popups.size }
+        item.add_item("About") { log << Screen.instance.pane.overlays.size }
         c.open_below(anchor, item)
         c.handle_key?(Keys::ENTER)
         assert_equal [0], log
@@ -348,7 +348,7 @@ module Tuile
         c.handle_key?(Keys::RIGHT_ARROW)
         c.close
         refute c.open?
-        assert_empty Screen.instance.pane.popups
+        assert_empty Screen.instance.pane.overlays
       end
 
       # A click on a shallower panel that is still visible routes to *that*

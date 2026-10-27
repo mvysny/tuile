@@ -9,8 +9,8 @@ module Tuile
 
     def screen = Screen.instance
     def queue = Screen.instance.event_queue
-    def popups = Screen.instance.pane.popups
-    def live = popups.find { _1.is_a?(Component::Notification) }
+    def overlays = Screen.instance.pane.overlays
+    def live = overlays.find { _1.is_a?(Component::Notification) }
 
     # The messages a notification is holding — painted or waiting. Probed rather
     # than exposed: there is deliberately no public reader (same reason
@@ -65,9 +65,9 @@ module Tuile
         assert !Component::Notification.respond_to?(:open)
       end
 
-      it "opens one popup and returns it" do
+      it "opens one overlay and returns it" do
         n = Component::Notification.show("Saved")
-        assert_equal [n], popups
+        assert_equal [n], overlays
         assert_instance_of Component::Notification, n
       end
 
@@ -75,7 +75,7 @@ module Tuile
         first = Component::Notification.show("one")
         second = Component::Notification.show("two")
         assert_same first, second
-        assert_equal 1, popups.size
+        assert_equal 1, overlays.size
         assert_equal %w[one two], held(first).map(&:to_s)
       end
 
@@ -83,16 +83,16 @@ module Tuile
         Component::Notification.show("stale")
         Screen.close
         Screen.fake
-        assert_empty popups
+        assert_empty overlays
         fresh = Component::Notification.show("fresh")
-        assert_equal [fresh], popups
+        assert_equal [fresh], overlays
         assert_equal %w[fresh], held(fresh).map(&:to_s)
       end
 
       it "is a no-op for nil and empty text, opening nothing" do
         assert_nil Component::Notification.show(nil)
         assert_nil Component::Notification.show("")
-        assert_empty popups
+        assert_empty overlays
       end
 
       it "is sized by the first settle, message and all" do
@@ -195,7 +195,7 @@ module Tuile
         assert_equal 1, queue.tickers.size
         queue.tick_once
         assert !n.open?
-        assert_empty popups
+        assert_empty overlays
         assert queue.tickers.first.cancelled?
       end
 
@@ -273,9 +273,9 @@ module Tuile
         Component::Notification.show("two")
         click(n)
         assert !n.open?
-        assert_empty popups
+        assert_empty overlays
         # The regression that motivates this override: focus landing inside a
-        # non-modal popup sits outside `modal_popup || content`, where
+        # non-modal overlay sits outside `modal_overlay || content`, where
         # ScreenPane#handle_key? delivers to nobody — keys go dead.
         assert_same field, screen.focused
       end
@@ -324,7 +324,7 @@ module Tuile
           error = e
         end.join
         assert_instance_of Tuile::Error, error
-        assert_empty popups
+        assert_empty overlays
       end
 
       it "refuses an append from a foreign thread before recording the message" do

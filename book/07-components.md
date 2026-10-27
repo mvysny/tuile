@@ -860,7 +860,7 @@ query: it reverts to the selection's label when you dismiss the dropdown,
 and only a real commit fires `on_value_change`. Being a text field, it takes
 the editing keys above — Ctrl+U empties a query you want to start over in one
 press, rather than holding Backspace down. The dropdown itself is a
-borderless popup tinted apart from the content beneath it (chapter 6's
+borderless overlay tinted apart from the content beneath it (chapter 6's
 background inheritance again), floating below the field or flipping above
 when it's near the bottom of the screen.
 
@@ -1942,7 +1942,7 @@ Component::Notification.show("Disk almost full", color: Color::RED)
 That class method is the *only* way in — `new` is private. The reason is
 worth understanding, because it's the design in one line: there is never
 more than one notification box on screen. `show` looks for the live one in
-the popups stack and appends to it, so a burst of messages stacks as
+the overlays stack and appends to it, so a burst of messages stacks as
 entries inside a single frame:
 
 ```

@@ -52,10 +52,10 @@ module Tuile
         assert_same cancel, Testing.get(Component::Button) { _1.caption.to_s.start_with?("C") }
       end
 
-      it "searches the whole screen by default, popups included" do
+      it "searches the whole screen by default, overlays included" do
         window
-        popup = Component::Dialog.new(content: Component::Button.new("OK"))
-        Screen.instance.add_popup(popup)
+        overlay = Component::Dialog.new(content: Component::Button.new("OK"))
+        Screen.instance.add_overlay(overlay)
         captions = Testing.find(Component::Button).map { _1.caption.to_s }
         assert_equal %w[Save Cancel OK], captions
       end
@@ -93,7 +93,7 @@ module Tuile
       end
 
       # `count: 0` falls out of the same check, but a spec asserting nothing is
-      # open says `assert_empty Screen.instance.popups` instead.
+      # open says `assert_empty Screen.instance.overlays` instead.
       it "accepts a zero count" do
         window
         assert_empty Testing.find(Component::Checkbox, count: 0)
@@ -259,7 +259,7 @@ module Tuile
 
       # close_on_outside_click: false keeps the tree still while a spec clicks
       # elsewhere; the dismissal behaviour itself is screen_pane_spec's.
-      def modal_popup(content: nil)
+      def modal_overlay(content: nil)
         Component::Dialog.new(content: content, close_on_outside_click: false).open
       end
 
@@ -301,17 +301,17 @@ module Tuile
         end
 
         it "names what a cell reaches when something else is on top" do
-          over = modal_popup
+          over = modal_overlay
           Testing.place(over, save.absolute_rect)
           e = assert_raises(Testing::AssertionError) { Testing.click(save) }
           assert_includes e.message, "is not clickable"
           assert_includes e.message, "a press there reaches #<Dialog"
         end
 
-        it "refuses everything under an open modal popup" do
-          modal_popup
+        it "refuses everything under an open modal overlay" do
+          modal_overlay
           e = assert_raises(Testing::AssertionError) { Testing.click(save) }
-          assert_includes e.message, "reaches nothing — a modal popup is open"
+          assert_includes e.message, "reaches nothing — a modal overlay is open"
           assert_empty clicks
         end
 
@@ -371,15 +371,15 @@ module Tuile
         end
 
         it "refuses a field outside the key scope, which is what keeps a modal modal" do
-          modal_popup
+          modal_overlay
           e = assert_raises(Testing::AssertionError) { Testing.set_value(field, "Ford") }
           assert_includes e.message, "the key scope is #<Dialog"
           assert_equal "Zaphod", field.value
         end
 
-        it "allows a field inside the open modal popup" do
+        it "allows a field inside the open modal overlay" do
           inner = Component::TextField.new
-          modal_popup(content: inner)
+          modal_overlay(content: inner)
           Testing.set_value(inner, "Ford")
           assert_equal "Ford", inner.value
         end
@@ -415,14 +415,14 @@ module Tuile
           assert_same holder, receiver_of(point)
         end
 
-        it "agrees inside an open popup" do
-          popup = modal_popup
-          point = Point.new(popup.absolute_rect.left, popup.absolute_rect.top)
+        it "agrees inside an open overlay" do
+          overlay = modal_overlay
+          point = Point.new(overlay.absolute_rect.left, overlay.absolute_rect.top)
           assert_same Testing.component_path_at(point).last, receiver_of(point)
         end
 
-        it "agrees that a modal popup swallows a press outside it" do
-          modal_popup
+        it "agrees that a modal overlay swallows a press outside it" do
+          modal_overlay
           point = Point.new(save.absolute_rect.left, save.absolute_rect.top)
           assert_empty Testing.component_path_at(point)
           assert_nil receiver_of(point)
@@ -499,7 +499,7 @@ module Tuile
         assert_equal Color.new(52), buffer.cell(5, 0).style.bg
       end
 
-      it "leaves out a popup open over the component" do
+      it "leaves out an overlay open over the component" do
         w = Component::Panel.new("Caption").tap { _1.content = list("alpha") }
         mount_at(w, Rect.new(0, 0, 14, 3))
         Component::Dialog.new(content: Component::Label.new("POPUP")).open(Component::Overlay::At[Rect.new(0, 0, 14,
