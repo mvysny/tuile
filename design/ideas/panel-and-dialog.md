@@ -3,7 +3,8 @@
 **Status:** owner-decided in outline (2026-10-26), reframed by the owner (2026-10-27): the root
 cause is a hierarchy that encodes appearance, and the renames follow from fixing that. Not started.
 Wait until `bottom-up-layout` merges so the rename doesn't get mixed into the
-`Popup::ShrinkToContent` diff.
+`Popup::ShrinkToContent` diff. **Scope: the component hierarchy only.** A configurable
+look-and-feel is v2 (`look-and-feel.md`), and nothing here is designed for it.
 
 **Problem:** the component hierarchy answers two questions at once, *what a component is* and *how
 it looks*, and the second keeps winning. `Window` is the bordered, captioned container. Four classes
@@ -25,9 +26,8 @@ window manager. Tuile's floating box can't be moved and is always modal.
   its children say what the component *is* and does. `Dialog` is a modal, captioned overlay with one
   body. `Notification` is a passive, non-modal overlay. `Panel` is a captioned tile that sets itself
   apart from its neighbours.
-- **Appearance is a second axis, orthogonal to the first**, the way `Theme` is: applied everywhere,
-  swapped as a whole, never a superclass. Whether a component has a border, and what that border
-  looks like, is appearance.
+- **Appearance is a second axis, orthogonal to the first**, and never a superclass. Whether a
+  component has a border, and what that border looks like, is appearance.
 - **Appearance can get into the identity axis three ways, and all three are out:**
   - a superclass inherited for its paint (`ConfirmWindow < Window`),
   - a child component held for its paint (`Notification`'s `Window`),
@@ -41,8 +41,8 @@ window manager. Tuile's floating box can't be moved and is always modal.
   notification.
 - **A caption is identity; where it's drawn is appearance.** The caption is data (what the dialog
   is called), so `HasCaption` stays. Setting it into the top edge is the border's business.
-- **Today, each of the three paints its own border** through one small shared painter (below).
-  Later, a look-and-feel decides per component kind what that border is.
+- **Each of the three paints its own border** by calling a helper class (below). Nothing
+  configures it.
 
 ## The decision so far
 
@@ -55,8 +55,8 @@ window manager. Tuile's floating box can't be moved and is always modal.
   - `InfoWindow` → `InfoDialog`
   - `PickerWindow` → `PickerDialog`
   - `LogWindow` → `LogDialog`
-- **`Panel`, `Dialog` and `Notification` each paint their own border.** Today it's the same
-  border, through one shared painter they call. The painter is a utility, not a type: none of the
+- **`Panel`, `Dialog` and `Notification` each paint their own border, by calling one helper
+  class.** It's the same border for all three. The helper is a utility, not a type: none of the
   three *is* a bordered thing, and none holds a child to get one.
 - **The border is fixed and can't be removed.** There is no `border: false` and no per-instance
   style. A borderless modal (today's `Popup` with bare content) has no user anywhere, so it goes.
@@ -98,27 +98,12 @@ What `Window` paints today, and all three would get:
 - the focus-lit border (`active?`; on a `Dialog` it dims while another dialog is stacked on top),
 - giving the right border column to a content scrollbar (`scrollbar=`).
 
-The helper owns **both the ink and the insets**: it paints the border *and* answers the content
-rect inside it (`local_rect` shrunk by 1 on each side, 0 on the right while a scrollbar has that
-column). Each of the three components asks it for the content rect in its `relayout`, and nobody
-hard-codes a `1`. That keeps the later look-and-feel change to one site.
-
-**Later, not now: a pluggable look-and-feel**, orthogonal to the component hierarchy the way
-`Theme` is: set once on the screen, applied everywhere, swapped as a whole. Per component kind, it
-would define what border the component has (glyphs, which edges, caption placement, or no border at
-all) and how big the insets are. The LaF can have its own hierarchy, organized around drawing needs
-(a captioned border *is* a border). `cop`'s rule holds there too: a painter subclasses to be a kind
-of border, never `DialogLook < PanelLook` to share code. That would move the same smell one axis
-over. The helper is the seam the LaF would plug into. Today there is exactly one border and nothing
-configures it.
-
-**Where the LaF differs from `Theme`: it owns geometry.** `Theme` is ink only, so `theme=` is one
-invalidate-all *repaint*. Insets move the content rect, so swapping the LaF is also an
-invalidate-all *relayout*, and `measure_rows` answers change with it (a `Dialog` under
-`ShrinkToContent` adds whatever insets the LaF reports). The theme rule, "read it at paint time,
-never cache it", becomes "read the LaF in `relayout` and in `repaint`, never cache an inset". The
-helper's signature must leave room for that: it answers insets at call time and never hands back a
-constant.
+The helper is a plain class, not a component, and owns **both the ink and the insets**. It
+paints the border *and* answers the content rect inside it (`local_rect` shrunk by 1 on each side,
+0 on the right while a scrollbar has that column). Each of the three components asks it for the
+content rect in its `relayout`, and nobody hard-codes a `1`. That's for the three components'
+sake: one answer for `relayout`, `repaint` and `measure_rows`. It is not groundwork for the v2
+look-and-feel, which may reuse the helper or replace it.
 
 ## What moves where
 
@@ -144,11 +129,11 @@ constant.
 
 ## Open
 
-- **`Q_border_helper_shape`**: what is the shared code? A painter object each component holds (a
-  `Border` value: `paint(canvas, rect, caption:, active:, scrollbar:)` plus
-  `content_rect(local_rect, scrollbar:)`), or a `Canvas` method? A module is ruled out by the
-  principle above. Leaning towards the painter object: a LaF needs something to hand out per
-  component kind, and a `Canvas` method gives it no seam.
+- **`Q_border_helper_api`**: it's a helper class (the owner's call; a module is ruled out by the
+  principle above). Still open: its name, and whether each component holds an instance or it is
+  stateless, e.g. `paint(canvas, rect, caption:, active:, scrollbar:)` plus
+  `content_rect(local_rect, scrollbar:)`. `Border` is free as a name: the decorator *component*
+  of that name was rejected, and this isn't a component.
 - **`Q_thin_dialog_subclasses`**: the identity test applies to the subclasses too. `ConfirmDialog`
   and `PickerDialog` are kinds of dialog: they have their own keys, buttons and result. But
   `LogDialog` is just a `Dialog` whose body is a `LogTextView`, and `InfoDialog` one whose body is a
@@ -162,11 +147,6 @@ constant.
 - **`Q_dialog_bg`**: does `Dialog` inherit `Window`'s background/extent behaviour as-is, or does
   becoming an `Overlay` change what `D_bg_surface`'s "composer owes `bg.default_color` + `INHERIT`"
   pair means for it?
-- **`Q_laf_vs_theme`**: when the look-and-feel arrives, is it part of `Theme` (which today carries
-  accents only: `D_bg_inherit`, `D_no_hint_color`) or a sibling object? Leaning: a sibling. Color
-  stays `Theme`'s, since `active_border_color` is already an accent token. Shape and insets go to
-  the LaF, because they move geometry and `Theme` never does. Not for this change, just don't let
-  the helper's signature assume either.
 - **`Q_dialog_subclass_sizing`**: virtui's subclasses each carry a `SIZE` constant. Is that a
   `declared_size:` passed to `super`, or an overridden reader?
 
@@ -182,7 +162,7 @@ constant.
   `D_no_context_menu`, `D_no_hint_color`. A new `D_` records the principle (the identity axis and
   the appearance axis), the merge, and the names and structures not chosen above.
 - **An invariant line**, probably in `lib/tuile/component/AGENTS.md`: a class says what a
-  component is. Its border is its own paint, through the shared painter, and never comes from a
+  component is. Its border is its own paint, through the border helper, and never comes from a
   superclass, a mixin or a child held for its ink.
 - **The rest of the docs and code:**
   - `design/terminology.md` (caption, slot)
