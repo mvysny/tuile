@@ -361,6 +361,80 @@ module Tuile
         assert_equal false, seen
       end
     end
+
+    context "CloseEvent#reason" do
+      def reasons_of(overlay)
+        [].tap { |seen| overlay.on_close { seen << _1.reason } }
+      end
+
+      it "is :code for a plain #close" do
+        o = Component::Overlay.new
+        seen = reasons_of(o)
+        o.open(at)
+        o.close
+        assert_equal [:code], seen
+      end
+
+      it "is whatever #close was told" do
+        o = Component::Overlay.new
+        seen = reasons_of(o)
+        o.open(at)
+        o.close(reason: :key)
+        assert_equal [:key], seen
+      end
+
+      it "is :code for a direct Screen#remove_overlay" do
+        o = Component::Overlay.new
+        seen = reasons_of(o)
+        o.open(at)
+        Screen.instance.remove_overlay(o)
+        assert_equal [:code], seen
+      end
+
+      it "is :outside_click for a left press that misses it" do
+        o = Component::Overlay.new
+        seen = reasons_of(o)
+        o.open(at)
+        Screen.instance.click(100, 30)
+        assert_equal [:outside_click], seen
+      end
+
+      it "is :key for ESC on a Dialog" do
+        d = Component::Dialog.new(content: Component::Label.new("hi"))
+        seen = reasons_of(d)
+        d.open
+        Screen.instance.key(Keys::ESC)
+        assert_equal [:key], seen
+      end
+
+      it "is :teardown when the screen closes under it" do
+        o = Component::Overlay.new
+        seen = reasons_of(o)
+        o.open(at)
+        Screen.close
+        assert_equal [:teardown], seen
+        Screen.fake # the `after` hook closes again
+      end
+
+      # The stamp is cleared on the way out, so a reopened overlay doesn't
+      # report the previous exit's reason.
+      it "does not leak into the next close" do
+        o = Component::Overlay.new
+        seen = reasons_of(o)
+        o.open(at)
+        o.close(reason: :key)
+        o.open(at)
+        Screen.instance.remove_overlay(o)
+        assert_equal %i[key code], seen
+      end
+
+      it "refuses an unknown reason, and :teardown, which only Screen#close may give" do
+        o = Component::Overlay.new.open(at)
+        assert_raises(ArgumentError) { o.close(reason: :bogus) }
+        assert_raises(ArgumentError) { o.close(reason: :teardown) }
+        assert o.open?
+      end
+    end
   end
 
   describe Component::Overlay::Placement do

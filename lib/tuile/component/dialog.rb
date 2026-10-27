@@ -191,7 +191,7 @@ module Tuile
       # @return [Boolean] true if the key was handled.
       def handle_key?(key)
         if [Keys::ESC, "q"].include?(key)
-          close if close_on_key?
+          close(reason: :key) if close_on_key?
           true
         else
           false

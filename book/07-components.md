@@ -1818,6 +1818,27 @@ dependency the wrong way is a component *acting on* an ancestor: closing
 it, hiding it, reconfiguring it. That is the parent's job, so hand the
 parent a listener and let it do the job.
 
+### Hearing it close
+
+The other direction is `on_close`: whoever opened an overlay listens, and
+hears it leave the screen. It fires **however** the overlay left — ESC, an
+outside click, `close` from anywhere, even `screen.close` taking the whole
+UI down at the end of `main`. That's what a caller keeping its own record of
+open overlays wants, because no exit can slip past it.
+
+It is not what "the user has seen this" wants, because the app quitting is
+not the user dismissing anything. So the event says why, and you filter:
+
+```ruby
+log = Component::LogDialog.new
+log.on_close { reset_unread_count unless _1.reason == :teardown }
+log.open
+```
+
+The reasons are `:key` (ESC or `q`), `:outside_click`, `:code` (any `close`)
+and `:teardown`. A `ConfirmDialog`'s `on_dismiss` already makes that cut for
+you: teardown never fires it.
+
 ## The confirm dialog
 
 A `Dialog` around your own content is how you build any dialog. One dialog is

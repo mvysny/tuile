@@ -117,6 +117,21 @@ module Tuile
         assert !overlay.open?
         assert_equal 1, @dismissed
       end
+
+      it "an outside click dismisses" do
+        build_dialog.open
+        Screen.instance.click(0, 0)
+        assert_equal 1, @dismissed
+      end
+
+      # The app is ending, not the user saying "no": a dismiss callback must not
+      # run mid-unmount.
+      it "teardown does not dismiss" do
+        build_dialog.open
+        Screen.close
+        assert_nil @dismissed
+        Screen.fake # the `after` hook closes again
+      end
     end
 
     describe "mnemonics" do

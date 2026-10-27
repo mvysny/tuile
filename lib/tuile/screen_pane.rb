@@ -149,6 +149,7 @@ module Tuile
     # @return [void]
     def detach_all
       screen.focused = nil # …so the focus repair in handle_child_removed has nothing to do
+      @_overlays.each(&:mark_teardown)
       children.dup.each { detach_child(_1) }
       @_content = nil
       @_overlays.clear
@@ -291,7 +292,7 @@ module Tuile
     def dismissing_overlays_outside(point, left:)
       dismissable = left ? @_overlays - kept_by(overlay_at(point)) : []
       yield
-      dismissable.each { _1.close if _1.close_on_outside_click? }
+      dismissable.each { _1.close(reason: :outside_click) if _1.close_on_outside_click? }
     end
 
     # Focus repair when a child detaches. Default {Component#handle_child_removed}

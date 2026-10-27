@@ -7509,7 +7509,11 @@ module Tuile
       # outside click, or teardown via {Screen#close}. That unconditionality is
       # the point, so it hangs off {#handle_detached} rather than {#close}; a
       # driver keeping its own record of open overlays reconciles it here and
-      # cannot drift ({Component::MenuBar::Cascade} is the worked example).
+      # cannot drift ({Component::MenuBar::Cascade} is the worked example). A
+      # listener that only cares about some exits filters on
+      # {CloseEvent#reason}:
+      # 
+      #   log_dialog.on_close { reset_unread unless _1.reason == :teardown }
       # 
       # It fires *after* the overlay is detached, so {#open?} is already false
       # and the usual {Component#handle_detached} caveats apply: release state,
@@ -7552,7 +7556,20 @@ module Tuile
       def open: (?Placement placement) -> self
 
       # Removes this overlay from the {Screen}. No-op if not currently open.
-      def close: () -> void
+      # 
+      #   overlay.close                  # on_close says :code
+      #   dropdown.close(reason: :key)   # a driver closing it on the user's ESC
+      # 
+      # An override must take and pass on `reason:` — {Dialog} and the
+      # outside-click path call `close(reason: …)`.
+      # 
+      # _@param_ `reason` — what {CloseEvent#reason} reports: `:key`, `:outside_click` or `:code`; `:teardown` is {Screen#close}'s alone.
+      def close: (?reason: Symbol) -> void
+
+      # Internal — {ScreenPane#detach_all} calls it on every open overlay just
+      # before unmounting the tree, so the {#on_close} teardown fires says
+      # `:teardown`.
+      def mark_teardown: () -> void
 
       # _@return_ — true if this overlay is currently mounted on the screen.
       def open?: () -> bool
@@ -7720,15 +7737,39 @@ module Tuile
         def anchor: () -> (Component | Rect)?
       end
 
-      # What {#on_close} fires.
+      # What {#on_close} fires. One event carrying a reason, not a second
+      # `on_dismiss` slot: a driver that must hear every exit would otherwise
+      # subscribe to both and dedupe.
       # 
       # @!attribute [r] source
       #   @return [Overlay] the overlay that left the screen.
+      # @!attribute [r] reason
+      #   @return [Symbol] why it left, one of {CloseEvent::REASONS}:
+      # 
+      #   - `:key` — ESC or `q` on a {Component::Dialog}, or a driver's own
+      #     `close(reason: :key)`.
+      #   - `:outside_click` — a left press missed it ({#close_on_outside_click?}).
+      #   - `:code` — any other {#close} or {Screen#remove_overlay}, framework
+      #     widgets included (a {Component::ConfirmDialog} button, a
+      #     {Component::Notification} expiring).
+      #   - `:teardown` — {Screen#close} unmounted the tree; nobody dismissed it.
       class CloseEvent < Data
         include Tuile::Event
+        REASONS: ::Array[Symbol]
 
         # _@return_ — the overlay that left the screen.
         attr_reader source: Overlay
+
+        # - `:key` — ESC or `q` on a {Component::Dialog}, or a driver's own
+        #   `close(reason: :key)`.
+        # - `:outside_click` — a left press missed it ({#close_on_outside_click?}).
+        # - `:code` — any other {#close} or {Screen#remove_overlay}, framework
+        #   widgets included (a {Component::ConfirmDialog} button, a
+        #   {Component::Notification} expiring).
+        # - `:teardown` — {Screen#close} unmounted the tree; nobody dismissed it.
+        # 
+        # _@return_ — why it left, one of {CloseEvent::REASONS}:
+        attr_reader reason: Symbol
       end
     end
 
@@ -13634,8 +13675,9 @@ module Tuile
       def initialize: (?(String | StyledString)? caption) -> void
 
       # Fired with a {DismissEvent} when the dialog is dismissed — ESC, `q`, an
-      # outside click, or a {#button} declared without a block. Fires exactly
-      # once per {#open}, and never when an action button was chosen.
+      # outside click, {#close}, or a {#button} declared without a block. Fires
+      # at most once per {#open}: never when an action button was chosen, and
+      # never when {Screen#close} tears the dialog down with the app.
       def on_dismiss: () -> Listeners
 
       # _@return_ — whatever {#message=} was
@@ -13782,10 +13824,14 @@ module Tuile
       # _@param_ `btn`
       def activate: (Button btn) -> void
 
-      # The {#on_close} listener: fires {#on_dismiss} unless a button was chosen —
-      # which makes ESC, `q`, an outside click, {#close}, a direct
-      # {Screen#remove_overlay} and teardown all one event, fired exactly once.
-      def notice_dismissed: () -> void
+      # The {#on_close} listener: fires {#on_dismiss} unless a button was chosen
+      # or the screen is being torn down — which makes ESC, `q`, an outside
+      # click, {#close} and a direct {Screen#remove_overlay} one event, fired
+      # exactly once. Teardown is no dismissal: the app is ending, and a
+      # callback would run mid-unmount.
+      # 
+      # _@param_ `event`
+      def notice_dismissed: (Overlay::CloseEvent event) -> void
 
       def fire_dismissed: () -> void
 
