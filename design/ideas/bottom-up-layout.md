@@ -115,7 +115,7 @@ What a lazy rows-only pull would answer, point by point:
 | `Label` | line count, independent of `width` (it truncates, never wraps). #73 wants a wrapping one: a `wrap:` knob, or `TextView` in a non-scrolling mode, answering like the row below |
 | `TextView` (wrapping) | wrapped row count at `width` |
 | `ConfirmDialog` | **shipped**: the message wrapped at `width − WIDTH_CHROME`, plus `HEIGHT_CHROME` |
-| `Dialog` | **shipped**: `content.measure_rows(width − border) + border`; `nil` if the content says `nil` |
+| `Dialog` | **shipped**: `content.measure_rows(width − border) + border`; `nil` if the content says `nil`. No content or hidden content counts `0` (stage 2; the shipped answer is `nil`) |
 | `Panel` | the same as `Dialog`'s |
 | `FormLayout` | `item_height` summed over the visible items |
 | `Vertical` | each shown child: `Fixed[n]` → `n`, `Auto` → `child.measure_rows(its width)`, plus `spacing` and `padding`; any `Percent` / `Expand` child → `nil`, since it needs the height being computed |
@@ -144,6 +144,17 @@ Order of cost: #1 changes nothing outside `Dialog`, #2 amends `D_scroller`, #3 r
 one honestly answers `nil`. `Auto` is bottom-up: the box asked, and a child with no answer is a
 mistake in the tree, not a box that fills. `0` keeps the layout going and the log says why the row
 vanished; revisit if that turns out to bite.
+
+**Hidden content answers as absent content, and absent content counts `0`** (owner, 2026-10-27).
+Boxes already skip hidden children, so this concerns the components that pass a single content
+child's answer up (`Dialog`, `Panel`, `Scroller`). `D_visibility` makes hidden mean *gone*, exactly
+as detached, so hidden and absent must answer alike. `0` rather than `nil`, because `nil` describes
+content that actively fills (`List`, an `Expand` child), and absent content fills nothing: an empty
+`Panel` needs its border and no more, as an all-hidden `Vertical` already sums to its padding. `nil`
+would also log the `Auto` warning on every pass for a hidden body, which is a normal state, not a
+mistake in the tree. The asker checks (`content&.visible?`, else `0`), as `Box` already does; one
+that forgets reserves the hidden content's rows, which leaves a blank gap rather than a leak,
+the direction `D_visibility` accepts.
 
 **`Auto` is legal exactly where the axis is height** (owner, 2026-10-27): `Vertical`'s main axis
 and `Horizontal`'s `cross:`. On `Horizontal`'s main axis or `Vertical`'s `cross:` it would need a
@@ -178,7 +189,9 @@ true, and breaking any of them is the falsifier the `D_declared_size` amendment 
 
 **It fires from a mutation of the answer's own inputs**, never from a change of rect and never
 from being asked. An answerer calls `invalidate_rows` from `text=`, `wrap=`, `add` and the like, the
-way it calls `invalidate`. A width changes only inside the `relayout` of the parent that assigned it.
+way it calls `invalidate`. That includes `visible=`. Marking the parent is not enough when the parent
+passes its answer up (a dialog's asker is the pane), and hiding a child is a change to the parent's
+own inputs, not a change of rect. A width changes only inside the `relayout` of the parent that assigned it.
 If that parent's arithmetic depends on rows, it asks `measure_rows` at the new width in that same
 `relayout`, and the query is pure, so it recurses through any intermediates and the answer is already
 right. Firing from `handle_rect_changed` would mark ancestors the round has already visited. That
@@ -256,9 +269,11 @@ parent already holds, with no bookkeeping of its own.
    it, and `Dialog::ShrinkToContent`. Re-asked every pass, so the notice stays `ConfirmDialog`'s
    own `reposition`; its `declared_size_in` is a `ShrinkToContent` half-screen box at `measured_width`.
 2. Answerers: `Label` (wrapping, for #73), `TextView`, `Panel`, `FormLayout`, `Vertical`,
-   `Horizontal`, with `main_sizes` shared between `relayout` and `measure_rows`.
+   `Horizontal`, with `main_sizes` shared between `relayout` and `measure_rows`. `Dialog` counts
+   no content or hidden content as `0` instead of answering `nil`, so a `ShrinkToContent` dialog with
+   an empty body shrinks to its border and the one-row floor; a `**Breaking:**` CHANGELOG line.
 3. The notice: `invalidate_rows` and `handle_child_rows_changed`, answerers firing from their
-   mutations, and `ConfirmDialog` deleting its `reposition` calls. Each consumer adds its own row to
+   mutations, `visible=` firing it too, and `ConfirmDialog` deleting its `reposition` calls. Each consumer adds its own row to
    the hook when it lands (`Scroller` at 4, `Auto` at 5). Two `component_contract_spec` checks:
    "non-`nil` `measure_rows` ⇒ a mutation that changes it calls `invalidate_rows`", and "a container
    whose `measure_rows` changes when a child's answer changes passes that child's notice on".
@@ -306,8 +321,6 @@ parent already holds, with no bookkeeping of its own.
 - `Q_fit_width`: does `ConfirmDialog`'s widest-line width become a public dialog width declaration
   (`Dialog::FitLines`?), or stay its own? It reads only the dialog's own message, so it stays one hop
   either way. The lean is to wait for a second caller.
-- `Q_hidden`: summing answerers skip hidden children (`D_visibility`), and `visible=` already marks
-  the parent. Is a hidden *content* child `nil` or `0`?
 
 Answered by `D_deferred_layout`: re-entrancy (a mark during the parent's pass lands in the same
 drain), batching (ten `form.add` calls coalesce into one settle) and the drain cap (an asker that
