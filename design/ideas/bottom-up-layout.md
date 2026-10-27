@@ -48,7 +48,24 @@ The two axes are not symmetric in a terminal, and the sketch builds on that inst
 
 So **width is always assigned top-down, and the only bottom-up question is "how many rows at this
 width?"**. The one place that wants a width from below is an overlay fitting its message, and that
-stays a one-hop declaration (below), never a channel through the tree.
+stays a one-hop declaration, never a channel through the tree.
+
+**Fitting a width stays each overlay's own arithmetic** (owner, 2026-10-27; open to revisiting).
+`ConfirmDialog#measured_width` stays private, and an app dialog that wants a fitted width overrides
+`declared_size_in`, as `ConfirmDialog` does. Four overlays already fit their width to text they own,
+each with its own twist: `ConfirmDialog` (caption, widest line, button row, half-screen cap),
+`Notification` (the widest message so far, never narrowing while open), `Select`'s dropdown
+(`List`'s gutters, plus a scrollbar column past `MAX_VISIBLE_ROWS`) and `examples/sampler.rb`'s
+slash menu. All they share is one line, the widest line's display width, so a shared declaration
+would need a knob per twist. Rejected for now:
+
+- **A public declaration fed the text** (`ShrinkToContent[FitLines[text, cap:]]`). The app hands
+  the text to the content and to the declaration, two copies that must agree (0.9.0's point 4).
+- **A public helper** (`Size.fit_lines(text, chrome:, cap:)`). It saves one line. It is the cheap
+  step if a fifth fitter turns up with `ConfirmDialog`'s exact rule.
+- **A width query on the content** (`measure_columns`). This is the width-from-below channel that
+  road 9 and `D_declared_size`'s rejected `measure(available) → Size` both refuse. Ruled out, not
+  just deferred.
 
 ## What 0.9.0 deleted, and what has changed since
 
@@ -318,10 +335,7 @@ parent already holds, with no bookkeeping of its own.
 
 ## Open questions
 
-- `Q_fit_width`: does `ConfirmDialog`'s widest-line width become a public dialog width declaration
-  (`Dialog::FitLines`?), or stay its own? It reads only the dialog's own message, so it stays one hop
-  either way. The lean is to wait for a second caller.
-
+None open: each one was answered by the owner, and its answer sits with the design it shapes.
 Answered by `D_deferred_layout`: re-entrancy (a mark during the parent's pass lands in the same
 drain), batching (ten `form.add` calls coalesce into one settle) and the drain cap (an asker that
 cycles raises after `LayoutPass::MAX_ROUNDS` rounds).
