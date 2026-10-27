@@ -119,7 +119,7 @@ What a lazy rows-only pull would answer, point by point:
 | `Panel` | the same as `Dialog`'s |
 | `FormLayout` | `item_height` summed over the visible items |
 | `Vertical` | each shown child: `Fixed[n]` → `n`, `Auto` → `child.measure_rows(its width)`, plus `spacing` and `padding`; any `Percent` / `Expand` child → `nil`, since it needs the height being computed |
-| `Horizontal` | `main_sizes` divides `width`, then the tallest shown child + `padding`: `cross:` `Fixed[n]` → `n` and the child is never asked, `Percent[100]` → `child.measure_rows(w_i)` (`Q_cross_percent` covers the rest). A `nil` child contributes nothing, so a `List` beside a wrapped label doesn't set the row's height, and all-`nil` answers `nil` |
+| `Horizontal` | `main_sizes` divides `width`, then the tallest shown child + `padding`: `cross:` `Fixed[n]` → `n` and the child is never asked, `Auto` → `child.measure_rows(w_i)`. A `Percent` child fills the height being computed, so it contributes nothing, and neither does an `Auto` child answering `nil`. A `List` beside a wrapped label therefore doesn't set the row's height. With no `Fixed` or `Auto` contribution the answer is `nil` |
 
 `Horizontal` is the **cross axis**, so it takes the max where `Vertical`'s main axis takes the sum.
 This is GTK's height-for-width with the width-for-height half left out.
@@ -134,7 +134,7 @@ height without the app writing anything.
 |---|---|---|---|---|
 | 1 | `Dialog::ShrinkToContent` (**shipped**) | its own `measure_rows(box width)`, capped at the box's height | the whole box | issue #67 |
 | 2 | `Scroller#content_rows = :content` | `content.measure_rows(inner_width)` | the viewport | assigning `content_rows` |
-| 3 | `Vertical`'s `Auto` constraint | `child.measure_rows(child_width)`, the width its `cross:` already resolved | `0`, with a logged warning | hand-synced `Fixed[n]` |
+| 3 | a box's `Auto` constraint (`Vertical` main, `Horizontal` cross) | `child.measure_rows(child_width)`: on `Vertical` the width its `cross:` resolved, on `Horizontal` its `main_sizes` share | `0`, with a logged warning | hand-synced `Fixed[n]` |
 
 Order of cost: #1 changes nothing outside `Dialog`, #2 amends `D_scroller`, #3 reverses
 `D_box_layouts`' headline. Each one ships separately.
@@ -145,9 +145,17 @@ one honestly answers `nil`. `Auto` is bottom-up: the box asked, and a child with
 mistake in the tree, not a box that fills. `0` keeps the layout going and the log says why the row
 vanished; revisit if that turns out to bite.
 
-**`Auto` is legal on `Vertical`'s main axis only.** On `Horizontal` it would need a width from the
-child, which is the question this sketch never asks; it raises there, as `Expand` raises as `cross:`
-today.
+**`Auto` is legal exactly where the axis is height** (owner, 2026-10-27): `Vertical`'s main axis
+and `Horizontal`'s `cross:`. On `Horizontal`'s main axis or `Vertical`'s `cross:` it would need a
+width from the child, which is the question this sketch never asks. It raises there, as `Expand`
+raises as `cross:` today, and the message says rows come up but widths never do.
+
+**The spelling is settled** (owner, 2026-10-27). `Auto` is the box constraint. Its ban in
+`D_box_layouts` was a ban on the feature, and the feature is now approved in this bounded form,
+with the meaning CSS `auto` and urwid's `PACK` already give it. `Scroller` says
+`content_rows = :content`, because `:auto` would sit in the same class as
+`scrollbar_visibility = :auto` with a different meaning. `ShrinkToContent` stays: it is a box with a
+ceiling, a different shape from either.
 
 ### The notice: who re-asks when the answer changes
 
@@ -193,8 +201,8 @@ default and needs no code.
 |---|---|---|---|
 | `Vertical` | `Fixed` / `Percent` / `Expand` | — | — |
 | `Vertical` | `Auto` | ✓ | ✓ |
-| `Horizontal` | cross `Fixed` | — | — |
-| `Horizontal` | cross `Percent[100]` | — (the height is assigned top-down) | ✓ |
+| `Horizontal` | cross `Fixed` / `Percent` | — | — |
+| `Horizontal` | cross `Auto` | ✓ (the child's height is its answer) | ✓ |
 | `Panel`, `Dialog` | content | — (content gets the inner rect) | ✓ |
 | `ScreenPane` | an overlay | ✓ (the placement resolves `ShrinkToContent`) | nothing above |
 | `ScreenPane` | content | — | — |
@@ -259,7 +267,7 @@ parent already holds, with no bookkeeping of its own.
    width, show the bar if that outgrows the viewport, then measure at `inner_width`. That holds
    because less width never costs fewer rows, which greedy wrapping guarantees and every answerer
    under an `:auto` bar must keep. If it bites, `:content` refuses `:auto` until it's solved (owner).
-5. `Vertical`'s `Auto`, decided on its own, last. It has a consumer: #73 cannot be written without
+5. `Auto` (`Vertical` main, `Horizontal` cross), last. It has a consumer: #73 cannot be written without
    it, because the stack has to give each wrapped row its counted height.
 
 ## Gates
@@ -287,7 +295,7 @@ parent already holds, with no bookkeeping of its own.
 | 5 | listener slot on the content (`on_size_changed`) | its only edge over the notice is a non-parent observer; `D_scroller` leans against it |
 | 6 | eager `content_size` again | 0.9.0's channel, rejected for point 1 above |
 | 7 | a dedicated stack container whose every child is implicitly counted, instead of `Auto` | `Auto` under another name, plus a second vertical container that copies `Box`'s spacing, padding and visibility rules |
-| 9 | `Auto` on `Horizontal` (a width from the child) | needs the both-axes query `D_declared_size` rejects; a non-wrapping row of fixed-width widgets takes `Fixed[n]` |
+| 9 | `Auto` on `Horizontal`'s main axis (a width from the child) | needs the both-axes query `D_declared_size` rejects; a non-wrapping row of fixed-width widgets takes `Fixed[n]` |
 | 10 | notice: one hop, `parent&.invalidate_layout` (`content-height.md`'s road 3) | breaks wherever a forwarding answerer sits between asker and answerer: `Dialog → Panel → Label`, and every dialog, since its asker is the pane |
 | 11 | notice: climb along *asked-by-parent* flags (Flutter's `parentUsesSize`, `R_layout_pass`) | the same edges, recorded per pass instead of read from the constraint: a flag to set and clear each pass, and a missed flag is just as stale |
 | 12 | notice: always climb to the root, stopping at absorber *types* (`Scroller`, `Dialog`; Android's `requestLayout`, `R_layout_pass`) | a forgotten absorber only costs time, but every `Label#text=` relayouts every ancestor, it reaches parents that never asked (weakening the gate), and `Dialog` turned out not to absorb |
@@ -295,17 +303,11 @@ parent already holds, with no bookkeeping of its own.
 
 ## Open questions
 
-- `Q_spelling`: `content_rows = :content` and `Auto` (the dialog's is `ShrinkToContent`). `:auto` collides
-  with `D_box_layouts`' banned vocabulary, unless stage 5 retires that ban.
 - `Q_fit_width`: does `ConfirmDialog`'s widest-line width become a public dialog width declaration
   (`Dialog::FitLines`?), or stay its own? It reads only the dialog's own message, so it stays one hop
   either way. The lean is to wait for a second caller.
 - `Q_hidden`: summing answerers skip hidden children (`D_visibility`), and `visible=` already marks
   the parent. Is a hidden *content* child `nil` or `0`?
-- `Q_cross_percent`: `Percent[p<100]` across a `Horizontal` is a percentage of the height being
-  computed, so it is circular. CSS resolves a percentage height in an auto-height parent as auto.
-  The lean is the same: ask the child as if `Percent[100]`, and pass the answer through `Clamp`'s
-  bounds. The alternative is to raise.
 
 Answered by `D_deferred_layout`: re-entrancy (a mark during the parent's pass lands in the same
 drain), batching (ten `form.add` calls coalesce into one settle) and the drain cap (an asker that
@@ -315,7 +317,9 @@ cycles raises after `LayoutPass::MAX_ROUNDS` rounds).
 
 - `D_scroller` (tracking mode) and, if `Auto` lands, `D_box_layouts`; the climbing notice is a
   further `D_declared_size` amendment. The asymmetry section is the `D_` entry's core.
-- AGENTS.md's two Layout lines and book ch3's omissions list, rewritten together.
+- AGENTS.md's two Layout lines, book ch3's omissions list and "**there is no `Auto`.**" in its box
+  section, and the first reason in `D_declared_size`'s rejected-`auto_size` bullet (it cites
+  `D_box_layouts`' ban; the `Notification` reason still holds), rewritten together.
 - rdoc on `Component#measure_rows`, `#invalidate_rows`, `#handle_child_rows_changed`, each answerer,
   `Dialog#declared_size=` and `Scroller#content_rows=`.
 - An AGENTS.md Layout line: the rows notice fires from a mutation of the answer's inputs, never
