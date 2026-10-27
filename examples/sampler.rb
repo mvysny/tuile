@@ -586,7 +586,7 @@ module SamplerExample
       # strip is a button rather than a drop-down.
       Entry.new("Button", :build_buttons, "b"),
       Menu.new("Overlay", "o", [
-                 Entry.new("Dialog", :build_popup_launcher, "p"),
+                 Entry.new("Dialog", :build_dialog_launcher, "p"),
                  Entry.new("Notification", :build_notification_launcher, "n"),
                  Entry.new("ConfirmDialog", :build_confirm_launcher, "c"),
                  Entry.new("InfoDialog", :build_info_launcher, "i"),
@@ -1875,7 +1875,7 @@ module SamplerExample
                     "The underlined letters are mnemonics: press f then q for File ▸ Quit. Each level has\n" \
                     "its own set, so 'o' is File ▸ Open and also Edit ▸ Copy — try f,o then e,o.\n" \
                     "A letter that matches nothing in the open menu just beeps; it won't switch menus.\n" \
-                    "The panels overdraw this panel and the nav list — they are overlays, not children.\n" \
+                    "The menus overdraw this pane and the nav list — they are overlays, not children.\n" \
                     "\"About\" is a top-level leaf, so it acts as a button; \"Inert\" does nothing at all."
 
       form do |f|
@@ -1966,7 +1966,7 @@ module SamplerExample
     # visible: every route out of a dialog lands in exactly one callback.
     def build_confirm_launcher
       label = Tuile::Component::Label.new
-      label.text = "ConfirmDialog asks a question with a row of buttons, in a popup sized to\n" \
+      label.text = "ConfirmDialog asks a question with a row of buttons, in a dialog sized to\n" \
                    "its content (capped at half the screen). Every button closes the dialog;\n" \
                    "ESC, q or an outside click dismiss it instead. An underlined letter presses\n" \
                    "its button from anywhere; Up/Down scroll a long message meanwhile."
@@ -2016,7 +2016,7 @@ module SamplerExample
       end
     end
 
-    def build_popup_launcher
+    def build_dialog_launcher
       launcher(
         "Dialog is a bordered, captioned modal overlay around any Component.\n" \
         "ESC or q closes it.",
@@ -2040,7 +2040,7 @@ module SamplerExample
           Tuile::Component::InfoDialog.new(
             "About",
             "InfoDialog renders a String as wrapping prose: this sentence is long " \
-            "enough to wrap to the popup's width, and it scrolls when it outgrows " \
+            "enough to wrap to the dialog's width, and it scrolls when it outgrows " \
             "the box. Press ESC or q to close."
           ).open
         end,
@@ -2052,7 +2052,7 @@ module SamplerExample
              "-rw-r--r--  README.md   4.1k",
              "-rw-r--r--  Rakefile     812",
              "",
-             "Rows never wrap: a long row like this one is truncated at the popup's edge, keeping columns aligned.",
+             "Rows never wrap: a long row like this one is truncated at the dialog's edge, keeping columns aligned.",
              "",
              "Press ESC or q to close."]
           ).open
