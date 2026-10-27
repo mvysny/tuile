@@ -2,8 +2,9 @@
 
 **Status:** owner-decided in outline (2026-10-26), reframed by the owner (2026-10-27): the root
 cause is a hierarchy that encodes appearance, and the renames follow from fixing that. Every open
-question was answered on 2026-10-27. Not started: wait until `bottom-up-layout` merges so the rename
-doesn't get mixed into its diff. **Scope: the component hierarchy only.** A configurable
+question was answered on 2026-10-27. In progress on the `panel-and-dialog` branch. It lands
+before `bottom-up-layout` (owner, 2026-10-27), which is far from done and rebases onto `Dialog`
+afterwards. **Scope: the component hierarchy only.** A configurable
 look-and-feel is v2 (`look-and-feel.md`), and nothing here is designed for it.
 
 **Problem:** the component hierarchy answers two questions at once, *what a component is* and *how

@@ -6,6 +6,11 @@ of 0.9.0, so every step past the first amends a `D_` and the owner decides. Unti
 told (`content_rows=`) and a popup copies `ConfirmWindow`'s private `MeasuredPopup`. Every road here
 adds a new value next to what already exists, so waiting breaks nothing.
 
+**`panel-and-dialog` lands first** (owner, 2026-10-27). That rebase is this branch's to absorb.
+`Popup` becomes `Dialog`, which paints its own border, so `ShrinkToContent` asks the dialog's body
+and adds `BorderDrawerInt`'s insets itself. `ConfirmWindow#measured_width` moves to
+`ConfirmDialog`, and the `MeasuredPopup` copies are already gone.
+
 ## The problem
 
 Strict top-down layout has three consumers that need an answer only their child has:
