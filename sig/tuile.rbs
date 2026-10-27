@@ -7274,45 +7274,10 @@ module Tuile
 
       def relayout: () -> void
 
-      # The interior the content fills: inside the border on three sides, and on
-      # the fourth only while there is a right border — {#scrollbar=} drops it so
-      # the content's own bar takes that column.
-      # 
-      # One rect for both jobs, since a window paints and places its children in
-      # the same coordinates: it is what {#relayout} assigns the content, and what
-      # {#repaint} blanks when there is no content to cover it.
-      # 
-      # _@return_ — may be {Rect#empty? empty}, for a window too small to have
-      # an inside.
+      # The interior the content fills, inside the border. One rect for both
+      # passes: what {#relayout} assigns the content, and what {#repaint} blanks
+      # when there is no content to cover it.
       def content_rect: () -> Rect
-
-      # Paints the window border via {Canvas#set_text} / {Canvas#set_char},
-      # so the border cells inherit {ComponentBackground#effective} — a
-      # {Component#bg_color} on the window tints border and content alike. Both
-      # border rows are clipped by *display* width, so no caption overflows the
-      # box; when the window is active the whole border — the caption's own
-      # colors included — is drawn in {Theme#active_border_color}.
-      # 
-      # _@param_ `canvas` — the surface to paint onto.
-      def repaint_border: (Canvas canvas) -> void
-
-      # Builds the top border row: corners, {#caption} embedded at its own
-      # width, dashes filling the remainder. The caption keeps its own styling
-      # unless `fg` is set — an active window's border claims it.
-      # 
-      # _@param_ `inner_w` — the border's interior width.
-      # 
-      # _@param_ `fg` — the active-border color, or nil when inactive.
-      def top_border: (Integer inner_w, Color? fg) -> StyledString
-
-      # Builds the bottom border row: corners, {#footer_text} embedded at its
-      # own width — keeping the text's own styling — and dashes filling the
-      # remainder up to the inner width.
-      # 
-      # _@param_ `inner_w` — the border's interior width.
-      # 
-      # _@param_ `fg` — the active-border color, or nil when inactive.
-      def bottom_border: (Integer inner_w, Color? fg) -> StyledString
 
       # Read through *this* method, never `@_caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).
@@ -18244,6 +18209,87 @@ module Tuile
       # call directly from a test that wants to elapse a single timer.
       def fire: () -> void
     end
+  end
+
+  # Paints the single-line box a bordered component wears, and answers the
+  # interior that box leaves for the content:
+  # 
+  #   ┌Help──────┐   ← the caption
+  #   │          │   ← the content rect
+  #   └q to close┘   ← footer_text
+  # 
+  # A component holds one and asks it in both passes, so the inset is answered
+  # in one place:
+  # 
+  #   def relayout = content&.rect = @_border_drawer.content_rect(rect.size)
+  #   def repaint(canvas)
+  #     fg = active? ? screen.theme.active_border_color : nil
+  #     @_border_drawer.paint(canvas, rect.size, caption:, fg:)
+  #   end
+  # 
+  # A helper, not a component: it is no node in the tree, so the border is in
+  # no focus chain and no hit test.
+  # 
+  # Tuile-internal: a member may change or vanish with no migration note.
+  # 
+  # @api private
+  class BorderDrawerInt
+    def initialize: () -> void
+
+    # _@return_ — text embedded into the bottom border, mirroring the
+    # caption on the top one; empty by default.
+    def footer_text: () -> StyledString
+
+    # _@param_ `text`
+    def footer_text=: (StyledString text) -> void
+
+    # _@return_ — whether the right border column is drawn; false hands
+    # that column to the content's scrollbar.
+    def right_border?: () -> bool
+
+    # _@param_ `value` — see {#right_border?}.
+    def right_border=: (bool value) -> void
+
+    # The interior the content fills, in the component's own coordinates.
+    # 
+    # _@param_ `size` — the component's size.
+    # 
+    # _@return_ — may be {Rect#empty? empty}, for a box too small to have an
+    # inside.
+    def content_rect: (Size size) -> Rect
+
+    # Paints the box at `(0, 0)`, through {Canvas#set_text} / {Canvas#set_char} so
+    # the border cells inherit {ComponentBackground#effective}: a
+    # {Component#bg_color} tints border and content alike. Both border rows are
+    # clipped by *display* width, so no caption overflows the box.
+    # 
+    # _@param_ `canvas` — the component's canvas.
+    # 
+    # _@param_ `size` — the component's size.
+    # 
+    # _@param_ `caption` — embedded into the top border.
+    # 
+    # _@param_ `fg` — the color of the whole border, the caption's own colors included; nil leaves the border in the default foreground and the caption in its own colors.
+    def paint: (
+                 Canvas canvas,
+                 Size size,
+                 caption: StyledString,
+                 ?fg: Color?
+               ) -> void
+
+    # _@param_ `inner_w` — the border's interior width.
+    # 
+    # _@param_ `caption`
+    # 
+    # _@param_ `fg` — see {#paint}.
+    def top_border: (Integer inner_w, StyledString caption, Color? fg) -> StyledString
+
+    # The footer keeps its own colors even when `fg` is set.
+    # 
+    # _@param_ `inner_w` — the border's interior width.
+    # 
+    # _@param_ `fg` — see {#paint}.
+    def bottom_border: (Integer inner_w, Color? fg) -> StyledString
   end
 
   # Detects the terminal's background color — both the light/dark scheme

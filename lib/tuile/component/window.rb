@@ -19,17 +19,16 @@ module Tuile
       #   the same way {HasCaption#caption=} coerces it.
       def initialize(caption = nil)
         super()
-        @_border_right = 1
+        @_border_drawer = BorderDrawerInt.new
         self.caption = caption
         @_content = nil
-        @_footer_text = StyledString::EMPTY
       end
 
       def focusable? = true
 
       # @return [StyledString] optional chrome embedded into the bottom border
       #   line, mirroring {#caption} on the top line. Empty by default.
-      def footer_text = @_footer_text
+      def footer_text = @_border_drawer.footer_text
 
       # Sets the bottom-border chrome. Accepts a `String` (parsed via
       # {StyledString.parse}), a {StyledString}, or `nil` (clears it). The text
@@ -40,9 +39,9 @@ module Tuile
       # @return [void]
       def footer_text=(text)
         new_text = StyledString.parse(text)
-        return if @_footer_text == new_text
+        return if footer_text == new_text
 
-        @_footer_text = new_text
+        @_border_drawer.footer_text = new_text
         invalidate # repaint the bottom border row
       end
 
@@ -55,7 +54,7 @@ module Tuile
         end
 
         content.scrollbar_visibility = value ? :visible : :gone
-        @_border_right = value ? 0 : 1
+        @_border_drawer.right_border = !value
         invalidate
         invalidate_layout
       end
@@ -80,7 +79,8 @@ module Tuile
         inner = content_rect
         canvas.fill(inner) if content.nil? && !inner.empty?
         invalidate_children
-        repaint_border(canvas)
+        fg = active? ? screen.theme.active_border_color : nil
+        @_border_drawer.paint(canvas, rect.size, caption:, fg:)
       end
 
       protected
@@ -90,71 +90,11 @@ module Tuile
         content&.rect = content_rect
       end
 
-      # The interior the content fills: inside the border on three sides, and on
-      # the fourth only while there is a right border — {#scrollbar=} drops it so
-      # the content's own bar takes that column.
-      #
-      # One rect for both jobs, since a window paints and places its children in
-      # the same coordinates: it is what {#relayout} assigns the content, and what
-      # {#repaint} blanks when there is no content to cover it.
-      # @return [Rect] may be {Rect#empty? empty}, for a window too small to have
-      #   an inside.
-      def content_rect
-        Rect.new(1, 1, rect.width - 1 - @_border_right, rect.height - 2)
-      end
-
-      # Paints the window border via {Canvas#set_text} / {Canvas#set_char},
-      # so the border cells inherit {ComponentBackground#effective} — a
-      # {Component#bg_color} on the window tints border and content alike. Both
-      # border rows are clipped by *display* width, so no caption overflows the
-      # box; when the window is active the whole border — the caption's own
-      # colors included — is drawn in {Theme#active_border_color}.
-      # @param canvas [Canvas] the surface to paint onto.
-      # @return [void]
-      def repaint_border(canvas)
-        return if rect.empty?
-
-        w = rect.width
-        h = rect.height
-        inner_w = [w - 2, 0].max
-
-        fg = active? ? screen.theme.active_border_color : nil
-        bar = StyledString::Style.new(fg: fg)
-        canvas.set_text(0, 0, top_border(inner_w, fg).slice(0, w))
-        (1..(h - 2)).each do |row|
-          canvas.set_char(0, row, "│", bar)
-          # Skipped once {#scrollbar=} has given that column to the content: the
-          # bar would paint over the border anyway, and painting it first only
-          # dirties the column into every frame's diff (`D_component_contract`).
-          canvas.set_char(w - 1, row, "│", bar) if @_border_right.positive?
-        end
-        canvas.set_text(0, h - 1, bottom_border(inner_w, fg).slice(0, w)) if h >= 2
-      end
-
-      # Builds the top border row: corners, {#caption} embedded at its own
-      # width, dashes filling the remainder. The caption keeps its own styling
-      # unless `fg` is set — an active window's border claims it.
-      # @param inner_w [Integer] the border's interior width.
-      # @param fg [Color, nil] the active-border color, or nil when inactive.
-      # @return [StyledString]
-      def top_border(inner_w, fg)
-        title = caption.slice(0, inner_w)
-        title = title.with_fg(fg) if fg
-        dashes = StyledString.styled("─" * (inner_w - title.display_width), fg: fg)
-        StyledString.styled("┌", fg: fg) + title + dashes + StyledString.styled("┐", fg: fg)
-      end
-
-      # Builds the bottom border row: corners, {#footer_text} embedded at its
-      # own width — keeping the text's own styling — and dashes filling the
-      # remainder up to the inner width.
-      # @param inner_w [Integer] the border's interior width.
-      # @param fg [Color, nil] the active-border color, or nil when inactive.
-      # @return [StyledString]
-      def bottom_border(inner_w, fg)
-        embedded = @_footer_text.slice(0, inner_w)
-        dashes = StyledString.styled("─" * (inner_w - embedded.display_width), fg: fg)
-        StyledString.styled("└", fg: fg) + embedded + dashes + StyledString.styled("┘", fg: fg)
-      end
+      # The interior the content fills, inside the border. One rect for both
+      # passes: what {#relayout} assigns the content, and what {#repaint} blanks
+      # when there is no content to cover it.
+      # @return [Rect]
+      def content_rect = @_border_drawer.content_rect(rect.size)
     end
   end
 end
