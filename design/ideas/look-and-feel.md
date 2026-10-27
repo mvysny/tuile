@@ -1,10 +1,10 @@
 # Look-and-feel — how a component kind is drawn, orthogonal to the hierarchy
 
-**Status:** deferred to v2 by the owner (2026-10-27), not designed. Spun off `panel-and-dialog.md`.
-That idea fixes the component hierarchy and draws borders through `BorderDrawerInt`, an internal
-helper class. This one may reuse it as-is, or may not.
+**Status:** deferred to v2 by the owner (2026-10-27), not designed. Spun off the `Panel` /
+`Dialog` refactor (`D_panel_dialog`), which fixed the component hierarchy and draws borders through
+`BorderDrawerInt`, an internal helper class. This one may reuse it as-is, or may not.
 
-**Problem:** with the hierarchy saying only what a component *is* (`panel-and-dialog.md`'s
+**Problem:** with the hierarchy saying only what a component *is* (`D_panel_dialog`'s
 principle), how it looks needs a home of its own. Today there is exactly one border and nothing
 configures it.
 

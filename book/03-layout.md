@@ -179,7 +179,7 @@ class SplitPane < Tuile::Component::Layout
   def initialize
     super
     @sidebar = Tuile::Component::List.new
-    @main    = Tuile::Component::Window.new("Main")
+    @main    = Tuile::Component::Panel.new("Main")
     add(@sidebar)
     add(@main)
   end
@@ -425,13 +425,13 @@ is true for a zero *or* negative width, which is why the "hidden"
 sidebar above (`width 0`) simply paints nothing.
 
 `Rect` also carries the helpers you reach for while placing children —
-`centered` (used below to center a popup), `clamp_height`, `top_left`,
+`centered` (used below to center a dialog), `clamp_height`, `top_left`,
 and friends. Reach for the rdoc for the full set.
 
-## Sizing a popup: `Fraction`
+## Sizing a dialog: `Fraction`
 
 There is exactly one place in Tuile where a child is sized *against its
-parent* rather than by hand: a popup against the screen. A popup has no
+parent* rather than by hand: a dialog against the screen. A dialog has no
 siblings to compete with and no natural rectangle in a tiled layout, so
 "half the screen, centered" is the sensible default — and expressing
 that wants a ratio, not a hard-coded cell count that would be wrong on
@@ -449,20 +449,20 @@ class Fraction < Data.define(:width, :height)   # each a float in 0.0..1.0
 end
 ```
 
-A popup's box is set with `Popup#declared_size=`, which accepts either a
+A dialog's box, border included, is set with `Dialog#declared_size=`, which accepts either a
 `Fraction` (resolved against the screen at layout time, so it tracks
 resize) or an absolute `Size` (clamped to the screen):
 
 ```ruby
-popup = Tuile::Component::Popup.new(content: some_window)
-popup.declared_size = Tuile::Fraction::HALF     # the default — half the screen, centered
-popup.declared_size = Tuile::Fraction::FULL     # fullscreen
-popup.declared_size = Tuile::Fraction.new(0.8, 0.5)          # 80% wide, half tall
-popup.declared_size = Tuile::Size.new(50, 12)                # exact, clamped to screen
+dialog = Tuile::Component::Dialog.new("Help", content: some_text_view)
+dialog.declared_size = Tuile::Fraction::HALF     # the default — half the screen, centered
+dialog.declared_size = Tuile::Fraction::FULL     # fullscreen
+dialog.declared_size = Tuile::Fraction.new(0.8, 0.5)          # 80% wide, half tall
+dialog.declared_size = Tuile::Size.new(50, 12)                # exact, clamped to screen
 ```
 
 The default is `Fraction::HALF`, resolved on every layout pass, so a
-popup you never size at all is half-screen and follows the terminal as
+dialog you never size at all is half-screen and follows the terminal as
 it resizes. `Fraction::FULL` is the fullscreen shorthand.
 
 A subtle but important point: `declared_size=` is **authoritative, not a
@@ -473,52 +473,55 @@ fit). Calling it a preference would invite a future "well, the parent
 may override it" reading, and that's the first step back toward the
 `min`/`preferred`/`max` world we just spent half a chapter declining.
 
-Because the popup's box is fixed top-down, its **content fills the box
-and handles its own overflow** — wrapping and scrolling. Use a component
+Because the dialog's box is fixed top-down, its **content fills the inside
+of the border and handles its own overflow** — wrapping and scrolling. Use a component
 that can do that: `TextView` (read-only prose) and `TextArea` (an
 editor) both wrap and scroll. A `Label` only truncates, so a `Label` in
-a popup shows just what fits on its lines — fine for a short message,
+a dialog shows just what fits on its lines — fine for a short message,
 wrong for a paragraph.
 
-> **Why not size the popup to its content?** It's tempting to want a
-> popup that shrinks to wrap exactly around its text. Tuile deliberately
+> **Why not size the dialog to its content?** It's tempting to want a
+> dialog that shrinks to wrap exactly around its text. Tuile deliberately
 > doesn't, and not only for consistency: content-sizing is circular on
 > wrapped text (the height depends on the width, which depends on the
 > height) and it isn't even reliably pretty — a single long line
-> collapses the popup to one row. Half-screen-and-wrap sidesteps all of
-> it. When you genuinely know the right size — an autocomplete dropdown
-> whose items you own — you set it yourself: `popup.declared_size =
-> Tuile::Size.new(longest_item, [items.size, 8].min)`. That's still
-> caller-decides, top-down.
+> collapses the dialog to one row. Half-screen-and-wrap sidesteps all of
+> it. When you genuinely know the right size — a short picker whose
+> items you own — you set it yourself: `dialog.declared_size =
+> Tuile::Size.new(longest_item + 2, [items.size, 8].min + 2)`, the 2s
+> being the border. That's still caller-decides, top-down.
 
-## The window footer
+## The dialog footer
 
-A `Window`'s bottom border can carry text. **`footer_text=`** is *border
-chrome* — a styled string (a `String` is coerced) embedded into the bottom
-border row, mirroring the caption on
+A `Dialog`'s bottom border can carry text — key hints, typically.
+**`footer_text=`** is *border chrome* — a styled string (a `String` is
+coerced) embedded into the bottom border row, mirroring the caption on
 the top line. It draws at its own width with the border's dashes filling
 the remainder, clipped to the inner width. Like the caption, it embeds
 with **no added padding** — it butts straight against the left corner:
 
 ```ruby
-window.footer_text = "gpt-4 · 1.2k tok"
-# └gpt-4 · 1.2k tok────────────────────────────────┘
+dialog.footer_text = "q/ESC to close"
+# └q/ESC to close──────────────────────────────────┘
 ```
 
 If you want the text to breathe against the corner and the dashes, pad
 it yourself — a leading and trailing space is the usual choice:
 
 ```ruby
-window.footer_text = " gpt-4 · 1.2k tok "
-# └ gpt-4 · 1.2k tok ──────────────────────────────┘
+dialog.footer_text = " q/ESC to close "
+# └ q/ESC to close ────────────────────────────────┘
 ```
 
-It is not a component and not focusable — it's decoration the frame
+It is not a component and not focusable — it's decoration the border
 draws, keeping its own styling (only the corners and dashes take the
-active-border color when the window is focused). This is the right choice
-for a status readout precisely *because* it preserves the border: a
+active-border color while focus is inside the dialog). This is the right
+choice for a hint precisely *because* it preserves the border: a
 full-width label would paint its background across the whole row and
-erase the bottom edge, making the window look broken.
+erase the bottom edge, making the dialog look broken.
+
+A `Panel` has no footer: every caller so far was a dialog. A tiled pane's
+hints go in a `Label` beside it.
 
 ## Responding to resize
 
@@ -529,7 +532,7 @@ thing you do to be resize-aware — recompute in `relayout`. Do **not**
 install your own `SIGWINCH` handler; only one handler can win and the
 framework owns it. Chapter 4 covers how the resize event travels through
 the event queue and why it's handled there rather than off the signal.
-Popups re-resolve their `Fraction` against the new screen size and
+Dialogs re-resolve their `Fraction` against the new screen size and
 re-center automatically.
 
 ## What Tuile deliberately doesn't have

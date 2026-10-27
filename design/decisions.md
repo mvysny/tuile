@@ -47,7 +47,7 @@ chain. Self-painters route the effective bg through a single choke point,
 Why not:
 - *Explicit per-component, no inheritance* (Textual/ratatui end):
   simplest and zero new `StyledString` surface, but fails the motivating
-  "set it once on the Popup" case (you'd set it on Popup *and* List). Kept
+  "set it once on the Dialog" case (you'd set it on Dialog *and* List). Kept
   as the fallback only if the per-leaf routing proves more coupling than
   it's worth.
 - *Naive CSS-`background` inheritance* (child silently adopts a parent's
@@ -67,7 +67,7 @@ Why not:
   per-component-buffer compositor it would need (`D_clip`).
 
 The cost we carry:
-- Self-painters (`List`, `Window`'s border) can't ride the base
+- Self-painters (`List`, `Panel`'s border) can't ride the base
   `clear_background` fill; `List` must **bake** the effective bg into
   every row it emits (content + filler) and still compose
   `active_bg_color` on the cursor row on top.
@@ -399,7 +399,7 @@ and a process cannot read that setting back (`R_ambiguous_width`). Tuile's every
 and clip derives from `StyledString#display_width`, so if the terminal disagrees by one column on one
 glyph, text after it shifts, the caret desyncs, and paint escapes `rect` — a violation of "never draw
 outside your rect", not a cosmetic blemish. And Tuile's own chrome is already built out of Ambiguous
-glyphs: `Window`'s entire border and `VerticalScrollBar`'s `█`. Nothing in the framework was designed
+glyphs: `Panel`'s entire border and `VerticalScrollBar`'s `█`. Nothing in the framework was designed
 to survive those measuring 2 — a double-wide block in a one-column scrollbar has no meaningful
 rendering.
 
@@ -491,7 +491,7 @@ not a runtime gate** — a gate would re-create the wart this entry deleted. `HO
 scrolls the log pane" is a real binding. The default button then falls out of the bubble with no new
 machinery — a focused `TextArea` consumes Enter, a `TextField` with an `on_enter` consumes it (no
 double-submit), one without declines and it reaches the form's `handle_key?`, a `Button` activates
-*itself* — so `Window#default_button=` would be a five-line ancestor `handle_key?`, not a dispatch
+*itself* — so `Panel#default_button=` would be a five-line ancestor `handle_key?`, not a dispatch
 change, and the default button is scoped rather than global in every framework surveyed
 (`R_key_dispatch`).
 
@@ -702,7 +702,7 @@ note originally adopted that, calling it "the one real design call."
 
 **Decision — the cursor roams; Space, Enter or a click selects**, cursor and selection being two
 pieces of state exactly as in `CheckboxGroup`. "A cursor roams, Enter chooses" is the idiom in
-`List`, `ListDropdown`, `PickerWindow` and `CheckboxGroup`, two group widgets one Tab apart must not
+`List`, `ListDropdown`, `PickerDialog` and `CheckboxGroup`, two group widgets one Tab apart must not
 answer Down differently, and the imported convention is a *GUI* one — a TUI has no per-row focus
 ring to make it read naturally. Decisively, selection-follows-arrows fires `on_value_change` once
 per row traversed: arrowing from row 1 to row 5 makes a listener that resorts a pane or refetches a
@@ -1075,12 +1075,12 @@ are independent per container, and every container has to keep them in
 agreement by hand, forever, with nothing checking it.
 
 That failure mode is not hypothetical — it is *live* mid-migration, and
-`Window` demonstrates it exactly:
+`Panel` demonstrates it exactly:
 
 ```ruby
 w.footer = label
 label.parent.equal?(w)          # => true
-w.children.include?(label)      # => true   (Window derives it)
+w.children.include?(label)      # => true   (Panel derives it)
 w.instance_variable_get(:@children) # => []  ← the authoritative list is a lie
 ```
 
@@ -1092,7 +1092,7 @@ Why not:
 - **Derive `popups` from `@children`** to avoid the one real duplication A
   costs (`@popups` and `@children` both carry popup order). Every spelling is
   worse: an index slice (`@children[offset..-2]`) is fragile and allocates on
-  the hot path where `popups` is read, and `grep(Popup)` breaks the moment a
+  the hot path where `popups` is read, and `grep(Dialog)` breaks the moment a
   popup is used as tiled content. `@popups` stays, guarded by a drift
   assertion in `screen_pane_spec`.
 - **`size - 1` for the popup insert index.** Works, but silently assumes the
@@ -1173,7 +1173,7 @@ Why not:
 - **A generic `Component#remove_all_children`** as the unmount primitive. Unsafe: a slot container
   calling it empties `@children` while its own slot readers still point at detached components — the
   desync `D_tree_api` exists to prevent — and unmounting must also clear the pane's own slots. Named
-  `detach_all`, since `Popup#close` already means "remove *me* from the pane".
+  `detach_all`, since `Overlay#close` already means "remove *me* from the pane".
 
 The cost we carry: a process that exits *without* closing fires nothing, and no `at_exit` is
 installed — these are lifecycle hooks, not destructors. A cross-container move fires `handle_detached`
@@ -1286,7 +1286,7 @@ dissolves the argument:
 
 That rule is descriptive rather than invented: every existing token passes it
 and none has a slot (`active_bg_color` → List cursor + TextField well + Button;
-`active_border_color` → Window border; `input_bg_color` → both text inputs).
+`active_border_color` → Panel border; `input_bg_color` → both text inputs).
 `hint_color` was the one exception — it read as passing only while the
 framework still drew the status bar — and `D_no_hint_color` deleted it, which
 is what restores the roll-call above to a clean sweep.
@@ -1912,7 +1912,7 @@ Why not:
   hook. The duplication was a missing *seam*, not a missing *ancestor*: adding the seam deleted the
   duplication that mattered and left each widget's gesture policy alone.
 - **Eager rendering**, the smaller diff. It makes `renderer=` and every width change O(all items) — a
-  cost already being paid, since a 50k-row `LogWindow` re-ellipsized all 50k rows on *every* resize;
+  cost already being paid, since a 50k-row `LogDialog` re-ellipsized all 50k rows on *every* resize;
   the lazy version instead deletes the padded-line cache and its rebuild, coming out net *smaller*;
   and it would force a redesign for a lazy data provider later, since rendering on demand is the half
   of "virtual list" that touches every method, where sourcing on demand can then be added behind
@@ -2285,16 +2285,16 @@ and no fix stays inside the widget — falling through means `ScreenPane#handle_
 search past the toast (a framework change for one widget), and re-routing into `screen.pane.content`
 is a component reaching sideways across the tree. It lives ≤ 15 s.
 
-## D_popup_open — Why is there no class-level `Popup.open` factory, and why does `#open` return `self`?
+## D_popup_open — Why is there no class-level `Dialog.open` factory, and why does `#open` return `self`?
 
 Surfaced while building {Tuile::Component::Notification} (`D_notification`), which had to
 privatize the inherited factory to stop it undermining a private constructor.
 
-`Popup.open(content:, modal:, size:)` was one-line sugar for
-`Popup.new(...).tap(&:open)`. It hardcoded `Popup.new`, so **every subclass
-inherited a factory that silently built the wrong class**:
-`ListDropdown.open(...)` and `Notification.open(...)` each returned a bare
-`Popup` — no dropdown behavior, no message, no ticker, and no error to say so.
+`Popup.open(content:, modal:, size:)` — on the class that is now {Tuile::Component::Dialog} — was
+one-line sugar for `Popup.new(...).tap(&:open)`. It hardcoded `Popup.new`, so **every subclass
+inherited a factory that silently built the wrong class**: `ListDropdown.open(...)` and
+`Notification.open(...)` each returned a bare `Popup` — no dropdown behavior, no message, no
+ticker, and no error to say so.
 
 **Decision — delete it, and there is no fixed version to keep.** The obvious
 repair is late binding (`new(...)` instead of `Popup.new(...)`), and it does not
@@ -2309,34 +2309,28 @@ method is still callable with an implicit receiver, so a *late-bound*
 inherited method.)
 
 **Decision — `#open` returns `self`, which is what makes the deletion free.**
-The migration is `Popup.new(content: window).open`, one expression, no `.tap`:
+Opening is one expression, no `.tap`:
 
 ```ruby
-popup = Component::Popup.new(content: window, size: Fraction::FULL).open
+dialog = Component::Dialog.new("Help", content: body, declared_size: Fraction::FULL).open
 ```
 
 The previous return value was undocumented junk (whatever `Screen#add_popup`
-happened to hand back), so nothing could depend on it. Both internal callers got
-*shorter*: `InfoWindow.open` is now a single line, and `PickerWindow.open` drops
-its trailing bare `popup` — and that method is the standing demonstration that
-the deleted factory could never have served the general case anyway, since it
-needs the popup *before* mounting it in order to wire `on_pick`.
+happened to hand back), so nothing could depend on it.
 
-**The batteries-included windows got the same treatment — an instance
-`open_in_popup`, not a class-level `open`.** `InfoWindow.open` and
-`PickerWindow.open` once looked exempt: each named its own class and wrapped the
-popup rather than *being* one. But a subclass is the trap in another shape — an
-app's `PickerWindow` subclass built from domain data (#72) inherited a factory
-that built a plain `PickerWindow`, and late binding fails for the reason above,
-since the subclass's constructor is its own. An instance method needs no
-constructor at all: `PowerPicker.new(vm).open_in_popup`. It raises
-{Tuile::Error} when the window already has a parent — which includes the closed
-popup it last opened in, so it is one-shot, as befits a picker whose options are
-a construction-time snapshot. Named `open_in_popup`, not `open`: it returns a
-{Tuile::Component::Popup}, not `self`, so it must not read as `Overlay#open`.
-`ConfirmWindow#open` keeps its name — it *owns* its popup, pairs with `#close`
-and may reopen. `popup_spec` asserts that neither `Popup` nor `ListDropdown`
-responds to `open` at the class level.
+**The batteries-included dialogs open the same way.** An app's {Tuile::Component::PickerDialog}
+subclass built from domain data (#72) opens as `PowerPicker.new(vm).open`, with no factory to
+forward its constructor, and reopens after it closes. Why not:
+- *A class-level `PickerWindow.open` / `InfoWindow.open`.* Each named its own class, so an app's
+  subclass inherited a factory building the parent — the trap above in another shape (#72).
+- *An instance `open_in_popup` returning the wrapping `Popup`.* What #72 shipped while those
+  classes were `Window`s a popup wrapped: the window was not the dialog, so opening it took a
+  second verb, a second object and a one-shot rule (the closed popup kept the window as its
+  content). Once the window *is* the dialog (`D_panel_dialog`), `Overlay#open` covers it.
+
+`dialog_spec` and `overlay_spec` assert that neither `Dialog` nor `ListDropdown` responds to
+`open` at the class level.
+
 
 ## D_bracketed_paste — Why is a paste its own event rather than a burst of keys?
 
@@ -2442,7 +2436,7 @@ Make the *clear* conditional and the *invalidate* unconditional:
 
 **Update 2026-09-04:** the second line is a named protected method rather than
 an inline `children.each`, so a container that skips `super` to paint its own
-rect has something to call — `Component::Window` skipped the clear it did not
+rect has something to call — `Component::Panel` skipped the clear it did not
 need and lost the cascade in the same edit, twice, because the cascade had no
 name (`D_component_contract`).
 
@@ -2513,7 +2507,7 @@ a return to Enter-to-activate.
 
 **The separator is `│` rather than ASCII `|`** — an inversion of `D_ambiguous_width`'s ASCII
 default, legal because that rule exists to keep the Ambiguous inventory enumerable and `│` is
-already in it, being the glyph `Window` borders with. A *fresh* Ambiguous glyph still defaults to
+already in it, being the glyph `Panel` borders with. A *fresh* Ambiguous glyph still defaults to
 ASCII.
 
 **`Tabs` owns mutable `Tab` handles; no `items=` / `item_label=` shell.** **An item is an element of
@@ -2581,8 +2575,8 @@ Why not:
   have it each use their own scheme; Tuile owes the *verbs*, `select_next` / `select_previous` being
   public so an app writes two lines and owns the "which sheet" question.
 - **Vertical orientation** (out of scope; a vertical strip is a `List` with a renderer), **a border
-  around the strip** (compose with `Window`; the Turbo Vision / Terminal.Gui notched look would
-  couple `Tabs` to `Window` chrome), and **prefix/suffix slots** (a caption is a `StyledString`, so
+  around the strip** (compose with `Panel`; the Turbo Vision / Terminal.Gui notched look would
+  couple `Tabs` to `Panel` chrome), and **prefix/suffix slots** (a caption is a `StyledString`, so
   `Open [24]` is just text).
 
 Deferred and additive — the payoff of the `Tab`-object ruling, each being an attribute plus a branch
@@ -2774,7 +2768,7 @@ Why not:
   would lose the events their own faces need. **A generation counter** making close-and-reopen
   within one click safe — over-engineering for a case nothing hits, and reopening the same popup
   object during delivery of one click is out of contract.
-- **Hanging `on_close` off `#close`.** A popup leaves the screen three ways — `Popup#close`, a
+- **Hanging `on_close` off `#close`.** A popup leaves the screen three ways — `Overlay#close`, a
   direct `Screen#remove_popup`, and `Screen#close` → `detach_all` — so two would vanish silently,
   reintroducing the desync the mechanism exists to kill. A proc over `handle_detached` keeps `parent=`
   the sole firing site and makes the notice unconditional.
@@ -2800,7 +2794,7 @@ The cost we carry:
   identity-keyed, idempotent delete — idempotent because the same notice also arrives from its own
   truncate and from teardown, in no guaranteed order. Per-level truncate closures wired at push are
   the toggle version the hook-sync rule forbids.
-- **Defaults:** `Popup` is `true`, `ListDropdown` inherits it so `Select`, `ComboBox` and every
+- **Defaults:** `Dialog` is `true`, `ListDropdown` inherits it so `Select`, `ComboBox` and every
   cascade panel are fixed with zero wiring, `Notification` sets `false` since a toast is timed, and
   app modals keep `true` and opt out per dialog. The accepted risk is a stray click discarding a
   half-filled form dialog.
@@ -2941,7 +2935,7 @@ The cost we carry:
 - **A widget's keys are no longer self-describing.** An app that *does* want to advertise a
   `ComboBox`'s keys must hardcode them, duplicating knowledge that lived in the widget. No app has
   ever done this, but the duplication is real if one starts.
-- **A modal `Popup` no longer shows how to close itself** — only the advertisement is gone, ruled
+- **A modal `Dialog` no longer shows how to close itself** — only the advertisement is gone, ruled
   acceptable because ESC-dismisses-an-overlay is a convention the user brings. The `q`/ESC quit
   fallback stays unadvertised for the same reason (`D_quit_key`) — the same baked app policy as
   `"q quit"`, but it is *dispatch*, not presentation.
@@ -2974,7 +2968,7 @@ open question.
   delivery rung: a focused {Component::TextField} does it for free (`q` is
   printable — this is why pikuri-tui's shells never quit on a typed `q`), and an
   app wanting `q` as a command binds it in the scope root's `handle_key?`. ESC
-  likewise never reaches the loop while a {Component::Popup} is open, because
+  likewise never reaches the loop while a {Component::Dialog} is open, because
   the popup consumes it first.
 - **It is genuinely useful for the small app.** `examples/hello_world.rb` is
   eleven lines and needs no quit handler. Deleting the fallback would make every
@@ -3108,12 +3102,12 @@ The cost we carry:
   asserts the visibility pair, `screen_spec` asserts that a subclass declaring a
   `protected` override is still fired *and* that the walk continues past it.
 
-## D_overlay — Why was `Overlay` extracted, leaving `Popup` unconditionally modal?
+## D_overlay — Why was `Overlay` extracted, leaving `Dialog` unconditionally modal?
 
-Split {Component::Popup} in two. `Overlay < Component` is the bare
-floating layer — the mount/dismiss lifecycle, `owner`, `on_close`,
+The modal dialog — then `Popup`, now {Component::Dialog} — was split in two. `Overlay < Component`
+is the bare floating layer — the mount/dismiss lifecycle, `owner`, `on_close`,
 `close_on_outside_click`, a placement the pane applies, and the full-repaint
-escalation on a rect change — and `Popup < Overlay` adds the modal dialog on
+escalation on a rect change — and `Dialog < Overlay` adds the modal dialog on
 top: a declared size, a centered default placement, `focusable?`, and ESC/`q`.
 `Popup.new(modal: false)` is gone; the `@modal` ivar with it, since `modal?` is
 now a constant on each class.
@@ -3153,7 +3147,8 @@ Why not:
   would have kept `ScreenPane#popups` accurate at zero renaming cost, but every
   existing `Popup.new(content: w).open` would **silently** become non-modal,
   uncentered and un-ESC-able. A loud `ArgumentError` on a removed `modal: false`
-  beats a silent behaviour change.
+  beats a silent behaviour change. The modal class is called `Dialog` now, but by a later
+  rename that removed `Popup` outright (`D_panel_dialog`): a `NameError` is loud.
 - *Renaming the pane/screen vocabulary to `overlays` / `add_overlay`.* Considered
   and declined: the break reaches `Screen#add_popup`, which apps call, and
   "popup stack" remains a defensible name for the stack. The `@param` types and
@@ -3166,31 +3161,31 @@ The cost we carry:
 - `focusable?` and `modal?` are now coupled: flip both or neither. A *focusable
   non-modal* overlay is the one combination that must never ship — it holds focus
   outside the key scope, where `bubble_key` reaches nobody. The `Overlay` rdoc
-  states this as the coupling rather than as a ban on overriding, because `Popup`
+  states this as the coupling rather than as a ban on overriding, because `Dialog`
   overrides both.
 - An overlay never assigns its own rect: it opens with a placement and the pane's pass applies it.
-  One with a *derived* size answers `declared_size_in` (`Popup`, `Notification`), and a driver's
+  One with a *derived* size answers `declared_size_in` (`Dialog`, `Notification`), and a driver's
   dropdown hangs off the driver itself (`ListDropdown::Anchored`).
 - **Still open:** where `anchor_to` / `anchor_beside` belong. They stay on
   `ListDropdown` for now. The `Popover` extraction (`D_select`, `D_menu_bar`) is
   *cheaper* after this change, since `Overlay` — not the modality-carrying
-  `Popup` — is the right parent for a generically anchored layer; the trigger is
+  `Dialog` — is the right parent for a generically anchored layer; the trigger is
   unchanged, the first non-`List` content wanting anchoring.
 
-## D_declared_size — Why is `Popup#size` spelled `declared_size`, and why does no component report the size it wants?
+## D_declared_size — Why is a dialog's box spelled `declared_size`, and why does no component report the size it wants?
 
-Rename `Popup#size` / `#size=` — and the `Popup.new` and
-`InfoWindow.open` keyword — to `declared_size`. Nothing else changes: it is still
+The box a {Tuile::Component::Dialog} asks for is `declared_size` / `#declared_size=` — the
+`Dialog.new` and `InfoDialog.new` keyword too — renamed from `size` back when the class was `Popup`. Nothing else changes: it is still
 a `Size | Fraction`, still re-resolved against the screen on every layout pass,
 still authoritative.
 
 **Why.** `size` on a component is reasonably expected to mean `rect.size`, and
-the name was already spoken for by a different concept: an *input* the popup is
+the name was already spoken for by a different concept: an *input* the dialog is
 re-read from on every layout pass, not a *report* of current geometry. Leaving it
 would have created tension the first time anyone added `Component#size`, and the
 types disagree too — `rect.size` is a `Size`, this is a `Size | Fraction`, so a
 `Component#size` reader would have been a Liskov break on the one class most
-likely to be handled polymorphically. `declared_size` is the word `popup.rb`'s
+likely to be handled polymorphically. `declared_size` is the word the class's
 own rdoc already used ("its box is *declared* by"), and it contrasts correctly
 with `preferred` / `requested`, which the same rdoc explicitly disclaims: the
 screen applies exactly what you ask for, with no negotiation.
@@ -3207,8 +3202,8 @@ Why not:
 - *`auto_center_with_size(x)`*, a command rather than a property. It has real
   merit — Tuile then had imperative geometry methods (`center`, `reposition`,
   `anchor_to`) and a command is honest about the side effect that a bare setter
-  hides. Rejected on three counts: it collides with the existing `Popup#center`,
-  giving two near-synonymous centering verbs; after `D_overlay` made `Popup`
+  hides. Rejected on three counts: it collided with the then-existing `Popup#center`,
+  giving two near-synonymous centering verbs; after `D_overlay` made `Popup` (now `Dialog`)
   unconditionally modal, "auto center" names the class *invariant* rather than
   the varying member, so it carries no information at the call site; and the
   member is *state*, not an action — `reposition` re-reads it forever, so a
@@ -3226,7 +3221,7 @@ pure readers of `rect` — partly to *squat* the names, so no component can late
 claim `size` for a content-derived measurement. They are reports, never requests:
 no writer, and no container consults them when dividing space. The top-down
 re-grow rule still governs, and a second component wanting a *declared* box
-copies `Popup`'s naming rather than overloading `size`.
+copies `Dialog`'s naming rather than overloading `size`.
 
 ## D_extent — Why does a widget declare an `extent` rather than own its whole `rect`?
 
@@ -3475,7 +3470,7 @@ slot (`slot_spec` pins it now).
 
 **The footer that motivated it is gone; the decision stands.** `Window#footer=` was removed for
 having no user in Tuile, virtui or pikuri-tui (`footer_text=`, border chrome, stays), and `Slot`'s
-user now is `ConfirmWindow`'s body, above its button row. The cost is the same there: the
+user now is `ConfirmDialog`'s body, above its button row. The cost is the same there: the
 container's `children` always hold the slot, and an occupant's `parent` is the slot — honest, since
 the region exists whether or not it is occupied.
 
@@ -3495,14 +3490,14 @@ now lands focus on the window, which `AGENTS.md` has described all along.
 **Not folded: `handle_focus`.** Promoting `Layout#handle_focus`'s first-tab-stop walk to `Component` and
 deleting `HasContent#handle_focus` was implemented in design and dropped. Unlike the mouse walk these are
 not duplicates — `HasContent` forwards to *its content*, `Layout` searches for the first `tab_stop?`
-descendant, and they disagree whenever content is focusable but not a tab stop (a `Popup` wrapping a
-`Window`). More decisively, `handle_focus` is a *public app-facing hook* whose default is deliberately
+descendant, and they disagree whenever content is focusable but not a tab stop (a `Dialog` wrapping a
+`Panel`). More decisively, `handle_focus` is a *public app-facing hook* whose default is deliberately
 "do nothing" (`D_hook_visibility`); giving it default behavior changes what `super` means in every
 app override, a risk the mouse walk does not carry.
 
-## D_confirm_window — Why is `ConfirmWindow` its own builder, and why does every button dismiss?
+## D_confirm_window — Why is `ConfirmDialog` its own builder, and why does every button dismiss?
 
-A caption, a prose message and a centered row of `Button`s in a content-measured modal popup. The
+A caption, a prose message and a centered row of `Button`s in a content-measured modal dialog. The
 component itself is the builder — `#button(caption, mnemonic:, &action)` declares any button set —
 and **every button closes the dialog**.
 
@@ -3518,8 +3513,8 @@ deleting the `cancelable` / `rejectable` boolean surface a Java API pays for (`R
 
 **Every button dismisses, unconditionally — no keep-open knob.** The counter-case was hunted and
 does not exist: a dialog staying open after a press is either collecting input (excluded below) or
-chaining — "Copy files" → a copy-progress window — and chaining is the callback's job, since it
-opens the *next* window. Activation order is **mark chosen → close → fire**, not fire-then-close:
+chaining — "Copy files" → a copy-progress dialog — and chaining is the callback's job, since it
+opens the *next* dialog. Activation order is **mark chosen → close → fire**, not fire-then-close:
 firing last means a follow-up popup snapshots the right prior focus, and a raising block cannot
 strand a half-open dialog.
 
@@ -3546,11 +3541,11 @@ sizing rule to one mode, and rides `StyledString` for icons, colour and emphasis
 is what keeps `message` and its rendering from disagreeing, and handing the `TextView` back would
 hand back machinery. The casualty, priced: the don't-ask-again checkbox.
 Everything else people put in a dialog body is not a confirm dialog, and
-`Popup.new(content: your_layout)` remains the escape hatch. **Re-grow rule:** don't-ask-again
+`Dialog.new(caption, content: your_layout)` remains the escape hatch. **Re-grow rule:** don't-ask-again
 returns as a named `remember:` seam whose state reaches the callback, never as a reopened content
 slot.
 
-**Mnemonics take `MenuBar`'s shape, with `q`, `g` and `G` reserved.** Local sugar over the window's
+**Mnemonics take `MenuBar`'s shape, with `q`, `g` and `G` reserved.** Local sugar over the dialog's
 own `handle_key?` per `D_key_dispatch`'s re-grow rule, never a dispatch phase, with the letter
 underlined: Tuile has no status bar to advertise keys in (`D_status_bar`), so an unadvertised
 mnemonic is a hidden feature. `:auto` derives the caption's first letter and is *silently skipped*
@@ -3582,11 +3577,11 @@ Why not:
 - **Dropping the OK button from an alert**, since ESC / `q` / outside-click already close it: Tuile
   advertises no quit key (`D_quit_key`, `D_status_bar`), so the button *is* the discoverability
   affordance — and it is clickable, which the keys are not.
-- **Naming it `ConfirmDialog`** — what a searcher types, but Tuile already calls `Popup` "the modal
-  dialog", so the name would imply `< Popup`; it is a `Window` subclass, tiled-or-popup for free,
-  and obeys the widget-suffix rule. The rdoc and README say "the confirm dialog" in prose, so the
-  search still lands.
-- **Folding `PickerWindow` in.** A keystroke-addressed, scrollable `List` with a cursor vs. a short
+- **Naming it `ConfirmWindow`**, as it was while it subclassed `Window` for the border and a popup
+  wrapped it: the widget-suffix rule named it after that superclass, and it read as tiled-or-popup
+  for free. A tiled confirm is not a dialog anyone asked for; it extends `Dialog`
+  (`D_panel_dialog`), and the name is what a searcher types.
+- **Folding `PickerDialog` in.** A keystroke-addressed, scrollable `List` with a cursor vs. a short
   focusable row of buttons with a default and a dismissal: one widget with a mode flag would
   disagree with itself on every question that matters — does the cursor roam, is there a default,
   what does ESC mean, does a pick close. They share API *shape*, not code.
@@ -3598,22 +3593,22 @@ re-measures freely rather than grow-only like `Notification`, since a dialog's t
 often than a toast's. No floor for now; the risk a floor would hedge — a tiny yes/no box lost on a
 busy screen — is really a backdrop problem.
 
-## D_info_window_body — Why does `InfoWindow` carry two body presentations, one that wraps and one that does not?
+## D_info_window_body — Why does `InfoDialog` carry two body presentations, one that wraps and one that does not?
 
-`InfoWindow` gains `ConfirmWindow`'s body seam — `message=`
+`InfoDialog` has `ConfirmDialog`'s body seam — `message=`
 accepting `Component | String | StyledString | nil`, text rendered by a
 wrapping, scrollable `TextView`, the reader returning what was assigned
 (`D_confirm_window`'s store-as-given rule) — and **keeps `lines=`**, rebuilt
 as sugar that mounts a `List` through the same slot (delegating to
 `List#lines=`, so the coerce/split/rstrip semantics stay one implementation).
-The constructor and `.open` take one body positional and dispatch by type:
+The constructor takes one body positional and dispatch by type:
 `Array` → rows, anything else → `message=`. Last writer wins; after `lines=`,
 `message` reads the mounted `List` back — store-as-given holds, because the
 sugar *assigns a Component*.
 
-**Truncation is a presentation, not a bug.** The itch was that `InfoWindow`
+**Truncation is a presentation, not a bug.** The itch was that `InfoDialog`
 (born before `TextView` existed) truncated long lines while
-`ConfirmWindow.alert` wrapped them — two "here's some information" paths
+`ConfirmDialog.alert` wrapped them — two "here's some information" paths
 diverging on a long sentence. But the fix is not to kill the `List` body:
 `TextView` has no truncate mode, so a `List` is the only way to show columnar
 output (a file listing, aligned key-value rows) where a wrap destroys the
@@ -3624,29 +3619,30 @@ second billing on purpose — book ch7 and the README row lead with `message=`,
 or everyone keeps reaching for the truncating path out of habit.
 
 **Non-breaking by choice, not necessity.** Neither virtui nor pikuri-tui used
-`InfoWindow` (or `ConfirmWindow`) at all when this shipped, so the breaking
+`InfoDialog` (or `ConfirmDialog`) at all when this shipped, so the breaking
 design first sketched — delete the lines API outright — would have cost
 nothing downstream. `lines=` survives because the rows presentation earns it,
 not for compatibility. Which seam downstream apps actually reach for remains
 worth watching; if `lines=` goes unused for a few releases, *that* is the
 evidence for retiring it. One observable change shipped anyway: a bare
-`InfoWindow.new` now has no body (`content` is `nil`) where it used to mount
+`InfoDialog.new` now has no body (`content` is `nil`) where it used to mount
 an empty `List`.
 
-**`ConfirmWindow#message=` deliberately does not learn Array→List.** A
+**`ConfirmDialog#message=` deliberately does not learn Array→List.** A
 confirm dialog's body is prose by nature; the asymmetry is a decision, not an
 oversight. If a caller ever appears: a `List` of lines is measurable —
 widest-line × row-count, no wrap pass — so it would not fall into
 `#measured_size`'s "Component body ⇒ full half-screen box" hole.
 
 **The coercion is a duplicate, on purpose.** This is copy two of
-`ConfirmWindow`'s `message=` case (per `D_float_field`'s shallow-shell rule —
+`ConfirmDialog`'s `message=` case (per `D_float_field`'s shallow-shell rule —
 fold at four, not two): the classes want different wrappers around the same
-five-line dispatch, and `InfoWindow`'s has no popup to re-measure.
+five-line dispatch, and `InfoDialog` measures nothing.
 
-**`InfoWindow` keeps its place next to `ConfirmWindow.alert`:** tiled use, a
-buttonless popup, `declared_size:` control, and the rows presentation — none
-of which the alert offers.
+**`InfoDialog` keeps its place next to `ConfirmDialog.alert`:** a buttonless
+dialog, `declared_size:` control, and the rows presentation — none of which the
+alert offers. Tiled, the same two presentations are a `TextView` or a `List` in a
+`Panel`; the class no longer doubles as one (`D_panel_dialog`).
 
 ## D_inverse — Why does `Style#inverse` model SGR 7 rather than swap the two colors?
 
@@ -4129,7 +4125,7 @@ Why not:
 - **Reusing `hint_color`** — after `D_status_bar` that "de-emphasized chrome" token had no framework
   role left, and reloading it would stop a theme author retuning hints without retuning every
   scrollbar; `D_no_hint_color` has since deleted it, closing the road. (The claim once made here
-  that nothing in `lib/` painted with it was wrong: `PickerWindow` did.)
+  that nothing in `lib/` painted with it was wrong: `PickerDialog` did.)
 - **A per-component `scrollbar_color=` accessor** — the rule `D_bg_surface` closes with: a component
   does not grow a private colour accessor beside the theme channel. An app wanting one bar different
   from another styles the theme, or uses `Theme.ref` per slot.
@@ -4520,12 +4516,12 @@ sufficient:
 **The axis is "paints it", not "is a field",** and the existing membership
 already discriminates correctly: `Checkbox` is `HasValue` **and** `HasCaption`
 because it draws `[x] Enable logging` inside its own rect, as `Button` and
-`Window` draw theirs. So this entry bans a caption on `TextField`, not on every
+`Panel` draw theirs. So this entry bans a caption on `TextField`, not on every
 input.
 
 **A *wrapper* is the case the axis was not written for, and it answers caption.**
 `FormItem` has a rect and owns every cell in it, so "paints it" lands where it
-does for a `Window` — the chrome `Label` doing the drawing is a child it owns
+does for a `Panel` — the chrome `Label` doing the drawing is a child it owns
 outright, not a change of authorship. The field's own `HasCaption` is untouched
 in both directions: the wrapper neither reads `child.caption` as a fallback nor
 writes it, so a `Checkbox` keeps painting its text inside its own rect and the
@@ -4738,10 +4734,10 @@ match is *state*, not copy, and stays deferred on its own merits.
 
 The knock-on is that `HasCaption` has no polymorphic consumer left anywhere in `lib/` and is now
 **nomenclature plus one shared value rule** — the coercion, the no-op-when-unchanged short-circuit,
-the invalidate and the `inspect_details` line, held once so its three includers — `Window`, `Button`,
-`Checkbox` — cannot drift. That is a demotion, not a deletion: `HasContent`'s rdoc cites "the same
-reason `HasCaption` is one" for *its* being a mixin, and survives untouched, carrying real behaviour
-(`content=`, `rect=`, `handle_focus`) where `HasCaption` carries an accessor.
+the invalidate and the `inspect_details` line, held once so its includers — `Panel`, `Dialog`,
+`Button`, `Checkbox`, `FormItem` — cannot drift. That is a demotion, not a deletion: `HasContent`'s
+rdoc cites "the same reason `HasCaption` is one" for *its* being a mixin, and survives untouched,
+carrying real behaviour (`content=`, `rect=`, `handle_focus`) where `HasCaption` carries an accessor.
 
 **`count:` matches with `===`** — an Integer exact, a Range a bound — which is why its helper carries
 a `Style/CaseEquality` disable rather than two branches. **The class positional accepts a Module, so
@@ -5042,7 +5038,7 @@ content — and not permanent-vs-swappable, an `Overlay`'s body being permanent 
 alone. **A test, not a census: include it iff the caller populates that child.**
 
 Three shapes fall out, and the two that are *not* `HasContent` are what the old rule got wrong.
-`Slot`, `Window` and `Overlay` pass. A widget whose child is machinery **owns it outright**, with no
+`Slot`, `Panel` and `Overlay` pass. A widget whose child is machinery **owns it outright**, with no
 `content` on its face at all — `AbstractWrappingField`'s editor (`D_wrapping_field`), `ComboBox`'s
 transient query field. One whose child an app *tunes* but never *supplies* exposes it **read-only**:
 `CheckboxGroup#list` / `RadioGroup#list`, where the group's renderer and selection are wired into
@@ -5050,7 +5046,7 @@ that one `List` and swapping it would break them. Addressable is not the same as
 
 Why not:
 
-- **Keep the mixin and make `content=` protected.** Its whole point for `Slot` / `Window` / `Overlay`
+- **Keep the mixin and make `content=` protected.** Its whole point for `Slot` / `Panel` / `Overlay`
   is that the caller sets the child; the split is by *audience*, not by one method's visibility.
 - **Leave it as arity and let each includer document its own surface.** That is the rule that failed:
   the one place it *was* written down said the opposite of what the code shipped.
@@ -5176,7 +5172,7 @@ Why not:
   ruling on which it is, and rides the same `error_ink?` hook either way.
 - **Designs that make bad input impossible** rather than reportable: a calendar-grid-only picker (no
   parse at all, but ~30 keystrokes for a birth date) and text entry behind a modal commit (a
-  `ConfirmWindow`-shaped dialog that will not close on garbage — heavy in a form with six dates).
+  `ConfirmDialog`-shaped dialog that will not close on garbage — heavy in a form with six dates).
 - **A value-change mode on the date fields**, where the notice ruling started. The knob now exists
   on the string and number fields (`D_value_change_mode`), and stays off these: on a date field
   `:eager` would mean announcing the year 2, a *wrong* value rather than a noisy one. Purely
@@ -5406,7 +5402,7 @@ scrollbar column; every subsequent popup open/close flickered it away and back.
 empty never assigned its children — while the branch immediately below it does exactly the right
 thing, zeroing every child for an empty inner rect. The guard made it unreachable. Three paths refuse
 to paint the resulting stale subtree, which is why it stayed hidden; the full repaint bypasses all
-three. A sweep says the fault is `Box`'s alone: `Window`, `Slot` and `TabSheet` all let an empty rect
+three. A sweep says the fault is `Box`'s alone: `Panel`, `Slot` and `TabSheet` all let an empty rect
 fall through to the arithmetic and zero their children correctly, and `Box` was inconsistent with
 *itself*, since an over-subscribed child is already starved to an empty rect and placed anyway.
 
@@ -5774,7 +5770,7 @@ The cost we carry:
 `hint_color` shipped with a real job: the *framework's* status bar painted the descriptive half of a
 `"q quit"` pair in it. `D_status_bar` deleted that bar and handed status lines to apps; the token
 stayed, its rdoc rewritten to describe a look rather than a role — "subdued *accent* text an app
-wants noticed" — leaving two consumers, app status lines and `PickerWindow`'s option captions, which
+wants noticed" — leaving two consumers, app status lines and `PickerDialog`'s option captions, which
 had picked it up as the nearest available "secondary text" colour. That drift is what makes this an
 entry rather than a deletion commit: `Theme` is defined, in its own first line, as *semantic colours
 the built-in components read when painting*, and a token named for an app's concept, read by one
@@ -5796,10 +5792,10 @@ token, rendered with `Theme#fg(:hint, text)` and paired in a `ThemeDef` so it su
 appearance flip — the documented path for exactly this, which the examples now dogfood in four lines
 each.
 
-**`PickerWindow`'s captions carry their own ink.** Its domain is *key → caption → callback*, and the
+**`PickerDialog`'s captions carry their own ink.** Its domain is *key → caption → callback*, and the
 ink was inherited from whatever token was nearest. So `Option#caption` is a `StyledString`, coerced
 through `StyledString.parse` — the caption is *data*, and a domain component takes data, as
-`Window#caption` already does. The ink is then per option, so a destructive one can be red; the app
+`Panel#caption` already does. The ink is then per option, so a destructive one can be red; the app
 names its own colour in its own vocabulary, so no framework token is implicated; and the
 constructor's old "no Rainbow formatting" restriction disappears, since it existed only because the
 renderer wrapped the caption in the token.
@@ -5816,7 +5812,7 @@ Why not:
 - **Keeping `Theme#hint` as sugar over a `custom` lookup** — a helper named for a concept the theme
   no longer carries, whose `KeyError` would depend on whether the app happened to name its token
   `:hint`. `fg(:hint, …)` is two characters longer and says exactly what it does.
-- **A `caption_color:` constructor keyword on `PickerWindow`.** The first ask, and a per-component
+- **A `caption_color:` constructor keyword on `PickerDialog`.** The first ask, and a per-component
   foreground accessor — the shape `D_scrollbar_ink` rejected for the scrollbar and `D_bg_surface`
   closed with ("if it needs the content restyled, restyle the content"; there is deliberately no
   `fg_color=` beside `bg_color=`). Also strictly weaker: one keyword colours every caption the same.
@@ -6333,7 +6329,7 @@ Why not:
   job. Flutter is the one surveyed toolkit that still delivers to the whole hit path, and it pays
   with a gesture arena to pick the winner.
 - **Dispatch on `Component`, or spread over `Screen` and `ScreenPane`** — the walk lived three times
-  over before 0.14.0. Popup semantics stay on the pane (`D_tree_first`): the router asks it which
+  over before 0.14.0. popup semantics stay on the pane (`D_tree_first`): the router asks it which
   popup is topmost and lets it own the outside-click dismissal, rather than reaching into `@popups`.
 - **An explicit `grab_mouse` / `release_mouse` pair**, as Qt, WPF and Textual expose — the claim *is*
   the request, so the framework never guesses and a component cannot forget; and a claimant that has
@@ -6372,7 +6368,7 @@ and paints around it, the shape of the Java web toolkit's Form Item (`R_form_ite
   form field is the consumer that brought `visible=` in (`D_visibility`), and chrome living in a
   layout's map would have to chase the child's visibility to stay in step.
 - **It composes without a form.** A `Layout::Vertical` of items is already a form, so the widget
-  did not have to wait for `FormLayout`, and one captioned field can sit in a `Window` alone.
+  did not have to wait for `FormLayout`, and one captioned field can sit in a `Panel` alone.
 - **The caption↔field association becomes a node**, reachable by an ordinary walk rather than only
   through the layout holding the map — the consequence `D_caption_ownership` records.
 - **One populatable child means one choke point.** `HasContent#content=` is where the item
@@ -6638,7 +6634,7 @@ a value, an error is raised**: `ValidationFailure` is the entry, `ValidationErro
 what `write!` raises carrying the map, and `write?` / `write!` are ActiveRecord's `save` / `save!`
 (`R_ruby_validation`), `?` in the `Set#add?` sense.
 
-**Save asks the form syncer when pressed**, and on "no" `ConfirmWindow.alert` names the problems, rather
+**Save asks the form syncer when pressed**, and on "no" `ConfirmDialog.alert` names the problems, rather
 than enabling the button from a status listener (`R_web_binder`). **`changed?` counts user
 edits** since `read` or the last successful `write?`, not `==`, so the `""`-over-`nil` drift doesn't
 read as a change. **The form syncer honors only announced values**: an edit counts once its field
@@ -6838,7 +6834,7 @@ remembering which space it is in.
 **One space, two jobs, and that is the whole payoff.** `Component#local_rect` is
 the canvas's region *and* the area a container divides among its children, so a
 `Layout::Box` computes `inner_rect` from its padding alone and `build_rect` adds
-nothing further. `Window` is the measure of it: the origin alone forced it to
+nothing further. `Panel` is the measure of it: the origin alone forced it to
 carry `content_rect` and `local_content_rect` side by side — one to assign the
 content, one to blank — and this merged them back into one rect doing both. Every
 container lost its `rect.left +` / `rect.top +`, the box layouts included, and
@@ -7551,3 +7547,48 @@ Why not:
   definition not looking for it, and a line you have to know to write reaches the same person a doc
   does. The default is affordable only because of `PLUMBING` — on a predicate that cries wolf 268
   times it would have been the wrong trade.
+
+## D_panel_dialog — Why is a bordered box a `Panel` or a `Dialog`, never a superclass, mixin or child held for the border?
+
+`Window` was the bordered, captioned container. Four classes that are really dialogs
+(`ConfirmWindow`, `InfoWindow`, `PickerWindow`, `LogWindow`) extended it for its border, then each
+needed a `Popup` around it to become the dialog it was all along, and `Notification` held one for
+the same reason. So `Window` was never a window: tiled a pane, wrapped a dialog, in a toast a
+border. The hierarchy answered *what a component is* and *how it looks* at once, and the second
+kept winning.
+
+**The hierarchy is the identity axis and nothing else.** A class, its superclass and its children
+say what a component is and does: `Dialog < Overlay` is a modal, captioned overlay with one body,
+`Notification` a passive non-modal one, `Panel` a captioned tile set apart from its neighbours.
+Appearance is a second, orthogonal axis, and it gets into the first three ways, all out: a
+superclass inherited for its paint (`ConfirmWindow < Window`), a child held for its paint
+(`Notification`'s `Window`), a mixin (`include Bordered` puts the look in `ancestors` as a
+superclass does). The first breaks `cop`'s "inherit to *be*, never to share"; the other two are the
+same inheritance spelled differently. **The test: imagine the border gone.** A `Dialog` without
+one is still a modal dialog, so the border is each component's own `repaint`, through the internal
+`BorderDrawerInt`, which owns the ink *and* the insets so `relayout` and `repaint` agree. A caption
+is identity — data, what the dialog is called — so `HasCaption` stays; setting it into the top
+edge is the border's business.
+
+**What fell out.** Each pair — a `Window` subclass plus the `Popup` wrapping it, in Tuile and in
+both downstream apps — is one object, `HealthDialog.new(…).open`, the `#open` being `Overlay`'s
+(`D_popup_open`). A subclass's size is its default `declared_size:` passed to `super`, never an
+overridden reader, which would quietly ignore `declared_size=`. `footer_text=` stays on `Dialog`,
+where every caller is. The border cannot be removed: a borderless modal had no user. `InfoDialog`
+and `LogDialog` keep their classes though neither adds keys or a result — one takes domain data
+(`cop` rule 4), the other is what an app with no room to tile a log needs: built at boot, logged to
+from any thread, reopened many times. The background is `Window`'s unchanged (`D_bg_surface`'s
+composer pair is for a well, and a border is not one).
+
+Why not:
+- *`Frame`* for the tiled box: here a frame is one rendered screen (the Promise: "never writes a
+  frame"), and AWT/Swing's `Frame` is a top-level window — the opposite meaning.
+- *`Popup` → `Window`*: recycles a name just freed, and over-promises a window manager; Tuile's
+  floating box can't be moved and is always modal.
+- *`Dialog` as `D_overlay` declined it* — for the cut where `Popup` stayed the base and silently
+  changed behaviour. A full rename makes `Popup` a `NameError`, which is loud.
+- *A `Border` decorator component* around the content — what `Window` was: a node in the tree, the
+  focus chain and focus repair, whose only job is ink.
+- *A `Bordered` mixin* — appearance in `ancestors`.
+- *A configurable border now.* `BorderDrawerInt` is `@api private` and its API deliberately
+  unsettled; a look-and-feel would redesign it or replace it.

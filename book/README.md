@@ -79,8 +79,8 @@ one, not to fill an outline.
    tokens, and rebuilding theme-derived content in `handle_theme_changed`.
 7. **[The component library](07-components.md).** A narrative tour of
    the shipped toolbox — the text inputs and views, the value fields, the
-   selectors, Button, ProgressBar, Window, TabSheet, MenuBar, Popup and the
-   window conveniences — framed around *when and why* you reach for each.
+   selectors, Button, ProgressBar, Panel, TabSheet, MenuBar, Dialog and the
+   panel conveniences — framed around *when and why* you reach for each.
    Signatures stay in the rdoc.
 8. **[Forms: fields bound to a model](08-forms.md).** `Tuile::FormSyncer`
    and its two modes — buffered behind an OK/Cancel, unbuffered for a

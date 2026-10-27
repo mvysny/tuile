@@ -24,7 +24,7 @@ save.on_click do
   next popup.close if syncer.write?(person)   # fields → model, only if valid
 
   messages = syncer.last_validation.values.flatten.map(&:message)
-  Component::ConfirmWindow.alert("Cannot save", messages.join("\n"))
+  Component::ConfirmDialog.alert("Cannot save", messages.join("\n"))
 end
 ```
 
@@ -195,7 +195,7 @@ deleting it counts as a change.
 cancel.on_click do
   next popup.close unless syncer.changed?
 
-  Component::ConfirmWindow.yes_no("Discard changes?", "Your edits will be lost.") { popup.close }
+  Component::ConfirmDialog.yes_no("Discard changes?", "Your edits will be lost.") { popup.close }
 end
 ```
 
