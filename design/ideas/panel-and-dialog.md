@@ -105,6 +105,16 @@ it gets no CHANGELOG line and no README row, and it isn't in `component_contract
 because it isn't a component. It may hold state (the caption, the scrollbar flag, whatever is
 convenient); its API is deliberately not settled, because the v2 look-and-feel redesigns it anyway.
 
+**The background stays `Window`'s** (owner, 2026-10-27), for `Dialog` and `Notification` too.
+None of the three sets `bg.default_color` or declares an `extent`. Each fills its rect, and
+`bg_color` tints the border and the body alike. Becoming an `Overlay` changes nothing. A `Dialog`'s
+chain ends at the `ScreenPane`, as the wrapped `Window`'s did, and layers overdraw. `D_bg_surface`'s
+"composer owes `bg.default_color` + `INHERIT`" pair is for a widget that paints a well, and a border
+is not a well. The one requirement is on the helper: it paints through the canvas
+(`set_text` / `set_char`, as `Window#repaint_border` does), so border cells inherit
+`bg.effective`. Merging also removes a choice: an app tinted either the `Popup` or its `Window`,
+and both are now `dialog.bg_color =`.
+
 It is a plain class, not a component, and owns **both the ink and the insets**. It
 paints the border *and* answers the content rect inside it (`local_rect` shrunk by 1 on each side,
 0 on the right while a scrollbar has that column). Each of the three components asks it for the
@@ -115,9 +125,10 @@ look-and-feel, which may reuse the helper or replace it.
 ## What moves where
 
 - **`Panel`** keeps `caption`, `scrollbar=` and the focus-lit border. `footer=` was removed from
-  `Window` ahead of this refactor, for having no user. `footer_text=` stays: virtui's five dialogs
-  put their key hints there (`'q/ESC to close'`), so it moves to `Dialog`, and `BorderDrawerInt`
-  paints it. Whether `Panel` keeps it too is `Q_panel_footer_text`.
+  `Window` ahead of this refactor, for having no user. `footer_text=` moves to `Dialog` only
+  (owner, 2026-10-27), and `BorderDrawerInt` paints it. Every user is a dialog: virtui's five put
+  their key hints there (`'q/ESC to close'`). `Dialog` keeps it so they migrate unchanged, and
+  `Panel` drops it until a tiled pane asks.
 - **`Dialog`** gains `Window`'s chrome: `caption`, `footer_text=`, `scrollbar=` and the focus-lit
   border. It keeps everything `Popup` has: `declared_size`, `ShrinkToContent`, `close_on_key`,
   `close_on_outside_click`, modal, and the `focusable?`/`modal?` pair both true (`D_overlay`'s
@@ -127,9 +138,18 @@ look-and-feel, which may reuse the helper or replace it.
   helper's insets itself. `ConfirmWindow#measured_width` likewise adds the side insets.
 - **`Notification`** stops building a `Window` (`notification.rb:123`) and paints the border with
   the helper. That is one fewer component in its subtree, and it stays a non-modal `Overlay`.
-- **`LogDialog`**: a tiled log pane is already `LogTextView` plus `LogTextView::IO` (virtui does
-  exactly this), so `LogDialog` only frames one. `LogWindow::IO` → `LogDialog::IO`, or delegate to
-  the view's.
+- **`LogDialog` and `InfoDialog` each keep a class** (owner, 2026-10-27), though neither adds keys,
+  buttons or a result. `InfoDialog` takes domain data (`cop` rule 4: `InfoDialog.new("Help", text)`).
+  `LogDialog` is what an app too busy to tile a log needs. virtui found a tiled spot, so it uses
+  `LogTextView` plus `LogTextView::IO` directly. pikuri-tui's three shells have none, so its log
+  only ever shows as a dialog, and that's the case `LogDialog` serves:
+  - It is built eagerly at boot, so `Pikuri.log_io` has a sink before the agent exists, and
+    `Shared::Log::CountingIO` calls `#log` on it from any thread. So `LogDialog` keeps `#log`
+    (delegating to the view's) and `::IO` (aliasing `LogTextView::IO`, which accepts it as a sink).
+  - The same instance opens and closes many times (`Shared::Log::UI#open`). `Dialog` must keep
+    `Popup`'s reopenability.
+  - `Shared::Log::Popup` collapses into a `LogDialog` subclass whose only addition is a
+    reset-the-error-count callback on `close`.
 - **`InfoDialog`** loses `InfoWindow`'s "usable tiled or as a popup" dual use. The tiled form is a
   `Panel` around a `TextView` / `List` (`D_info_window_body`'s two presentations stay).
 - The popup stack keeps its name (`ScreenPane#popups`, `Screen#add_popup`): it holds every
@@ -138,24 +158,13 @@ look-and-feel, which may reuse the helper or replace it.
 
 ## Open
 
-- **`Q_thin_dialog_subclasses`**: the identity test applies to the subclasses too. `ConfirmDialog`
-  and `PickerDialog` are kinds of dialog: they have their own keys, buttons and result. But
-  `LogDialog` is just a `Dialog` whose body is a `LogTextView`, and `InfoDialog` one whose body is a
-  `TextView` or `List` built from data. Does each earn a class? Leaning: `InfoDialog` stays, since
-  it takes domain data (`cop` rule 4: `InfoDialog.new("Help", text)`). `LogDialog` is open. Its
-  only addition is `::IO`, and `LogTextView` already has one.
-- **`Q_panel_footer_text`**: every `footer_text=` user is a dialog. Does `Panel` keep it, as cheap
-  chrome `BorderDrawerInt` paints anyway, or drop it until a tiled pane asks?
-- **`Q_dialog_bg`**: does `Dialog` inherit `Window`'s background/extent behaviour as-is, or does
-  becoming an `Overlay` change what `D_bg_surface`'s "composer owes `bg.default_color` + `INHERIT`"
-  pair means for it?
 - **`Q_dialog_subclass_sizing`**: virtui's subclasses each carry a `SIZE` constant. Is that a
   `declared_size:` passed to `super`, or an overridden reader?
 
 ## Owed at graduation
 
-- **Breaking CHANGELOG lines:** `Window` → `Panel`; `Popup` → `Dialog` (now bordered,
-  `open_in_popup` gone); the four subclass renames.
+- **Breaking CHANGELOG lines:** `Window` → `Panel` (without `footer_text=`, which only `Dialog`
+  keeps); `Popup` → `Dialog` (now bordered, `open_in_popup` gone); the four subclass renames.
 - **`component_contract_spec`'s catalog, the README's Components table, rdoc, `sig/`** (the
   four-registration rule).
 - **`D_` entries naming them**, most heavily: `D_overlay`, `D_popup_open`, `D_declared_size`,
