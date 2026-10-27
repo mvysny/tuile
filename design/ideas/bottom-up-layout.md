@@ -129,6 +129,7 @@ What a lazy rows-only pull would answer, point by point:
 
 | answerer | `measure_rows(width)` |
 |---|---|
+| one-row fields (`Button`, `Checkbox`, `Select`, `ComboBox`, `DateTimeField`, `Tabs`, `MenuBar`) | `1`, the row their `extent` already declares. Today they answer the base `nil`, so under `Auto` they vanish behind the warning |
 | `Label` | line count, independent of `width` (it truncates, never wraps). #73 wants a wrapping one: a `wrap:` knob, or `TextView` in a non-scrolling mode, answering like the row below |
 | `TextView` (wrapping) | wrapped row count at `width` |
 | `ConfirmDialog` | **shipped**: the message wrapped at `width − WIDTH_CHROME`, plus `HEIGHT_CHROME` |
@@ -286,7 +287,13 @@ parent already holds, with no bookkeeping of its own.
    it, and `Dialog::ShrinkToContent`. Re-asked every pass, so the notice stays `ConfirmDialog`'s
    own `reposition`; its `declared_size_in` is a `ShrinkToContent` half-screen box at `measured_width`.
 2. Answerers: `Label` (wrapping, for #73), `TextView`, `Panel`, `FormLayout`, `Vertical`,
-   `Horizontal`, with `main_sizes` shared between `relayout` and `measure_rows`. `Dialog` counts
+   `Horizontal`, with `main_sizes` shared between `relayout` and `measure_rows`, and the one-row
+   fields answering `1`. A `component_contract_spec` check: a catalog component declaring both an
+   `extent` and a non-`nil` `measure_rows`, placed at exactly `measure_rows(w)` rows, has an `extent`
+   that tall. A field answering `1` but painting two rows would lose its second row under `Auto`.
+   `extent` and `measure_rows` stay separate otherwise. One is rows painted inside the rect given,
+   read by no container (`D_extent`); the other is rows needed before any rect, unbounded. Each
+   can differ from the other wherever the parent clamps. `Dialog` counts
    no content or hidden content as `0` instead of answering `nil`, so a `ShrinkToContent` dialog with
    an empty body shrinks to its border and the one-row floor; a `**Breaking:**` CHANGELOG line.
 3. The notice: `invalidate_rows` and `handle_child_rows_changed`, answerers firing from their
