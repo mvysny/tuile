@@ -2,8 +2,7 @@
 
 **Status:** owner-decided in outline (2026-10-26), reframed by the owner (2026-10-27): the root
 cause is a hierarchy that encodes appearance, and the renames follow from fixing that. Not started.
-Wait until `bottom-up-layout` merges so the rename doesn't get mixed into the
-`Popup::ShrinkToContent` diff. **Scope: the component hierarchy only.** A configurable
+Wait until `bottom-up-layout` merges so the rename doesn't get mixed into its diff. **Scope: the component hierarchy only.** A configurable
 look-and-feel is v2 (`look-and-feel.md`), and nothing here is designed for it.
 
 **Problem:** the component hierarchy answers two questions at once, *what a component is* and *how
@@ -119,7 +118,7 @@ It is a plain class, not a component, and owns **both the ink and the insets**. 
 paints the border *and* answers the content rect inside it (`local_rect` shrunk by 1 on each side,
 0 on the right while a scrollbar has that column). Each of the three components asks it for the
 content rect in its `relayout`, and nobody hard-codes a `1`. That's for the three components'
-sake: one answer for `relayout`, `repaint` and `measure_rows`. It is not groundwork for the v2
+sake: one answer for `relayout` and `repaint`. It is not groundwork for the v2
 look-and-feel, which may reuse the helper or replace it.
 
 ## What moves where
@@ -130,12 +129,21 @@ look-and-feel, which may reuse the helper or replace it.
   their key hints there (`'q/ESC to close'`). `Dialog` keeps it so they migrate unchanged, and
   `Panel` drops it until a tiled pane asks.
 - **`Dialog`** gains `Window`'s chrome: `caption`, `footer_text=`, `scrollbar=` and the focus-lit
-  border. It keeps everything `Popup` has: `declared_size`, `ShrinkToContent`, `close_on_key`,
+  border. It keeps everything `Popup` has: `declared_size`, `close_on_key`,
   `close_on_outside_click`, modal, and the `focusable?`/`modal?` pair both true (`D_overlay`'s
   coupling).
-- **`ShrinkToContent` / `measure_rows`**: today the popup asks its content (a `Window`) for its
-  rows, and that answer includes the border rows. Now the `Dialog` asks its *body* and adds the
-  helper's insets itself. `ConfirmWindow#measured_width` likewise adds the side insets.
+- **A subclass's size is its default `declared_size:`, passed to `super`** (owner, 2026-10-27),
+  never an overridden `declared_size` reader. An overridden reader would quietly ignore
+  `declared_size=`, but a default passed to `super` leaves the setter working. virtui has three
+  shapes, and the merge settles two of them:
+  - A class constant: `CpuFlagsWindow`, `HealthWindow` and `VMInfoWindow` each have a `SIZE`
+    `Fraction` and hand it to `Popup.new` in `.open`. It becomes `super(declared_size: SIZE)`.
+  - Computed from data at construction: `DiskResizeWindow` derives its width from the volume path.
+    It already has the volume in `initialize`, so it passes the result to `super` the same way.
+  - Measured every layout pass: `ProgressWindow` and Tuile's `ConfirmWindow` each have a private
+    `MeasuredPopup` whose `declared_size_in(screen_size)` is overridden. That case belongs to
+    `bottom-up-layout`, not to this idea. The merge only moves the override onto the dialog
+    itself, so the `MeasuredPopup`s go away.
 - **`Notification`** stops building a `Window` (`notification.rb:123`) and paints the border with
   the helper. That is one fewer component in its subtree, and it stays a non-modal `Overlay`.
 - **`LogDialog` and `InfoDialog` each keep a class** (owner, 2026-10-27), though neither adds keys,
@@ -155,11 +163,6 @@ look-and-feel, which may reuse the helper or replace it.
 - The popup stack keeps its name (`ScreenPane#popups`, `Screen#add_popup`): it holds every
   `Overlay`, and once no class is called `Popup`, "popup" is a fine everyday word for anything on
   the stack. `D_overlay` already declined renaming it.
-
-## Open
-
-- **`Q_dialog_subclass_sizing`**: virtui's subclasses each carry a `SIZE` constant. Is that a
-  `declared_size:` passed to `super`, or an overridden reader?
 
 ## Owed at graduation
 

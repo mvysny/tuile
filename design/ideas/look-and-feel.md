@@ -18,8 +18,7 @@ configures it.
   `DialogLook < PanelLook` to share code. That would move the same smell one axis over.
 - **Where it differs from `Theme`: it owns geometry.** `Theme` is ink only, so `theme=` is one
   invalidate-all *repaint*. Insets move the content rect, so swapping the look-and-feel is also an
-  invalidate-all *relayout*, and `measure_rows` answers change with it (a `Dialog` under
-  `ShrinkToContent` adds whatever insets it reports). The theme rule, "read it at paint time, never
+  invalidate-all *relayout*. The theme rule, "read it at paint time, never
   cache it", becomes "read the look-and-feel in `relayout` and in `repaint`, never cache an inset".
 
 ## Open
