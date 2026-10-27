@@ -354,12 +354,12 @@ module Tuile
       end
 
       it "repaints the dropdown when reopened after a commit" do
-        # Wrap in a full-pane Window so its content covers the dropdown region:
+        # Wrap in a full-pane Panel so its content covers the dropdown region:
         # committing closes the dropdown and the scene repaint overpaints those
         # cells, so reopening must repaint the menu's rows (regression — they
         # stayed blank because the reopened popup's rect was unchanged).
         c = Component::ComboBox.new(items: default_items)
-        Screen.instance.content = Component::Window.new.tap { _1.content = c }
+        Screen.instance.content = Component::Panel.new.tap { _1.content = c }
         Screen.instance.focused = c
         region = -> { Screen.instance.buffer.region_text(overlay(c).absolute_rect).map(&:strip).reject(&:empty?) }
 

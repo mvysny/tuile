@@ -13,7 +13,7 @@ module Tuile
     #       def initialize
     #         super
     #         add(@sidebar = Component::List.new)
-    #         add(@main = Component::Window.new("Main"))
+    #         add(@main = Component::Panel.new("Main"))
     #       end
     #
     #       protected
@@ -285,7 +285,7 @@ module Tuile
         ZERO = new
       end
 
-      # Layouts are focusable containers — like {Window} and {Dialog}, they
+      # Layouts are focusable containers — like {Panel} and {Dialog}, they
       # don't accept input themselves but they need to participate in the
       # {HasContent} focus cascade so a Dialog wrapping a Layout wrapping a
       # {TextField} ends up focusing the field rather than parking focus on
@@ -326,9 +326,9 @@ module Tuile
         # Forward focus to the first interactive widget in the subtree so the
         # user can start typing / cursoring immediately. Prefer a {#tab_stop?}
         # descendant (TextField, List, Button…) so we skip past intermediate
-        # containers like a {Window} or another {Layout}. Fall back to the
+        # containers like a {Panel} or another {Layout}. Fall back to the
         # first focusable direct child for the rare case where the layout has
-        # focusable but non-tab-stop children (e.g. an empty {Window}).
+        # focusable but non-tab-stop children (e.g. an empty {Panel}).
         #
         # Both halves skip hidden subtrees — this is the cascade that would
         # otherwise walk straight back into the pane just hidden.

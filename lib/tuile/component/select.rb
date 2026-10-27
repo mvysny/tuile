@@ -150,7 +150,7 @@ module Tuile
       end
 
       # The one row this Select paints — the full width, at the top of {#rect}.
-      # A single-slot container ({Component::Window}, {Component::Dialog}) hands
+      # A single-slot container ({Component::Panel}, {Component::Dialog}) hands
       # its content the whole inner rect, so a Select is routinely assigned more
       # height than it uses; {#repaint} clears that tail, a press in it never reaches
       # {#handle_mouse_down?}, and the dropdown hangs under this rather than under the

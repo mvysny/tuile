@@ -95,7 +95,7 @@ module Tuile
       Component::Tabs => -> { Component::Tabs.new.tap { |t| %w[One Two].each { t.add_tab(_1) } } },
       Component::TabSheet => -> { populated_tab_sheet },
       Component::MenuBar => -> { Component::MenuBar.new.tap { |b| %w[File Edit].each { b.add_item(_1) } } },
-      Component::Window => -> { Component::Window.new("Caption").tap { _1.content = Component::Label.new("body") } },
+      Component::Panel => -> { Component::Panel.new("Caption").tap { _1.content = Component::Label.new("body") } },
       Component::LogDialog => -> { Component::LogDialog.new("Log") },
       Component::InfoDialog => -> { Component::InfoDialog.new("Info", "the body prose") },
       Component::PickerDialog => -> { Component::PickerDialog.new("Pick", [%w[a Apple], %w[b Banana]]) { nil } },
@@ -325,7 +325,7 @@ module Tuile
       # Nothing is exempt today. Should a component ever have to be, mark it
       # `pending` with the reason and never `skip`: fixing it then fails the
       # example, which is the reminder to delete the entry — that is how the
-      # Window family's 925-byte border re-emission got closed rather than
+      # Panel family's 925-byte border re-emission got closed rather than
       # settling in as a documented quirk.
       catalog.each_key do |klass|
         it klass.name do

@@ -1063,7 +1063,7 @@ module Tuile
   #   focus/selection highlight in conventional UI terms.
   #   @return [Color]
   # @!attribute [r] active_border_color
-  #   Foreground of a {Component::Window} border when the window is on the
+  #   Foreground of a {Component::Panel} border when the panel or dialog is on the
   #   active (focus) chain.
   #   @return [Color]
   # @!attribute [r] input_bg_color
@@ -1271,7 +1271,7 @@ module Tuile
     # focus/selection highlight in conventional UI terms.
     attr_reader active_bg_color: Color
 
-    # Foreground of a {Component::Window} border when the window is on the
+    # Foreground of a {Component::Panel} border when the panel or dialog is on the
     # active (focus) chain.
     attr_reader active_border_color: Color
 
@@ -3574,7 +3574,7 @@ module Tuile
     # (an app's own component classes keep their full name):
     # 
     #     #<ScreenPane rect=(0,0 160x50)>
-    #       #<Window rect=(0,0 40x10) caption="Settings">
+    #       #<Panel rect=(0,0 40x10) caption="Settings">
     #         #<Layout::Vertical rect=(1,1 38x8)>
     #   →       #<Button id=:save rect=(1,1 38x1) caption="Save">
     # 
@@ -3638,8 +3638,8 @@ module Tuile
     # Paints `component` and its subtree, attached or not, into a {Buffer} of
     # its own size whose `(0, 0)` is the component's top-left:
     # 
-    #   Testing.place(window, Rect.new(0, 0, 14, 4))
-    #   buffer = Testing.paint(window)
+    #   Testing.place(panel, Rect.new(0, 0, 14, 4))
+    #   buffer = Testing.paint(panel)
     #   buffer.text                  # => ["┌Caption─────┐", "│ alpha      │", …]
     #   buffer.cell(1, 1).style      # component coordinates, no absolute_rect
     # 
@@ -4203,7 +4203,7 @@ module Tuile
     # mixed-width form layouts safe.
     # 
     # Call `super` from your own `repaint` to inherit this. Skip it only if you
-    # paint the whole {#rect} yourself ({Window}'s border, {Component::List}'s
+    # paint the whole {#rect} yourself ({Panel}'s border, {Component::List}'s
     # row-by-row paint). Never draw outside {#rect}. Only called when attached.
     # 
     # **A widget that paints less than its rect declares an {#extent} rather than
@@ -4366,7 +4366,7 @@ module Tuile
     # from {#active?}: every component carries the active flag, but only
     # focusable ones can become a focus target that puts themselves and their
     # ancestors on the active chain. Focusable is broader than {#tab_stop?} —
-    # a {Window} is focusable (a click on chrome lands focus) but not a tab stop.
+    # a {Panel} is focusable (a click on chrome lands focus) but not a tab stop.
     # 
     # _@return_ — true if this component can be focused.
     def focusable?: () -> bool
@@ -4853,7 +4853,7 @@ module Tuile
     # Passes the repaint cascade on to the direct children — the one thing a
     # container may never skip, whatever else its {#repaint} does. Named so a
     # self-painting container can drop the default's blanket clear without also
-    # dropping this by accident ({Component::Window} is the case):
+    # dropping this by accident ({Component::Panel} is the case):
     # 
     #   def repaint(canvas)
     #     return if rect.empty?
@@ -6092,6 +6092,85 @@ module Tuile
       def update_rows: () -> void
     end
 
+    # A tiled pane with a border, a {#caption} and one content {Component} —
+    # what sets a region apart from its neighbours:
+    # 
+    #   panel = Component::Panel.new("Files")
+    #   panel.content = Component::List.new.tap { _1.lines = entries }
+    # 
+    #   ┌Files─────────┐
+    #   │ README.md    │
+    #   └──────────────┘
+    # 
+    # The border lights in {Theme#active_border_color} while focus is inside.
+    # For the same box floating over the screen, use a {Dialog}.
+    # 
+    # A panel with an empty {#rect} paints nothing.
+    class Panel < Component
+      include Tuile::Component::HasContent
+      include Tuile::Component::HasCaption
+
+      # _@param_ `caption` — the border title, coerced the same way {HasCaption#caption=} coerces it.
+      def initialize: (?(String | StyledString)? caption) -> void
+
+      def focusable?: () -> bool
+
+      # _@param_ `value`
+      def scrollbar=: (bool value) -> void
+
+      # Fully repaints the panel: the border ring here, the interior through
+      # the content it re-invalidates.
+      # 
+      # Deliberately *not* `super`: the default would blank the whole rect
+      # first, because the content slot is inset by the border and so never
+      # tiles — and every one of those blanked border cells is one this method
+      # is about to repaint identically, which marks it dirty and makes
+      # {Buffer#flush} re-emit it. That cost 925 bytes on every unchanged
+      # repaint of an 80×25 panel, paid on each focus change
+      # (`D_component_contract`). The ring is this panel's own paint and the
+      # interior is the content's, so the only cell nobody covers is an
+      # interior with no content in it — cleared here, exactly.
+      # 
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (Canvas canvas) -> void
+
+      def relayout: () -> void
+
+      # The interior the content fills, inside the border. One rect for both
+      # passes: what {#relayout} assigns the content, and what {#repaint} blanks
+      # when there is no content to cover it.
+      def content_rect: () -> Rect
+
+      # Read through *this* method, never `@_caption` — the ivar stays nil until
+      # the first non-empty set ({#caption=} short-circuits when unchanged).
+      # 
+      # _@return_ — the caption; empty when never set.
+      def caption: () -> StyledString
+
+      # Sets the caption and invalidates the component. No-op when unchanged. A
+      # `String` is parsed via {StyledString.parse} (embedded ANSI is honored);
+      # a {StyledString} is used as-is; `nil` clears it.
+      # 
+      # _@param_ `new_caption`
+      def caption=: ((String | StyledString)? new_caption) -> void
+
+      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
+      def inspect_details: () -> ::Array[String]
+
+      # _@return_ — the current content component.
+      def content: () -> Component?
+
+      # Sets the new content of this component. Updates `@_content` itself;
+      # including classes may still override to add behaviour (e.g. a
+      # special-cased Array input) but should call `super` to perform the
+      # swap.
+      # 
+      # _@param_ `content` — the component to set or clear.
+      def content=: (Component? content) -> void
+
+      def handle_focus: () -> void
+    end
+
     # A clickable button. Activated by Enter, Space, or a left mouse click;
     # fires the {#on_click} callback. Renders as `[ caption ]` on a single
     # row; the background is highlighted when the button is focused so the
@@ -6369,7 +6448,7 @@ module Tuile
     #       def initialize
     #         super
     #         add(@sidebar = Component::List.new)
-    #         add(@main = Component::Window.new("Main"))
+    #         add(@main = Component::Panel.new("Main"))
     #       end
     # 
     #       protected
@@ -6395,7 +6474,7 @@ module Tuile
     # the background is cleared and children are re-invalidated so they
     # paint over a clean surface.
     class Layout < Component
-      # Layouts are focusable containers — like {Window} and {Dialog}, they
+      # Layouts are focusable containers — like {Panel} and {Dialog}, they
       # don't accept input themselves but they need to participate in the
       # {HasContent} focus cascade so a Dialog wrapping a Layout wrapping a
       # {TextField} ends up focusing the field rather than parking focus on
@@ -7134,7 +7213,7 @@ module Tuile
       def handle_key?: (String key) -> bool
 
       # The one row this Select paints — the full width, at the top of {#rect}.
-      # A single-slot container ({Component::Window}, {Component::Dialog}) hands
+      # A single-slot container ({Component::Panel}, {Component::Dialog}) hands
       # its content the whole inner rect, so a Select is routinely assigned more
       # height than it uses; {#repaint} clears that tail, a press in it never reaches
       # {#handle_mouse_down?}, and the dropdown hangs under this rather than under the
@@ -7297,93 +7376,6 @@ module Tuile
       # {HasBadInput} widens it: a field holding input its value cannot
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
-    end
-
-    # A window with a frame, a {#caption} and a content {Component}. Doesn't
-    # support overlapping with other windows: it paints its entire contents and
-    # doesn't clip if there are other overlapping windows.
-    # 
-    # The window's `content` is unset by default; assign one via {#content=}.
-    # 
-    # Window is considered invisible if {#rect} is empty. The window won't
-    # draw when invisible. (Repaint of detached windows is short-circuited
-    # by {Component#invalidate}; subclasses don't need to re-check.)
-    class Window < Component
-      include Tuile::Component::HasContent
-      include Tuile::Component::HasCaption
-
-      # _@param_ `caption` — the border title, coerced the same way {HasCaption#caption=} coerces it.
-      def initialize: (?(String | StyledString)? caption) -> void
-
-      def focusable?: () -> bool
-
-      # _@return_ — optional chrome embedded into the bottom border
-      # line, mirroring {#caption} on the top line. Empty by default.
-      def footer_text: () -> StyledString
-
-      # Sets the bottom-border chrome. Accepts a `String` (parsed via
-      # {StyledString.parse}), a {StyledString}, or `nil` (clears it). The text
-      # embeds into the bottom border at its own width with the border's dashes
-      # filling the remainder, clipped to the inner width — border decoration,
-      # not a component (not focusable).
-      # 
-      # _@param_ `text`
-      def footer_text=: ((String | StyledString)? text) -> void
-
-      # _@param_ `value`
-      def scrollbar=: (bool value) -> void
-
-      # Fully repaints the window: the border ring here, the interior through
-      # the content it re-invalidates.
-      # 
-      # Deliberately *not* `super`: the default would blank the whole rect
-      # first, because the content slot is inset by the border and so never
-      # tiles — and every one of those blanked border cells is one this method
-      # is about to repaint identically, which marks it dirty and makes
-      # {Buffer#flush} re-emit it. That cost 925 bytes on every unchanged
-      # repaint of an 80×25 window, paid on each focus change
-      # (`D_component_contract`). The ring is this window's own paint and the
-      # interior is the content's, so the only cell nobody covers is an
-      # interior with no content in it — cleared here, exactly.
-      # 
-      # _@param_ `canvas` — see {Component#repaint}.
-      def repaint: (Canvas canvas) -> void
-
-      def relayout: () -> void
-
-      # The interior the content fills, inside the border. One rect for both
-      # passes: what {#relayout} assigns the content, and what {#repaint} blanks
-      # when there is no content to cover it.
-      def content_rect: () -> Rect
-
-      # Read through *this* method, never `@_caption` — the ivar stays nil until
-      # the first non-empty set ({#caption=} short-circuits when unchanged).
-      # 
-      # _@return_ — the caption; empty when never set.
-      def caption: () -> StyledString
-
-      # Sets the caption and invalidates the component. No-op when unchanged. A
-      # `String` is parsed via {StyledString.parse} (embedded ANSI is honored);
-      # a {StyledString} is used as-is; `nil` clears it.
-      # 
-      # _@param_ `new_caption`
-      def caption=: ((String | StyledString)? new_caption) -> void
-
-      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
-      def inspect_details: () -> ::Array[String]
-
-      # _@return_ — the current content component.
-      def content: () -> Component?
-
-      # Sets the new content of this component. Updates `@_content` itself;
-      # including classes may still override to add behaviour (e.g. a
-      # special-cased Array input) but should call `super` to perform the
-      # swap.
-      # 
-      # _@param_ `content` — the component to set or clear.
-      def content=: (Component? content) -> void
-
-      def handle_focus: () -> void
     end
 
     # A component mounted on the {Screen}'s overlay stack rather than in the
@@ -8540,7 +8532,7 @@ module Tuile
     # 
     #   form = Component::FormLayout.new
     #   # …nine fields, 27 rows of them…
-    #   window.content = Component::Scroller.new(form, content_rows: 27)
+    #   panel.content = Component::Scroller.new(form, content_rows: 27)
     # 
     # **You say how tall the content is.** Nothing in Tuile measures
     # (`D_declared_size`), so {#content_rows} is the number of rows the content
@@ -9925,7 +9917,7 @@ module Tuile
     # two columns narrower, which is the price of the columns it hands back
     # while everything fits.
     # 
-    # Meant to be the content of a {Window} — focus indication relies on the
+    # Meant to be the content of a {Panel} — focus indication relies on the
     # surrounding window chrome.
     class TextView < Component
       def initialize: () -> void
@@ -11812,7 +11804,7 @@ module Tuile
       def validate_rows: (Integer rows) -> void
     end
 
-    # The chrome text a component *wears* — a {Window}'s border title, a
+    # The chrome text a component *wears* — a {Panel}'s border title, a
     # {Button}'s label — as opposed to the value it *holds*.
     # 
     #   button.caption = "Submit"
@@ -11824,7 +11816,7 @@ module Tuile
     # component may carry both, hence two mixins.
     # 
     # Includers own the *rendering* — clipping, width arithmetic, decoration
-    # such as {Window}'s `[key]-` shortcut prefix; this holds only the text.
+    # such as {Panel}'s `[key]-` shortcut prefix; this holds only the text.
     # 
     # == What this mixin is for
     # **Nomenclature, plus one shared value rule**: the coercion, the
@@ -11861,10 +11853,10 @@ module Tuile
     # A component with a *primary* child named `content`: **this is my content,
     # which you populate; my other children are mine to manage, not yours to
     # address**. Include it wherever addressing that child is the point — a
-    # {Slot} is a bare region for one, a {Window} frames one, an {Overlay}
+    # {Slot} is a bare region for one, a {Panel} frames one, an {Overlay}
     # floats one.
     # 
-    # It says nothing about *arity*: {Window} has two app-settable children, and
+    # It says nothing about *arity*: {Panel} has two app-settable children, and
     # this mixin names which of them is *the* content. Nor about permanence — an
     # {Overlay}'s body is permanent and public both. A container with *several*
     # populatable regions gives each one a {Slot} rather than including this
@@ -11924,7 +11916,7 @@ module Tuile
     #   Component::InfoDialog.new("Files", ["drwx  src/", "-rw-  README.md"]).open
     # 
     # Both write the same body slot — the last writer wins. For the same body
-    # tiled, put a {TextView} or {List} in a {Window}.
+    # tiled, put a {TextView} or {List} in a {Panel}.
     class InfoDialog < Tuile::Component::Dialog
       # _@param_ `caption` — the border title.
       # 
@@ -16237,7 +16229,7 @@ module Tuile
   # 
   #   it "paints its content" do
   #     label = Component::Label.new.tap { |l| l.text = "hi" }
-  #     Screen.instance.content = Component::Window.new("Greeting").tap { |w| w.content = label }
+  #     Screen.instance.content = Component::Panel.new("Greeting").tap { |w| w.content = label }
   #     Screen.instance.repaint
   #     assert_includes Screen.instance.prints.join, "hi"
   #   end
@@ -17193,10 +17185,10 @@ module Tuile
     # last time its content components won't re-invalidate themselves — so
     # without this the overlay's contents would stay blank on reopen.
     # 
-    # _@param_ `window` — any overlay, modal or not.
+    # _@param_ `overlay` — any overlay, modal or not.
     # 
     # _@param_ `placement` — where it wants to be; `nil` takes its {Component::Overlay#default_placement}.
-    def add_popup: (Component::Overlay window, ?Component::Overlay::Placement? placement) -> void
+    def add_popup: (Component::Overlay overlay, ?Component::Overlay::Placement? placement) -> void
 
     # _@param_ `popup` — an open popup.
     # 
@@ -17216,8 +17208,8 @@ module Tuile
     # remaining popup, falling back to the focus snapshotted when the popup
     # was opened (if still attached), then to {#content}, then to nil.
     # 
-    # _@param_ `window`
-    def remove_popup: (Component window) -> void
+    # _@param_ `overlay`
+    def remove_popup: (Component overlay) -> void
 
     # Unmounts everything: each child is detached — firing {Component#handle_detached}
     # down its subtree — and every slot is emptied. Terminal; the pane isn't
@@ -17230,10 +17222,10 @@ module Tuile
     # components, which is the desync the tree API exists to prevent.
     def detach_all: () -> void
 
-    # _@param_ `window`
+    # _@param_ `overlay`
     # 
     # _@return_ — true if this pane currently hosts the popup.
-    def has_popup?: (Component window) -> bool
+    def has_popup?: (Component overlay) -> bool
 
     # _@return_ — the topmost modal overlay, or nil when
     # only bare {Component::Overlay}s (or none) are open. This is the "modal

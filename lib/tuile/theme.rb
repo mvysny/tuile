@@ -79,7 +79,7 @@ module Tuile
   #   focus/selection highlight in conventional UI terms.
   #   @return [Color]
   # @!attribute [r] active_border_color
-  #   Foreground of a {Component::Window} border when the window is on the
+  #   Foreground of a {Component::Panel} border when the panel or dialog is on the
   #   active (focus) chain.
   #   @return [Color]
   # @!attribute [r] input_bg_color

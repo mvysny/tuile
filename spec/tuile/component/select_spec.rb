@@ -349,7 +349,7 @@ module Tuile
         assert overlay(s).open?
       end
 
-      # A single-slot container (Window, Dialog) hands its content the whole inner
+      # A single-slot container (Panel, Dialog) hands its content the whole inner
       # rect, so a Select is routinely assigned more height than the one row it
       # paints. #repaint already clears that tail; a click in it must not open
       # the dropdown either — the same rule Checkbox follows on the width axis.

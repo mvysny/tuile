@@ -141,7 +141,7 @@ module Tuile
 
       it "omits an empty caption and a nil value" do
         assert_equal "#<Tuile::Component::TextField rect=(0,0 0x0) value=\"\">", Component::TextField.new.inspect
-        assert_equal "#<Tuile::Component::Window rect=(0,0 0x0)>", Component::Window.new.inspect
+        assert_equal "#<Tuile::Component::Panel rect=(0,0 0x0)>", Component::Panel.new.inspect
       end
 
       # A debug method must not build a megabyte to show 40 characters of it.
@@ -1187,7 +1187,7 @@ module Tuile
       # every container kind in one tree — ScreenPane (slot + list + chrome),
       # Layout (plain list), HasContent (single slot) and Slot (a slot inside a list).
       it "keeps children, @children and the parent pointers in agreement" do
-        window = Component::Window.new("w")
+        window = Component::Panel.new("w")
         window.content = Component::Layout::Vertical.new
         window.content.add(Component::List.new, Component::Layout::Expand[1])
         window.content.add(Component::Slot.new(Component::TextField.new), Component::Layout::Fixed[1])

@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Tuile hello-world. A Window wrapping a Label, over a status line the app
+# Tuile hello-world. A Panel wrapping a Label, over a status line the app
 # owns — Tuile draws no chrome of its own and reserves no row.
 #
 # Run from the gem root:
@@ -27,7 +27,7 @@ APP_THEME = Tuile::ThemeDef.new(
 screen = Tuile::Screen.new
 screen.theme_def = APP_THEME
 
-window = Tuile::Component::Window.new("Tuile")
+window = Tuile::Component::Panel.new("Tuile")
 window.content = Tuile::Component::Label.new("Hello, world!")
 
 # The status line. `theme.fg` styles the *description* half of a "key what"

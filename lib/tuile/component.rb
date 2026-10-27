@@ -489,7 +489,7 @@ module Tuile
     # mixed-width form layouts safe.
     #
     # Call `super` from your own `repaint` to inherit this. Skip it only if you
-    # paint the whole {#rect} yourself ({Window}'s border, {Component::List}'s
+    # paint the whole {#rect} yourself ({Panel}'s border, {Component::List}'s
     # row-by-row paint). Never draw outside {#rect}. Only called when attached.
     #
     # **A widget that paints less than its rect declares an {#extent} rather than
@@ -665,7 +665,7 @@ module Tuile
     # from {#active?}: every component carries the active flag, but only
     # focusable ones can become a focus target that puts themselves and their
     # ancestors on the active chain. Focusable is broader than {#tab_stop?} —
-    # a {Window} is focusable (a click on chrome lands focus) but not a tab stop.
+    # a {Panel} is focusable (a click on chrome lands focus) but not a tab stop.
     # @return [Boolean] true if this component can be focused.
     def focusable? = false
 
@@ -1294,7 +1294,7 @@ module Tuile
     # Passes the repaint cascade on to the direct children — the one thing a
     # container may never skip, whatever else its {#repaint} does. Named so a
     # self-painting container can drop the default's blanket clear without also
-    # dropping this by accident ({Component::Window} is the case):
+    # dropping this by accident ({Component::Panel} is the case):
     #
     #   def repaint(canvas)
     #     return if rect.empty?

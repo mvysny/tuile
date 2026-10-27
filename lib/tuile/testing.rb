@@ -180,7 +180,7 @@ module Tuile
       # (an app's own component classes keep their full name):
       #
       #     #<ScreenPane rect=(0,0 160x50)>
-      #       #<Window rect=(0,0 40x10) caption="Settings">
+      #       #<Panel rect=(0,0 40x10) caption="Settings">
       #         #<Layout::Vertical rect=(1,1 38x8)>
       #   →       #<Button id=:save rect=(1,1 38x1) caption="Save">
       #
@@ -316,8 +316,8 @@ module Tuile
       # Paints `component` and its subtree, attached or not, into a {Buffer} of
       # its own size whose `(0, 0)` is the component's top-left:
       #
-      #   Testing.place(window, Rect.new(0, 0, 14, 4))
-      #   buffer = Testing.paint(window)
+      #   Testing.place(panel, Rect.new(0, 0, 14, 4))
+      #   buffer = Testing.paint(panel)
       #   buffer.text                  # => ["┌Caption─────┐", "│ alpha      │", …]
       #   buffer.cell(1, 1).style      # component coordinates, no absolute_rect
       #

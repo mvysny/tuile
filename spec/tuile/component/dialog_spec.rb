@@ -170,6 +170,69 @@ module Tuile
     end
   end
 
+  describe Component::Dialog, "footer_text" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "is empty by default" do
+      assert Component::Dialog.new.footer_text.empty?
+    end
+
+    it "coerces a String to a StyledString" do
+      w = Component::Dialog.new
+      w.footer_text = "gpt-4"
+      assert_equal StyledString.plain("gpt-4"), w.footer_text
+    end
+
+    it "accepts a StyledString" do
+      w = Component::Dialog.new
+      ss = StyledString.styled("gpt-4", fg: :red)
+      w.footer_text = ss
+      assert_equal ss, w.footer_text
+    end
+
+    it "clears back to empty when set to nil" do
+      w = Component::Dialog.new
+      w.footer_text = "gpt-4"
+      w.footer_text = nil
+      assert w.footer_text.empty?
+    end
+
+    it "invalidates on change" do
+      w = Component::Dialog.new
+      w.open
+      Screen.instance.invalidated_clear
+      w.footer_text = "gpt-4"
+      assert Screen.instance.invalidated?(w)
+    end
+
+    it "is a no-op when set to the same text" do
+      w = Component::Dialog.new
+      w.footer_text = "gpt-4"
+      Screen.instance.invalidated_clear
+      w.footer_text = "gpt-4"
+      assert !Screen.instance.invalidated?(w)
+    end
+
+    it "embeds into the bottom border with dashes filling the remainder" do
+      w = Component::Dialog.new
+      w.open(Component::Overlay::At[Rect.new(0, 0, 20, 10)])
+      w.footer_text = "hi"
+      painted = Testing.paint(w)
+      # inner width 18: "hi" + 16 dashes
+      assert_equal "└hi#{"─" * 16}┘", painted.text.last
+    end
+
+    it "clips footer_text to the inner width" do
+      w = Component::Dialog.new
+      w.open(Component::Overlay::At[Rect.new(0, 0, 6, 4)])
+      w.footer_text = "far-too-long"
+      painted = Testing.paint(w)
+      # inner width 4
+      assert_equal "└far-┘", painted.text.last
+    end
+  end
+
   describe Component::Dialog, "size" do
     before { Screen.fake } # 160x50
     after { Screen.close }

@@ -203,11 +203,11 @@ module Tuile
         screen = Screen.instance
         layout = Component::Layout.new
         screen.content = layout
-        # First child: Window wrapping a Label (non-tab_stop). Second child: a
+        # First child: Panel wrapping a Label (non-tab_stop). Second child: a
         # TextField (tab_stop). The first tab_stop in pre-order is the
-        # TextField; the cascade must skip past the Window+Label even though
-        # the Window is focusable.
-        window = Component::Window.new
+        # TextField; the cascade must skip past the Panel+Label even though
+        # the Panel is focusable.
+        window = Component::Panel.new
         window.content = Component::Label.new
         field = Component::TextField.new
         layout.add([window, field])
@@ -219,7 +219,7 @@ module Tuile
         screen = Screen.instance
         layout = Component::Layout.new
         screen.content = layout
-        window = Component::Window.new
+        window = Component::Panel.new
         list = Component::List.new
         window.content = list
         layout.add(window)
@@ -231,10 +231,10 @@ module Tuile
         screen = Screen.instance
         layout = Component::Layout.new
         screen.content = layout
-        # Window is focusable but not a tab_stop; its content (Label) is
+        # Panel is focusable but not a tab_stop; its content (Label) is
         # neither. No tab_stop in the subtree → fall back to first focusable
-        # direct child, which is the Window.
-        window = Component::Window.new
+        # direct child, which is the Panel.
+        window = Component::Panel.new
         window.content = Component::Label.new
         layout.add(window)
         screen.focused = layout

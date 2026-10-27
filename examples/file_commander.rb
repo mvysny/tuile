@@ -136,14 +136,14 @@ module FileCommanderExample
       @header = Tuile::Component::Label.new
       add(@header)
 
-      @left_window = Tuile::Component::Window.new
+      @left_window = Tuile::Component::Panel.new
       @left_list = DirList.new(left_dir)
       @left_list.on_cwd_changed << method(:refresh_header)
       @left_window.content = @left_list
       @left_window.scrollbar = true
       add(@left_window)
 
-      @right_window = Tuile::Component::Window.new
+      @right_window = Tuile::Component::Panel.new
       @right_list = DirList.new(right_dir)
       @right_list.on_cwd_changed << method(:refresh_header)
       @right_window.content = @right_list

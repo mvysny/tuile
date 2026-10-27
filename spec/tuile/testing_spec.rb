@@ -13,7 +13,7 @@ module Tuile
     let(:field) { Component::TextField.new.tap { _1.value = "Zaphod" } }
 
     let(:window) do
-      Component::Window.new("Settings").tap do |w|
+      Component::Panel.new("Settings").tap do |w|
         w.content = column
         column.add(save)
         column.add(cancel)
@@ -139,7 +139,7 @@ module Tuile
       it "indents by depth, relative to the searched root" do
         window
         assert_equal [
-          "  #<Window rect=(0,0 40x10) caption=\"Settings\">",
+          "  #<Panel rect=(0,0 40x10) caption=\"Settings\">",
           "    #<Layout::Vertical rect=(1,1 38x8)>",
           "      #<Button id=:save rect=(0,0 38x1) caption=\"Save\">",
           "      #<Button rect=(0,1 38x1) caption=\"Cancel\">",
@@ -465,7 +465,7 @@ module Tuile
       # A repaint paints only its own ink and queues its children, so a painter
       # handing the root one canvas would leave the window empty.
       it "paints a detached component's whole subtree" do
-        w = Component::Window.new("Caption").tap { _1.content = list("alpha", "beta") }
+        w = Component::Panel.new("Caption").tap { _1.content = list("alpha", "beta") }
         Testing.place(w, Rect.new(0, 0, 14, 4))
         refute w.attached?
 
@@ -475,7 +475,7 @@ module Tuile
 
       it "puts the component's own top-left at (0, 0), and leaves the screen's buffer alone" do
         inner = list("alpha")
-        w = Component::Window.new("Caption").tap { _1.content = inner }
+        w = Component::Panel.new("Caption").tap { _1.content = inner }
         mount_at(w, Rect.new(5, 5, 14, 3))
         Testing.loop
         # Blanked behind the screen's back: a write by paint would show here.
@@ -500,7 +500,7 @@ module Tuile
       end
 
       it "leaves out a popup open over the component" do
-        w = Component::Window.new("Caption").tap { _1.content = list("alpha") }
+        w = Component::Panel.new("Caption").tap { _1.content = list("alpha") }
         mount_at(w, Rect.new(0, 0, 14, 3))
         Component::Dialog.new(content: Component::Label.new("POPUP")).open(Component::Overlay::At[Rect.new(0, 0, 14,
                                                                                                            3)])

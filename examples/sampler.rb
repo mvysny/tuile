@@ -486,7 +486,7 @@ module SamplerExample
       super()
       @menu_bar = build_shell_bar
       @jump_box = build_jump_box
-      @demo_window = Tuile::Component::Window.new
+      @demo_window = Tuile::Component::Panel.new
       @status = Tuile::Component::Label.new
       add(shell_row, Fixed[1])
       add(@demo_window, Expand[1])
@@ -1282,7 +1282,7 @@ module SamplerExample
         f.add(prompt, Fixed[4])
         f.add(stats, Fixed[1])
         f.add(area, Fixed[5])
-        f.add(Tuile::Component::Window.new("Log").tap { _1.content = log }, Expand[1])
+        f.add(Tuile::Component::Panel.new("Log").tap { _1.content = log }, Expand[1])
       end
     end
 
@@ -1291,7 +1291,7 @@ module SamplerExample
       prompt.text = "Read-only viewer for prose. Word-wraps to width; ANSI formatting passes through.\n" \
                     "Tab here, then: ↑↓ / jk scroll a line; PgUp/PgDn a page; Ctrl+U/D half a page; " \
                     "Home/End / g/G jump to the edges."
-      window = Tuile::Component::Window.new("Excerpt")
+      window = Tuile::Component::Panel.new("Excerpt")
       view = Tuile::Component::TextView.new
       view.text = "#{Rainbow("Tuile").green} is a small component-oriented terminal-UI framework built on top of " \
                   "the TTY toolkit. Apps build a tree of Components under a singleton Screen; the screen runs " \
@@ -1763,11 +1763,11 @@ module SamplerExample
     # terminal to watch it recompute: on an odd width the spare column goes to
     # the left pane, since the remainder is handed to the earliest Expand first.
     def build_layout
-      left = Tuile::Component::Window.new("Left")
+      left = Tuile::Component::Panel.new("Left")
       left.content = Tuile::Component::Label.new.tap do
         _1.text = "Horizontal splits the row\nbetween two Expand[1] panes."
       end
-      right = Tuile::Component::Window.new("Right")
+      right = Tuile::Component::Panel.new("Right")
       right.content = Tuile::Component::Label.new.tap do
         _1.text = "No arithmetic here — the\nlayout does it."
       end
@@ -2133,8 +2133,8 @@ module SamplerExample
         pointer.text = "pointer: #{e.mouse.x},#{e.mouse.y}  (#{kind}, #{e.moves} reported so far)"
       end
       surface = row do |r|
-        r.add(Tuile::Component::Window.new("Canvas").tap { _1.content = canvas }, Percent[55])
-        r.add(Tuile::Component::Window.new("Events").tap { _1.content = log }, Expand[1])
+        r.add(Tuile::Component::Panel.new("Canvas").tap { _1.content = canvas }, Percent[55])
+        r.add(Tuile::Component::Panel.new("Events").tap { _1.content = log }, Expand[1])
       end
       form do |f|
         f.add(intro, Fixed[3])

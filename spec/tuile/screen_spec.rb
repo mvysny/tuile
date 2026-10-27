@@ -28,7 +28,7 @@ module Tuile
       before { screen.content = Component::Layout::Absolute.new }
 
       def add_window
-        w = Component::Window.new
+        w = Component::Panel.new
         w.content = Component::List.new
         screen.content.add(w)
         w
@@ -40,7 +40,7 @@ module Tuile
 
       it "raises when component is not in the content tree" do
         screen.focused = nil
-        w = Component::Window.new
+        w = Component::Panel.new
         assert_raises(Tuile::Error) { screen.focused = w }
       end
 
@@ -81,7 +81,7 @@ module Tuile
       it "marks all ancestor layouts active when focusing a nested window" do
         nested_layout = Component::Layout::Absolute.new
         screen.content.add(nested_layout)
-        w = Component::Window.new
+        w = Component::Panel.new
         nested_layout.add(w)
         screen.focused = w
         assert w.active?
@@ -93,8 +93,8 @@ module Tuile
         layout2 = Component::Layout::Absolute.new
         screen.content.add(layout1)
         screen.content.add(layout2)
-        w1 = Component::Window.new
-        w2 = Component::Window.new
+        w1 = Component::Panel.new
+        w2 = Component::Panel.new
         layout1.add(w1)
         layout2.add(w2)
         screen.focused = w1
@@ -301,7 +301,7 @@ module Tuile
       it "delivers a key to the focused window nested under layouts" do
         nested_layout = Component::Layout::Absolute.new
         screen.content.add(nested_layout)
-        w = Component::Window.new
+        w = Component::Panel.new
         nested_layout.add(w)
         screen.focused = w
         handled = false
@@ -321,7 +321,7 @@ module Tuile
 
     context "on_focus_changed" do
       it "fires when focus is assigned" do
-        w = Component::Window.new
+        w = Component::Panel.new
         screen.content = w
         fired = 0
         screen.on_focus_changed { fired += 1 }
@@ -330,7 +330,7 @@ module Tuile
       end
 
       it "is edge-triggered: re-assigning the same component fires nothing" do
-        w = Component::Window.new
+        w = Component::Panel.new
         screen.content = w
         screen.focused = w
         fired = 0
@@ -344,12 +344,12 @@ module Tuile
         fired = 0
         screen.on_focus_changed { fired += 1 }
         # content= clears focus on every swap — level-triggering would fire here.
-        screen.content = Component::Window.new
+        screen.content = Component::Panel.new
         assert_equal 0, fired
       end
 
       it "fires when focus is cleared to nil" do
-        w = Component::Window.new
+        w = Component::Panel.new
         screen.content = w
         screen.focused = w
         fired = 0
@@ -359,7 +359,7 @@ module Tuile
       end
 
       it "sees the settled tree: focused, its active flag and handle_focus have all run" do
-        w = Component::Window.new
+        w = Component::Panel.new
         focused_in_callback = nil
         active_in_callback = nil
         screen.content = w
@@ -383,14 +383,14 @@ module Tuile
       end
 
       it "is a no-op when unset" do
-        w = Component::Window.new
+        w = Component::Panel.new
         screen.content = w
         screen.focused = w # must not raise
         assert_equal w, screen.focused
       end
 
       it "fires during Screen#close, which clears focus as it unmounts" do
-        w = Component::Window.new
+        w = Component::Panel.new
         screen.content = w
         screen.focused = w
         seen = []
@@ -401,7 +401,7 @@ module Tuile
     end
 
     context "handle_blur" do
-      # A bare Window has no content to forward focus to, so each assignment
+      # A bare Panel has no content to forward focus to, so each assignment
       # below is a single hop and the recorded order is the dispatch order.
       def watch(component, log, label = component)
         component.define_singleton_method(:handle_blur) { log << [:blur, label] }
@@ -413,8 +413,8 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         log = []
-        w1 = watch(Component::Window.new, log, :w1)
-        w2 = watch(Component::Window.new, log, :w2)
+        w1 = watch(Component::Panel.new, log, :w1)
+        w2 = watch(Component::Panel.new, log, :w2)
         layout.add([w1, w2])
 
         screen.focused = w1
@@ -424,7 +424,7 @@ module Tuile
 
       it "fires when focus is cleared to nil" do
         log = []
-        w = watch(Component::Window.new, log, :w)
+        w = watch(Component::Panel.new, log, :w)
         screen.content = w
         screen.focused = w
         log.clear
@@ -435,7 +435,7 @@ module Tuile
 
       it "is edge-triggered: re-assigning the same component fires nothing" do
         log = []
-        w = watch(Component::Window.new, log, :w)
+        w = watch(Component::Panel.new, log, :w)
         screen.content = w
         screen.focused = w
         log.clear
@@ -446,7 +446,7 @@ module Tuile
 
       it "fires for the popup-close focus repair, on a component already detached" do
         popup = Component::Dialog.new
-        content = Component::Window.new
+        content = Component::Panel.new
         popup.content = content
         attached_at_blur = true
         content.define_singleton_method(:handle_blur) { attached_at_blur = attached? }
@@ -459,7 +459,7 @@ module Tuile
 
       it "fires during Screen#close, which clears focus as it unmounts" do
         log = []
-        w = watch(Component::Window.new, log, :w)
+        w = watch(Component::Panel.new, log, :w)
         screen.content = w
         screen.focused = w
         log.clear
@@ -472,9 +472,9 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         log = []
-        w1 = Component::Window.new
-        w2 = watch(Component::Window.new, log, :w2)
-        w3 = watch(Component::Window.new, log, :w3)
+        w1 = Component::Panel.new
+        w2 = watch(Component::Panel.new, log, :w2)
+        w3 = watch(Component::Panel.new, log, :w3)
         layout.add([w1, w2, w3])
         screen.focused = w1
         w1.define_singleton_method(:handle_blur) { screen.focused = w3 }
@@ -485,7 +485,7 @@ module Tuile
       end
 
       it "fires both hooks however narrow their visibility (they are sent, not called)" do
-        klass = Class.new(Component::Window) do
+        klass = Class.new(Component::Panel) do
           attr_reader :log
 
           protected
@@ -496,7 +496,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         w = klass.new
-        layout.add([w, Component::Window.new])
+        layout.add([w, Component::Panel.new])
         screen.focused = w
 
         screen.focused = layout.children.last
@@ -539,7 +539,7 @@ module Tuile
       end
 
       it "invalidates the whole tree so the next repaint uses the new colors" do
-        w = Component::Window.new
+        w = Component::Panel.new
         screen.content = Component::Layout::Absolute.new
         screen.content.add(w)
         screen.invalidated_clear
@@ -554,7 +554,7 @@ module Tuile
       # it MUST be invalidated when the theme changes.
       it "invalidates a Theme::Ref-backed background so it re-resolves" do
         screen.theme = Theme::DARK.with(custom: { panel_bg: Color.palette(52) })
-        w = Component::Window.new
+        w = Component::Panel.new
         screen.content = Component::Layout::Absolute.new
         screen.content.add(w)
         w.bg_color = Theme.ref(:panel_bg)
@@ -832,7 +832,7 @@ module Tuile
 
       it "deactivates all components in the old content tree when content changes" do
         layout = Component::Layout::Absolute.new
-        w = Component::Window.new
+        w = Component::Panel.new
         screen.content = layout
         layout.add(w)
         screen.focused = w
@@ -844,7 +844,7 @@ module Tuile
 
     context "invalidate" do
       it "marks a component as invalidated" do
-        w = Component::Window.new
+        w = Component::Panel.new
         screen.content = Component::Layout::Absolute.new
         screen.content.add(w)
         screen.invalidated_clear
@@ -1163,7 +1163,7 @@ module Tuile
       end
 
       def add_window
-        w = Component::Window.new
+        w = Component::Panel.new
         w.content = Component::List.new
         screen.content.add(w)
         # A bare Layout places nothing, so without this the window keeps the empty
@@ -1565,7 +1565,7 @@ module Tuile
       context "remove_popup focus repair" do
         it "falls back to the now-topmost popup when the closed popup held focus" do
           screen.content = Component::Layout::Absolute.new
-          screen.content.add(Component::Window.new)
+          screen.content.add(Component::Panel.new)
           bottom = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["a"] })
           screen.add_popup(bottom)
           top = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["b"] })
@@ -1580,7 +1580,7 @@ module Tuile
         it "falls back to content when the only popup closes and held focus" do
           layout = Component::Layout::Absolute.new
           screen.content = layout
-          w = Component::Window.new
+          w = Component::Panel.new
           w.content = Component::List.new
           layout.add(w)
           popup = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["a"] })
@@ -1604,7 +1604,7 @@ module Tuile
         it "leaves focus untouched when the closed popup did not own focus" do
           layout = Component::Layout::Absolute.new
           screen.content = layout
-          w = Component::Window.new
+          w = Component::Panel.new
           layout.add(w)
           popup = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["a"] })
           screen.add_popup(popup)
@@ -1618,7 +1618,7 @@ module Tuile
 
         it "leaves focus untouched when a non-topmost popup closes (focus is in the topmost)" do
           screen.content = Component::Layout::Absolute.new
-          screen.content.add(Component::Window.new)
+          screen.content.add(Component::Panel.new)
           bottom = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["a"] })
           screen.add_popup(bottom)
           top = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["b"] })
@@ -1636,9 +1636,9 @@ module Tuile
           # because the layout cascade picks the first focusable child.
           layout = Component::Layout::Absolute.new
           screen.content = layout
-          first = Component::Window.new
+          first = Component::Panel.new
           first.content = Component::List.new
-          second = Component::Window.new
+          second = Component::Panel.new
           second.content = Component::List.new
           layout.add(first)
           layout.add(second)
@@ -1661,9 +1661,9 @@ module Tuile
           # not get stranded on a detached component and fall through to content.
           layout = Component::Layout::Absolute.new
           screen.content = layout
-          first = Component::Window.new
+          first = Component::Panel.new
           first.content = Component::List.new
-          second = Component::Window.new
+          second = Component::Panel.new
           second.content = Component::List.new
           layout.add(first)
           layout.add(second)
@@ -1722,7 +1722,7 @@ module Tuile
 
         before do
           screen.content = Component::Layout::Absolute.new
-          screen.content.add(Component::Window.new)
+          screen.content.add(Component::Panel.new)
         end
 
         def content_window = screen.content.children.first
@@ -1809,14 +1809,14 @@ module Tuile
       end
 
       it "from no-tab-stop focus, Tab goes to first; Shift+Tab to last" do
-        # Focus parked on a Window (focusable, not a tab_stop).
+        # Focus parked on a Panel (focusable, not a tab_stop).
         layout = Component::Layout::Absolute.new
         screen.content = layout
-        bare_window = Component::Window.new
+        bare_window = Component::Panel.new
         t1 = Component::TextField.new
         t2 = Component::TextField.new
         layout.add([bare_window, t1, t2])
-        # Force focus on the empty Window (its handle_focus has nothing to forward to).
+        # Force focus on the empty Panel (its handle_focus has nothing to forward to).
         screen.focused = bare_window
         assert_equal bare_window, screen.focused
 
@@ -1831,7 +1831,7 @@ module Tuile
       it "is a no-op (returns false) when there are no tab stops" do
         layout = Component::Layout::Absolute.new
         screen.content = layout
-        bare_window = Component::Window.new
+        bare_window = Component::Panel.new
         layout.add(bare_window)
         screen.focused = bare_window
 

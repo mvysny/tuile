@@ -220,7 +220,7 @@ module Tuile
       end
 
       it "does not leak upward: an invalid child leaves its container's chrome alone" do
-        window = Component::Window.new
+        window = Component::Panel.new
         window.caption = "Login"
         window.content = field
         mount_at(window, Rect.new(0, 0, 20, 5))

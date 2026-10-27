@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 module Tuile
-  describe Component::Window do
+  describe Component::Panel do
     before { Screen.fake }
     after { Screen.close }
 
     describe "inherited bg_color" do
       it "tints the border cells with bg_color" do
-        w = Component::Window.new("Hi")
+        w = Component::Panel.new("Hi")
         Testing.place(w, Rect.new(0, 0, 6, 3))
         w.bg_color = 52
         painted = Testing.paint(w)
@@ -18,26 +18,26 @@ module Tuile
 
     context "caption" do
       it "sets caption via constructor" do
-        assert_equal StyledString::EMPTY, Component::Window.new.caption
-        assert_equal StyledString.plain("foo"), Component::Window.new("foo").caption
+        assert_equal StyledString::EMPTY, Component::Panel.new.caption
+        assert_equal StyledString.plain("foo"), Component::Panel.new("foo").caption
       end
 
       it "sets caption via setter" do
-        w = Component::Window.new
+        w = Component::Panel.new
         w.caption = "bar"
         assert_equal StyledString.plain("bar"), w.caption
       end
 
       it "accepts a StyledString as-is, and nil clears it" do
         styled = StyledString.styled("bar", fg: Color::RED)
-        w = Component::Window.new(styled)
+        w = Component::Panel.new(styled)
         assert_equal styled, w.caption
         w.caption = nil
         assert_equal StyledString::EMPTY, w.caption
       end
 
       it "invalidates on caption change" do
-        w = Component::Window.new
+        w = Component::Panel.new
         Screen.instance.content = w
         Screen.instance.invalidated_clear
         w.caption = "new"
@@ -45,7 +45,7 @@ module Tuile
       end
 
       it "is a no-op when the caption is unchanged" do
-        w = Component::Window.new("same")
+        w = Component::Panel.new("same")
         Screen.instance.content = w
         Screen.instance.invalidated_clear
         w.caption = "same"
@@ -55,13 +55,13 @@ module Tuile
 
     context "border" do
       it "paints an all-dashes top border when the caption was never set" do
-        w = Component::Window.new
+        w = Component::Panel.new
         Testing.place(w, Rect.new(0, 0, 6, 3))
         assert_equal "┌────┐", Testing.paint(w).region_text(Rect.new(0, 0, 6, 1)).join
       end
 
       it "keeps a double-width caption inside the box — clipping is by display width" do
-        w = Component::Window.new("日本語テキスト")
+        w = Component::Panel.new("日本語テキスト")
         Testing.place(w, Rect.new(0, 0, 10, 3))
         painted = Testing.paint(w)
         # inner width is 8: "日本語テ" fits exactly, then the closing corner.
@@ -69,7 +69,7 @@ module Tuile
       end
 
       it "fills the dash remainder by display width when a wide glyph is dropped" do
-        w = Component::Window.new("日本語")
+        w = Component::Panel.new("日本語")
         Testing.place(w, Rect.new(0, 0, 7, 3))
         painted = Testing.paint(w)
         # inner width is 5: "日本" (4 cols) fits, the third glyph is dropped,
@@ -78,20 +78,20 @@ module Tuile
       end
 
       it "keeps the caption's own colors while inactive" do
-        w = Component::Window.new(StyledString.styled("Hi", fg: Color::RED))
+        w = Component::Panel.new(StyledString.styled("Hi", fg: Color::RED))
         Testing.place(w, Rect.new(0, 0, 6, 3))
         assert_equal Color::RED, Testing.paint(w).cell(1, 0).style.fg
       end
 
       it "overrides the caption's colors with the border color while active" do
-        w = Component::Window.new(StyledString.styled("Hi", fg: Color::RED))
+        w = Component::Panel.new(StyledString.styled("Hi", fg: Color::RED))
         Testing.place(w, Rect.new(0, 0, 6, 3))
         w.active = true
         assert_equal Screen.instance.theme.active_border_color, Testing.paint(w).cell(1, 0).style.fg
       end
 
       it "does not paint past rect.width on a degenerate 1-column window" do
-        w = Component::Window.new("Hi")
+        w = Component::Panel.new("Hi")
         Testing.place(w, Rect.new(0, 0, 1, 2))
         repaint(w)
         assert_equal "┌", Screen.instance.buffer.cell(0, 0).grapheme
@@ -101,23 +101,23 @@ module Tuile
 
     context "active" do
       it "is not active by default" do
-        assert !Component::Window.new.active?
+        assert !Component::Panel.new.active?
       end
     end
 
     context "focusable?" do
       it "returns true" do
-        assert Component::Window.new.focusable?
+        assert Component::Panel.new.focusable?
       end
     end
 
     context "children" do
       it "is empty when content is unset" do
-        assert_equal [], Component::Window.new.children
+        assert_equal [], Component::Panel.new.children
       end
 
       it "holds just the content component" do
-        w = Component::Window.new
+        w = Component::Panel.new
         list = Component::List.new
         w.content = list
         assert_equal [list], w.children
@@ -126,11 +126,11 @@ module Tuile
 
     context "content" do
       it "is nil by default" do
-        assert_nil Component::Window.new.content
+        assert_nil Component::Panel.new.content
       end
 
       it "content= sets the content as a child of the window" do
-        w = Component::Window.new
+        w = Component::Panel.new
         list = Component::List.new
         w.content = list
         assert_equal list, w.content
@@ -141,7 +141,7 @@ module Tuile
         screen = Screen.instance
         layout = Component::Layout::Absolute.new
         screen.content = layout
-        w = Component::Window.new
+        w = Component::Panel.new
         old = Component::List.new
         old.define_singleton_method(:focusable?) { true }
         w.content = old
@@ -152,7 +152,7 @@ module Tuile
         replacement.define_singleton_method(:focusable?) { true }
         w.content = replacement
 
-        # Component::Window's handle_focus cascade lands focus on the new content.
+        # Component::Panel's handle_focus cascade lands focus on the new content.
         assert_equal replacement, screen.focused
       end
 
@@ -160,7 +160,7 @@ module Tuile
         screen = Screen.instance
         layout = Component::Layout::Absolute.new
         screen.content = layout
-        w = Component::Window.new
+        w = Component::Panel.new
         old = Component::List.new
         old.define_singleton_method(:focusable?) { true }
         w.content = old
@@ -174,7 +174,7 @@ module Tuile
 
     context "layout" do
       it "positions content inside the border (1px inset on all sides, 1px right border by default)" do
-        w = Component::Window.new
+        w = Component::Panel.new
         w.content = Component::List.new
         Testing.place(w, Rect.new(5, 3, 20, 10))
         # border_right=1 → content width = 20-1-1=18, height = 10-2=8, one
@@ -185,69 +185,9 @@ module Tuile
       end
     end
 
-    context "footer_text" do
-      it "is empty by default" do
-        assert Component::Window.new.footer_text.empty?
-      end
-
-      it "coerces a String to a StyledString" do
-        w = Component::Window.new
-        w.footer_text = "gpt-4"
-        assert_equal StyledString.plain("gpt-4"), w.footer_text
-      end
-
-      it "accepts a StyledString" do
-        w = Component::Window.new
-        ss = StyledString.styled("gpt-4", fg: :red)
-        w.footer_text = ss
-        assert_equal ss, w.footer_text
-      end
-
-      it "clears back to empty when set to nil" do
-        w = Component::Window.new
-        w.footer_text = "gpt-4"
-        w.footer_text = nil
-        assert w.footer_text.empty?
-      end
-
-      it "invalidates on change" do
-        w = Component::Window.new
-        Screen.instance.content = w
-        Screen.instance.invalidated_clear
-        w.footer_text = "gpt-4"
-        assert Screen.instance.invalidated?(w)
-      end
-
-      it "is a no-op when set to the same text" do
-        w = Component::Window.new
-        w.footer_text = "gpt-4"
-        Screen.instance.invalidated_clear
-        w.footer_text = "gpt-4"
-        assert !Screen.instance.invalidated?(w)
-      end
-
-      it "embeds into the bottom border with dashes filling the remainder" do
-        w = Component::Window.new
-        Testing.place(w, Rect.new(0, 0, 20, 10))
-        w.footer_text = "hi"
-        painted = Testing.paint(w)
-        # inner width 18: "hi" + 16 dashes
-        assert_equal "└hi#{"─" * 16}┘", painted.text.last
-      end
-
-      it "clips footer_text to the inner width" do
-        w = Component::Window.new
-        Testing.place(w, Rect.new(0, 0, 6, 4))
-        w.footer_text = "far-too-long"
-        painted = Testing.paint(w)
-        # inner width 4
-        assert_equal "└far-┘", painted.text.last
-      end
-    end
-
     context "scrollbar=" do
       let(:w) do
-        w = Component::Window.new
+        w = Component::Panel.new
         w.content = Component::List.new
         Testing.place(w, Rect.new(0, 0, 20, 10))
         w
@@ -279,7 +219,7 @@ module Tuile
       end
 
       it "works with any content that responds to scrollbar_visibility= (e.g. TextView)" do
-        w2 = Component::Window.new
+        w2 = Component::Panel.new
         w2.content = Component::TextView.new
         Testing.place(w2, Rect.new(0, 0, 20, 10))
         w2.scrollbar = true
@@ -289,7 +229,7 @@ module Tuile
       end
 
       it "raises Tuile::Error when content does not support scrollbar_visibility=" do
-        w2 = Component::Window.new
+        w2 = Component::Panel.new
         w2.content = Component::Label.new
         Testing.place(w2, Rect.new(0, 0, 20, 10))
         err = assert_raises(Tuile::Error) { w2.scrollbar = true }
@@ -297,13 +237,13 @@ module Tuile
       end
     end
 
-    # Window no longer overrides #handle_key? — key delivery to content
+    # Panel no longer overrides #handle_key? — key delivery to content
     # is the dispatcher's job (Screen/ScreenPane capture + bubble), covered in
     # screen_pane_spec.
 
     context "mouse routing" do
       let(:w) do
-        w = Component::Window.new
+        w = Component::Panel.new
         w.content = Component::List.new
         mount_at(w, Rect.new(0, 0, 20, 10))
         # content.rect = Rect.new(1, 1, 18, 8)
@@ -329,7 +269,7 @@ module Tuile
 
     context "repaint" do
       it "smokes" do
-        w = Component::Window.new
+        w = Component::Panel.new
         Testing.place(w, Rect.new(0, 0, 20, 20))
         painted = Testing.paint(w)
         assert_equal "┌", painted.cell(0, 0).grapheme
@@ -337,26 +277,26 @@ module Tuile
       end
 
       it "does not print when rect is empty" do
-        w = Component::Window.new # default rect (0,0,0,0) is empty
+        w = Component::Panel.new # default rect (0,0,0,0) is empty
         repaint(w)
         assert Screen.instance.prints.empty?
       end
 
       it "draws the border in the theme's active_border color when active" do
-        w = Component::Window.new
+        w = Component::Panel.new
         Testing.place(w, Rect.new(0, 0, 20, 10))
         w.active = true
         assert_equal Screen.instance.theme.active_border_color, Testing.paint(w).cell(0, 0).style.fg
       end
 
       it "leaves the border uncolored when inactive" do
-        w = Component::Window.new
+        w = Component::Panel.new
         Testing.place(w, Rect.new(0, 0, 20, 10))
         assert_nil Testing.paint(w).cell(0, 0).style.fg
       end
 
       it "clears the interior itself when there is no content to cover it" do
-        w = Component::Window.new
+        w = Component::Panel.new
         Testing.place(w, Rect.new(0, 0, 20, 10))
         Screen.instance.buffer.fill(Rect.new(0, 0, 20, 10), StyledString::Style::DEFAULT)
         (1..8).each { |y| (1..18).each { |x| Screen.instance.buffer.set_char(x, y, "X") } }
@@ -368,7 +308,7 @@ module Tuile
         # The border is painted over the cells the default repaint used to blank
         # first, so an unchanged frame costs nothing (`D_component_contract`).
         [false, true].each do |scrollbar|
-          w = Component::Window.new("Caption")
+          w = Component::Panel.new("Caption")
           list = Component::List.new
           list.lines = (1..40).map { "row #{_1}" }
           w.content = list

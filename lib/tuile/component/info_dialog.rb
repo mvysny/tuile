@@ -13,7 +13,7 @@ module Tuile
     #   Component::InfoDialog.new("Files", ["drwx  src/", "-rw-  README.md"]).open
     #
     # Both write the same body slot — the last writer wins. For the same body
-    # tiled, put a {TextView} or {List} in a {Window}.
+    # tiled, put a {TextView} or {List} in a {Panel}.
     class InfoDialog < Dialog
       # @param caption [String, StyledString, nil] the border title.
       # @param body [String, StyledString, Component, Array, nil] an `Array`

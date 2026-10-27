@@ -7,7 +7,7 @@ module Tuile
     let(:field) { Component::TextField.new }
 
     let(:window) do
-      Component::Window.new("Settings").tap do |w|
+      Component::Panel.new("Settings").tap do |w|
         w.content = column
         column.add(save)
         column.add(field)

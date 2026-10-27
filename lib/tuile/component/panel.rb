@@ -2,16 +2,21 @@
 
 module Tuile
   class Component
-    # A window with a frame, a {#caption} and a content {Component}. Doesn't
-    # support overlapping with other windows: it paints its entire contents and
-    # doesn't clip if there are other overlapping windows.
+    # A tiled pane with a border, a {#caption} and one content {Component} —
+    # what sets a region apart from its neighbours:
     #
-    # The window's `content` is unset by default; assign one via {#content=}.
+    #   panel = Component::Panel.new("Files")
+    #   panel.content = Component::List.new.tap { _1.lines = entries }
     #
-    # Window is considered invisible if {#rect} is empty. The window won't
-    # draw when invisible. (Repaint of detached windows is short-circuited
-    # by {Component#invalidate}; subclasses don't need to re-check.)
-    class Window < Component
+    #   ┌Files─────────┐
+    #   │ README.md    │
+    #   └──────────────┘
+    #
+    # The border lights in {Theme#active_border_color} while focus is inside.
+    # For the same box floating over the screen, use a {Dialog}.
+    #
+    # A panel with an empty {#rect} paints nothing.
+    class Panel < Component
       include Component::HasContent
       include Component::HasCaption
 
@@ -25,25 +30,6 @@ module Tuile
       end
 
       def focusable? = true
-
-      # @return [StyledString] optional chrome embedded into the bottom border
-      #   line, mirroring {#caption} on the top line. Empty by default.
-      def footer_text = @_border_drawer.footer_text
-
-      # Sets the bottom-border chrome. Accepts a `String` (parsed via
-      # {StyledString.parse}), a {StyledString}, or `nil` (clears it). The text
-      # embeds into the bottom border at its own width with the border's dashes
-      # filling the remainder, clipped to the inner width — border decoration,
-      # not a component (not focusable).
-      # @param text [String, StyledString, nil]
-      # @return [void]
-      def footer_text=(text)
-        new_text = StyledString.parse(text)
-        return if footer_text == new_text
-
-        @_border_drawer.footer_text = new_text
-        invalidate # repaint the bottom border row
-      end
 
       # @param value [Boolean]
       # @return [void]
@@ -59,7 +45,7 @@ module Tuile
         invalidate_layout
       end
 
-      # Fully repaints the window: the border ring here, the interior through
+      # Fully repaints the panel: the border ring here, the interior through
       # the content it re-invalidates.
       #
       # Deliberately *not* `super`: the default would blank the whole rect
@@ -67,8 +53,8 @@ module Tuile
       # tiles — and every one of those blanked border cells is one this method
       # is about to repaint identically, which marks it dirty and makes
       # {Buffer#flush} re-emit it. That cost 925 bytes on every unchanged
-      # repaint of an 80×25 window, paid on each focus change
-      # (`D_component_contract`). The ring is this window's own paint and the
+      # repaint of an 80×25 panel, paid on each focus change
+      # (`D_component_contract`). The ring is this panel's own paint and the
       # interior is the content's, so the only cell nobody covers is an
       # interior with no content in it — cleared here, exactly.
       # @param canvas [Canvas] see {Component#repaint}.
