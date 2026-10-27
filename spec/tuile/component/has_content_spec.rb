@@ -5,9 +5,9 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
-    # A bare-bones host that mixes HasContent into Component. Window is the
+    # A bare-bones host that mixes HasContent into Component. Panel is the
     # production user; this stub pins the mixin contract independent of
-    # Window's caption / footer / border logic.
+    # Panel's caption / border logic.
     let(:host_class) do
       Class.new(Component) do
         include Component::HasContent

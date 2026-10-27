@@ -413,7 +413,7 @@ module Tuile
       end
 
       it "snaps to the bottom when rect becomes non-empty after the items arrive" do
-        # Mirrors the Popup-with-LogWindow case: items are appended while the
+        # Mirrors the Dialog-with-LogDialog case: items are appended while the
         # list has no viewport (popup closed -> list rect is 0x0), then the
         # popup opens and a real rect arrives. scroll_top_row must not leak the
         # garbage `@lines.size` value the formula yields with viewport == 0.
@@ -428,7 +428,7 @@ module Tuile
       it "moves the cursor to the last line when present" do
         # Without this, the next arrow press would yank the viewport back to
         # the cursor's old position via move_viewport_to_cursor, undoing the
-        # auto-scroll. LogWindow ships with a real cursor + auto_scroll, so
+        # auto-scroll. LogDialog ships with a real cursor + auto_scroll, so
         # this is the common case.
         l = Component::List.new
         Testing.place(l, Rect.new(0, 0, 20, 3))
@@ -510,7 +510,7 @@ module Tuile
       end
 
       it "does not snap the cursor to the last line while scrolled up" do
-        # The LogWindow case: a real cursor + auto_scroll. Scrolling up to read
+        # The LogDialog case: a real cursor + auto_scroll. Scrolling up to read
         # a stacktrace must not have the cursor (and viewport) yanked back to
         # the tail by the next incoming log line.
         l = Component::List.new
@@ -529,7 +529,7 @@ module Tuile
       end
 
       # These three drive the *gesture*; every follow example above assigns
-      # `scroll_top_row=` directly, and a user reading a LogWindow reaches for
+      # `scroll_top_row=` directly, and a user reading a LogDialog reaches for
       # the wheel.
       it "stops tailing when the user scrolls up with the wheel" do
         l = Component::List.new

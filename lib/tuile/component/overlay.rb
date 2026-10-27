@@ -14,21 +14,21 @@ module Tuile
     #   overlay.close
     #
     # That is the whole of it — floating, plus the lifecycle, {#on_close},
-    # outside-click dismissal and {#owner}. {Component::Popup} is the subclass
+    # outside-click dismissal and {#owner}. {Component::Dialog} is the subclass
     # that adds a declared size, centering, focus and key handling.
     #
     # Where it goes is a {Placement}: {At} a fixed rect, {Centered} and
     # {TopRight} an overlay that declares its size ({#declared_size_in}),
     # {ListDropdown::Anchored} a dropdown hanging off a field.
     #
-    # The wrapped content fills the overlay's whole {#rect}; for a frame and a
-    # caption, wrap a {Component::Window} and let it draw its own border.
+    # The wrapped content fills the overlay's whole {#rect}; {Component::Dialog}
+    # is the overlay with a border and a caption.
     #
     # == Implementation details
     #
     # **{#focusable?} and {#modal?} move together — flip both or neither.** The
     # defaults here are inert (`false`, `false`): a bare overlay floats without
-    # disturbing focus or key dispatch. {Component::Popup} flips both. What must
+    # disturbing focus or key dispatch. {Component::Dialog} flips both. What must
     # not appear is a *focusable non-modal* overlay: {ScreenPane#handle_key?}
     # scopes delivery to the topmost modal popup or else the tiled content, so
     # such an overlay would hold focus outside the key scope, where delivery
@@ -38,7 +38,7 @@ module Tuile
     #
     # **An overlay whose size changes calls {#reposition}**, which asks the pane
     # to place it again; the placement itself stays put. That is how a growing
-    # {Component::Notification} or a re-measured {Component::ConfirmWindow}
+    # {Component::Notification} or a re-measured {Component::ConfirmDialog}
     # gets its new rect.
     #
     # UI-thread-confined, like every component (see {Screen}).
@@ -128,7 +128,7 @@ module Tuile
       end
 
       # Centers the overlay on the screen at the size it declares
-      # ({Overlay#declared_size_in}) — {Popup}'s default.
+      # ({Overlay#declared_size_in}) — {Dialog}'s default.
       Centered = Data.define do
         include Placement
 
@@ -170,7 +170,7 @@ module Tuile
       end
 
       # @return [Boolean] false — a bare overlay scopes no keys and blocks no
-      #   clicks. {Component::Popup} overrides it, together with {#focusable?}.
+      #   clicks. {Component::Dialog} overrides it, together with {#focusable?}.
       def modal? = false
 
       # @return [Boolean] false — a bare overlay leaves focus where it was. See
@@ -274,7 +274,7 @@ module Tuile
       # The box this overlay asks for on a screen of `screen_size` — what
       # {Centered} and {TopRight} place. A bare overlay declares none.
       # @param _screen_size [Size]
-      # @raise [Tuile::Error] always, here; {Popup} and {Notification} answer.
+      # @raise [Tuile::Error] always, here; {Dialog} and {Notification} answer.
       # @return [Size]
       def declared_size_in(_screen_size)
         raise Tuile::Error, "#{self.class} declares no size — place it with Overlay::At[rect]"
@@ -282,7 +282,7 @@ module Tuile
 
       # The placement a bare {#open} uses. A bare overlay has none, because
       # nothing about it says where it goes.
-      # @raise [ArgumentError] always, here; {Popup} and {Notification} answer.
+      # @raise [ArgumentError] always, here; {Dialog} and {Notification} answer.
       # @return [Placement]
       def default_placement
         raise ArgumentError, "#{self.class} has no default placement — open(Overlay::At[rect])"
@@ -305,7 +305,7 @@ module Tuile
       # Mounts this overlay on the {Screen} at `placement`; the pane assigns the
       # rect on the next settle.
       #
-      #   Component::Popup.new(content: window).open   # its default: centered
+      #   Component::Dialog.new("Help", content: list).open   # its default: centered
       #   overlay.open(Overlay::At[Rect.new(10, 4, 20, 1)])
       #
       # There is deliberately no class-level `Overlay.open` factory — see

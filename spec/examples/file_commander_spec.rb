@@ -47,7 +47,7 @@ RSpec.describe "examples/file_commander.rb" do
         end
 
         # The first frame is painted by the main thread, which does not mean the
-        # key thread has reached its first getch — a key written in that window
+        # key thread has reached its first getch — a key written in that panel
         # is flushed away with the rest of the typeahead. Measured: 0 fails,
         # 50ms is enough.
         sleep 0.1
@@ -71,8 +71,8 @@ RSpec.describe "examples/file_commander.rb" do
   end
 
   # Mouse delivery end to end, which the key-driven tests never touch: a click
-  # descends Layout -> Window -> List, and one on a window's border
-  # focuses that window. Both assertions are chosen to be *discriminating* —
+  # descends Layout -> Panel -> List, and one on a panel's border
+  # focuses that panel. Both assertions are chosen to be *discriminating* —
   # each names a file reachable only if the click landed where it should.
   it "descends the tree on a click, and focuses a pane clicked on its border" do
     script = File.expand_path("../../examples/file_commander.rb", __dir__)
@@ -92,7 +92,7 @@ RSpec.describe "examples/file_commander.rb" do
         # A pty starts at winsize [0, 0], so the geometry the clicks below
         # depend on is whatever tty-screen falls back to. Pin it: this resizes
         # for real, which the app picks up through SIGWINCH and relayout.
-        # 80x24 puts the left window at (0, 1, 40, 22) and the right at
+        # 80x24 puts the left panel at (0, 1, 40, 22) and the right at
         # (40, 1, 40, 22), each with a one-column border.
         reader.winsize = [24, 80]
         sleep 0.4
@@ -101,16 +101,16 @@ RSpec.describe "examples/file_commander.rb" do
         # same gap whether it is a key or a mouse report.
         sleep 0.1
 
-        # (3, 3): inside the left window's list, one row below its first, which
+        # (3, 3): inside the left panel's list, one row below its first, which
         # is beta_subdir/. Reaching it means the click traversed the layout, the
-        # window and the list, and the list mapped the row correctly. A click
+        # panel and the list, and the list mapped the row correctly. A click
         # that missed, or landed a row off, would show only_in_alpha.txt.
         writer.write(left_click(3, 3))
         writer.flush
         await(reader, "only_in_beta.txt")
 
-        # (40, 5): the right window's left border column — inside the window,
-        # outside its list. Only a window that takes focus from a click on its
+        # (40, 5): the right panel's left border column — inside the panel,
+        # outside its list. Only a panel that takes focus from a click on its
         # own chrome will hand focus down to the list inside it. Sent in SGR,
         # so both encodings are exercised against a live terminal in one run —
         # the app requests 1006 but must keep decoding the X10 above it.

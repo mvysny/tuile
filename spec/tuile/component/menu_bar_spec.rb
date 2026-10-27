@@ -420,7 +420,7 @@ module Tuile
       end
 
       # The pane dismisses every panel the click missed
-      # ({Popup#close_on_outside_click?}); the cascade's own level stack is
+      # ({Dialog#close_on_outside_click?}); the cascade's own level stack is
       # reconciled from each panel's on_close, so the bar must not be left
       # believing a menu is still open. Driven through the *pane*, since that
       # is where dismissal lives.

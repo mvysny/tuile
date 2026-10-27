@@ -1,18 +1,22 @@
 # Bottom-up layout — may a component say how many rows its content needs?
 
-**Status:** stage 1 shipped: `Component#measure_rows` and `Popup::ShrinkToContent[box]`,
+**Status:** stage 1 shipped: `Component#measure_rows` and `Dialog::ShrinkToContent[box]`,
 argued in `D_declared_size`, which also holds the roads it rejected. Stages 2–5 are still a
 brainstorm. Takes in what was `content-height.md` (the Scroller half) and #73 (wrapped rows in a
 scrolled stack). Every step past stage 1 amends a `D_` and the owner decides. Until then `Scroller`
 is told (`content_rows=`). Every road here adds a new value next to what already exists, so waiting
 breaks nothing.
 
+**`panel-and-dialog` landed first** (owner, 2026-10-27; `D_panel_dialog`) and is merged in:
+`Dialog` paints its own border, so `Dialog#measure_rows` asks the body at the inner width and adds
+`BorderDrawerInt`'s rows, and `ConfirmDialog` overrides that answer from its own message.
+
 ## The problem
 
 Strict top-down layout has three consumers that need an answer only their child has:
 
-- **Popup**: shipped as `Popup::ShrinkToContent` (`D_declared_size`). Its open half is the notice:
-  `ConfirmWindow` still calls `reposition` itself from `message=`, `caption=` and `button`.
+- **Dialog**: shipped as `Dialog::ShrinkToContent` (`D_declared_size`). Its open half is the notice:
+  `ConfirmDialog` still calls `reposition` itself from `message=`, `caption=` and `button`.
 - **Scroller**: `content_rows=` is assigned by the app (`D_scroller`). Add a field to the form inside
   and the last row is unreachable until someone re-assigns it, and nothing detects that.
 - **Box**: no `Auto` (`D_box_layouts`), so a `Label` whose text sets its height takes a `Fixed[n]`
@@ -109,8 +113,9 @@ What a lazy rows-only pull would answer, point by point:
 |---|---|
 | `Label` | line count, independent of `width` (it truncates, never wraps). #73 wants a wrapping one: a `wrap:` knob, or `TextView` in a non-scrolling mode, answering like the row below |
 | `TextView` (wrapping) | wrapped row count at `width` |
-| `ConfirmWindow` | **shipped**: the message wrapped at `width − WIDTH_CHROME`, plus `HEIGHT_CHROME` |
-| `Window` | `content.measure_rows(width − 2) + 2`; `nil` if the content says `nil` |
+| `ConfirmDialog` | **shipped**: the message wrapped at `width − WIDTH_CHROME`, plus `HEIGHT_CHROME` |
+| `Dialog` | **shipped**: `content.measure_rows(width − border) + border`; `nil` if the content says `nil` |
+| `Panel` | the same as `Dialog`'s |
 | `FormLayout` | `item_height` summed over the visible items |
 | `Vertical` | each shown child: `Fixed[n]` → `n`, `Auto` → `child.measure_rows(its width)`, plus `spacing` and `padding`; any `Percent` / `Expand` child → `nil`, since it needs the height being computed |
 | `Horizontal` | `main_sizes` divides `width`, then the tallest shown child + `padding`: `cross:` `Fixed[n]` → `n` and the child is never asked, `Percent[100]` → `child.measure_rows(w_i)` (`Q_cross_percent` covers the rest). A `nil` child contributes nothing, so a `List` beside a wrapped label doesn't set the row's height, and all-`nil` answers `nil` |
@@ -118,19 +123,19 @@ What a lazy rows-only pull would answer, point by point:
 `Horizontal` is the **cross axis**, so it takes the max where `Vertical`'s main axis takes the sum.
 This is GTK's height-for-width with the width-for-height half left out.
 
-`Window` is a **forwarding** answerer: its answer depends on its child's. That makes it a
-non-boundary for the notice (below), and it is what gives a plain `Window(Label)` a fitted popup
+`Dialog` and `Panel` are **forwarding** answerers: the answer depends on the child's. That makes
+them non-boundaries for the notice (below), and it is what gives a plain `Dialog(Label)` a fitted
 height without the app writing anything.
 
 ### The consumers (the only places it is asked)
 
 | # | consumer | asks | `nil` → | replaces |
 |---|---|---|---|---|
-| 1 | `Popup::ShrinkToContent` (**shipped**) | `content.measure_rows(box width)`, capped at the box's height | the whole box | issue #67 |
+| 1 | `Dialog::ShrinkToContent` (**shipped**) | its own `measure_rows(box width)`, capped at the box's height | the whole box | issue #67 |
 | 2 | `Scroller#content_rows = :content` | `content.measure_rows(inner_width)` | the viewport | assigning `content_rows` |
 | 3 | `Vertical`'s `Auto` constraint | `child.measure_rows(child_width)`, the width its `cross:` already resolved | `0`, with a logged warning | hand-synced `Fixed[n]` |
 
-Order of cost: #1 changes nothing outside `Popup`, #2 amends `D_scroller`, #3 reverses
+Order of cost: #1 changes nothing outside `Dialog`, #2 amends `D_scroller`, #3 reverses
 `D_box_layouts`' headline. Each one ships separately.
 
 **A `nil` from an `Auto` child is `0` and a logged warning, not a `nil` for the whole box.**
@@ -145,21 +150,21 @@ today.
 
 ### The notice: who re-asks when the answer changes
 
-`ConfirmWindow`'s `resize_popup` is the notice, hand-rolled across two hops. Generalized:
+`ConfirmDialog`'s `reposition` calls are the notice, hand-rolled. Generalized:
 
 - **One hop** (`content-height.md`'s road 3): an answerer calls `parent&.invalidate_layout` after
   its answer may have changed. This works only while the asker is the direct parent.
-  `Popup → Window → Label` breaks it: the label marks the window, the window's `relayout` doesn't
-  depend on the label's rows, and the popup never hears.
+  `Dialog → Panel → Label` breaks it: the label marks the panel, the panel's `relayout` doesn't
+  depend on the label's rows, and the dialog never hears.
 - **Climb to a boundary** (Flutter's `markNeedsLayout` / `parentUsesSize`, `R_layout_pass`): when a
   parent calls `child.measure_rows` inside its `relayout`, the child is flagged *asked-by-parent*. The
   flag is cleared at the start of the parent's next pass and re-set if the parent asks again. An
   answerer's change calls `invalidate_rows`, which marks the parent and climbs while that parent is
   itself flagged. The climb stops at the first component nobody asked, which is every container
   today. Answerers then only call `invalidate_rows` the way they call `invalidate`, and
-  `ConfirmWindow` deletes `resize_popup`.
-- **No notice; re-ask every pass.** `MeasuredPopup` does this today, and it covers SIGWINCH only.
-  It is a fine first stage for consumer #1 if `ConfirmWindow` keeps its hand-rolled notice.
+  `ConfirmDialog` deletes its `reposition` calls.
+- **No notice; re-ask every pass.** `ShrinkToContent` does this today, and it covers SIGWINCH only.
+  It is a fine first stage for consumer #1 while `ConfirmDialog` keeps its hand-rolled notice.
 
 `invalidate_layout` deliberately doesn't climb (`D_deferred_layout`). `invalidate_rows` would be a
 second verb that climbs only along flagged edges, and the flag is bookkeeping, not a query anyone
@@ -167,10 +172,10 @@ consults.
 
 ### Staging
 
-1. **Shipped.** `measure_rows` on `Component` (base `nil`), `ConfirmWindow` answering it, and
-   `Popup::ShrinkToContent`. Re-asked every pass, so the notice stays `ConfirmWindow`'s own
-   `reposition`. `MeasuredPopup` stays as a `ShrinkToContent` half-screen box at `measured_width`.
-2. Answerers: `Label` (wrapping, for #73), `TextView`, `Window`, `FormLayout`, `Vertical`,
+1. **Shipped.** `measure_rows` on `Component` (base `nil`), `Dialog` and `ConfirmDialog` answering
+   it, and `Dialog::ShrinkToContent`. Re-asked every pass, so the notice stays `ConfirmDialog`'s
+   own `reposition`; its `declared_size_in` is a `ShrinkToContent` half-screen box at `measured_width`.
+2. Answerers: `Label` (wrapping, for #73), `TextView`, `Panel`, `FormLayout`, `Vertical`,
    `Horizontal`, with `main_sizes` shared between `relayout` and `measure_rows`.
 3. The climbing notice, with a `component_contract_spec` check: "non-`nil` `measure_rows` ⇒ a mutation
    that changes it calls `invalidate_rows`".
@@ -215,10 +220,10 @@ consults.
   compare against, the lean is: fire from a mutation of the answer's inputs (`text=`, `wrap=`,
   `add`), never from being asked or from a rewrap during a pass. The alternative is for the asker
   to compare old and new answers.
-- `Q_spelling`: `content_rows = :content` and `Auto` (the popup's is `ShrinkToContent`). `:auto` collides
+- `Q_spelling`: `content_rows = :content` and `Auto` (the dialog's is `ShrinkToContent`). `:auto` collides
   with `D_box_layouts`' banned vocabulary, unless stage 5 retires that ban.
-- `Q_fit_width`: does `ConfirmWindow`'s widest-line width become a public popup width declaration
-  (`Popup::FitLines`?), or stay its own? It reads only the popup's own message, so it stays one hop
+- `Q_fit_width`: does `ConfirmDialog`'s widest-line width become a public dialog width declaration
+  (`Dialog::FitLines`?), or stay its own? It reads only the dialog's own message, so it stays one hop
   either way. The lean is to wait for a second caller.
 - `Q_hidden`: summing answerers skip hidden children (`D_visibility`), and `visible=` already marks
   the parent. Is a hidden *content* child `nil` or `0`?
@@ -236,7 +241,7 @@ cycles raises after `LayoutPass::MAX_ROUNDS` rounds).
 - `D_scroller` (tracking mode) and, if `Auto` lands, `D_box_layouts`; the climbing notice is a
   further `D_declared_size` amendment. The asymmetry section is the `D_` entry's core.
 - AGENTS.md's two Layout lines and book ch3's omissions list, rewritten together.
-- rdoc on `Component#measure_rows`, each answerer, `Popup#declared_size=` and `Scroller#content_rows=`.
+- rdoc on `Component#measure_rows`, each answerer, `Dialog#declared_size=` and `Scroller#content_rows=`.
 - The four registrations for any changed responsibility, plus the contract-spec check above.
 - The toolkit table below → one `R_` entry with provenance markers.
 - Issue #73 closed with a link.
@@ -279,5 +284,5 @@ Sources: [Textual widgets](https://textual.textualize.io/guide/widgets/),
 GitHub issues #67 and #73, `Box#main_sizes`, `D_scroller`, `D_declared_size`, `D_box_layouts`,
 `D_extent`, `D_relayout`, `D_deferred_layout`, `D_strict_layout`, `R_layout_pass`, `D_visibility`,
 `D_listeners`, `D_scroll_nomenclature`, `D_repaint_cascade`, `Component#scroll_to_visible`,
-`ConfirmWindow#measured_width`, book ch3 ("Sizing a popup", "What Tuile deliberately doesn't have"),
+`ConfirmDialog#measured_width`, book ch3 ("Sizing a dialog", "What Tuile deliberately doesn't have"),
 `design/ideas/form-layout.md` (the first answerer).

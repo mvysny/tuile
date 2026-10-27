@@ -142,8 +142,8 @@ module Tuile
         end
       end
 
-      # The column between two segments — the glyph {Component::Window} paints
-      # its side borders with, so a strip inside a window lines up with it.
+      # The column between two segments — the glyph {Component::Panel} paints
+      # its side borders with, so a strip inside a panel lines up with it.
       # @return [String]
       DEFAULT_SEPARATOR = "│"
 

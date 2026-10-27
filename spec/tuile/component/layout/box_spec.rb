@@ -251,7 +251,7 @@ module Tuile
         screen.repaint
         refute_includes screen.buffer.row_text(0), "SIDEBAR"
 
-        popup = Component::Popup.new
+        popup = Component::Dialog.new
         screen.add_popup(popup)
         screen.repaint
         popup.close

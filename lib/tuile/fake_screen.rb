@@ -34,7 +34,7 @@ module Tuile
   #
   #   it "paints its content" do
   #     label = Component::Label.new.tap { |l| l.text = "hi" }
-  #     Screen.instance.content = Component::Window.new("Greeting").tap { |w| w.content = label }
+  #     Screen.instance.content = Component::Panel.new("Greeting").tap { |w| w.content = label }
   #     Screen.instance.repaint
   #     assert_includes Screen.instance.prints.join, "hi"
   #   end

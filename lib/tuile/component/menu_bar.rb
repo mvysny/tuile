@@ -45,7 +45,7 @@ module Tuile
     # {#add_item}. A letter matching nothing on the live level is swallowed and
     # rings {Screen#beep}; it never falls out to a shallower level and switches
     # menus. A mnemonic shadows what the app (or an ancestor, including a
-    # {Popup}'s `q`-to-close) would do with that key while the bar has focus.
+    # {Dialog}'s `q`-to-close) would do with that key while the bar has focus.
     # A paste can never fire one — pasted text rides its own path off the key
     # ladder.
     #

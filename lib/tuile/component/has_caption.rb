@@ -2,7 +2,7 @@
 
 module Tuile
   class Component
-    # The chrome text a component *wears* — a {Window}'s border title, a
+    # The chrome text a component *wears* — a {Panel}'s border title, a
     # {Button}'s label — as opposed to the value it *holds*.
     #
     #   button.caption = "Submit"
@@ -14,7 +14,7 @@ module Tuile
     # component may carry both, hence two mixins.
     #
     # Includers own the *rendering* — clipping, width arithmetic, decoration
-    # such as {Window}'s `[key]-` shortcut prefix; this holds only the text.
+    # such as {Panel}'s `[key]-` shortcut prefix; this holds only the text.
     #
     # == What this mixin is for
     # **Nomenclature, plus one shared value rule**: the coercion, the

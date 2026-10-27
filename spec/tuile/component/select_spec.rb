@@ -53,7 +53,7 @@ module Tuile
 
     describe "the field well" do
       # A Select is routinely handed far more height than the one row it paints
-      # (Popup.new(content: select) gives it the whole inner box). Its well
+      # (Dialog.new(content: select) gives it the whole inner box). Its well
       # colors its extent; the dead tail takes what surrounds it instead.
       it "does not flood the rows below its extent" do
         s = Component::Select.new
@@ -349,13 +349,13 @@ module Tuile
         assert overlay(s).open?
       end
 
-      # A single-slot container (Window, Popup) hands its content the whole inner
+      # A single-slot container (Panel, Dialog) hands its content the whole inner
       # rect, so a Select is routinely assigned more height than the one row it
       # paints. #repaint already clears that tail; a click in it must not open
       # the dropdown either — the same rule Checkbox follows on the width axis.
       it "ignores a click in the tail below its one painted row" do
         s = select
-        Testing.place(s, Rect.new(0, 0, 20, 25)) # as a Popup content slot would assign
+        Testing.place(s, Rect.new(0, 0, 20, 25)) # as a Dialog content slot would assign
         click(5, 12)
         refute overlay(s).open?
       end

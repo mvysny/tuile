@@ -31,7 +31,7 @@ module Tuile
     # two columns narrower, which is the price of the columns it hands back
     # while everything fits.
     #
-    # Meant to be the content of a {Window} — focus indication relies on the
+    # Meant to be the content of a {Panel} — focus indication relies on the
     # surrounding window chrome.
     class TextView < Component
       def initialize

@@ -22,7 +22,7 @@ module Tuile
     # waits its turn and does *not* restart the clock, so the bottom entry of a
     # full box is visible for about `N × DISPLAY_SECONDS`. Past {MAX_MESSAGES} a
     # message is dropped and reported to {Tuile.logger}; an app notifying faster
-    # than that wants a {Component::LogWindow}.
+    # than that wants a {Component::LogDialog}.
     #
     # The box is flush to the corner, at most {WIDTH_FRACTION} of the screen wide
     # (floor {MIN_CAP_WIDTH}) and {HEIGHT_FRACTION} tall, and **grows but never
@@ -120,9 +120,8 @@ module Tuile
         @_high_water = 0
         @_ticker = nil
         @_view = View.new
-        @_window = Window.new
-        @_window.content = @_view
-        super(content: @_window, close_on_outside_click: false)
+        @_border_drawer = BorderDrawerInt.new
+        super(content: @_view, close_on_outside_click: false)
       end
 
       # Appends a message, dropping it (with a {Tuile.logger} warning) once
@@ -164,7 +163,7 @@ module Tuile
         return Size.new(0, 0) if @_messages.empty?
 
         width = box_width(screen_size)
-        Size.new(width, [wrapped_rows(width).size + 2, cap_height(screen_size)].min)
+        Size.new(width, [wrapped_rows(width).size + border_size.height, cap_height(screen_size)].min)
       end
 
       # A left press dismisses the whole box, every message with it. Every other
@@ -206,14 +205,26 @@ module Tuile
         sync_ticker
       end
 
+      # Paints the border; the messages are the view's.
+      # @param canvas [Canvas] see {Component#repaint}.
+      # @return [void]
+      def repaint(canvas)
+        return if rect.empty?
+
+        invalidate_children
+        @_border_drawer.paint(canvas, rect.size, caption: StyledString::EMPTY)
+      end
+
       protected
 
-      # Wraps the messages to the width the pane gave the box — the wrap the
-      # height in {#declared_size_in} was measured with.
+      # Places the view inside the border and wraps the messages to its width —
+      # the wrap the height in {#declared_size_in} was measured with. Not
+      # `super`: {Overlay#relayout} would give the view the whole box.
       # @return [void]
       def relayout
-        super
-        @_view.text = join_rows(wrapped_rows(rect.width)) if rect.width > 2
+        inner = @_border_drawer.content_rect(rect.size)
+        @_view.rect = inner
+        @_view.text = join_rows(wrapped_rows(rect.width)) if inner.width.positive?
       end
 
       private
@@ -228,7 +239,12 @@ module Tuile
 
       # @param width [Integer] the box width, border included.
       # @return [Array<StyledString>] every message, wrapped inside the border.
-      def wrapped_rows(width) = @_messages.flat_map { |message| wrap_message(message, width - 2) }
+      def wrapped_rows(width)
+        @_messages.flat_map { |message| wrap_message(message, width - border_size.width) }
+      end
+
+      # @return [Size]
+      def border_size = @_border_drawer.border_size
 
       # Retires the oldest message, closing the box when it was the last. Runs on
       # the event-loop thread, from the ticker.
@@ -281,7 +297,7 @@ module Tuile
       # the narrow cap, with nothing to restore it when the terminal widens.
       # @param screen_size [Size]
       # @return [Integer]
-      def box_width(screen_size) = [@_high_water + 2, cap_width(screen_size)].min
+      def box_width(screen_size) = [@_high_water + border_size.width, cap_width(screen_size)].min
 
       # @param screen_size [Size]
       # @return [Integer]
@@ -290,9 +306,9 @@ module Tuile
       end
 
       # @param screen_size [Size]
-      # @return [Integer] at least 3: two border rows plus one row of message.
+      # @return [Integer] at least the border plus one row of message.
       def cap_height(screen_size)
-        [[(screen_size.height * HEIGHT_FRACTION).to_i, 3].max, screen_size.height].min
+        [[(screen_size.height * HEIGHT_FRACTION).to_i, border_size.height + 1].max, screen_size.height].min
       end
 
       # Wraps one message to `width` columns, capped at {MAX_ROWS_PER_MESSAGE}

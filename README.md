@@ -73,11 +73,11 @@ screen = Tuile::Screen.new
 label = Tuile::Component::Label.new
 label.text = "Hello, world!"
 
-window = Tuile::Component::Window.new("Tuile")
-window.content = label
+panel = Tuile::Component::Panel.new("Tuile")
+panel.content = label
 
-screen.content = window
-window.focus
+screen.content = panel
+panel.focus
 begin
   screen.run_event_loop
 ensure
@@ -189,11 +189,11 @@ carries the per-method reference: `bundle exec rake yard`, or
 | `Layout::Absolute` | Places each child at the fixed `Rect` it was added with; `constrain` moves one. |
 | `Layout::Vertical`, `Layout::Horizontal` | Stack children along one axis from declared extents — `Fixed[n]`, `Percent[n]`, `Expand[weight]`, a `Percent` bounded with `.clamp(range)` — with box-global `spacing` and `padding`. Sugar over a hand-written `relayout`, not a new sizing model. |
 
-### Framing and switching — [book ch7](book/07-components.md#framing-content)
+### Panels and switching — [book ch7](book/07-components.md#panels)
 
 | component | what it is |
 |---|---|
-| `Window` | A frame with a `caption`, one content slot, and a border that lights up while the window is on the focus chain. `footer_text=` decorates the bottom border; `footer=` mounts a real component in it; `scrollbar=` reclaims the right border column. |
+| `Panel` | A tiled pane with a `caption`, one content slot, and a border that lights up while the panel is on the focus chain. `scrollbar=` reclaims the right border column. |
 | `Slot` | A one-child region for content that may be absent, arrive late, or be swapped. Give a multi-region container one per region and the tree stays honest — the occupant fills the slot's rect, and an empty slot holds its place rather than collapsing. |
 | `Scroller` | A viewport onto a taller pile of components: one content child, a scrollbar column, and `content_rows` — you say how tall the content is, since nothing measures. The wheel scrolls it, the bar drags, and so does focus: Tab into a field below the fold and it comes into view. |
 | `VerticalScrollBar` | A one-column bar the user can drag, and press the track of to page. It moves nothing itself: it asks through `on_scroll_request` and the container that owns the column assigns `scroll_top_row`. Dragging is dead under `run_event_loop(capture_mouse: :clicks)`. |
@@ -249,18 +249,18 @@ carries the per-method reference: `bundle exec rake yard`, or
 |---|---|
 | `Button` | A one-row `[ caption ]` running a block on Enter, Space or a left click. Size it yourself: `caption.display_width + 4`. |
 
-### Overlays and windows — [book ch7](book/07-components.md#overlays)
+### Overlays and dialogs — [book ch7](book/07-components.md#overlays)
 
 | component | what it is |
 |---|---|
 | `Overlay` | The bare floating layer: it wraps any component, paints nothing itself, and sits where its placement says — `open(Overlay::At[rect])`; the pane assigns the rect, again on every resize. Takes no focus and no keys — the building block for anchored panels and toasts. |
-| `Popup` | The modal dialog: an `Overlay` placed centered by default, which grabs focus, scopes keys to its own subtree and blocks clicks beneath it. Sized by `declared_size=`: a `Size`, a `Fraction` of the screen, or either wrapped in `Popup::ShrinkToContent`, which shrinks the box to the rows the content needs at its width; ESC or `q` dismisses. |
+| `Dialog` | The modal dialog: a bordered, captioned `Overlay` placed centered by default, which grabs focus, scopes keys to its own subtree and blocks clicks beneath it. Sized by `declared_size=`: a `Size`, a `Fraction` of the screen, or either wrapped in `Dialog::ShrinkToContent`, which shrinks the box to the rows the content needs at its width; ESC or `q` dismisses. `footer_text=` puts key hints in the bottom border. Subclass it for a dialog of your own. |
 | `Notification` | A transient corner toast — `Notification.show("Saved")` — stacking messages in one box that a single ticker drains. Non-modal, it never takes focus, and its inner `View` refuses the wheel so queued messages wait for the ticker. |
-| `ConfirmWindow` | The confirm dialog: a message and a row of buttons in a popup sized to fit. `alert` / `confirm` / `yes_no` cover the common shapes; `#button` builds any other. Every button closes; ESC, `q` or an outside click fire `on_dismiss`. See [The confirm dialog](book/07-components.md#the-confirm-dialog). |
-| `InfoWindow` | A `Window` with a read-only body, tiled or popped up: prose that wraps (`message=`), or rows that don't (`lines=`). |
-| `PickerWindow` | A `Window` of options identified by single keystrokes, firing a callback with the key that was pressed. Captions take a `StyledString` to color one; an option may be disabled, with a reason. |
+| `ConfirmDialog` | The confirm dialog: a message and a row of buttons in a dialog sized to fit. `alert` / `confirm` / `yes_no` cover the common shapes; `#button` builds any other. Every button closes; ESC, `q` or an outside click fire `on_dismiss`. See [The confirm dialog](book/07-components.md#the-confirm-dialog). |
+| `InfoDialog` | A `Dialog` with a read-only body: prose that wraps (`message=`), or rows that don't (`lines=`). |
+| `PickerDialog` | A `Dialog` of options identified by single keystrokes, firing a callback with the key that was pressed, then closing. Captions take a `StyledString` to color one; an option may be disabled, with a reason. |
 | `LogTextView` | An auto-scrolling `TextView` for log output. Point your logger at a `LogTextView::IO` and lines land here from any thread, marshalled through the event queue. |
-| `LogWindow` | A `Window` framing a `LogTextView` — the framed log pane. |
+| `LogDialog` | A `Dialog` showing a `LogTextView`, for an app with no room to tile its log: build it once, log to it, open it on demand. |
 
 The mixins those share — `HasValue` (the `value` / `empty?` / `clear` /
 `on_value_change` seam every input speaks), `HasValidation` (`error_message`,

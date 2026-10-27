@@ -91,17 +91,19 @@ module Tuile
       it "hands a departing occupant's focus repair to the container" do
         # Repairing here would land focus on the slot itself, which has no
         # cursor and no keys.
-        window = Component::Window.new
-        content = Component::List.new
-        window.content = content
-        mount_at(window, Rect.new(0, 0, 20, 10))
+        list = Component::List.new
+        box = Component::Layout::Vertical.new
+        box.add(list, Component::Layout::Expand[1])
+        box.add(slot, Component::Layout::Fixed[1])
+        mount_at(box, Rect.new(0, 0, 20, 10))
 
-        footer = Component::TextField.new
-        window.footer = footer
-        Screen.instance.focused = footer
-        window.footer = nil
+        field = Component::TextField.new
+        slot.content = field
+        Screen.instance.focused = field
+        slot.content = nil
 
-        assert_equal content, Screen.instance.focused
+        # The layout's own focus cascade picks its first tab stop.
+        assert_equal list, Screen.instance.focused
       end
     end
   end

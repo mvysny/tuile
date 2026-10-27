@@ -5,10 +5,10 @@ module Tuile
     # A component with a *primary* child named `content`: **this is my content,
     # which you populate; my other children are mine to manage, not yours to
     # address**. Include it wherever addressing that child is the point — a
-    # {Slot} is a bare region for one, a {Window} frames one, an {Overlay}
+    # {Slot} is a bare region for one, a {Panel} frames one, an {Overlay}
     # floats one.
     #
-    # It says nothing about *arity*: {Window} has two app-settable children, and
+    # It says nothing about *arity*: {Panel} has two app-settable children, and
     # this mixin names which of them is *the* content. Nor about permanence — an
     # {Overlay}'s body is permanent and public both. A container with *several*
     # populatable regions gives each one a {Slot} rather than including this
@@ -68,7 +68,7 @@ module Tuile
         # *now*, so it has to see the new content (window_spec pins it).
         detach_child(old) unless old.nil?
         unless content.nil?
-          add_child(content, at: 0) # content paints beneath a Window's footer
+          add_child(content, at: 0) # content paints beneath any chrome a host appends
           content.invalidate
         end
         handle_child_removed(old) unless old.nil?

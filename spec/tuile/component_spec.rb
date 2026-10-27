@@ -59,11 +59,11 @@ module Tuile
         refute_respond_to c, :height=
       end
 
-      # Popup declares a Size | Fraction it asks the screen for; that is a
+      # Dialog declares a Size | Fraction it asks the screen for; that is a
       # different concept from the Size it currently occupies, which is why the
       # two carry different names.
-      it "coexist with Popup#declared_size, which is not rect.size" do
-        p = Component::Popup.new(declared_size: Fraction::HALF)
+      it "coexist with Dialog#declared_size, which is not rect.size" do
+        p = Component::Dialog.new(declared_size: Fraction::HALF)
         p.open
         assert_equal Fraction::HALF, p.declared_size
         assert_equal Size.new(80, 25), p.size # HALF of the 160x50 fake screen
@@ -141,7 +141,7 @@ module Tuile
 
       it "omits an empty caption and a nil value" do
         assert_equal "#<Tuile::Component::TextField rect=(0,0 0x0) value=\"\">", Component::TextField.new.inspect
-        assert_equal "#<Tuile::Component::Window rect=(0,0 0x0)>", Component::Window.new.inspect
+        assert_equal "#<Tuile::Component::Panel rect=(0,0 0x0)>", Component::Panel.new.inspect
       end
 
       # A debug method must not build a megabyte to show 40 characters of it.
@@ -995,7 +995,7 @@ module Tuile
       it "fires detach then attach for a cross-container move" do
         a = Component::Layout::Absolute.new
         b = Component::Layout::Absolute.new
-        pane.add_popup(Component::Popup.new(content: b))
+        pane.add_popup(Component::Dialog.new(content: b))
         Screen.instance.content = a
         a.add(spy)
         spy.events.clear
@@ -1073,13 +1073,13 @@ module Tuile
       end
 
       it "fires for a component whose container is a slot rather than a list" do
-        window = Component::Window.new("w")
-        Screen.instance.content = window
+        slot = Component::Slot.new
+        Screen.instance.content = slot
 
-        window.footer = spy
+        slot.content = spy
         assert_equal [[:attached, true]], spy.events
 
-        window.footer = nil
+        slot.content = nil
         assert_equal [[:attached, true], [:detached, false]], spy.events
       end
 
@@ -1089,7 +1089,7 @@ module Tuile
           spy.add(child)
           Screen.instance.content = spy
           popup_body = spy_class.new
-          pane.add_popup(Component::Popup.new(content: popup_body))
+          pane.add_popup(Component::Dialog.new(content: popup_body))
           [spy, child, popup_body].each { _1.events.clear }
 
           Screen.close
@@ -1101,7 +1101,7 @@ module Tuile
 
         it "leaves nothing claiming to be attached" do
           Screen.instance.content = spy
-          popup = Component::Popup.new
+          popup = Component::Dialog.new
           pane.add_popup(popup)
 
           Screen.close
@@ -1192,16 +1192,17 @@ module Tuile
       # D_tree_api: `attached?` walks the parent chain while a subtree walk uses
       # `children`, so the two must never be able to disagree. This exercises
       # every container kind in one tree — ScreenPane (slot + list + chrome),
-      # Layout (plain list), HasContent (single slot) and Window (slot + footer).
+      # Layout (plain list), HasContent (single slot) and Slot (a slot inside a list).
       it "keeps children, @children and the parent pointers in agreement" do
-        window = Component::Window.new("w")
-        window.content = Component::List.new
-        window.footer = Component::TextField.new
+        window = Component::Panel.new("w")
+        window.content = Component::Layout::Vertical.new
+        window.content.add(Component::List.new, Component::Layout::Expand[1])
+        window.content.add(Component::Slot.new(Component::TextField.new), Component::Layout::Fixed[1])
         layout = Component::Layout::Absolute.new
         layout.add(window)
         layout.add(Component::Label.new)
         Screen.instance.content = layout
-        popup = Component::Popup.new(content: Component::Button.new("ok"))
+        popup = Component::Dialog.new(content: Component::Button.new("ok"))
         Screen.instance.add_popup(popup)
 
         Screen.instance.pane.walk_tree do |c|
@@ -1211,21 +1212,6 @@ module Tuile
             assert_equal c, kid.parent, "#{kid.class} listed by #{c.class} has a different parent"
           end
         end
-      end
-
-      it "orders a Window's own children content-then-footer, whichever is set first" do
-        footer_first = Component::Window.new("a")
-        footer_first.footer = Component::Label.new
-        footer_first.content = Component::List.new
-
-        content_first = Component::Window.new("b")
-        content_first.content = Component::List.new
-        content_first.footer = Component::Label.new
-
-        # The footer slot is wired at construction, so the order now holds
-        # structurally rather than by the insert index each setter picks.
-        assert_equal [footer_first.content, footer_first.footer.parent], footer_first.children
-        assert_equal [content_first.content, content_first.footer.parent], content_first.children
       end
     end
 
@@ -1241,7 +1227,7 @@ module Tuile
 
       it "is true when root is a popup" do
         list = Component::List.new
-        popup = Component::Popup.new(content: list)
+        popup = Component::Dialog.new(content: list)
         Screen.instance.add_popup(popup)
         assert popup.attached?
         assert list.attached?

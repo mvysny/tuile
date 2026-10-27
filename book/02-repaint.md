@@ -188,7 +188,7 @@ unchanged, so the diff is still empty and nothing reaches the wire.
 The practical rule for writing a component: **call `super` in your
 `repaint`** to inherit that clearing, then paint your content. The only
 components that skip `super` are the few that paint every cell of their
-rect themselves and don't want the redundant clear — {Tuile::Component::Window}
+rect themselves and don't want the redundant clear — {Tuile::Component::Panel}
 (its border and interior cover the whole rect) and
 {Tuile::Component::List} (it paints every row explicitly). Everything else
 should `super`.

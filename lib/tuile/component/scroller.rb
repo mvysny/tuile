@@ -7,7 +7,7 @@ module Tuile
     #
     #   form = Component::FormLayout.new
     #   # …nine fields, 27 rows of them…
-    #   window.content = Component::Scroller.new(form, content_rows: 27)
+    #   panel.content = Component::Scroller.new(form, content_rows: 27)
     #
     # **You say how tall the content is.** Nothing in Tuile measures
     # (`D_declared_size`), so {#content_rows} is the number of rows the content

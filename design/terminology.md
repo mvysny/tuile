@@ -47,7 +47,7 @@ content-space.
 | **selection** | which item or tab a selector currently points at. *View state* when nothing would save it ({Tuile::Component::Tabs}`#selected`), a *value* when a form would (`RadioGroup#value`) — the split `D_tabs` calls the "would a form save it?" test. |
 | **item_count** / **item_index** | how a `List::Cursor` counts and addresses; equal to a row count in a `List`, but the cursor indexes *items*. |
 | **text** | the user-editable **value** of a field ({Tuile::Component::HasValue}; `AbstractStringField#text` is the reader `value` answers from). |
-| **caption** | app-authored **chrome** text ({Tuile::Component::HasCaption}) — a `Window` title, a `Button` label. Never a value. |
+| **caption** | app-authored **chrome** text ({Tuile::Component::HasCaption}) — a `Panel` or `Dialog` title, a `Button` label. Never a value. |
 | **chrome** | framework- or app-authored decoration around content: captions, borders, footers, an app's status line. |
 | **caret** | the index into a field's `text` where editing happens; always on a cluster boundary. Distinct from the *cursor*. |
 
@@ -69,7 +69,7 @@ content-space.
 | **attached** | reachable from a {Tuile::ScreenPane} via the parent chain — the one axis `attached?` consults. |
 | **wrapping field** | a field that owns and hides one *inner editor* and carries a typed value over it — {Tuile::Component::AbstractWrappingField} and its subclasses. The editor is private machinery: no public accessor, `children` the only way in. |
 | **inner editor** | the {Tuile::Component::AbstractStringField} a *wrapping field* wraps. Always this phrase — never "the wrapped field", which would name the wrong one of the two fields in play. |
-| **slot** | a named region of a container, reached by identity (`content`, `footer`) as well as through `children`. Two forms: a plain named child the caller populates directly (`HasContent#content`, the primary one); or a {Tuile::Component::Slot}, the one-child region component, wired once so its occupant may be absent or swapped (`Window#footer`). Capital-`S` `Slot` always means the class. |
+| **slot** | a named region of a container, reached by identity (`content`, `popups`) as well as through `children`. Two forms: a plain named child the caller populates directly (`HasContent#content`, the primary one); or a {Tuile::Component::Slot}, the one-child region component, wired once so its occupant may be absent or swapped (`ConfirmDialog`'s body). Capital-`S` `Slot` always means the class. |
 | **cascade** | the stack of open {Tuile::Component::ListDropdown} panels a {Tuile::Component::MenuBar} drives, one per level, the last deepest. Each is an overlay on the pane, not a child of the bar. |
 | **menu mode** | the {Tuile::Component::MenuBar} state in which a sideways arrow *shows* the neighbouring menu rather than only moving the highlight — `Cascade#browsing?`. Wider than "a panel is open": stepping onto a top-level item with no menu keeps the mode with nothing on screen. |
 | **submenu** | a menu item that opens a further panel instead of doing something — `MenuBar::Item#submenu?`, true iff the item has children. Painted with a trailing `▸`. |

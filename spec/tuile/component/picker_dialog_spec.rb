@@ -1,21 +1,21 @@
 # frozen_string_literal: true
 
 module Tuile
-  describe Component::PickerWindow do
+  describe Component::PickerDialog do
     before { Screen.fake }
     after { Screen.close }
 
-    it "is a Window" do
-      picker = Component::PickerWindow.new("foo", [%w[a all]]) {}
-      assert picker.is_a?(Component::Window)
+    it "is a Dialog" do
+      picker = Component::PickerDialog.new("foo", [%w[a all]]) {}
+      assert picker.is_a?(Component::Dialog)
     end
 
     it "renders option rows into its inner list" do
-      picker = Component::PickerWindow.new("foo", [%w[a all]]) {}
+      picker = Component::PickerDialog.new("foo", [%w[a all]]) {}
       assert picker.content.is_a?(Component::List)
-      assert_equal Component::PickerWindow::Option.new("a", StyledString.plain("all")),
+      assert_equal Component::PickerDialog::Option.new("a", StyledString.plain("all")),
                    picker.content.items.first
-      Testing.place(picker, Rect.new(0, 0, 20, 3))
+      picker.open(Component::Overlay::At[Rect.new(0, 0, 20, 3)])
       assert_equal "a all", Testing.paint(picker.content).text.first.strip
     end
 
@@ -30,8 +30,8 @@ module Tuile
 
       # @return [Tuile::Buffer::Cell] the cell `column` cells into row `row`.
       def paint(options, column:, row: 0)
-        picker = Component::PickerWindow.new("foo", options) {}
-        Testing.place(picker, Rect.new(0, 0, 20, 4))
+        picker = Component::PickerDialog.new("foo", options) {}
+        picker.open(Component::Overlay::At[Rect.new(0, 0, 20, 4)])
         Testing.paint(picker.content).cell(column, row)
       end
 
@@ -59,8 +59,8 @@ module Tuile
       options = [["r", "Resize", { disabled: "VM running" }], %w[g Grow]]
 
       def paint(options)
-        picker = Component::PickerWindow.new("foo", options) {}
-        Testing.place(picker, Rect.new(0, 0, 30, 4))
+        picker = Component::PickerDialog.new("foo", options) {}
+        picker.open(Component::Overlay::At[Rect.new(0, 0, 30, 4)])
         Testing.paint(picker.content)
       end
 
@@ -78,8 +78,8 @@ module Tuile
       end
 
       it "follows a theme change" do
-        picker = Component::PickerWindow.new("foo", options) {}
-        mount_at(picker, Rect.new(0, 0, 30, 4))
+        picker = Component::PickerDialog.new("foo", options) {}
+        picker.open(Component::Overlay::At[Rect.new(0, 0, 30, 4)])
         Testing.paint(picker.content) # fills the List's row cache under DARK
         Screen.instance.theme = Theme::LIGHT
         Testing.loop
@@ -88,107 +88,97 @@ module Tuile
 
       it "refuses a disabled option without a reason" do
         [true, "", :running].each do |reason|
-          assert_raises(ArgumentError) { Component::PickerWindow.new("foo", [["r", "Resize", { disabled: reason }]]) {} }
+          assert_raises(ArgumentError) { Component::PickerDialog.new("foo", [["r", "Resize", { disabled: reason }]]) {} }
         end
       end
 
       it "refuses an unknown option key" do
-        assert_raises(ArgumentError) { Component::PickerWindow.new("foo", [["r", "Resize", { hidden: true }]]) {} }
+        assert_raises(ArgumentError) { Component::PickerDialog.new("foo", [["r", "Resize", { hidden: true }]]) {} }
       end
 
       def press(key) = Screen.instance.send(:handle_key?, key)
 
       it "moves the cursor onto it on its key, firing nothing and staying open" do
-        popup = Component::PickerWindow.new("foo", [%w[g Grow], *options]) { raise "never" }.open_in_popup
-        list = popup.content.content
+        picker = Component::PickerDialog.new("foo", [%w[g Grow], *options]) { raise "never" }.open
+        list = picker.content
         assert_equal 0, list.cursor.position
         assert press("r")
         assert_equal 1, list.cursor.position
-        assert popup.open?
+        assert picker.open?
       end
 
       it "fires nothing on Enter on its row" do
-        popup = Component::PickerWindow.new("foo", options) { raise "should not be called" }.open_in_popup
+        picker = Component::PickerDialog.new("foo", options) { raise "should not be called" }.open
         press(Keys::ENTER)
-        assert popup.open?
+        assert picker.open?
       end
 
       it "fires nothing on a click on its row" do
-        popup = Component::PickerWindow.new("foo", options) { raise "should not be called" }.open_in_popup
-        row = popup.content.content.absolute_rect
+        picker = Component::PickerDialog.new("foo", options) { raise "should not be called" }.open
+        row = picker.content.absolute_rect
         Screen.instance.click(row.left + 1, row.top)
-        assert popup.open?
+        assert picker.open?
       end
 
       it "still picks an enabled option beside it" do
         selected = nil
-        Component::PickerWindow.new("foo", options) { selected = _1 }.open_in_popup
+        Component::PickerDialog.new("foo", options) { selected = _1 }.open
         press("g")
         assert_equal "g", selected
       end
     end
 
-    describe "#open_in_popup" do
-      it "opens as a popup wrapping the picker" do
-        picker = Component::PickerWindow.new("foo", [%w[a all]]) {}
-        popup = picker.open_in_popup
-        assert popup.is_a?(Component::Popup)
-        assert_same picker, popup.content
-        assert popup.open?
-        popup.close
-      end
-
+    describe "#open" do
       it "opens a subclass built from its own constructor arguments" do
-        sort_picker = Class.new(Component::PickerWindow) do
+        sort_picker = Class.new(Component::PickerDialog) do
           def initialize(columns, &) = super("Sort by", columns.map { [_1[0], _1] }, &)
         end
         selected = nil
-        popup = sort_picker.new(%w[name size]) { selected = _1 }.open_in_popup
-        assert popup.content.is_a?(sort_picker)
+        picker = sort_picker.new(%w[name size]) { selected = _1 }.open
         press("s")
         assert_equal "s", selected
-        assert !popup.open?
+        assert !picker.open?
       end
 
-      it "refuses a picker that already has a parent" do
-        picker = Component::PickerWindow.new("foo", [%w[a all]]) {}
-        picker.open_in_popup.close
-        assert_raises(Tuile::Error) { picker.open_in_popup }
+      it "reopens after closing" do
+        picker = Component::PickerDialog.new("foo", [%w[a all]]) {}
+        picker.open.close
+        assert picker.open.open?
       end
 
       # Drive through the real dispatcher (Screen#handle_key?): opening the
-      # popup focuses the inner List, and keys reach the picker by capture +
+      # dialog focuses the inner List, and keys reach the picker by capture +
       # bubble, exactly as in a running app.
       def press(key) = Screen.instance.send(:handle_key?, key)
 
       it "doesn't call block when closed via q" do
-        popup = Component::PickerWindow.new("foo", [%w[a all]]) { raise "should not be called" }.open_in_popup
+        picker = Component::PickerDialog.new("foo", [%w[a all]]) { raise "should not be called" }.open
         press("q")
-        assert !popup.open?
+        assert !picker.open?
       end
 
       it "selects first option on enter" do
         selected = nil
-        popup = Component::PickerWindow.new("foo", [%w[a all]]) { selected = _1 }.open_in_popup
+        picker = Component::PickerDialog.new("foo", [%w[a all]]) { selected = _1 }.open
         press(Keys::ENTER)
         assert_equal "a", selected
-        assert !popup.open?
+        assert !picker.open?
       end
 
       it "selects correct option when its key is pressed" do
         selected = nil
-        popup = Component::PickerWindow.new("foo", [%w[a all]]) { selected = _1 }.open_in_popup
+        picker = Component::PickerDialog.new("foo", [%w[a all]]) { selected = _1 }.open
         press("a")
         assert_equal "a", selected
-        assert !popup.open?
+        assert !picker.open?
       end
 
       it "does nothing if an unlisted key is pressed" do
         selected = nil
-        popup = Component::PickerWindow.new("foo", [%w[a all]]) { selected = _1 }.open_in_popup
+        picker = Component::PickerDialog.new("foo", [%w[a all]]) { selected = _1 }.open
         press("b")
         assert_nil selected
-        assert popup.open?
+        assert picker.open?
       end
     end
   end

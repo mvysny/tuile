@@ -103,9 +103,9 @@ module Tuile
       # at idle, and returns. It is the rest of the loop turn a spec skips by
       # calling components directly:
       #
-      #   log_window.log("saved")   # queued, as LogWindow#log always is
+      #   log_dialog.log("saved")   # queued, as LogDialog#log always is
       #   Testing.loop
-      #   assert_equal "saved", log_window.content.text.to_s
+      #   assert_equal "saved", log_dialog.content.text.to_s
       #
       # Every other function here, and every {FakeScreen} gesture, already calls
       # it on the way in, so a spec needs it only after a direct call, or after
@@ -129,7 +129,7 @@ module Tuile
       #   find(Component::Button)                     # every button on screen
       #   find(Component::HasBadInput, in: form)      # a mixin works too
       #   find(Component::Label) { _1.text.to_s.start_with?("Total") }
-      #   find(Component::Popup, count: 1..)          # assert at least one
+      #   find(Component::Dialog, count: 1..)          # assert at least one
       #
       # @param klass [Module] matched with `is_a?`, so a mixin
       #   ({Component::HasValue}) finds every field that includes it.
@@ -160,7 +160,7 @@ module Tuile
       # The one component matching the spec — {.find} with `count: 1`, so it
       # raises rather than returning nil, and raises on an ambiguous spec too.
       #
-      #   get(Component::ComboBox, in: sampler.demo_window)
+      #   get(Component::ComboBox, in: sampler.demo_panel)
       #
       # @param klass [Module] see {.find}.
       # @param in [Component, nil] see {.find}.
@@ -180,7 +180,7 @@ module Tuile
       # (an app's own component classes keep their full name):
       #
       #     #<ScreenPane rect=(0,0 160x50)>
-      #       #<Window rect=(0,0 40x10) caption="Settings">
+      #       #<Panel rect=(0,0 40x10) caption="Settings">
       #         #<Layout::Vertical rect=(1,1 38x8)>
       #   →       #<Button id=:save rect=(1,1 38x1) caption="Save">
       #
@@ -316,8 +316,8 @@ module Tuile
       # Paints `component` and its subtree, attached or not, into a {Buffer} of
       # its own size whose `(0, 0)` is the component's top-left:
       #
-      #   Testing.place(window, Rect.new(0, 0, 14, 4))
-      #   buffer = Testing.paint(window)
+      #   Testing.place(panel, Rect.new(0, 0, 14, 4))
+      #   buffer = Testing.paint(panel)
       #   buffer.text                  # => ["┌Caption─────┐", "│ alpha      │", …]
       #   buffer.cell(1, 1).style      # component coordinates, no absolute_rect
       #

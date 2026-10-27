@@ -23,14 +23,14 @@ screen.focused = nil                # nothing focused
 Focus is not just a flag on one component, though — it's a *chain*.
 Setting focus walks from the target up through its parents to the root,
 and marks every component on that path **active**. Everything not on the
-path is deactivated. So if you focus a text field inside a window inside
-the content area, the field, the window, and the content are all active;
+path is deactivated. So if you focus a text field inside a panel inside
+the content area, the field, the panel, and the content are all active;
 their siblings are not.
 
-That active chain is what components paint against. A {Tuile::Component::Window}
+That active chain is what components paint against. A {Tuile::Component::Panel}
 draws its border in the accent color when it's active and a plain color
-when it isn't — which is why, in a multi-window layout, exactly the
-window containing the focused widget lights up. "Active" means "on the
+when it isn't — which is why, in a multi-panel layout, exactly the
+panel containing the focused widget lights up. "Active" means "on the
 path to what has focus," and it falls out of one assignment.
 
 ## Two gates: `focusable?` and `tab_stop?`
@@ -41,7 +41,7 @@ they're independent on purpose.
 
 {Tuile::Component#focusable?} gates whether a component can become a focus
 target *at all*. It's `false` by default — a {Tuile::Component::Label} is
-decoration; clicking one shouldn't yank focus away from the window around
+decoration; clicking one shouldn't yank focus away from the panel around
 it. Controls that accept input (a text field, a list, a button) override
 it to `true`. This gate is what makes click-to-focus sane: a press lands
 focus on the component under the pointer *only if it's focusable*,
@@ -50,19 +50,19 @@ down the tree — every component whose rectangle contains the point, outermost
 first — so "the component under the pointer" is really all of them, and focus
 settles on the deepest focusable one, before any handler runs. The same rule governs
 the automatic focus-forwarding a container does when it's focused — a
-window handed focus passes it down to its content, but only if that
+panel handed focus passes it down to its content, but only if that
 content is focusable.
 
 {Tuile::Component#tab_stop?} gates something narrower: whether Tab and
 Shift+Tab land on this component while cycling. It's also `false` by
 default, and it *implies* focusable — a tab stop is always a valid focus
 target, but not every focus target is a tab stop. The distinction matters
-for containers: a {Tuile::Component::Window} is focusable (so a click on
-its chrome can focus it) but is *not* a tab stop (Tab should skip the frame
+for containers: a {Tuile::Component::Panel} is focusable (so a click on
+its chrome can focus it) but is *not* a tab stop (Tab should skip the border
 and stop on the actual inputs inside it). So:
 
 - **Label** — neither. Decoration.
-- **Window, Popup** — focusable, not a tab stop. Clickable chrome,
+- **Panel, Dialog** — focusable, not a tab stop. Clickable chrome,
   skipped by Tab.
 - **TextField, List, Button** — both. Real inputs you can click *and*
   Tab to.
@@ -133,7 +133,7 @@ goes to the focused component's {Tuile::Component#handle_key?}, and if that
 returns `false` (didn't handle it), the key bubbles up the ancestor chain —
 the focused component, then its parent, then *its* parent — until someone
 returns `true` or the scope root is reached. This is how a list handles
-arrow keys itself but lets an unhandled key rise to the window around it.
+arrow keys itself but lets an unhandled key rise to the panel around it.
 
 A component only ever receives a key when it's on the focus chain, so
 `handle_key?` implementations act on the key alone — they never need to
@@ -151,7 +151,7 @@ than in dispatch: if nothing handled the key and it was `q` or ESC, the
 loop stops and your program exits. That is what a `q quit` hint in an app's
 status line is describing — not a binding anyone registered, but the fate
 of an unclaimed quit key. It also explains why ESC means different
-things in different places: an open {Tuile::Component::Popup} handles ESC
+things in different places: an open {Tuile::Component::Dialog} handles ESC
 itself (dismissing is its job), so the loop never sees it and the popup
 closes instead of the app. And a widget keeps a stray `q` from quitting
 simply by consuming it, which a focused {Tuile::Component::TextField} was
@@ -339,7 +339,7 @@ handle follow the pointer.
 `handle_mouse_enter` / `handle_mouse_exit` pair, along with
 {Tuile::Screen#hovered}. Ask for it only if something uses it: a terminal
 reports up to ~84 moves a second. And keep whatever hover does *cosmetic* —
-no terminal reports the pointer leaving the window, so the exit waits for
+no terminal reports the pointer leaving the panel, so the exit waits for
 the terminal to lose focus or for the next key, and may arrive very late.
 
 The rung is one app-wide choice, made here and nowhere else — so a component
@@ -373,7 +373,7 @@ nothing else calls them. {Tuile::Component#handle_focus} fires when it gains
 focus; {Tuile::Component#handle_blur} fires when it loses it. Both fire on that
 one component, never on the ancestors that light up and go dark with it.
 
-`handle_focus` is the forwarding hook. It's how a {Tuile::Component::Window}
+`handle_focus` is the forwarding hook. It's how a {Tuile::Component::Panel}
 handed focus passes it to its content, and how a {Tuile::Component::Layout}
 skips ahead to the first tab stop underneath it — which is also why it fires
 on *every* assignment, even one that re-focuses what's already focused.
@@ -443,7 +443,7 @@ is text you write next to the registration.
 
 ### When the row does depend on focus
 
-Some apps genuinely show different keys in different places — a window with
+Some apps genuinely show different keys in different places — a panel with
 a search mode, or a pane whose commands only apply to it. For those,
 {Tuile::Screen#on_focus_changed} is the notification:
 
@@ -461,7 +461,7 @@ unmounts.
 What `hint_for` does is entirely yours — Tuile has no notion of a hint and
 no method for one, so there is no interface here to conform to.
 `examples/sampler.rb` names the focused component's class, which makes Tab
-traversal visible as you walk a pane. An app with per-window keys usually
+traversal visible as you walk a pane. An app with per-panel keys usually
 walks up the focus chain from `screen.focused` and takes the first answer,
 because that mirrors the direction a key bubbles — but that's an app's
 design decision, not a framework pattern.

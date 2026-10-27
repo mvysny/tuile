@@ -79,7 +79,7 @@ module Tuile
   #   focus/selection highlight in conventional UI terms.
   #   @return [Color]
   # @!attribute [r] active_border_color
-  #   Foreground of a {Component::Window} border when the window is on the
+  #   Foreground of a {Component::Panel} border when the panel or dialog is on the
   #   active (focus) chain.
   #   @return [Color]
   # @!attribute [r] input_bg_color
@@ -94,7 +94,7 @@ module Tuile
   #   @return [Color]
   # @!attribute [r] disabled_color
   #   Foreground of an option that can't be picked right now
-  #   ({Component::PickerWindow}): clearly dimmer than the terminal's own
+  #   ({Component::PickerDialog}): clearly dimmer than the terminal's own
   #   foreground, yet readable on {#active_bg_color}, since the cursor may
   #   rest on it while the user reads why.
   #   @return [Color]

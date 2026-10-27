@@ -2,7 +2,7 @@
 
 module Tuile
   # A width/height ratio, each a float in `0.0..1.0` — the single relational
-  # sizing primitive in Tuile, scoped to one job: sizing a {Component::Popup}
+  # sizing primitive in Tuile, scoped to one job: sizing a {Component::Dialog}
   # against the screen (a popup has no siblings competing for space, so "half
   # the screen, centered" beats a hard-coded cell count that breaks on the next
   # terminal size). It is deliberately *not* a general layout primitive — tiled
@@ -32,10 +32,10 @@ module Tuile
                [(reference.height * height).round, 1].max)
     end
 
-    # Half the reference size on each axis — the default {Component::Popup} size.
+    # Half the reference size on each axis — the default {Component::Dialog} size.
     # @return [Fraction]
     HALF = new(0.5, 0.5)
-    # The full reference size on each axis — fullscreen for a {Component::Popup}.
+    # The full reference size on each axis — fullscreen for a {Component::Dialog}.
     # @return [Fraction]
     FULL = new(1.0, 1.0)
   end

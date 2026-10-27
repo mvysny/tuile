@@ -38,7 +38,7 @@ module Tuile
     # @return [Component, nil] the tiled content component.
     def content = @_content
     # @return [Array<Component::Overlay>] the open overlays in stacking order;
-    #   last is topmost. Holds both {Component::Popup} modals and bare
+    #   last is topmost. Holds both {Component::Dialog} modals and bare
     #   {Component::Overlay}s ({Component::Overlay#modal?}). The array must not
     #   be mutated by callers.
     def popups = @_popups
@@ -62,7 +62,7 @@ module Tuile
     end
 
     # Adds an overlay at `placement` and invalidates it for repaint; the next
-    # settle gives it its rect. A {Component::Popup} grabs focus; a bare
+    # settle gives it its rect. A {Component::Dialog} grabs focus; a bare
     # {Component::Overlay} does *not*, so the component that was focused keeps
     # the cursor and keeps receiving keys — the overlay floats above the
     # content, driven from app code.
@@ -72,24 +72,24 @@ module Tuile
     # tiled content has since overpainted, and if its rect is unchanged from
     # last time its content components won't re-invalidate themselves — so
     # without this the overlay's contents would stay blank on reopen.
-    # @param window [Component::Overlay] any overlay, modal or not.
+    # @param overlay [Component::Overlay] any overlay, modal or not.
     # @param placement [Component::Overlay::Placement, nil] where it wants to
     #   be; `nil` takes its {Component::Overlay#default_placement}.
     # @raise [TypeError] if `placement` does not include
     #   {Component::Overlay::Placement}.
     # @return [void]
-    def add_popup(window, placement = nil)
-      raise TypeError, "expected Overlay, got #{window.inspect}" unless window.is_a? Component::Overlay
-      raise ArgumentError, "#{window} already has a parent #{window.parent}" unless window.parent.nil?
+    def add_popup(overlay, placement = nil)
+      raise TypeError, "expected Overlay, got #{overlay.inspect}" unless overlay.is_a? Component::Overlay
+      raise ArgumentError, "#{overlay} already has a parent #{overlay.parent}" unless overlay.parent.nil?
 
-      placement ||= window.default_placement
+      placement ||= overlay.default_placement
       check_placement(placement)
-      @_popup_prior_focus[window] = screen.focused
-      @_placements[window] = placement
-      @_popups << window
-      add_child(window) # appended: popups paint over the tiled content
-      screen.focused = window if window.modal?
-      window.walk_tree { |c| screen.invalidate(c) }
+      @_popup_prior_focus[overlay] = screen.focused
+      @_placements[overlay] = placement
+      @_popups << overlay
+      add_child(overlay) # appended: popups paint over the tiled content
+      screen.focused = overlay if overlay.modal?
+      overlay.walk_tree { |c| screen.invalidate(c) }
     end
 
     # @param popup [Component::Overlay] an open popup.
@@ -118,21 +118,21 @@ module Tuile
     # Removes a popup. If the popup held focus, focus shifts to the now-topmost
     # remaining popup, falling back to the focus snapshotted when the popup
     # was opened (if still attached), then to {#content}, then to nil.
-    # @param window [Component]
+    # @param overlay [Component]
     # @return [void]
-    def remove_popup(window)
-      raise Tuile::Error, "#{window} is not an open popup on this pane" unless @_popups.delete(window)
+    def remove_popup(overlay)
+      raise Tuile::Error, "#{overlay} is not an open popup on this pane" unless @_popups.delete(overlay)
 
-      prior = @_popup_prior_focus.delete(window)
-      @_placements.delete(window)
-      @_placed_anchors.delete(window)
+      prior = @_popup_prior_focus.delete(overlay)
+      @_placements.delete(overlay)
+      @_placed_anchors.delete(overlay)
       @_removing_popup_prior = prior
-      remove_child(window)
+      remove_child(overlay)
       # Runs after the detach, so a prior pointing *inside* the removed popup is
-      # detectable via `p.root == window`: forward it to *our* prior, so chained
+      # detectable via `p.root == overlay`: forward it to *our* prior, so chained
       # closures climb back to the original owner instead of stopping at a
       # detached component.
-      @_popup_prior_focus.transform_values! { |p| p && p.root == window ? prior : p }
+      @_popup_prior_focus.transform_values! { |p| p && p.root == overlay ? prior : p }
     ensure
       @_removing_popup_prior = nil
     end
@@ -141,10 +141,10 @@ module Tuile
     # down its subtree — and every slot is emptied. Terminal; the pane isn't
     # reusable afterwards, and {Screen#close} is its only caller.
     #
-    # Deliberately not named `close` ({Component::Popup#close} already means
+    # Deliberately not named `close` ({Component::Dialog#close} already means
     # "remove *me* from the pane"), and deliberately not a generic
     # `Component#remove_all_children`: a slot container calling that would empty
-    # `@_children` while `#content` / `#footer` still pointed at detached
+    # `@_children` while `#content` / `#popups` still pointed at detached
     # components, which is the desync the tree API exists to prevent.
     # @return [void]
     def detach_all
@@ -157,11 +157,11 @@ module Tuile
       @_placed_anchors.clear
     end
 
-    # @param window [Component]
+    # @param overlay [Component]
     # @return [Boolean] true if this pane currently hosts the popup.
-    def has_popup?(window) = @_popups.include?(window) # rubocop:disable Naming/PredicatePrefix
+    def has_popup?(overlay) = @_popups.include?(overlay) # rubocop:disable Naming/PredicatePrefix
 
-    # @return [Component::Popup, nil] the topmost modal overlay, or nil when
+    # @return [Component::Dialog, nil] the topmost modal overlay, or nil when
     #   only bare {Component::Overlay}s (or none) are open. This is the "modal
     #   owner": the popup that scopes key dispatch, blocks mouse clicks, and
     #   confines Tab cycling. Bare overlays are excluded — they float above the
@@ -275,7 +275,7 @@ module Tuile
     #   not be in the set (it would immediately dismiss itself — every
     #   {Component::Select} would be unopenable by mouse).
     # - **Close after the block.** A widget toggling its own overlay from a press
-    #   on its face closes it during delivery, and {Component::Popup#close} is
+    #   on its face closes it during delivery, and {Component::Dialog#close} is
     #   idempotent, so the dismissal no-ops. Close *first* and the widget sees
     #   a shut overlay and reopens it — a Select's dropdown could then never be
     #   dismissed by clicking the Select.

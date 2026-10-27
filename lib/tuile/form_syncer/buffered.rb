@@ -16,7 +16,7 @@ module Tuile
     #       popup.close
     #     else
     #       messages = syncer.last_validation.values.flatten.map(&:message)
-    #       Component::ConfirmWindow.alert("Cannot save", messages.join("\n"))
+    #       Component::ConfirmDialog.alert("Cannot save", messages.join("\n"))
     #     end
     #   end
     #

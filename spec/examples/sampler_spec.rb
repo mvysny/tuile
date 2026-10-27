@@ -30,7 +30,7 @@ module Tuile
   # on selection. These do, and name the culprit in the failure.
   RSpec.describe "examples/sampler.rb panes" do
     # The sampler paints its own `:hint` custom token (its status row, and one
-    # PickerWindow caption), which the built-in ThemeDef doesn't carry — so
+    # PickerDialog caption), which the built-in ThemeDef doesn't carry — so
     # point ThemeDef.default at the app's pair the way a real app spec would,
     # and restore it, or every later example in the run inherits it.
     #
@@ -61,13 +61,13 @@ module Tuile
         sampler = build_sampler
         sampler.select_entry(entry) # would raise here on a stale-API pane
         Screen.instance.repaint     # …or here, when the pane paints
-        assert_equal entry.caption, sampler.demo_window.caption.to_s
+        assert_equal entry.caption, sampler.demo_panel.caption.to_s
       end
     end
 
     # Regression: the slash menu is a bare Overlay, which has no declared box —
     # it paints only the rect the pane computes for it. It used to be a
-    # non-modal Popup and inherited a Fraction::HALF default, so an overlay
+    # non-modal Dialog and inherited a Fraction::HALF default, so an overlay
     # nobody sized still showed up, and nothing here opened it to notice.
     it "opens and paints the slash menu when a command is typed" do
       sampler = build_sampler
@@ -101,11 +101,11 @@ module Tuile
       sampler = build_sampler
       sampler.select_entry(entries.find { _1.caption == "Background" })
 
-      # demo_window, not the sampler: the jump box is a ComboBox too, so an
+      # demo_panel, not the sampler: the jump box is a ComboBox too, so an
       # unscoped lookup is ambiguous and Testing.get says so.
-      combo = Testing.get(Component::ComboBox, in: sampler.demo_window)
+      combo = Testing.get(Component::ComboBox, in: sampler.demo_panel)
       combo.value = combo.items.find { _1.label.start_with?("Terminal background") }
-      label = Testing.get(Component::Label, in: sampler.demo_window)
+      label = Testing.get(Component::Label, in: sampler.demo_panel)
       tint = lambda do
         Screen.instance.repaint
         Screen.instance.buffer.cell(label.absolute_rect.left, label.absolute_rect.top).style.bg
@@ -134,7 +134,7 @@ module Tuile
       # The status row is the one Label outside the demo pane (which has its
       # own intro Label), so scoping by class alone is ambiguous.
       labels = Testing.find(Component::Label, in: sampler) -
-               Testing.find(Component::Label, in: sampler.demo_window)
+               Testing.find(Component::Label, in: sampler.demo_panel)
       status = labels.first
       assert_equal 1, labels.size
       assert_equal "q quit  ⇥ MenuBar", status.text.to_s
@@ -151,7 +151,7 @@ module Tuile
       entries.each do |entry|
         sampler.jump_box.value = entry
         Screen.instance.repaint
-        assert_equal entry.caption, sampler.demo_window.caption.to_s
+        assert_equal entry.caption, sampler.demo_panel.caption.to_s
       end
     end
 
@@ -163,7 +163,7 @@ module Tuile
       sampler = build_sampler
       SamplerNav.paths(SamplerExample::Sampler::MENUS).each do |keys, caption|
         keys.each { |key| sampler.menu_bar.handle_key?(key) }
-        assert_equal caption, sampler.demo_window.caption.to_s, "#{keys.join} did not reach #{caption}"
+        assert_equal caption, sampler.demo_panel.caption.to_s, "#{keys.join} did not reach #{caption}"
         assert_empty Screen.instance.popups, "#{keys.join} left a cascade panel open"
       end
     end
@@ -197,7 +197,7 @@ module Tuile
       assert_equal "TextView", Testing.get(Component::TextField, in: sampler.jump_box).text
     end
 
-    # Popup/InfoWindow/PickerWindow only build a launcher button; the overlay
+    # The dialog demos only build a launcher button; the overlay
     # opens on click. Cover that path too.
     entries.select { |e| e.builder.to_s.include?("launcher") }.each do |entry|
       caption = entry.caption
@@ -208,7 +208,7 @@ module Tuile
 
         # Any of them opens an overlay; `count: 1..` is what fails loudly (with
         # the pane's tree) if a pane ever loses its launcher.
-        button = Testing.find(Component::Button, in: sampler.demo_window, count: 1..).last
+        button = Testing.find(Component::Button, in: sampler.demo_panel, count: 1..).last
 
         before = Screen.instance.popups.size
         button.handle_key?(Keys::ENTER)
@@ -217,22 +217,57 @@ module Tuile
       end
     end
 
-    # The ConfirmWindow pane's outcome row: a mnemonic press lands in exactly
+    # The ConfirmDialog pane's outcome row: a mnemonic press lands in exactly
     # one callback, and the status label names which.
-    it "reports the ConfirmWindow demo's outcome through the status row" do
+    it "reports the ConfirmDialog demo's outcome through the status row" do
       sampler = build_sampler
-      sampler.select_entry(entries.find { _1.caption == "ConfirmWindow" })
+      sampler.select_entry(entries.find { _1.caption == "ConfirmDialog" })
       Screen.instance.repaint
 
       # Named, not "the first Button in tree order": the pane has five.
-      confirm_button = Testing.get(Component::Button, in: sampler.demo_window) { _1.caption.to_s == "Confirm" }
+      confirm_button = Testing.get(Component::Button, in: sampler.demo_panel) { _1.caption.to_s == "Confirm" }
       confirm_button.handle_key?(Keys::ENTER) # opens the Delete confirm
       Screen.instance.send(:handle_key?, "d") # its Delete mnemonic
       Screen.instance.repaint
 
-      painted = Screen.instance.buffer.region_text(sampler.demo_window.absolute_rect).join
+      painted = Screen.instance.buffer.region_text(sampler.demo_panel.absolute_rect).join
       assert_includes painted, "Outcome: deleted the report"
       assert_empty Screen.instance.popups
+    end
+
+    # The Dialog subclass pane: the field takes focus on open, Enter reaches
+    # the subclass's own handle_key?, and ESC still closes through super.
+    describe "the Dialog subclass pane" do
+      def open_rename(sampler)
+        sampler.select_entry(SamplerExample::Sampler::ENTRIES.find { _1.caption == "Dialog subclass" })
+        Testing.get(Component::Button, in: sampler.demo_panel).handle_key?(Keys::ENTER)
+        Screen.instance.popups.last
+      end
+
+      def status_text(sampler)
+        Screen.instance.repaint
+        Screen.instance.buffer.region_text(sampler.demo_panel.absolute_rect).join
+      end
+
+      it "renames on Enter" do
+        sampler = build_sampler
+        dialog = open_rename(sampler)
+        assert_kind_of SamplerExample::RenameDialog, dialog
+        Testing.set_value(Testing.get(Component::TextField, in: dialog), "notes.md")
+        Screen.instance.key(Keys::ENTER)
+
+        assert_empty Screen.instance.popups
+        assert_includes status_text(sampler), "File: notes.md"
+      end
+
+      it "closes on ESC without renaming" do
+        sampler = build_sampler
+        open_rename(sampler)
+        Screen.instance.key(Keys::ESC)
+
+        assert_empty Screen.instance.popups
+        assert_includes status_text(sampler), "File: draft.txt"
+      end
     end
 
     # The Visibility pane is the worked example of `visible=`: a conditional
@@ -243,7 +278,7 @@ module Tuile
       sampler.select_entry(entries.find { _1.caption == "Scroller" })
       Screen.instance.repaint
 
-      scroller = Testing.get(Component::Scroller, in: sampler.demo_window)
+      scroller = Testing.get(Component::Scroller, in: sampler.demo_panel)
       inside = [].tap { |all| scroller.walk_tree { all << _1 } }
       scroller.focus
       visited = 0
@@ -266,7 +301,7 @@ module Tuile
       sampler.select_entry(entries.find { _1.caption == "Visibility" })
       Screen.instance.repaint
 
-      scope = sampler.demo_window
+      scope = sampler.demo_panel
       assert_equal 2, Testing.find(Component::TextField, in: scope).size
 
       business = Testing.get(Component::Checkbox, in: scope) { _1.caption.to_s == "Business customer" }
@@ -293,7 +328,7 @@ module Tuile
       sampler.select_entry(entries.find { _1.caption == "Visibility" })
       Screen.instance.repaint
 
-      scope = sampler.demo_window
+      scope = sampler.demo_panel
       shown = Testing.find(Component::TextField, in: scope).map { _1.absolute_rect.top }
       assert_equal shown, shown.uniq, "two fields share a row"
       assert_equal 1, shown[1] - shown[0], "the visible rows are no longer adjacent"
@@ -313,7 +348,7 @@ module Tuile
       Screen.instance.send(:handle_key?, "-")
       Screen.instance.repaint
 
-      painted = Screen.instance.buffer.region_text(sampler.demo_window.absolute_rect).join
+      painted = Screen.instance.buffer.region_text(sampler.demo_panel.absolute_rect).join
       assert_includes painted, "on_value_change: (nothing yet)" # the value did not move
       assert amount.bad_input? # ...but this did
 
@@ -333,7 +368,7 @@ module Tuile
 
       login = nil
       fields = []
-      sampler.demo_window.walk_tree do |c|
+      sampler.demo_panel.walk_tree do |c|
         login ||= c if c.is_a?(Component::Button)
         fields << c if c.is_a?(Component::HasValidation)
       end
@@ -341,7 +376,7 @@ module Tuile
 
       login.handle_key?(Keys::ENTER)
       Screen.instance.repaint
-      painted = Screen.instance.buffer.region_text(sampler.demo_window.absolute_rect).join
+      painted = Screen.instance.buffer.region_text(sampler.demo_panel.absolute_rect).join
       assert_includes painted, "Username is required"
       assert_includes painted, "Password is required"
 
@@ -354,7 +389,7 @@ module Tuile
       login.handle_key?(Keys::ENTER)
       Screen.instance.repaint
       row = Screen.instance.buffer.row_ansi(username.absolute_rect.top)
-      painted = Screen.instance.buffer.region_text(sampler.demo_window.absolute_rect).join
+      painted = Screen.instance.buffer.region_text(sampler.demo_panel.absolute_rect).join
       assert_includes painted, "at least 3 characters"
       assert_includes row, "48;5;88" # the field's own well, DARK error_bg_color
 
@@ -373,12 +408,12 @@ module Tuile
     it "holds the FormSyncer pane's buffered edits until Save, and writes the unbuffered ones at once" do
       sampler = build_sampler
       sampler.select_entry(entries.find { _1.caption == "FormSyncer" })
-      left, right = Testing.find(Component::FormLayout, in: sampler.demo_window)
+      left, right = Testing.find(Component::FormLayout, in: sampler.demo_panel)
       left_name = left.children.first.content
       right_name, right_in, right_out = right.children.map(&:content)
       painted = lambda do
         Screen.instance.repaint
-        Screen.instance.buffer.region_text(sampler.demo_window.absolute_rect).join("\n")
+        Screen.instance.buffer.region_text(sampler.demo_panel.absolute_rect).join("\n")
       end
 
       Testing.set_value(left_name, "Bea")
@@ -392,7 +427,7 @@ module Tuile
       assert_includes text, "Must be after check-in"
       assert_includes text, "2026-10-05 → –" # the refused check-out stayed out
 
-      Testing.click(Testing.get(Component::Button, in: sampler.demo_window) { _1.caption.to_s == "Save" })
+      Testing.click(Testing.get(Component::Button, in: sampler.demo_panel) { _1.caption.to_s == "Save" })
       text = painted.call
       assert_includes text, 'model: "Bea"'
       assert_includes text, "changed?: false"
@@ -408,7 +443,7 @@ module Tuile
       sampler.select_entry(entries.find { |e| e.caption == "TabSheet" })
       Screen.instance.repaint
 
-      sheet = Testing.get(Component::TabSheet, in: sampler.demo_window)
+      sheet = Testing.get(Component::TabSheet, in: sampler.demo_panel)
       sheet.selected_index = sheet.tabs.size - 1 # the TextView tab
       view = sheet.pane
       Screen.instance.focused = view
@@ -434,7 +469,7 @@ module Tuile
       sampler.select_entry(entries.find { |e| e.caption == "MenuBar" })
       Screen.instance.repaint
 
-      bar = Testing.get(Component::MenuBar, in: sampler.demo_window)
+      bar = Testing.get(Component::MenuBar, in: sampler.demo_panel)
       bar.focus
       bar.handle_key?(Keys::ENTER)
       bar.handle_key?(Keys::DOWN_ARROW)
@@ -453,7 +488,7 @@ module Tuile
       sampler = build_sampler
       sampler.select_entry(entries.find { |e| e.caption == "MenuBar" })
 
-      pane = sampler.demo_window
+      pane = sampler.demo_panel
       bar = Testing.get(Component::MenuBar, in: pane)
       status = Testing.get(Component::Label, in: pane) { _1.text.to_s.start_with?("Nothing activated") }
       bar.focus
@@ -480,8 +515,8 @@ module Tuile
           Screen.instance.repaint
         end
       end
-      let(:canvas) { Testing.get(SamplerExample::Canvas, in: sampler.demo_window) }
-      let(:log) { Testing.get(Component::LogWindow, in: sampler.demo_window) }
+      let(:canvas) { Testing.get(SamplerExample::Canvas, in: sampler.demo_panel) }
+      let(:log) { Testing.get(Component::LogTextView, in: sampler.demo_panel) }
       let(:screen) { Screen.instance }
 
       # Rect-local cell -> the screen point a mouse report would carry. The
@@ -522,7 +557,7 @@ module Tuile
 
         screen.click(*point(2, 2), button: :middle)
         screen.repaint
-        assert_includes logged, "declined, bubbles to the window"
+        assert_includes logged, "declined, bubbles to the panel"
       end
 
       it "logs the enter/exit pair as the pointer crosses the canvas" do
@@ -567,7 +602,7 @@ module Tuile
         screen.move(*point(4, 3))
         screen.repaint
 
-        painted = screen.buffer.region_text(sampler.demo_window.absolute_rect).join
+        painted = screen.buffer.region_text(sampler.demo_panel.absolute_rect).join
         # The canvas reports the cell under the pointer, in its own
         # coordinates — the same ones its marks and its caret are keyed by.
         assert_includes painted, "pointer: 4,3"

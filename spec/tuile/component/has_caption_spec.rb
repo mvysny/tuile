@@ -62,7 +62,7 @@ module Tuile
     # the shared value rule below — one coercion, one short-circuit, one
     # invalidate — so four includers cannot drift on them.
     it "is a marker naming the shape, not a handle Testing looks up by" do
-      window = Component::Window.new("Settings")
+      window = Component::Panel.new("Settings")
       button = Component::Button.new("Submit")
       window.content = button
       assert_kind_of Component::HasCaption, button

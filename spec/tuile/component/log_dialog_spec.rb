@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 module Tuile
-  describe Component::LogWindow do
+  describe Component::LogDialog do
     before { Screen.fake }
     after { Screen.close }
 
-    let(:window) { Component::LogWindow.new }
+    let(:window) { Component::LogDialog.new }
 
     it "frames a LogTextView" do
       assert_kind_of Component::LogTextView, window.content
@@ -17,8 +17,8 @@ module Tuile
       assert_equal "hello", window.content.text.to_s
     end
 
-    it "keeps LogWindow::IO as an alias that accepts the window itself" do
-      io = Component::LogWindow::IO.new(window)
+    it "keeps LogDialog::IO as an alias that accepts the window itself" do
+      io = Component::LogDialog::IO.new(window)
       io.write("hello\n")
       Testing.loop
       assert_equal "hello", window.content.text.to_s

@@ -53,6 +53,8 @@ are `Box`'s rdoc and `D_box_layouts`.
 - **A typed field subclasses {Component::AbstractWrappingField}** and defines only `value` /
   `set_value`; the base owns the editor, focus forwarding, the one well and the commit. An
   *editor-shaped* knob is not forwarded. See `D_wrapping_field`.
+- **A border is the component's own paint, via `BorderDrawerInt`** — never a superclass, mixin or
+  child held for the ink. See `D_panel_dialog`.
 - **{Component::HasContent} means "a *primary* child you populate"**, not "one child" — private
   machinery is owned outright, or exposed read-only (`CheckboxGroup#list`). See `D_has_content`.
 - **Chrome around one field is a wrapper component, never a per-child map on the layout** —
@@ -98,7 +100,7 @@ are `Box`'s rdoc and `D_box_layouts`.
 
 ### Overlays
 
-- **{Tuile::Component::Overlay} is the bare layer; {Tuile::Component::Popup} the modal subclass** —
+- **{Tuile::Component::Overlay} is the bare layer; {Tuile::Component::Dialog} the modal subclass** —
   no `modal:` knob, `modal?` is a constant per class. See `D_overlay`.
 - **`focusable?` and `modal?` move together** — a focusable non-modal overlay holds focus outside
   the key scope and every keystroke goes dead until Tab recovers.
@@ -117,7 +119,7 @@ are `Box`'s rdoc and `D_box_layouts`.
   array — either half reversed breaks opening or closing a `Select` by mouse. See `D_outside_click`.
 - **A new overlay that is *part of* another owes an `Overlay#owner`**, set to the *driver* at
   construction; forget it and a click on the panel dismisses its host. See `D_outside_click`.
-- **{Tuile::Component::TabSheet} keeps unselected panes out of the tree** — deliberately: the
+- **{Tuile::Component::TabSheet} keeps unselected panes out of the tree** — the
   lifecycle hooks on every switch are the feature.
 
 ### Text inputs
@@ -131,6 +133,6 @@ are `Box`'s rdoc and `D_box_layouts`.
 ## Module map
 
 - `layout/` — `Absolute` (a fixed `Rect` per child) and the box layouts stacking children along one
-  axis; the box rules are `Box`'s rdoc and `D_box_layouts`
+  axis
 
 Maintenance: the root `AGENTS.md`'s rules; cap 10 KB.

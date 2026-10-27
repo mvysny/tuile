@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Tuile
-  describe Component::ConfirmWindow do
+  describe Component::ConfirmDialog do
     before { Screen.fake }
     after { Screen.close }
 
@@ -14,7 +14,7 @@ module Tuile
     def body_view(dialog) = Testing.get(Component::TextView, in: dialog)
 
     def build_dialog
-      dialog = Component::ConfirmWindow.new("Delete Report Q4?")
+      dialog = Component::ConfirmDialog.new("Delete Report Q4?")
       dialog.message = "This cannot be undone."
       dialog.button("Delete") { @deleted = true }
       dialog.button("Cancel")
@@ -22,8 +22,8 @@ module Tuile
       dialog
     end
 
-    it "is a Window" do
-      assert Component::ConfirmWindow.new("foo").is_a?(Component::Window)
+    it "is a Dialog" do
+      assert Component::ConfirmDialog.new("foo").is_a?(Component::Dialog)
     end
 
     describe "#open" do
@@ -57,11 +57,8 @@ module Tuile
 
       it "can reopen after closing" do
         dialog = build_dialog
-        first = dialog.open
-        first.close
-        second = dialog.open
-        assert second.open?
-        assert_nil first.content
+        dialog.open.close
+        assert dialog.open.open?
       end
     end
 
@@ -136,7 +133,7 @@ module Tuile
       end
 
       it "underlines the derived letter in the caption" do
-        dialog = Component::ConfirmWindow.new
+        dialog = Component::ConfirmDialog.new
         btn = dialog.button("Delete")
         expected = StyledString.plain("D").with_underline + StyledString.plain("elete")
         assert_equal expected, btn.caption
@@ -145,13 +142,13 @@ module Tuile
       it ":auto cues the first letter as displayed, not its downcased twin later on" do
         # "Discard" holds both a D and a d; an exact-case hunt for the downcased
         # derivation used to underline the trailing d.
-        btn = Component::ConfirmWindow.new.button("Discard")
+        btn = Component::ConfirmDialog.new.button("Discard")
         expected = StyledString.plain("D").with_underline + StyledString.plain("iscard")
         assert_equal expected, btn.caption
       end
 
       it "an explicit letter picks its underlined occurrence by case, matching either case" do
-        dialog = Component::ConfirmWindow.new
+        dialog = Component::ConfirmDialog.new
         btn = dialog.button("Save As", mnemonic: "A") { @saved_as = true }
         expected = StyledString.plain("Save ") + StyledString.plain("A").with_underline +
                    StyledString.plain("s")
@@ -162,7 +159,7 @@ module Tuile
       end
 
       it ":auto silently skips a taken letter" do
-        dialog = Component::ConfirmWindow.new
+        dialog = Component::ConfirmDialog.new
         dialog.button("Confirm") { @confirmed = true }
         dialog.button("Cancel")
         dialog.open
@@ -171,7 +168,7 @@ module Tuile
       end
 
       it ":auto silently skips q, which keeps dismissing" do
-        dialog = Component::ConfirmWindow.new
+        dialog = Component::ConfirmDialog.new
         dialog.button("Quit") { @quit = true }
         dialog.on_dismiss { @dismissed = true }
         popup = dialog.open
@@ -183,28 +180,28 @@ module Tuile
 
       %w[q g G].each do |letter|
         it "raises on the explicit reserved letter #{letter.inspect}" do
-          dialog = Component::ConfirmWindow.new
+          dialog = Component::ConfirmDialog.new
           e = assert_raises(ArgumentError) { dialog.button("Go", mnemonic: letter) }
           assert e.message.include?("reserved")
         end
       end
 
       it "raises on an explicit space" do
-        assert_raises(ArgumentError) { Component::ConfirmWindow.new.button("x", mnemonic: " ") }
+        assert_raises(ArgumentError) { Component::ConfirmDialog.new.button("x", mnemonic: " ") }
       end
 
       it "raises on an explicit duplicate" do
-        dialog = Component::ConfirmWindow.new
+        dialog = Component::ConfirmDialog.new
         dialog.button("Save")
         assert_raises(ArgumentError) { dialog.button("Skip", mnemonic: "s") }
       end
 
       it "raises on a non-printable explicit mnemonic" do
-        assert_raises(ArgumentError) { Component::ConfirmWindow.new.button("x", mnemonic: Keys::TAB) }
+        assert_raises(ArgumentError) { Component::ConfirmDialog.new.button("x", mnemonic: Keys::TAB) }
       end
 
       it "mnemonic: nil declares none" do
-        dialog = Component::ConfirmWindow.new
+        dialog = Component::ConfirmDialog.new
         btn = dialog.button("Save", mnemonic: nil)
         assert_equal StyledString.plain("Save"), btn.caption
       end
@@ -212,7 +209,7 @@ module Tuile
 
     describe "message body" do
       def build_tall_dialog
-        dialog = Component::ConfirmWindow.new("Long")
+        dialog = Component::ConfirmDialog.new("Long")
         dialog.message = (1..40).map { "line #{_1}" }.join("\n")
         dialog.button("OK") { @ok = true }
         dialog
@@ -249,7 +246,7 @@ module Tuile
 
     describe "#message" do
       it "returns what was assigned, for each accepted kind" do
-        dialog = Component::ConfirmWindow.new
+        dialog = Component::ConfirmDialog.new
         dialog.message = "plain"
         assert_equal "plain", dialog.message
         styled = StyledString.plain("styled")
@@ -264,13 +261,13 @@ module Tuile
       end
 
       it "raises TypeError on anything else" do
-        assert_raises(TypeError) { Component::ConfirmWindow.new.message = 42 }
+        assert_raises(TypeError) { Component::ConfirmDialog.new.message = 42 }
       end
     end
 
     describe "#measured_width" do
-      it "caps at half the screen, and the popup's height at half too" do
-        dialog = Component::ConfirmWindow.new("x")
+      it "caps at half the screen, and the dialog's height at half too" do
+        dialog = Component::ConfirmDialog.new("x")
         dialog.message = "word " * 2000
         dialog.button("OK")
         assert_equal 80, dialog.measured_width(Size.new(160, 50))
@@ -278,22 +275,22 @@ module Tuile
       end
 
       it "takes the full half-screen box for a Component message it cannot measure" do
-        dialog = Component::ConfirmWindow.new("x")
+        dialog = Component::ConfirmDialog.new("x")
         dialog.message = Component::Label.new("injected")
         assert_equal 80, dialog.measured_width(Size.new(160, 50))
         assert_equal Size.new(80, 25), dialog.open.rect.size
       end
 
       it "opens as tall as measure_rows at that width" do
-        dialog = Component::ConfirmWindow.new("x")
+        dialog = Component::ConfirmDialog.new("x")
         dialog.message = "one\ntwo"
         dialog.button("OK")
         width = dialog.measured_width(Size.new(160, 50))
         assert_equal Size.new(width, dialog.measure_rows(width)), dialog.open.rect.size
       end
 
-      it "re-measures an open popup when the message changes" do
-        dialog = Component::ConfirmWindow.new("x")
+      it "re-measures an open dialog when the message changes" do
+        dialog = Component::ConfirmDialog.new("x")
         dialog.message = "short"
         dialog.button("OK")
         popup = dialog.open
@@ -306,7 +303,7 @@ module Tuile
 
     describe "#measure_rows" do
       it "adds the border, the spacing and the button row to the wrapped message" do
-        dialog = Component::ConfirmWindow.new("x")
+        dialog = Component::ConfirmDialog.new("x")
         dialog.message = "aaaa bbbb cccc"
         # 14 columns of text in a 4-column chrome: one row at 18 wide, three at 8.
         assert_equal 5, dialog.measure_rows(18)
@@ -314,27 +311,19 @@ module Tuile
       end
 
       it "answers the chrome alone with no message" do
-        assert_equal 4, Component::ConfirmWindow.new("x").measure_rows(40)
+        assert_equal 4, Component::ConfirmDialog.new("x").measure_rows(40)
       end
 
       it "answers nil for a Component message it does not own" do
-        dialog = Component::ConfirmWindow.new("x")
+        dialog = Component::ConfirmDialog.new("x")
         dialog.message = Component::Label.new("injected")
         assert_nil dialog.measure_rows(40)
-      end
-
-      it "fits a plain Popup::ShrinkToContent" do
-        dialog = Component::ConfirmWindow.new("x")
-        dialog.message = "aaaa bbbb cccc"
-        box = Component::Popup::ShrinkToContent[Size.new(18, 20)]
-        popup = Component::Popup.new(content: dialog, declared_size: box).open
-        assert_equal Size.new(18, 5), popup.rect.size
       end
     end
 
     describe "button-row focus" do
       it "Left/Right move between buttons, wrapping" do
-        dialog = Component::ConfirmWindow.new
+        dialog = Component::ConfirmDialog.new
         dialog.button("One") { @one = true }
         dialog.button("Two")
         dialog.open
@@ -347,21 +336,9 @@ module Tuile
       end
     end
 
-    describe "tiled" do
-      it "buttons fire with nothing to close" do
-        dialog = build_dialog
-        Screen.instance.content = dialog
-        Screen.instance.focused = dialog
-        press(Keys::ENTER)
-        assert @deleted
-        press("c")
-        assert_equal 1, @dismissed
-      end
-    end
-
     describe ".alert" do
       it "opens one acknowledgement button whose press dismisses" do
-        popup = Component::ConfirmWindow.alert("Oops", "It broke.")
+        popup = Component::ConfirmDialog.alert("Oops", "It broke.")
         assert popup.open?
         press(Keys::ENTER)
         assert !popup.open?
@@ -370,11 +347,11 @@ module Tuile
 
     describe ".confirm" do
       it "requires a block" do
-        assert_raises(ArgumentError) { Component::ConfirmWindow.confirm("x", "y") }
+        assert_raises(ArgumentError) { Component::ConfirmDialog.confirm("x", "y") }
       end
 
       it "wires the action, the cancel and on_dismiss" do
-        popup = Component::ConfirmWindow.confirm("Delete?", "Gone forever.",
+        popup = Component::ConfirmDialog.confirm("Delete?", "Gone forever.",
                                                  confirm: "Delete",
                                                  on_dismiss: -> { @dismissed = true }) { @deleted = true }
         press("d")
@@ -386,7 +363,7 @@ module Tuile
 
     describe ".yes_no" do
       it "labels Yes/No with y/n mnemonics" do
-        Component::ConfirmWindow.yes_no("Sure?", "Really?",
+        Component::ConfirmDialog.yes_no("Sure?", "Really?",
                                         on_dismiss: -> { @dismissed = true }) { @yes = true }
         press("n")
         assert @dismissed

@@ -47,7 +47,7 @@ gives you the right primitives for the right shape of update — `append`
 fresh line like a log entry, and `remove_last_n_lines` retracts the tail
 when you're rebuilding reformattable content. Turn on `auto_scroll` to
 keep the latest content in view. A TextView is meant to live inside a
-{Tuile::Component::Window} — it leans on the surrounding chrome for focus
+{Tuile::Component::Panel} or a {Tuile::Component::Dialog} — it leans on the surrounding chrome for focus
 indication and keyboard hints.
 
 So: **Label truncates, TextView wraps.** That single line is the whole
@@ -146,7 +146,7 @@ own code (`field.value = "x"`) announces at once in every mode.
 
 Note that `on_enter` / `on_key_up` / `on_key_down` on a TextField, while
 *empty*, let those keys *fall through* to the parent — that's how Enter in a
-search field can trigger the surrounding window's action while the field still
+search field can trigger the surrounding dialog's action while the field still
 handles ordinary typing. Register a listener and the field starts consuming the
 key; remove it again and the key bubbles once more.
 
@@ -489,7 +489,7 @@ only some kinds can answer at all, which is what the `respond_to?` is for:
 ```ruby
 bad = fields.select { _1.respond_to?(:bad_input?) && _1.bad_input? }
 if bad.any?
-  Component::ConfirmWindow.alert("Cannot save", bad.map(&:bad_input_message).join("\n"))
+  Component::ConfirmDialog.alert("Cannot save", bad.map(&:bad_input_message).join("\n"))
 else
   save!
 end
@@ -538,7 +538,7 @@ end
 Assigning a message turns the field's **well** red — `Theme#error_bg_color`,
 or `Theme#error_active_bg_color` while it has focus; assigning `nil` clears it.
 Notice there is no layout in that handler — it works the same inside a form, a
-`Layout::Vertical`, or a `Popup` — and no `invalid?` predicate: a non-nil
+`Layout::Vertical`, or a `Dialog` — and no `invalid?` predicate: a non-nil
 message *is* the verdict, so there is only ever one thing to ask, and no
 ambiguity with `bad_input?` next door.
 
@@ -1223,36 +1223,32 @@ light/dark scheme. Both glyphs take that one color: what distinguishes
 filled from empty is the *density* of the character, not its hue, so the
 bar still reads on a terminal with no color at all.
 
-## Framing content
+## Panels
 
-{Tuile::Component::Window} is the frame: a bordered box with a `caption`
+{Tuile::Component::Panel} is the tiled bordered pane: a box with a `caption`
 and a single content slot you fill via `content=`. Its border lights up in
-the theme's accent color when the window is on the focus chain (chapter 5
+the theme's accent color when the panel is on the focus chain (chapter 5
 + 6), which is what makes the active pane visually obvious in a multi-pane
-layout. A window paints its whole rect and does not clip against
-neighbors, so windows are meant to tile, not overlap — overlapping is what
-popups are for.
-
-The bottom border has two mutually exclusive uses, and the distinction is
-the top-down-layout principle from chapter 3 made concrete. `footer_text=`
-embeds decoration into the border row — chrome, mirroring the caption on
-top, not focusable. `footer=` mounts a *real focusable component* spanning
-the full inner width — the search-field-in-the-border case. A footer
-component present takes the row and hides the text; neither drives the
-window's size (the window was sized by its parent), so a footer that
-doesn't fit is clipped rather than growing the frame. And if the content
-supports scrolling, `scrollbar=` turns on a scrollbar by reclaiming the
-right border column.
+layout. A panel paints its whole rect and does not clip against
+neighbors, so panels are meant to tile, not overlap — overlapping is what
+dialogs are for. If the content supports scrolling, `scrollbar=` turns on a
+scrollbar by reclaiming the right border column.
 
 ```ruby
-window = Component::Window.new("Files")
-window.content = Component::List.new.tap { _1.lines = entries }
-window.scrollbar = true
+panel = Component::Panel.new("Files")
+panel.content = Component::List.new.tap { _1.lines = entries }
+panel.scrollbar = true
 ```
+
+The border is the panel's own paint, not a superclass you inherit to get
+one: a component is a `Panel` because it is a tiled pane, and a dialog is a
+`Dialog` (below) because it is modal — each draws the same border. Many
+panes need no border at all; a borderless `Layout::Vertical` with a `Fill`
+rule between neighbours often reads cleaner.
 
 ### Reserving a region: `Slot`
 
-A `Window` has one content region. When *you* build a container with
+A `Panel` has one content region. When *you* build a container with
 several — a dialog with a message, a button row and maybe a header — give
 each region a {Tuile::Component::Slot}: a component whose whole job is to
 hold one child and size it to itself.
@@ -1473,7 +1469,7 @@ focus and it moves to the hidden component's parent, which passes it on to
 the first reachable field the same way it would after a removal. It is not
 handed back when the component reappears.
 
-An overlay is the exception: {Tuile::Component::Popup} and friends refuse
+An overlay is the exception: {Tuile::Component::Dialog} and friends refuse
 `visible=` outright. An overlay is *closed*, not hidden — it already has
 `open` and `close` for exactly this, and a hidden-but-open modal would go on
 scoping every key and swallowing every click while painting nothing.
@@ -1676,7 +1672,7 @@ terminal bell instead, and Left, Right and ESC are still there to move.
 
 One cost to know about, because it is what a mnemonic *means*: while the bar
 has focus, its letters win. A `mnemonic: "s"` eats the `s`-to-save described
-above, and a `mnemonic: "q"` inside a popup eats the popup's own `q`-to-close.
+above, and a `mnemonic: "q"` inside a dialog eats the dialog's own `q`-to-close.
 That is the bubble working correctly — the focused component is asked first
 — but it is worth a thought before binding a common letter.
 
@@ -1698,23 +1694,38 @@ every GUI dismisses its menus on a window resize too.
 
 ## Overlays
 
-{Tuile::Component::Popup} is how you float something above the tiled UI.
-The popup itself paints nothing — it's a transparent host that wraps any
-component as its content and manages the lifecycle (`open` / `close`,
-ESC/`q` to dismiss). Crucially, and per chapter 3, **it does not size
-itself to its content**: its box is set by `declared_size` — a `Fraction`
-(default `Fraction::HALF`, half the screen, re-resolved on every resize),
-an absolute `Size`, or either one wrapped in `Popup::ShrinkToContent`, which
-shrinks the box to the rows the content's `measure_rows` answers. The content then fills that box, so use content
-that can cope with overflow — a TextView or TextArea that scrolls, not a
-bare Label that only truncates.
+{Tuile::Component::Dialog} is how you float something above the tiled UI:
+a bordered, captioned box around any component, with a lifecycle (`open` /
+`close`, ESC/`q` to dismiss).
 
-A popup is **always modal**: centered, it grabs focus, eats keys, and
+```ruby
+body = Component::TextView.new.tap { _1.text = help_text }
+# footer_text: key hints, embedded in the bottom border
+Component::Dialog.new("Help", content: body, footer_text: "q/ESC to close").open
+```
+
+Crucially, and per chapter 3, **it does not size itself to its content**:
+its box is set by `declared_size` — a `Fraction` (default `Fraction::HALF`,
+half the screen, re-resolved on every resize), an absolute `Size`, or either
+one wrapped in `Dialog::ShrinkToContent`, which shrinks the box to the rows
+the content's `measure_rows` answers. The content then fills the inside of
+the border, so use content that can cope
+with overflow — a TextView or TextArea that scrolls, not a bare Label that
+only truncates. A dialog of your own — its own keys, its own result —
+subclasses `Dialog`, passes its chrome up first —
+`super(caption, declared_size: Fraction.new(0.7, 0.6))` — then sets its
+ivars, builds the widgets that read them, and ends with `self.content = body`.
+`content:` is for the anonymous one-liner above; passed to `super`, it would
+make the subclass build its widgets before its own ivars exist. The
+sampler's `RenameDialog` is the worked example: it owns its field, claims
+Enter, fires `on_rename`, and hands every other key to `super`.
+
+A dialog is **always modal**: centered, it grabs focus, eats keys, and
 blocks clicks beneath it — that's what makes an open dialog trap Tab and
 input inside itself. For a layer that floats *without* taking focus — the
 autocomplete-list case from earlier, where the caller positions it against a
 field's caret and drives it from app code — use its base class, `Overlay`,
-directly. An `Overlay` is a Popup minus the modality: same open/close
+directly. An `Overlay` is a Dialog minus the modality and the border: same open/close
 lifecycle, same outside-click dismissal, but it sits where you open it —
 `overlay.open(Overlay::At[rect])` — and never disturbs focus or key
 dispatch.
@@ -1727,33 +1738,26 @@ whatever was beneath it, unless an open modal swallowed it — in which case
 the first click dismisses and a second one acts.
 
 "Outside" means more than "outside this rectangle". An overlay opened by a
-component that lives inside another popup — a ComboBox on a dialog, whose
+component that lives inside another overlay — a ComboBox on a dialog, whose
 dropdown drops past the dialog's own border — says so with `owner`, and a
 click landing in it then counts as landing inside the dialog too. Otherwise
 picking from the dropdown would dismiss the form under it. Overlays that
 *aren't* related that way stay independent: clicking one dismisses the
-other, as two dismissable windows should. You only need `owner` when you
+other, as two dismissable dialogs should. You only need `owner` when you
 build a compound overlay of your own; the built-in ones already set it.
 
-Because the popup is just a transparent host, you get a bordered dialog by
-wrapping a Window:
-
-```ruby
-window = Component::Window.new("Help")
-window.content = Component::TextView.new.tap { _1.text = help_text }
-Component::Popup.new(content: window).open
-```
-
 A nested TextField still swallows printable keys first, so typing `q` into
-a field inside a popup doesn't dismiss it — the popup's own `q` handler sits
-on the ancestor, and only sees keys the field declined.
+a field inside a dialog doesn't dismiss it — the dialog's own `q` handler sits
+on the ancestor, and only sees keys the field declined. A `Dialog` subclass
+with keys of its own calls `super` for the ones it declines, so ESC and `q`
+still reach that handler.
 
-Sometimes dismissing would lie. A progress popup in front of work that
+Sometimes dismissing would lie. A progress dialog in front of work that
 can't be stopped once started — growing a disk image, resizing a
 filesystem — must not close on ESC, because the user would read that as
-"canceled" while the work goes on. `close_on_key: false` makes the popup
+"canceled" while the work goes on. `close_on_key: false` makes the dialog
 swallow ESC and `q` instead; pair it with `close_on_outside_click: false`,
-and the popup leaves only when the work's owner calls `close`. Since the
+and the dialog leaves only when the work's owner calls `close`. Since the
 keys are swallowed rather than passed on, the app can't be quit by them
 underneath it either — which is exactly what you want while the work runs.
 
@@ -1766,7 +1770,7 @@ that reaches up and does it:
 ```ruby
 def submit
   apply_resize
-  parent.close if parent.is_a?(Component::Popup)   # don't
+  parent.close if parent.is_a?(Component::Dialog)   # don't
 end
 ```
 
@@ -1775,24 +1779,18 @@ form in a layout to add a hint row: `parent` is now a `Layout::Vertical`,
 the guard quietly fails, and Enter does nothing. Walking further up until an
 `Overlay` turns up only moves the problem. The form has learned *how it is
 mounted*, and a component should not care. The same form ought to work
-inside a popup, docked in a tiled pane or on a `TabSheet` page, and in each
-of those "done" means something different: close the popup, clear the pane,
+inside a dialog, docked in a tiled pane or on a `TabSheet` page, and in each
+of those "done" means something different: close the dialog, clear the pane,
 switch the tab.
 
 So split the two. **The component announces; whoever mounted it decides.**
-The form fires a listener, and the code that put it in a popup is the code
+The form fires a listener, and the code that put it in a dialog is the code
 that knows to close one:
 
 ```ruby
-class DiskResizeWindow < Component::Window
+class ResizeForm < Component::Layout::Vertical
   SubmitEvent = Data.define(:source) { include Tuile::Event }
   listener :on_submit
-
-  def open_in_popup
-    popup = Component::Popup.new(content: self)
-    on_submit { popup.close }
-    popup.open
-  end
 
   private
 
@@ -1801,14 +1799,18 @@ class DiskResizeWindow < Component::Window
     on_submit.fire(SubmitEvent.new(source: self))
   end
 end
+
+form = ResizeForm.new
+dialog = Component::Dialog.new("Resize disk", content: form)
+form.on_submit { dialog.close }
+dialog.open
 ```
 
-That `open_in_popup` is the shape the built-in windows already use —
-`PickerWindow#open_in_popup` wires its own `on_pick` to the popup's `close` in
-exactly this way. It mentions `Popup`, and that is fine: it is one convenient
-way to *mount* the window, chosen by whoever calls it. The window's behaviour
-stays the same however it is mounted, and a caller who docks it in a layout
-instead wires `on_submit` to something else.
+The form's behaviour stays the same however it is mounted, and a caller who
+docks it in a layout instead wires `on_submit` to something else. When the
+form *is* the dialog — `DiskResizeDialog < Component::Dialog` — closing is
+its own business, and it calls `close` on itself, as `PickerDialog` does
+after a pick.
 
 The line being drawn is narrower than "never look up the tree". The
 framework walks ancestors all the time — a keystroke bubbles up them
@@ -1820,12 +1822,12 @@ parent a listener and let it do the job.
 
 ## The confirm dialog
 
-That Window-in-a-Popup assembly is how you build any dialog. One dialog is
-so common it comes pre-assembled: {Tuile::Component::ConfirmWindow}, the
+A `Dialog` around your own content is how you build any dialog. One dialog is
+so common it comes pre-assembled: {Tuile::Component::ConfirmDialog}, the
 "are you sure?" box — a caption, a short message, a row of buttons.
 
 ```ruby
-Component::ConfirmWindow.confirm("Delete Report Q4?", "This cannot be undone.",
+Component::ConfirmDialog.confirm("Delete Report Q4?", "This cannot be undone.",
                                  confirm: "Delete") { delete! }
 ```
 
@@ -1867,15 +1869,15 @@ action you asked about, and there is "do nothing", however the user spells
 it.
 
 There is deliberately no way to keep the dialog open after a press. A
-dialog that leads somewhere — "Copy files" showing a progress window —
-opens the next window *from its callback*, which is safe because the block
+dialog that leads somewhere — "Copy files" showing a progress dialog —
+opens the next dialog *from its callback*, which is safe because the block
 fires after the dialog has already closed and focus has been repaired.
 
 For any other button set, the component is its own builder — buttons are
 declared one at a time, each a caption and an optional block:
 
 ```ruby
-dialog = Component::ConfirmWindow.new("Unsaved changes")
+dialog = Component::ConfirmDialog.new("Unsaved changes")
 dialog.message = "Save your changes before leaving?"
 dialog.button("Save")    { save! }
 dialog.button("Discard") { discard! }
@@ -1908,19 +1910,18 @@ message reads without any focus gymnastics. The body is also a tab stop:
 Shift+Tab reaches it, so overflowing prose is visibly reachable, not
 secretly scrollable.
 
-### The popup that sizes itself
+### The dialog that sizes itself
 
 Chapter 3 was firm that nothing in Tuile sizes itself to its content, and a
-plain Popup takes half the screen whatever it wraps — absurd around a
+plain Dialog takes half the screen whatever it wraps — absurd around a
 one-line "Delete?". The confirm dialog is the sanctioned exception *shape*:
 it measures **content it owns** — its caption, its message, its buttons —
 and asks the screen for exactly that box, still capped at half the screen
 (a message longer than the cap wraps and scrolls). Its height half is the
-dialog's `measure_rows`, so a `ConfirmWindow` in a plain
-`Popup::ShrinkToContent` popup fits as well; the widest-line width is the dialog's
-own rule. Assign a `Component` as the message and the measuring honestly
-gives up: injected content is not the dialog's to measure, so the popup
-takes the full half-screen box.
+dialog's `measure_rows`, the same question `Dialog::ShrinkToContent` asks any
+content; the widest-line width is the dialog's own rule. Assign a
+`Component` as the message and the measuring honestly gives up: injected
+content is not the dialog's to measure, so it takes the full half-screen box.
 
 ### What it deliberately isn't
 
@@ -1928,7 +1929,7 @@ The message is prose — a `String` or {Tuile::StyledString}, which on a TTY
 already covers color, emphasis and iconography — not a content slot. A
 dialog collecting *input* is not a confirm dialog: the moment you want a
 form, a picker or a diff view in there, you've outgrown the sugar, and the
-general mechanism is one line away — `Popup.new(content: your_layout)`,
+general mechanism is one line away — `Dialog.new(caption, content: your_layout)`,
 exactly as in the previous section.
 
 ## Notifications
@@ -1966,8 +1967,8 @@ restarting the clock, which is also what stops a steady trickle of
 notifications from keeping the box alive forever.
 
 Everything else follows from "a toast must not interrupt": it's a non-modal
-popup, so it takes no focus, receives no keys (not even the `q` a normal
-popup would claim), and blocks no click outside its own box. You keep
+overlay, so it takes no focus, receives no keys (not even the `q` a normal
+dialog would claim), and blocks no click outside its own box. You keep
 typing into whatever you were typing into, and the notification appears and
 leaves around you. A left-click on the box dismisses the whole thing early;
 a click anywhere else doesn't, because a toast is timed and an unrelated
@@ -1978,43 +1979,46 @@ at most three rows and is then ellipsized — the box is capped at 40 % of
 the screen — and at most five messages are held, after which the newest is
 dropped and reported to `Tuile.logger`. Both are deliberate: a notification
 is a glance, not a document, and an app with more to say than five short
-lines wants a LogWindow, which is next.
+lines wants a LogDialog, which is next.
 
-## Batteries-included windows
+## Batteries-included dialogs
 
-The last three components are conveniences: common Window-plus-content
-assemblies you'd otherwise build by hand. Each works tiled (add it to a
-layout); the first two also pop up via `open_in_popup`.
+The last three components are conveniences: dialogs you'd otherwise
+subclass by hand. Each opens with `#open`, which returns the dialog, and
+reopens after it closes.
 
-- {Tuile::Component::InfoWindow} — a Window with a read-only body, in one
+- {Tuile::Component::InfoDialog} — a Dialog with a read-only body, in one
   of two presentations: `message=` is *prose*, wrapped by a scrollable
   TextView; `lines=` is *rows*, a List keeping one item per row and
   truncating — the choice for columnar output, where a wrap would destroy
-  the alignment. `InfoWindow.new(caption, body)` picks the presentation from the
-  body's type (an Array is rows, text is prose); `open_in_popup` pops it up.
-- {Tuile::Component::PickerWindow} — a menu of options each bound to a
-  single key, firing your block with the picked key. Popped up via
-  `open_in_popup`, it closes itself after a pick; ESC/`q` cancels without firing. Captions
+  the alignment. `InfoDialog.new(caption, body).open` picks the presentation
+  from the body's type (an Array is rows, text is prose). Tiled, the same
+  body is a TextView or List in a Panel.
+- {Tuile::Component::PickerDialog} — a menu of options each bound to a
+  single key, firing your block with the picked key and then closing;
+  ESC/`q` cancels without firing. Captions
   paint in the terminal's own foreground; hand in a {Tuile::StyledString}
   (or the ANSI string `theme.fg` returns) to color one, per option. An
   option disabled with a reason paints in `disabled_color` and fires nothing
   when picked.
-- {Tuile::Component::LogWindow} — a Window framing a
+- {Tuile::Component::LogDialog} — a Dialog showing a
   {Tuile::Component::LogTextView}: an auto-scrolling, scrollbar-equipped
-  TextView purpose-built for log output. The view is where the behavior
-  lives — compose it bare into a layout when you don't want the frame.
+  TextView purpose-built for log output, for an app with no room to tile
+  its log. Build it once at startup and open it on demand; it keeps
+  logging while closed. The view is where the behavior lives — put it in a
+  layout or a Panel when you do have room.
   Its `log` method is **thread-safe** — it marshals the append back onto
   the UI thread via the event queue (chapter 4), so background work can
   log freely. And the view carries an `IO`-shaped adapter so you can point
   a stdlib `Logger` (or a `TTY::Logger`) straight at either of them:
 
 ```ruby
-window = Component::LogWindow.new
-logger = Logger.new(Component::LogWindow::IO.new(window))
-logger.info("started")   # appears in the window, from any thread
+log = Component::LogDialog.new
+logger = Logger.new(Component::LogDialog::IO.new(log))
+logger.info("started")   # appears in the log, from any thread
 ```
 
-That LogWindow adapter is the tidy end of the thread-safety story chapter
+That LogDialog adapter is the tidy end of the thread-safety story chapter
 4 opened: a background thread doesn't know or care that its log line has
 to reach the UI on the loop thread — it writes to a `Logger` as it always
 would, and the plumbing routes it through `submit` for you.

@@ -101,18 +101,18 @@ trip. It paints the component and its whole subtree into a {Tuile::Buffer}
 of the component's own size, whose `(0, 0)` is the component's top-left:
 
 ```ruby
-window = Component::Window.new("Settings")
-window.content = Component::Label.new("hi")
-Testing.place(window, Rect.new(0, 0, 12, 3))   # sized; nothing to attach
+panel = Component::Panel.new("Settings")
+panel.content = Component::Label.new("hi")
+Testing.place(panel, Rect.new(0, 0, 12, 3))   # sized; nothing to attach
 
-assert_equal ["┌Settings──┐", "│hi        │", "└──────────┘"], Testing.paint(window).text
+assert_equal ["┌Settings──┐", "│hi        │", "└──────────┘"], Testing.paint(panel).text
 ```
 
 `Testing.place` puts a component at a rect through whatever places it —
-here a throwaway holder, since `window` has no parent — because `rect=`
+here a throwaway holder, since `panel` has no parent — because `rect=`
 raises anywhere but a parent's `relayout`. It never attaches, and
 `Testing.paint` doesn't need it to. Because the buffer is the component's
-own, `cell(1, 0)` means column 1 *of the window*, and the classic mistake of
+own, `cell(1, 0)` means column 1 *of the panel*, and the classic mistake of
 reading the screen at `rect` instead of `absolute_rect` has nowhere to
 happen. Ancestors don't clip the paint, though their background shows
 through; popups aren't in the subtree, so they don't show at all.
@@ -177,7 +177,7 @@ walk that takes the first match —
 
 ```ruby
 combo = nil
-window.walk_tree { |c| combo ||= c if c.is_a?(Component::ComboBox) }
+panel.walk_tree { |c| combo ||= c if c.is_a?(Component::ComboBox) }
 ```
 
 — and the day the pane grows a second `ComboBox`, that silently re-points
@@ -189,7 +189,7 @@ failure comes with a dump of the tree it searched:
 expected 1 Component::ComboBox, found 2
 searched:
   #<ScreenPane rect=(0,0 160x50)>
-    #<Window rect=(0,0 40x10) caption="Settings">
+    #<Panel rect=(0,0 40x10) caption="Settings">
 →     #<ComboBox rect=(1,1 38x1) value=nil>
 →     #<ComboBox rect=(1,2 38x1) value="dark">
 ```
@@ -375,7 +375,7 @@ Testing.loop        # show(result) runs here, on your example's thread
 
 The `join` matters: until the worker has submitted, there's nothing in the
 queue to run. The same goes for code that marshals even from the UI thread,
-such as `LogWindow#log`. Call it, and the line isn't there yet; the next
+such as `LogDialog#log`. Call it, and the line isn't there yet; the next
 `Testing` call, gesture or `Testing.loop` adds it. A block that raises fails
 the test where the queue runs, and `Screen.close` runs whatever is still
 queued, so an error can't slip past at the end of the example.

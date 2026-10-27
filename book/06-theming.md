@@ -15,7 +15,7 @@ and you understand theming.
 
 Look at any Tuile screen and most of what you see is the terminal's own
 colors: the default foreground text on the default background. A label's
-text, a window's interior, the body of a list — none of that is themed.
+text, a panel's interior, the body of a list — none of that is themed.
 It inherits whatever the user's terminal is set to, which already matches
 their preferences perfectly. Tuile writes no background fill and no
 foreground color for those cells, so they come out in the terminal's
@@ -23,7 +23,7 @@ defaults for free.
 
 What Tuile *does* color is the small set of cues that signal
 interaction: the highlight behind the focused list row, the border of the
-active window, the resting "well" of a text field, the scrollbar down a
+active panel, the resting "well" of a text field, the scrollbar down a
 scrollable pane's edge. Those are the accents, and they are exactly the tokens
 a {Tuile::Theme} carries — `active_bg_color`, `active_border_color`,
 `input_bg_color`, `scrollbar_color`, the three that mark a field
@@ -66,7 +66,7 @@ Set it on a component and that component paints a background behind
 everything it draws; leave it unset (the default) and you get the
 terminal default, exactly as before. The useful part is that it
 **inherits**: set `bg_color` once on a container — a
-{Tuile::Component::Popup}, a layout, a window — and every descendant that
+{Tuile::Component::Dialog}, a layout, a panel — and every descendant that
 hasn't set its own picks it up. You tint the panel, and the labels and
 lists inside come out on the same tint without being told individually.
 
@@ -176,7 +176,7 @@ For plain chrome — a border string, a button caption — the theme's
 picks the right channel for the token's role (a `*_bg` token wraps as a
 background, a border as a foreground) and passes the content through
 verbatim, so the string may already contain other escape sequences — which
-is how {Tuile::Component::Window} feeds its whole border row, cursor moves
+is how {Tuile::Component::Panel} feeds its whole border row, cursor moves
 and all, through `active_border`.
 
 But chrome text is flat. Content is not. A list row or a label may be a

@@ -110,14 +110,14 @@ module Tuile
     # for "no content height: I fill whatever I'm handed" — the base answer. The
     # one bottom-up question Tuile asks; width only ever comes down:
     #
-    #   popup = Popup.new(content: dialog, declared_size: Popup::ShrinkToContent[Fraction::HALF])
-    #   # each pass on a 160x50 screen: dialog.measure_rows(80) => 9, so 80x9
+    #   dialog = Dialog.new("Notes", content: view, declared_size: Dialog::ShrinkToContent[Fraction::HALF])
+    #   # each pass on a 160x50 screen: view.measure_rows(78) => 7, so 80x9 with the border
     #
-    # Asked by a parent that was *told* to ask ({Popup::ShrinkToContent}), inside its
+    # Asked by a parent that was *told* to ask ({Dialog::ShrinkToContent}), inside its
     # own pass, and by nothing else — the re-grow rule's caller-side query
     # (`D_declared_size`). Nobody is notified when the answer changes: the asker
     # re-asks on its next pass, so a mutation that changes it owes the asker a
-    # mark ({Overlay#reposition} for a popup).
+    # mark ({Overlay#reposition} for a dialog).
     #
     # == Implementation details
     #
@@ -134,7 +134,7 @@ module Tuile
     # declare nothing — in which case the whole {#rect} is treated as fair game
     # and the default {#repaint} blanks all of it. Override it when you paint
     # less: a one-row {Component::Checkbox} handed a tall column, or a
-    # {Component::Select} used as a {Component::Popup}'s content and assigned the
+    # {Component::Select} used as a {Component::Dialog}'s content and assigned the
     # whole inner box.
     #
     # It always sits at {#rect}'s top-left — which is why this is a {Size} and
@@ -467,7 +467,7 @@ module Tuile
     def bg_color = @_bg.color
 
     # Tints this component and every descendant that doesn't set its own
-    # background — set it once on a container / {Component::Popup} to tint a
+    # background — set it once on a container / {Component::Dialog} to tint a
     # whole subtree. Invalidates the subtree so it repaints.
     #
     # A {Theme::Ref} is re-resolved against the theme each paint, so it tracks
@@ -513,7 +513,7 @@ module Tuile
     # mixed-width form layouts safe.
     #
     # Call `super` from your own `repaint` to inherit this. Skip it only if you
-    # paint the whole {#rect} yourself ({Window}'s border, {Component::List}'s
+    # paint the whole {#rect} yourself ({Panel}'s border, {Component::List}'s
     # row-by-row paint). Never draw outside {#rect}. Only called when attached.
     #
     # **A widget that paints less than its rect declares an {#extent} rather than
@@ -689,7 +689,7 @@ module Tuile
     # from {#active?}: every component carries the active flag, but only
     # focusable ones can become a focus target that puts themselves and their
     # ancestors on the active chain. Focusable is broader than {#tab_stop?} —
-    # a {Window} is focusable (a click on chrome lands focus) but not a tab stop.
+    # a {Panel} is focusable (a click on chrome lands focus) but not a tab stop.
     # @return [Boolean] true if this component can be focused.
     def focusable? = false
 
@@ -722,7 +722,7 @@ module Tuile
     #
     # Final: a container that computed this from its own slots would disagree
     # with the parent pointers {#attached?} walks, silently (`D_final_tree`).
-    # Named slots are readers *over* this array (`Window#footer`), never a
+    # Named slots are readers *over* this array (`HasContent#content`), never a
     # second copy of it; for a swappable region hold a {Slot}.
     # @return [Array<Component>] child components. Must not be mutated by
     #   callers! May be empty.
@@ -894,7 +894,7 @@ module Tuile
     # Adopts `child`: places it in {#children} and wires its parent pointer.
     #
     #   add_child(content, at: 0)   # the tiled layer, painted beneath …
-    #   add_child(@footer)          # … and chrome appended, painted over it
+    #   add_child(popup)            # … and a popup appended, painted over it
     #
     # @param child [Component] must not already have a parent.
     # @param at [Integer, nil] index to insert at; appends when nil.
@@ -1147,7 +1147,7 @@ module Tuile
     # no place on the screen to paint to, so {Screen} must never end up
     # repainting it. Callers don't need to guard their own `invalidate` calls;
     # mutating a detached component (e.g. setting `lines=` on a {List} sitting
-    # inside a closed {Component::Popup}) is silent.
+    # inside a closed {Component::Dialog}) is silent.
     # @return [void]
     def invalidate
       return unless attached?
@@ -1318,7 +1318,7 @@ module Tuile
     # Passes the repaint cascade on to the direct children — the one thing a
     # container may never skip, whatever else its {#repaint} does. Named so a
     # self-painting container can drop the default's blanket clear without also
-    # dropping this by accident ({Component::Window} is the case):
+    # dropping this by accident ({Component::Panel} is the case):
     #
     #   def repaint(canvas)
     #     return if rect.empty?

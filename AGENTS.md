@@ -83,7 +83,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **An override calls `super`, empty base body or not** — that is what keeps both upgrade
   directions additive, so neither the hook nor the slot has to ship first. The carve-out is a hook
   whose base body does real work and whose override *replaces* it (`handle_child_removed`,
-  `ConfirmWindow#handle_focus`), and it is stated at the site.
+  `ConfirmDialog#handle_focus`), and it is stated at the site.
 
 ### The tree
 
@@ -199,7 +199,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **A focus target still showing nothing after that request is logged, never raised** — a shrunk
   terminal causes it legitimately. A *hidden* one raises, in `focused=` and `scroll_to_visible` alike.
 - **`focusable?` gates *becoming* a target and is independent of `active?`** — clicking a
-  {Tuile::Component::Label} must not hijack focus from the window around it.
+  {Tuile::Component::Label} must not hijack focus from the panel around it.
 - **{Tuile::Mouse::Router} owns every mouse walk; a component only answers handlers** — no `super`
   discipline, no hit test of its own, and a container hand-rolls nothing. See `D_mouse_dispatch`.
 - **A press bubbles from the innermost component under the pointer until one claims it, and the
@@ -239,7 +239,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   runtime gate here is the wart `D_key_dispatch` deleted; reserve a key, don't gate it.
 - **Delivery bubbles *up* to the scope root, `ScreenPane#key_scope` (topmost modal popup, else content)** —
   the only home for scope-wide keys. There is deliberately **no downward delegation**: neither
-  `Layout#handle_key?` nor `Window#handle_key?` exists.
+  `Layout#handle_key?` nor `Panel#handle_key?` exists.
 - **Below all three rungs, an unhandled `q` or ESC stops the loop**, so a scope root binding bare
   `q` must return `true` or the app quits. See `D_quit_key`.
 - **There is no framework jump-to-widget mnemonic** — `key_shortcut` and the capture phase are
@@ -299,7 +299,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **The deleted bottom-up channel must not return under a new name.** Re-grow rule: measurement may
   come back only as an *optional, read-only, caller-side query*, never as a channel the framework
   consults. That query is `measure_rows(width)` — rows only, asked only by a parent told to ask
-  (`Popup::ShrinkToContent`), never by `Screen` or `LayoutPass`. A box a component *asks for* is spelled
+  (`Dialog::ShrinkToContent`), never by `Screen` or `LayoutPass`. A box a component *asks for* is spelled
   `declared_size`, not `size`. See `D_declared_size`.
 - **The pane owns no chrome and Tuile reserves no row** — `content` gets the whole terminal, and an
   app drives its own status line from `Screen#on_focus_changed`. A hint channel may come back only
