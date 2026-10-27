@@ -98,7 +98,14 @@ What `Window` paints today, and all three would get:
 - the focus-lit border (`active?`; on a `Dialog` it dims while another dialog is stacked on top),
 - giving the right border column to a content scrollbar (`scrollbar=`).
 
-The helper is a plain class, not a component, and owns **both the ink and the insets**. It
+**The helper is `Tuile::BorderDrawerInt`** (`lib/tuile/border_drawer_int.rb`, the owner's name).
+It is Tuile-internal, marked `@api private` with the same "may change or vanish with no migration
+note" line as `ComponentUtil`. The `Int` suffix says so at every call site. Apps don't call it, so
+it gets no CHANGELOG line and no README row, and it isn't in `component_contract_spec`'s catalog,
+because it isn't a component. It may hold state (the caption, the scrollbar flag, whatever is
+convenient); its API is deliberately not settled, because the v2 look-and-feel redesigns it anyway.
+
+It is a plain class, not a component, and owns **both the ink and the insets**. It
 paints the border *and* answers the content rect inside it (`local_rect` shrunk by 1 on each side,
 0 on the right while a scrollbar has that column). Each of the three components asks it for the
 content rect in its `relayout`, and nobody hard-codes a `1`. That's for the three components'
@@ -129,11 +136,6 @@ look-and-feel, which may reuse the helper or replace it.
 
 ## Open
 
-- **`Q_border_helper_api`**: it's a helper class (the owner's call; a module is ruled out by the
-  principle above). Still open: its name, and whether each component holds an instance or it is
-  stateless, e.g. `paint(canvas, rect, caption:, active:, scrollbar:)` plus
-  `content_rect(local_rect, scrollbar:)`. `Border` is free as a name: the decorator *component*
-  of that name was rejected, and this isn't a component.
 - **`Q_thin_dialog_subclasses`**: the identity test applies to the subclasses too. `ConfirmDialog`
   and `PickerDialog` are kinds of dialog: they have their own keys, buttons and result. But
   `LogDialog` is just a `Dialog` whose body is a `LogTextView`, and `InfoDialog` one whose body is a
@@ -162,7 +164,7 @@ look-and-feel, which may reuse the helper or replace it.
   `D_no_context_menu`, `D_no_hint_color`. A new `D_` records the principle (the identity axis and
   the appearance axis), the merge, and the names and structures not chosen above.
 - **An invariant line**, probably in `lib/tuile/component/AGENTS.md`: a class says what a
-  component is. Its border is its own paint, through the border helper, and never comes from a
+  component is. Its border is its own paint, through `BorderDrawerInt`, and never comes from a
   superclass, a mixin or a child held for its ink.
 - **The rest of the docs and code:**
   - `design/terminology.md` (caption, slot)
