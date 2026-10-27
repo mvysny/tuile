@@ -2,7 +2,8 @@
 
 **Status:** stage 1 shipped: `Component#measure_rows` and `Dialog::ShrinkToContent[box]`,
 argued in `D_declared_size`, which also holds the roads it rejected. Stages 2–5 are still a
-brainstorm, though the notice (stage 3) has a chosen design that `Q_notice_gate` still gates. Takes in what was `content-height.md` (the Scroller half) and #73 (wrapped rows in a
+brainstorm, though the notice (stage 3) has a chosen design, accepted by the owner as the one
+exception to top-down layout. Takes in what was `content-height.md` (the Scroller half) and #73 (wrapped rows in a
 scrolled stack). Every step past stage 1 amends a `D_` and the owner decides. Until then `Scroller`
 is told (`content_rows=`). Every road here adds a new value next to what already exists, so waiting
 breaks nothing.
@@ -154,6 +155,19 @@ today.
 **a value-free mark that climbs along the edges where a parent's arithmetic reads the child's rows,
 and stops at the first edge where it doesn't.** The roads it beat are rows 10–13 of the table below.
 
+**Accepted as the one exception to top-down layout** (owner, 2026-10-27): calling
+`parent.handle_child_rows_changed` is not the channel `D_declared_size` bans, because it is bounded
+to settle. Only rows travel up, and rows never flow back into a width. Three conditions keep that
+true, and breaking any of them is the falsifier the `D_declared_size` amendment carries:
+
+- **Content changes fire it, width changes don't.** A mutation fires once, and the climb ends at the
+  root or the first edge that doesn't read the child's rows. A width change is answered by the pull
+  in the `relayout` that set the width; firing from it would leave settling to the drain cap.
+- **It carries no value**, so nothing is compared and nothing can oscillate. Marks coalesce, and a
+  pre-order drain settles them in one round.
+- **Nothing turns rows into a width**, except `Scroller`'s `:auto` scrollbar, which settles inside
+  its own `relayout` (stage 4).
+
 **It fires from a mutation of the answer's own inputs**, never from a change of rect and never
 from being asked. An answerer calls `invalidate_rows` from `text=`, `wrap=`, `add` and the like, the
 way it calls `invalidate`. A width changes only inside the `relayout` of the parent that assigned it.
@@ -240,7 +254,11 @@ parent already holds, with no bookkeeping of its own.
    the hook when it lands (`Scroller` at 4, `Auto` at 5). Two `component_contract_spec` checks:
    "non-`nil` `measure_rows` ⇒ a mutation that changes it calls `invalidate_rows`", and "a container
    whose `measure_rows` changes when a child's answer changes passes that child's notice on".
-4. `Scroller#content_rows = :content`, which was `content-height.md`'s goal.
+4. `Scroller#content_rows = :content`, which was `content-height.md`'s goal. Under `:auto` the bar is
+   the one place rows decide a width, and the scroller settles it in one `relayout`: measure at full
+   width, show the bar if that outgrows the viewport, then measure at `inner_width`. That holds
+   because less width never costs fewer rows, which greedy wrapping guarantees and every answerer
+   under an `:auto` bar must keep. If it bites, `:content` refuses `:auto` until it's solved (owner).
 5. `Vertical`'s `Auto`, decided on its own, last. It has a consumer: #73 cannot be written without
    it, because the stack has to give each wrapped row its counted height.
 
@@ -252,9 +270,8 @@ parent already holds, with no bookkeeping of its own.
   falsifier.
 - **`D_declared_size`' re-grow rule** ("optional, read-only, caller-side query, never a channel the
   framework consults"). The query passes. The notice is a push, which `D_scroller` calls "the
-  banned channel". The case for it: the ban is on a push *the framework acts on*, and this one
-  carries no value, reaches only parents whose arithmetic reads the child's rows, and is a plain
-  `invalidate_layout` to `LayoutPass`. Amending the rule is the owner's call (`Q_notice_gate`).
+  banned channel". The owner accepted it as an exception because it is bounded to settle (the
+  notice section above); the `D_declared_size` amendment carries that argument and its falsifier.
 - **AGENTS.md's Layout section** says "a component never advertises how big it wants to be" and
   "the deleted bottom-up channel must not return under a new name". Stage 1 can be argued to fit:
   the component answers, it doesn't advertise, and only rows. Stage 3 or 5 rewrites both lines,
@@ -278,9 +295,6 @@ parent already holds, with no bookkeeping of its own.
 
 ## Open questions
 
-- `Q_notice_gate`: does the notice fall under `D_declared_size`'s ban? Everything past stage 1
-  waits on this. The proposed amendment's falsifier: "the mark carries a value, fires from a rect
-  change, or travels an edge where the parent's arithmetic doesn't read the child's rows".
 - `Q_spelling`: `content_rows = :content` and `Auto` (the dialog's is `ShrinkToContent`). `:auto` collides
   with `D_box_layouts`' banned vocabulary, unless stage 5 retires that ban.
 - `Q_fit_width`: does `ConfirmDialog`'s widest-line width become a public dialog width declaration
