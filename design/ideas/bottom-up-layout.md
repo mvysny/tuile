@@ -114,8 +114,8 @@ What a lazy rows-only pull would answer, point by point:
   height, lets the child place its own children at it, and redoes everything once the real height is
   known. Two passes per child, marks that will change again, and provisional rects that
   `strict_layout` (`D_strict_layout`) rightly refuses to have read.
-- **`nil` (the base) means "no content height, I fill what I'm handed"**: `List`, a `Vertical` with
-  an `Expand` child, a self-scrolling `TextView` in fill mode. It is not `0`: "fill" and "I need
+- **`nil` (the base) means "no content height, I fill what I'm handed"**: a `VerticalScrollBar`, a
+  `Scroller`, a `Vertical` with an `Expand` child. It is not `0`: "fill" and "I need
   exactly this much" are different answers, and each consumer says what it does with `nil`.
 - **No height budget.** The asker clamps the answer to whatever it has.
 - **No cache, on either side.** An answerer recomputes on every ask, and an asker asks whenever its
@@ -127,24 +127,57 @@ What a lazy rows-only pull would answer, point by point:
   `main_sizes` (`box.rb`), which is already a pure function of the inner extent and each child's
   `placement` and never consults a child. A second copy of that arithmetic would drift.
 
-| answerer | `measure_rows(width)` |
-|---|---|
-| one-row fields (`Button`, `Checkbox`, `Select`, `ComboBox`, `DateTimeField`, `Tabs`, `MenuBar`) | `1`, the row their `extent` already declares. Today they answer the base `nil`, so under `Auto` they vanish behind the warning |
-| `Label` | line count, independent of `width` (it truncates, never wraps). #73 wants a wrapping one: a `wrap:` knob, or `TextView` in a non-scrolling mode, answering like the row below |
-| `TextView` (wrapping) | wrapped row count at `width` |
-| `ConfirmDialog` | **shipped**: the message wrapped at `width − WIDTH_CHROME`, plus `HEIGHT_CHROME` |
-| `Dialog` | **shipped**: `content.measure_rows(width − border) + border`; `nil` if the content says `nil`. No content or hidden content counts `0` (stage 2; the shipped answer is `nil`) |
-| `Panel` | the same as `Dialog`'s |
-| `FormLayout` | `item_height` summed over the visible items |
-| `Vertical` | each shown child: `Fixed[n]` → `n`, `Auto` → `child.measure_rows(its width)`, plus `spacing` and `padding`; any `Percent` / `Expand` child → `nil`, since it needs the height being computed |
-| `Horizontal` | `main_sizes` divides `width`, then the tallest shown child + `padding`: `cross:` `Fixed[n]` → `n` and the child is never asked, `Auto` → `child.measure_rows(w_i)`. A `Percent` child fills the height being computed, so it contributes nothing, and neither does an `Auto` child answering `nil`. A `List` beside a wrapped label therefore doesn't set the row's height. With no `Fixed` or `Auto` contribution the answer is `nil` |
+Every component Tuile ships, so none is left on the base by accident. "Fires from" lists the
+component's own mutations that call `invalidate_rows` on itself. `visible=` is the one universal
+site and is not repeated per row (the notice section says where it fires).
+
+| answerer | `measure_rows(width)` | fires from |
+|---|---|---|
+| **One row** | | |
+| `Button`, `Checkbox` | `1`, the row their `extent` declares | — |
+| `Select`, `ComboBox` | `1`; the dropdown is an overlay, outside the answer | — |
+| `TextField` and its subclasses (`PasswordField`, the number fields' inner `Field`) | `1`. On `TextField`, not `AbstractStringField`, which `TextArea` also subclasses | — |
+| `AbstractWrappingField` (`IntegerField`, `FloatField`, `BigDecimalField`, `DateField`, `TimeField`) | `1` | — |
+| `DateTimeField` | `1`, inherited from `Horizontal`: both halves are `cross: Fixed[1]` | — |
+| `Tabs`, `MenuBar` | `1`; the menu cascade is an overlay | — |
+| `ProgressBar` | `1`: one row of bar, and any rows below are blanked | — |
+| **Content-sized leaves** | | |
+| `Label` | line count, independent of `width` (it truncates, never wraps); `""` is `0`. #73 wants a wrapping one: a `wrap:` knob, answering like `TextView` | `text=` |
+| `TextArea` | wrapped rows at `width`, `>= 1` (`WrappedText` keeps a row for the caret). Reuses its own wrap when `width == rect.width`, and otherwise builds a fresh `WrappedText` without replacing the cached one, so an ask never throws away the paint's wrap | every edit (`text=`, `insert_text`, deletes) |
+| `TextView`, `LogTextView`, `Notification::View` | wrapped rows at `width` less the bar's columns under `:visible`, at the full `width` under `:auto` / `:gone` (it scrolls itself: the text either fits and no bar shows, or the asker capped it and it scrolls) | `text=`, `append` / `<<`, `add_line`, `remove_last_n_lines`, `replace`, `insert`, `scrollbar_visibility=` |
+| `List` (`ListDropdown::Menu` inherits it) | `items.size`, one row per item. Self-scrolling like `TextView`: under `ShrinkToContent` a short list makes a short dialog, a long one caps and scrolls | `items=` |
+| `CheckboxGroup`, `RadioGroup` | their composed `List`'s answer, so a form gets one row per option without a hand-counted `Fixed[n]` | — (the `List` fires; the group passes it on) |
+| **Fill (`nil`)** | | |
+| `VerticalScrollBar` | `nil`: it fills, and its `extent` is the rect's height | — |
+| `Fill` | `nil`: a rule fills what it is handed, and the parent sizes it (`Fixed[1]`) | — |
+| `Scroller` | `nil`: it is a viewport, and its content scrolls inside it | — |
+| `Layout`, `Absolute` | `nil`: the geometry is the app's own arithmetic. A max-bottom over the constraint rects would be inherited by a subclass that computes rects in its own `relayout` and sets none | — |
+| **Passing a content child's answer on** (absent or hidden content counts `0`) | | |
+| `Slot` | the content's answer | `content=` |
+| `Panel` | `content.measure_rows(width − border) + border`; a `nil` content answer stays `nil` | `content=` |
+| `Dialog`, `InfoDialog`, `LogDialog`, `PickerDialog` | **shipped**: as `Panel`. No content or hidden content counts `0` (stage 2; the shipped answer is `nil`) | `content=` |
+| `ConfirmDialog` | **shipped**: its own message wrapped at `width − WIDTH_CHROME`, plus `HEIGHT_CHROME`; `nil` for a `Component` message | `message=` |
+| `FormItem` | `:top`: the caption row (none for an empty caption) + `content.measure_rows(width)` + the message row; `:left`: `content.measure_rows(width − field_left)` + the message row. A `nil` content answer stays `nil` | `content=`, `caption=` (the row comes and goes), `caption_position=` |
+| `TabSheet` | `1` for the strip + the selected pane's answer; no pane is `1`, a `nil` pane answer is `nil` | selecting, adding or removing a tab |
+| **Containers** | | |
+| `FormLayout` | `item_height` summed over the visible items, plus `spacing`; rows come from each item's `placement`, never from the item | `add`, `remove`, `constrain`, `caption_position=`, `spacing=` |
+| `Vertical` | each shown child: `Fixed[n]` → `n`, `Auto` → `child.measure_rows(its width)`, plus `spacing` and `padding`; any `Percent` / `Expand` child → `nil`, since it needs the height being computed | `add`, `remove`, `constrain`, `spacing=`, `padding=` |
+| `Horizontal` | `main_sizes` divides `width`, then the tallest shown child + `padding`: `cross:` `Fixed[n]` → `n` and the child is never asked, `Auto` → `child.measure_rows(w_i)`. A `Percent` child fills the height being computed, so it contributes nothing, and neither does an `Auto` child answering `nil`. A `List` placed `Percent` across beside a wrapped label therefore doesn't set the row's height. With no `Fixed` or `Auto` contribution the answer is `nil` | as `Vertical` |
+| **Never asked** | | |
+| `Overlay`, `ListDropdown`, `Notification` | `nil`, the base. The pane places them by their own `declared_size_in`, which reads their own state; only `Dialog`'s `ShrinkToContent` asks | — |
+| `ScreenPane` | `nil`, the base: the root, with nothing above to ask | — |
 
 `Horizontal` is the **cross axis**, so it takes the max where `Vertical`'s main axis takes the sum.
 This is GTK's height-for-width with the width-for-height half left out.
 
-`Dialog` and `Panel` are **forwarding** answerers: the answer depends on the child's. That makes
-them non-boundaries for the notice (below), and it is what gives a plain `Dialog(Label)` a fitted
-height without the app writing anything.
+The components that pass a content child's answer on (`Slot`, `Panel`, `Dialog`, `FormItem`,
+`TabSheet`, and the groups over their `List`) do not stop the notice (below). Passing the answer on
+is what gives a plain `Dialog(Label)` a fitted height without the app writing anything.
+
+`ConfirmDialog` may not need its own answer once stage 2 lands. Its content is a layout nobody
+measures today, but if that layout puts the body `Auto` and the buttons `Fixed[1]`, `Dialog`'s
+pass-through gives the same answer and also covers a `Component` message. Worth trying while
+stage 2 is open.
 
 ### The consumers (the only places it is asked)
 
@@ -165,9 +198,10 @@ vanished; revisit if that turns out to bite.
 
 **Hidden content answers as absent content, and absent content counts `0`** (owner, 2026-10-27).
 Boxes already skip hidden children, so this concerns the components that pass a single content
-child's answer up (`Dialog`, `Panel`, `Scroller`). `D_visibility` makes hidden mean *gone*, exactly
-as detached, so hidden and absent must answer alike. `0` rather than `nil`, because `nil` describes
-content that actively fills (`List`, an `Expand` child), and absent content fills nothing: an empty
+child's answer up (`Slot`, `Panel`, `Dialog`, `FormItem`, `TabSheet`) and `Scroller`'s `:content`.
+`D_visibility` makes hidden mean *gone*, exactly as detached, so hidden and absent must answer
+alike. `0` rather than `nil`, because `nil` describes content that actively fills (a
+`VerticalScrollBar`, an `Expand` child), and absent content fills nothing: an empty
 `Panel` needs its border and no more, as an all-hidden `Vertical` already sums to its padding. `nil`
 would also log the `Auto` warning on every pass for a hidden body, which is a normal state, not a
 mistake in the tree. The asker checks (`content&.visible?`, else `0`), as `Box` already does; one
@@ -206,10 +240,13 @@ true, and breaking any of them is the falsifier the `D_declared_size` amendment 
   its own `relayout` (stage 4).
 
 **It fires from a mutation of the answer's own inputs**, never from a change of rect and never
-from being asked. An answerer calls `invalidate_rows` from `text=`, `wrap=`, `add` and the like, the
-way it calls `invalidate`. That includes `visible=`. Marking the parent is not enough when the parent
-passes its answer up (a dialog's asker is the pane), and hiding a child is a change to the parent's
-own inputs, not a change of rect. A width changes only inside the `relayout` of the parent that assigned it.
+from being asked. **A component whose own answer may have changed calls `invalidate_rows` on
+itself**, from `text=`, `add`, `content=` and the like (the answerers table lists every site), the
+way it calls `invalidate`. **`visible=` is the exception: it calls `parent&.invalidate_rows`**,
+because hiding a child changes the *parent's* answer, not the child's. Calling the parent's hook
+with the hidden child instead would be wrong: a `Vertical` stops on a `Fixed` child, yet its own sum
+just lost that child's rows. Marking the parent, which `visible=` already does, is not enough when
+the parent passes its answer up (a dialog's asker is the pane). A width changes only inside the `relayout` of the parent that assigned it.
 If that parent's arithmetic depends on rows, it asks `measure_rows` at the new width in that same
 `relayout`, and the query is pure, so it recurses through any intermediates and the answer is already
 right. Firing from `handle_rect_changed` would mark ancestors the round has already visited. That
@@ -228,22 +265,38 @@ parent's `handle_child_rows_changed(child)`, which asks two questions:
 If the answer to both is no, the notice stops. The base hook is empty, so a top-down parent is the
 default and needs no code.
 
-| parent | child's constraint | mark myself | pass it on |
+Every component with children; a leaf receives no notice.
+
+| parent | child | mark myself | pass it on |
 |---|---|---|---|
 | `Vertical` | `Fixed` / `Percent` / `Expand` | — | — |
 | `Vertical` | `Auto` | ✓ | ✓ |
 | `Horizontal` | cross `Fixed` / `Percent` | — | — |
 | `Horizontal` | cross `Auto` | ✓ (the child's height is its answer) | ✓ |
-| `Panel`, `Dialog` | content | — (content gets the inner rect) | ✓ |
+| `DateTimeField` | either half | — (both are `cross: Fixed[1]`, inherited from `Horizontal`) | — |
+| `Slot`, `Panel` | content | — (content gets the whole, or the inner, rect) | ✓ |
+| `Dialog`, `InfoDialog`, `LogDialog`, `PickerDialog` | content | — (content gets the inner rect) | ✓ |
+| `ConfirmDialog` | content | — | ✓, inherited and redundant: its answer reads its own message, which `message=` already fires for |
+| `FormItem` | content | — (content gets the rows left after the chrome) | ✓ |
+| `FormItem` | its caption and message labels | — | — (the chrome rows are its own state) |
+| `TabSheet` | the selected pane | — (the pane gets the rows under the strip) | ✓ |
+| `TabSheet` | the strip | — | — (always one row) |
+| `CheckboxGroup`, `RadioGroup` | the composed `List` | — (the list gets the whole rect) | ✓ |
+| `FormLayout` | an item | — | — (rows come from the item's `placement`, never from the item) |
+| `Scroller` | content, with `:content` | ✓ | — (its answer is `nil`) |
+| `Scroller` | content, told `content_rows` | — | — |
+| `TextView`, `List`, `Scroller` | the `VerticalScrollBar` | — | — |
+| `Overlay`, `ListDropdown`, `Notification` | content | — | — (the pane places them by their own declaration) |
 | `ScreenPane` | an overlay | ✓ (the placement resolves `ShrinkToContent`) | nothing above |
 | `ScreenPane` | content | — | — |
-| `Scroller` | content, with `:content` | ✓ | — (its answer is `nil`) |
-| `Absolute` | any | — | — |
+| `Layout`, `Absolute` | any | — | — |
 
 `Dialog` passes the notice on rather than absorbing it: its box is resolved in `ScreenPane`'s
 `relayout` (`Placement#rect_for` → `declared_size_in` → `measure_rows`), which is why `Overlay#reposition`
-is `parent&.invalidate_layout`. `ConfirmDialog#message=` then calls `invalidate_rows`, the pane
-marks itself, and the `reposition` calls go.
+is `parent&.invalidate_layout`. `ConfirmDialog#message=` then calls `invalidate_rows` and the pane
+marks itself. `caption=` and `button` keep `reposition`, because what they change is the *width*
+`ConfirmDialog` declares (`measured_width`: the caption and the button row), and fitting a width
+stays its own one-hop arithmetic. Firing a rows notice for a width would misuse it.
 
 ```ruby
 # Component — an answerer calls this from a state mutation, never from a rect change
@@ -286,9 +339,10 @@ parent already holds, with no bookkeeping of its own.
 1. **Shipped.** `measure_rows` on `Component` (base `nil`), `Dialog` and `ConfirmDialog` answering
    it, and `Dialog::ShrinkToContent`. Re-asked every pass, so the notice stays `ConfirmDialog`'s
    own `reposition`; its `declared_size_in` is a `ShrinkToContent` half-screen box at `measured_width`.
-2. Answerers: `Label` (wrapping, for #73), `TextView`, `Panel`, `FormLayout`, `Vertical`,
-   `Horizontal`, with `main_sizes` shared between `relayout` and `measure_rows`, and the one-row
-   fields answering `1`. A `component_contract_spec` check: a catalog component declaring both an
+2. Answerers: every row of the answerers table, `Label`'s `wrap:` knob for #73 included, with
+   `main_sizes` shared between `relayout` and `measure_rows`. The catalog in `component_contract_spec`
+   gains "answers `measure_rows` as the table says", so a component added later can't sit on the
+   base `nil` unnoticed. A second check: a catalog component declaring both an
    `extent` and a non-`nil` `measure_rows`, placed at exactly `measure_rows(w)` rows, has an `extent`
    that tall. A field answering `1` but painting two rows would lose its second row under `Auto`.
    `extent` and `measure_rows` stay separate otherwise. One is rows painted inside the rect given,
@@ -296,8 +350,9 @@ parent already holds, with no bookkeeping of its own.
    can differ from the other wherever the parent clamps. `Dialog` counts
    no content or hidden content as `0` instead of answering `nil`, so a `ShrinkToContent` dialog with
    an empty body shrinks to its border and the one-row floor; a `**Breaking:**` CHANGELOG line.
-3. The notice: `invalidate_rows` and `handle_child_rows_changed`, answerers firing from their
-   mutations, `visible=` firing it too, and `ConfirmDialog` deleting its `reposition` calls. Each consumer adds its own row to
+3. The notice: `invalidate_rows` and `handle_child_rows_changed`, each answerer firing from the sites
+   its table row lists, `visible=` firing on the parent, and `ConfirmDialog#message=` swapping
+   `reposition` for `invalidate_rows` (`caption=` and `button` keep theirs). Each consumer adds its own row to
    the hook when it lands (`Scroller` at 4, `Auto` at 5). Two `component_contract_spec` checks:
    "non-`nil` `measure_rows` ⇒ a mutation that changes it calls `invalidate_rows`", and "a container
    whose `measure_rows` changes when a child's answer changes passes that child's notice on".
