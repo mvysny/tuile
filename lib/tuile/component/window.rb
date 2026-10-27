@@ -22,30 +22,20 @@ module Tuile
         @_border_right = 1
         self.caption = caption
         @_content = nil
-        # The bottom row holds either a widget or chrome text, never both; see
-        # the precedence note on #footer=.
-        @_footer_slot = Slot.new
-        add_child(@_footer_slot) # appended: the footer paints over the border row
         @_footer_text = StyledString::EMPTY
       end
 
       def focusable? = true
 
-      # @return [Component, nil] optional focusable component occupying the
-      #   bottom border row, always spanning the full inner width.
-      def footer = @_footer_slot.content
-
       # @return [StyledString] optional chrome embedded into the bottom border
-      #   line, mirroring {#caption} on the top line. Empty by default; hidden
-      #   whenever a {#footer} component is present.
+      #   line, mirroring {#caption} on the top line. Empty by default.
       def footer_text = @_footer_text
 
       # Sets the bottom-border chrome. Accepts a `String` (parsed via
       # {StyledString.parse}), a {StyledString}, or `nil` (clears it). The text
       # embeds into the bottom border at its own width with the border's dashes
       # filling the remainder, clipped to the inner width — border decoration,
-      # not a component (not focusable). Hidden whenever a {#footer} component
-      # occupies the bottom row (see the precedence note on {#footer=}).
+      # not a component (not focusable).
       # @param text [String, StyledString, nil]
       # @return [void]
       def footer_text=(text)
@@ -54,21 +44,6 @@ module Tuile
 
         @_footer_text = new_text
         invalidate # repaint the bottom border row
-      end
-
-      # Mounts a component in the bottom border row, spanning the full inner
-      # width and positioned automatically; `nil` removes it.
-      #
-      # Precedence: a footer component present hides {#footer_text}; absent, the
-      # text embeds into the bottom border. No window needs both at once.
-      # @param new_footer [Component, nil]
-      # @raise [TypeError] if `new_footer` is neither a {Component} nor nil.
-      # @raise [ArgumentError] if `new_footer` already has a parent.
-      # @return [void]
-      def footer=(new_footer)
-        @_footer_slot.content = new_footer
-        invalidate_layout
-        invalidate # repaint border row that the footer covers/uncovers
       end
 
       # @param value [Boolean]
@@ -86,7 +61,7 @@ module Tuile
       end
 
       # Fully repaints the window: the border ring here, the interior through
-      # the content and footer it re-invalidates.
+      # the content it re-invalidates.
       #
       # Deliberately *not* `super`: the default would blank the whole rect
       # first, because the content slot is inset by the border and so never
@@ -110,11 +85,9 @@ module Tuile
 
       protected
 
-      # The content takes the interior, the footer slot the bottom border row.
       # @return [void]
       def relayout
         content&.rect = content_rect
-        layout_footer
       end
 
       # The interior the content fills: inside the border on three sides, and on
@@ -171,42 +144,16 @@ module Tuile
         StyledString.styled("┌", fg: fg) + title + dashes + StyledString.styled("┐", fg: fg)
       end
 
-      # Builds the bottom border row. The corners take the border color; the
-      # interior is plain dashes when a {#footer} component occupies the row
-      # (it overpaints them) or when there's no chrome, otherwise it carries
-      # {#footer_text} embedded at its own width — keeping the text's own
-      # styling — with dashes filling the remainder up to the inner width.
+      # Builds the bottom border row: corners, {#footer_text} embedded at its
+      # own width — keeping the text's own styling — and dashes filling the
+      # remainder up to the inner width.
       # @param inner_w [Integer] the border's interior width.
       # @param fg [Color, nil] the active-border color, or nil when inactive.
       # @return [StyledString]
       def bottom_border(inner_w, fg)
-        interior =
-          if footer || @_footer_text.empty?
-            StyledString.styled("─" * inner_w, fg: fg)
-          else
-            embedded = @_footer_text.slice(0, inner_w)
-            embedded + StyledString.styled("─" * (inner_w - embedded.display_width), fg: fg)
-          end
-        StyledString.styled("└", fg: fg) + interior + StyledString.styled("┘", fg: fg)
-      end
-
-      private
-
-      # Positions the footer slot over the bottom border row, spanning the full
-      # inner width (the only dimension a bottom-row widget needs — the window
-      # already knows it).
-      #
-      # An unoccupied slot gets an *empty* rect, not the row — a {Slot} clears
-      # whatever it is given, which would blank the border underneath.
-      # @return [void]
-      def layout_footer
-        if footer.nil? || rect.empty?
-          @_footer_slot.rect = Rect.new(0, 0, 0, 0)
-          return
-        end
-
-        width = [rect.width - 2, 0].max
-        @_footer_slot.rect = Rect.new(1, rect.height - 1, width, 1)
+        embedded = @_footer_text.slice(0, inner_w)
+        dashes = StyledString.styled("─" * (inner_w - embedded.display_width), fg: fg)
+        StyledString.styled("└", fg: fg) + embedded + dashes + StyledString.styled("┘", fg: fg)
       end
     end
   end

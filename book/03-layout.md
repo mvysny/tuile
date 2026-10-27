@@ -491,13 +491,11 @@ wrong for a paragraph.
 > Tuile::Size.new(longest_item, [items.size, 8].min)`. That's still
 > caller-decides, top-down.
 
-## The window footer: chrome vs. slot
+## The window footer
 
-A `Window`'s bottom border can carry one of two things, and they are
-genuinely different jobs, so they are two different members.
-
-**`footer_text=`** is *border chrome* — a styled string (a `String` is
-coerced) embedded into the bottom border row, mirroring the caption on
+A `Window`'s bottom border can carry text. **`footer_text=`** is *border
+chrome* — a styled string (a `String` is coerced) embedded into the bottom
+border row, mirroring the caption on
 the top line. It draws at its own width with the border's dashes filling
 the remainder, clipped to the inner width. Like the caption, it embeds
 with **no added padding** — it butts straight against the left corner:
@@ -521,30 +519,6 @@ active-border color when the window is focused). This is the right choice
 for a status readout precisely *because* it preserves the border: a
 full-width label would paint its background across the whole row and
 erase the bottom edge, making the window look broken.
-
-**`footer=`** is a *widget slot* — a focusable component occupying the
-full inner width of the bottom row. The canonical use is an incremental
-search field attached to a list window:
-
-```ruby
-window.footer = search_field    # a TextField; always spans the inner width
-window.footer = nil             # remove it, restoring the plain border
-```
-
-A component in the footer slot always fills the width — there is no
-sizing policy to configure, because the window already knows its inner
-width and that's the only dimension a bottom-row widget needs.
-
-The word *slot* is literal here: the footer is a
-{Tuile::Component::Slot}, the one-child region you'd use for the same job
-in a container of your own (chapter 7). That's why `footer=` needs no
-sizing argument and why setting it to `nil` restores the border cleanly —
-the region stays in the tree either way, occupied or not.
-
-The two are mutually exclusive by precedence: if a `footer=` component
-is present it occupies the bottom row and `footer_text` is hidden;
-otherwise `footer_text` embeds into the border. No window needs both at
-once.
 
 ## Responding to resize
 

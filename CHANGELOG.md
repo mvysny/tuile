@@ -5,6 +5,7 @@
 
 ## [Unreleased]
 
+- **Breaking:** `Component::Window#footer=` / `#footer` are removed, so a window's `children` hold only the content and its bottom border carries only `footer_text`. A widget that sat in the border, such as a search field, goes beside the window in your own `Layout::Vertical`.
 - Add `EventQueue#after(seconds)` — runs a block once on the event-loop thread after a delay (zero queues it at once, like `submit`), returning an `EventQueue::Timer` whose `cancel` drops it even once queued; the fake's `after` fires only on `FakeEventQueue#fire_timers`, never on `tick_once`.
 - Add `Component::HasValueChangeMode` — `value_change_mode` (`:eager` / `:commit` / `:lazy`) and `value_change_timeout` on `TextField`, `PasswordField`, `TextArea` and the number fields, choosing when a typed edit fires `on_value_change`; a write through `set_value` still fires at once. See `design/decisions.md` `D_value_change_mode`.
 - Add `Tuile::FormSyncer` — `FormSyncer::Buffered` (`read` / `write?` / `write!` / `changed?`) and `FormSyncer::Unbuffered` (`model=`, writing each valid edit through) bind fields to a model's attributes through a `bind(field, :attr)` chain of `required` / `validate` / `convert`, with `add_validator` for the whole model and a frozen `last_validation` map. See `design/decisions.md` `D_form_syncer_modes`.

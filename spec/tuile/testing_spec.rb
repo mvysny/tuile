@@ -143,8 +143,7 @@ module Tuile
           "    #<Layout::Vertical rect=(1,1 38x8)>",
           "      #<Button id=:save rect=(0,0 38x1) caption=\"Save\">",
           "      #<Button rect=(0,1 38x1) caption=\"Cancel\">",
-          "      #<TextField rect=(0,2 38x1) value=\"Zaphod\">",
-          "    #<Slot rect=(0,0 0x0)>" # the window's empty footer slot
+          "      #<TextField rect=(0,2 38x1) value=\"Zaphod\">"
         ], Testing.dump(window).lines(chomp: true)
       end
 

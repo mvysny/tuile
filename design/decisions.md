@@ -1099,7 +1099,7 @@ Why not:
   status bar is last. `at: @children.index(@status_bar)` names the anchor.
 
 The cost we carry: Migrating the two slot containers forced a third mutator:
-`HasContent#content=` and `Window#footer=` must notify `handle_child_removed`
+`HasContent#content=` (so every `Slot`) must notify `handle_child_removed`
 *after* the new occupant is wired (the default focus repair cascades into
 whatever fills the slot now — `window_spec` pins that a content swap lands
 focus on the new content), so `detach_child` does delete-plus-unwire without
@@ -1382,8 +1382,7 @@ never a Qt-style template string, and never a rich context object, a `ProgressVa
 to shorten a 25-character interpolation.
 
 The cost we carry: **an overlay cannot be composed on a TTY** — there are no overlapping tiled
-components, so a sibling label always takes its own row, and a bar in a `Window`'s bottom border
-(`window.footer = bar`, which already works) has nowhere to put one and stays bare. `fraction` and
+components, so a sibling label always takes its own row. `fraction` and
 `percent` are load-bearing public API rather than sugar, since the composed label reads them — hence
 both scale through one helper with exact endpoints (a full bar means done, and anything above zero
 lights a cell). And the bar is the first *animated* component, which turned an ordinary `super` in
@@ -3467,18 +3466,18 @@ tree level *and* rect plumbing per region, and it is a placeholder with geometry
 message shows the hole — consistent with the same dialog given an empty message string. Closing the
 gap is the *parent's* arithmetic (a zero extent), which top-down layout already demands; detaching
 the slot instead would put the index problem straight back, and neither `Layout#add` nor `Box#add`
-takes an index to re-insert at. `Window` uses the degenerate form: an absent footer gets an empty
-rect, or the `Slot` would blank the bottom border.
+takes an index to re-insert at. The degenerate form, an empty rect, suppresses the clear altogether.
 
 **A slot is transparent in all three channels:** not `focusable?`, `handle_mouse` descends through
 it, and `handle_child_removed` is *forwarded to the parent* — the default repair moves focus to `self`
-and a slot is inert, which broke `window_spec`'s footer-focus repair case the moment the footer
-moved into a slot.
+and a slot is inert, which broke the footer-focus repair case the moment the footer moved into a
+slot (`slot_spec` pins it now).
 
-**The cost, paid knowingly.** `Window#children` always holds the footer slot and a footer's `parent`
-is that slot — honest, since the region exists whether or not it is occupied — while content-then-
-footer ordering, which used to depend on `content=` inserting at 0 and `footer=` appending, now holds
-structurally.
+**The footer that motivated it is gone; the decision stands.** `Window#footer=` was removed for
+having no user in Tuile, virtui or pikuri-tui (`footer_text=`, border chrome, stays), and `Slot`'s
+user now is `ConfirmWindow`'s body, above its button row. The cost is the same there: the
+container's `children` always hold the slot, and an occupant's `parent` is the slot — honest, since
+the region exists whether or not it is occupied.
 
 **`HasContent` survives as a mixin with a body.** A marker mixin with no implementation was rejected
 twice over: the swap dance has to live somewhere or every includer hand-writes it again (the
@@ -3570,8 +3569,7 @@ land later as a `#button` kwarg.
 
 Why not:
 
-- **Buttons in `Window#footer`.** The footer paints *over the bottom border row*, and `[ Delete ]`
-  embedded in the border looks wrong; the border stays clean chrome, so the buttons are a
+- **Buttons in the bottom border row.** `[ Delete ]` embedded in the border looks wrong; the border stays clean chrome, so the buttons are a
   `Horizontal` as the bottom row of the inner `Vertical`.
 - **A `header=` seam** — it would be the title, which `HasCaption#caption` already is, and two
   accessors for one thing (one storing as given, one coercing) can disagree. A *rich* header (an
@@ -5039,8 +5037,8 @@ had already failed when `Window` grew a footer (`D_slots`).
 
 **`HasContent` is a statement about the public surface:** *I have a primary child named `content`,
 this is my content which you populate; my other children are chrome, mine to manage.* Not arity — a
-`Window` has two app-settable children and the mixin names which is *the* content — and not
-permanent-vs-swappable, an `Overlay`'s body being permanent **and** public; that correlated for `Slot`
+`Window` once had two app-settable children, content and footer, and the mixin named which was *the*
+content — and not permanent-vs-swappable, an `Overlay`'s body being permanent **and** public; that correlated for `Slot`
 alone. **A test, not a census: include it iff the caller populates that child.**
 
 Three shapes fall out, and the two that are *not* `HasContent` are what the old rule got wrong.

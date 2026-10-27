@@ -698,7 +698,7 @@ module Tuile
     #
     # Final: a container that computed this from its own slots would disagree
     # with the parent pointers {#attached?} walks, silently (`D_final_tree`).
-    # Named slots are readers *over* this array (`Window#footer`), never a
+    # Named slots are readers *over* this array (`HasContent#content`), never a
     # second copy of it; for a swappable region hold a {Slot}.
     # @return [Array<Component>] child components. Must not be mutated by
     #   callers! May be empty.
@@ -870,7 +870,7 @@ module Tuile
     # Adopts `child`: places it in {#children} and wires its parent pointer.
     #
     #   add_child(content, at: 0)   # the tiled layer, painted beneath …
-    #   add_child(@footer)          # … and chrome appended, painted over it
+    #   add_child(popup)            # … and a popup appended, painted over it
     #
     # @param child [Component] must not already have a parent.
     # @param at [Integer, nil] index to insert at; appends when nil.

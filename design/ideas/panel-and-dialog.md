@@ -114,10 +114,12 @@ look-and-feel, which may reuse the helper or replace it.
 
 ## What moves where
 
-- **`Panel`** keeps `caption`, `scrollbar=` and the focus-lit border. Whether `footer=` /
-  `footer_text=` survive is `Q_panel_footer`.
-- **`Dialog`** gains `Window`'s chrome: `caption`, `scrollbar=` and the focus-lit border. It keeps
-  everything `Popup` has: `declared_size`, `ShrinkToContent`, `close_on_key`,
+- **`Panel`** keeps `caption`, `scrollbar=` and the focus-lit border. `footer=` was removed from
+  `Window` ahead of this refactor, for having no user. `footer_text=` stays: virtui's five dialogs
+  put their key hints there (`'q/ESC to close'`), so it moves to `Dialog`, and `BorderDrawerInt`
+  paints it. Whether `Panel` keeps it too is `Q_panel_footer_text`.
+- **`Dialog`** gains `Window`'s chrome: `caption`, `footer_text=`, `scrollbar=` and the focus-lit
+  border. It keeps everything `Popup` has: `declared_size`, `ShrinkToContent`, `close_on_key`,
   `close_on_outside_click`, modal, and the `focusable?`/`modal?` pair both true (`D_overlay`'s
   coupling).
 - **`ShrinkToContent` / `measure_rows`**: today the popup asks its content (a `Window`) for its
@@ -142,10 +144,8 @@ look-and-feel, which may reuse the helper or replace it.
   `TextView` or `List` built from data. Does each earn a class? Leaning: `InfoDialog` stays, since
   it takes domain data (`cop` rule 4: `InfoDialog.new("Help", text)`). `LogDialog` is open. Its
   only addition is `::IO`, and `LogTextView` already has one.
-- **`Q_panel_footer`**: `footer=` / `footer_text=` have no user in Tuile's `lib/`, virtui or
-  pikuri-tui. Drop them from `Panel`, give them to `Dialog`, or keep them? `Slot` keeps a user
-  either way (`ConfirmWindow`'s body slot), but its rdoc example (`Window#footer`) needs replacing,
-  and so does `D_slots` / `terminology.md`'s "slot" line.
+- **`Q_panel_footer_text`**: every `footer_text=` user is a dialog. Does `Panel` keep it, as cheap
+  chrome `BorderDrawerInt` paints anyway, or drop it until a tiled pane asks?
 - **`Q_dialog_bg`**: does `Dialog` inherit `Window`'s background/extent behaviour as-is, or does
   becoming an `Overlay` change what `D_bg_surface`'s "composer owes `bg.default_color` + `INHERIT`"
   pair means for it?
@@ -155,7 +155,7 @@ look-and-feel, which may reuse the helper or replace it.
 ## Owed at graduation
 
 - **Breaking CHANGELOG lines:** `Window` → `Panel`; `Popup` → `Dialog` (now bordered,
-  `open_in_popup` gone); the four subclass renames; the footer (whatever `Q_panel_footer` decides).
+  `open_in_popup` gone); the four subclass renames.
 - **`component_contract_spec`'s catalog, the README's Components table, rdoc, `sig/`** (the
   four-registration rule).
 - **`D_` entries naming them**, most heavily: `D_overlay`, `D_popup_open`, `D_declared_size`,

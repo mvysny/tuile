@@ -6,12 +6,12 @@ module Tuile
     # absent, arrive late, or be swapped. The occupant fills the slot's {#rect}.
     #
     # Wire one per region at construction, then swap occupants through
-    # {HasContent#content=} — which is how {Window} holds its footer:
+    # {HasContent#content=} — which is how {ConfirmWindow} holds its body:
     #
-    #   @footer_slot = Slot.new
-    #   add_child(@footer_slot)             # the region, wired once
+    #   @body_slot = Slot.new
+    #   box.add(@body_slot, Layout::Expand[1])   # the region, wired once
     #   …
-    #   @footer_slot.content = new_footer   # the occupant, swapped at will
+    #   @body_slot.content = occupant            # the occupant, swapped at will
     #
     # Because the slot never leaves {Component#children}, a swap's insert index
     # is always 0 — never a function of which *other* regions happen to be
@@ -19,8 +19,8 @@ module Tuile
     #
     # An empty slot does not collapse: it keeps its rect and clears it, so a
     # dialog with no message shows the hole. Close the gap with a zero extent
-    # from the parent, or assign an empty {Rect} to suppress the clear entirely
-    # (what {Window} does with an absent footer); never detach it.
+    # from the parent, or assign an empty {Rect} to suppress the clear entirely;
+    # never detach it.
     #
     # Transparent to input: not {Component#focusable?},
     # the mouse routes straight through it, and a departing occupant's

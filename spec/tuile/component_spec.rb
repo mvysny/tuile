@@ -1066,13 +1066,13 @@ module Tuile
       end
 
       it "fires for a component whose container is a slot rather than a list" do
-        window = Component::Window.new("w")
-        Screen.instance.content = window
+        slot = Component::Slot.new
+        Screen.instance.content = slot
 
-        window.footer = spy
+        slot.content = spy
         assert_equal [[:attached, true]], spy.events
 
-        window.footer = nil
+        slot.content = nil
         assert_equal [[:attached, true], [:detached, false]], spy.events
       end
 
@@ -1185,11 +1185,12 @@ module Tuile
       # D_tree_api: `attached?` walks the parent chain while a subtree walk uses
       # `children`, so the two must never be able to disagree. This exercises
       # every container kind in one tree — ScreenPane (slot + list + chrome),
-      # Layout (plain list), HasContent (single slot) and Window (slot + footer).
+      # Layout (plain list), HasContent (single slot) and Slot (a slot inside a list).
       it "keeps children, @children and the parent pointers in agreement" do
         window = Component::Window.new("w")
-        window.content = Component::List.new
-        window.footer = Component::TextField.new
+        window.content = Component::Layout::Vertical.new
+        window.content.add(Component::List.new, Component::Layout::Expand[1])
+        window.content.add(Component::Slot.new(Component::TextField.new), Component::Layout::Fixed[1])
         layout = Component::Layout::Absolute.new
         layout.add(window)
         layout.add(Component::Label.new)
@@ -1204,21 +1205,6 @@ module Tuile
             assert_equal c, kid.parent, "#{kid.class} listed by #{c.class} has a different parent"
           end
         end
-      end
-
-      it "orders a Window's own children content-then-footer, whichever is set first" do
-        footer_first = Component::Window.new("a")
-        footer_first.footer = Component::Label.new
-        footer_first.content = Component::List.new
-
-        content_first = Component::Window.new("b")
-        content_first.content = Component::List.new
-        content_first.footer = Component::Label.new
-
-        # The footer slot is wired at construction, so the order now holds
-        # structurally rather than by the insert index each setter picks.
-        assert_equal [footer_first.content, footer_first.footer.parent], footer_first.children
-        assert_equal [content_first.content, content_first.footer.parent], content_first.children
       end
     end
 

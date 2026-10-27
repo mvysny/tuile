@@ -144,7 +144,7 @@ module Tuile
     # Deliberately not named `close` ({Component::Popup#close} already means
     # "remove *me* from the pane"), and deliberately not a generic
     # `Component#remove_all_children`: a slot container calling that would empty
-    # `@_children` while `#content` / `#footer` still pointed at detached
+    # `@_children` while `#content` / `#popups` still pointed at detached
     # components, which is the desync the tree API exists to prevent.
     # @return [void]
     def detach_all

@@ -68,7 +68,7 @@ module Tuile
         # *now*, so it has to see the new content (window_spec pins it).
         detach_child(old) unless old.nil?
         unless content.nil?
-          add_child(content, at: 0) # content paints beneath a Window's footer
+          add_child(content, at: 0) # content paints beneath any chrome a host appends
           content.invalidate
         end
         handle_child_removed(old) unless old.nil?

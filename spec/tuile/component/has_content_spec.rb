@@ -7,7 +7,7 @@ module Tuile
 
     # A bare-bones host that mixes HasContent into Component. Window is the
     # production user; this stub pins the mixin contract independent of
-    # Window's caption / footer / border logic.
+    # Window's caption / border logic.
     let(:host_class) do
       Class.new(Component) do
         include Component::HasContent

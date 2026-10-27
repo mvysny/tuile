@@ -4402,7 +4402,7 @@ module Tuile
     # 
     # Final: a container that computed this from its own slots would disagree
     # with the parent pointers {#attached?} walks, silently (`D_final_tree`).
-    # Named slots are readers *over* this array (`Window#footer`), never a
+    # Named slots are readers *over* this array (`HasContent#content`), never a
     # second copy of it; for a swappable region hold a {Slot}.
     # 
     # _@return_ — child components. Must not be mutated by
@@ -4518,7 +4518,7 @@ module Tuile
     # Adopts `child`: places it in {#children} and wires its parent pointer.
     # 
     #   add_child(content, at: 0)   # the tiled layer, painted beneath …
-    #   add_child(@footer)          # … and chrome appended, painted over it
+    #   add_child(popup)            # … and a popup appended, painted over it
     # 
     # Final: one of the three mutators that write {#children} and the parent
     # pointer in the same call, which is what keeps them in agreement.
@@ -5635,12 +5635,12 @@ module Tuile
     # absent, arrive late, or be swapped. The occupant fills the slot's {#rect}.
     # 
     # Wire one per region at construction, then swap occupants through
-    # {HasContent#content=} — which is how {Window} holds its footer:
+    # {HasContent#content=} — which is how {ConfirmWindow} holds its body:
     # 
-    #   @footer_slot = Slot.new
-    #   add_child(@footer_slot)             # the region, wired once
+    #   @body_slot = Slot.new
+    #   box.add(@body_slot, Layout::Expand[1])   # the region, wired once
     #   …
-    #   @footer_slot.content = new_footer   # the occupant, swapped at will
+    #   @body_slot.content = occupant            # the occupant, swapped at will
     # 
     # Because the slot never leaves {Component#children}, a swap's insert index
     # is always 0 — never a function of which *other* regions happen to be
@@ -5648,8 +5648,8 @@ module Tuile
     # 
     # An empty slot does not collapse: it keeps its rect and clears it, so a
     # dialog with no message shows the hole. Close the gap with a zero extent
-    # from the parent, or assign an empty {Rect} to suppress the clear entirely
-    # (what {Window} does with an absent footer); never detach it.
+    # from the parent, or assign an empty {Rect} to suppress the clear entirely;
+    # never detach it.
     # 
     # Transparent to input: not {Component#focusable?},
     # the mouse routes straight through it, and a departing occupant's
@@ -7240,39 +7240,24 @@ module Tuile
 
       def focusable?: () -> bool
 
-      # _@return_ — optional focusable component occupying the
-      # bottom border row, always spanning the full inner width.
-      def footer: () -> Component?
-
       # _@return_ — optional chrome embedded into the bottom border
-      # line, mirroring {#caption} on the top line. Empty by default; hidden
-      # whenever a {#footer} component is present.
+      # line, mirroring {#caption} on the top line. Empty by default.
       def footer_text: () -> StyledString
 
       # Sets the bottom-border chrome. Accepts a `String` (parsed via
       # {StyledString.parse}), a {StyledString}, or `nil` (clears it). The text
       # embeds into the bottom border at its own width with the border's dashes
       # filling the remainder, clipped to the inner width — border decoration,
-      # not a component (not focusable). Hidden whenever a {#footer} component
-      # occupies the bottom row (see the precedence note on {#footer=}).
+      # not a component (not focusable).
       # 
       # _@param_ `text`
       def footer_text=: ((String | StyledString)? text) -> void
-
-      # Mounts a component in the bottom border row, spanning the full inner
-      # width and positioned automatically; `nil` removes it.
-      # 
-      # Precedence: a footer component present hides {#footer_text}; absent, the
-      # text embeds into the bottom border. No window needs both at once.
-      # 
-      # _@param_ `new_footer`
-      def footer=: (Component? new_footer) -> void
 
       # _@param_ `value`
       def scrollbar=: (bool value) -> void
 
       # Fully repaints the window: the border ring here, the interior through
-      # the content and footer it re-invalidates.
+      # the content it re-invalidates.
       # 
       # Deliberately *not* `super`: the default would blank the whole rect
       # first, because the content slot is inset by the border and so never
@@ -7287,7 +7272,6 @@ module Tuile
       # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (Canvas canvas) -> void
 
-      # The content takes the interior, the footer slot the bottom border row.
       def relayout: () -> void
 
       # The interior the content fills: inside the border on three sides, and on
@@ -7321,24 +7305,14 @@ module Tuile
       # _@param_ `fg` — the active-border color, or nil when inactive.
       def top_border: (Integer inner_w, Color? fg) -> StyledString
 
-      # Builds the bottom border row. The corners take the border color; the
-      # interior is plain dashes when a {#footer} component occupies the row
-      # (it overpaints them) or when there's no chrome, otherwise it carries
-      # {#footer_text} embedded at its own width — keeping the text's own
-      # styling — with dashes filling the remainder up to the inner width.
+      # Builds the bottom border row: corners, {#footer_text} embedded at its
+      # own width — keeping the text's own styling — and dashes filling the
+      # remainder up to the inner width.
       # 
       # _@param_ `inner_w` — the border's interior width.
       # 
       # _@param_ `fg` — the active-border color, or nil when inactive.
       def bottom_border: (Integer inner_w, Color? fg) -> StyledString
-
-      # Positions the footer slot over the bottom border row, spanning the full
-      # inner width (the only dimension a bottom-row widget needs — the window
-      # already knows it).
-      # 
-      # An unoccupied slot gets an *empty* rect, not the row — a {Slot} clears
-      # whatever it is given, which would blank the border underneath.
-      def layout_footer: () -> void
 
       # Read through *this* method, never `@_caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).
@@ -17224,7 +17198,7 @@ module Tuile
     # Deliberately not named `close` ({Component::Popup#close} already means
     # "remove *me* from the pane"), and deliberately not a generic
     # `Component#remove_all_children`: a slot container calling that would empty
-    # `@_children` while `#content` / `#footer` still pointed at detached
+    # `@_children` while `#content` / `#popups` still pointed at detached
     # components, which is the desync the tree API exists to prevent.
     def detach_all: () -> void
 

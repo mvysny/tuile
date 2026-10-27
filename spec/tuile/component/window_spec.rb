@@ -112,20 +112,15 @@ module Tuile
     end
 
     context "children" do
-      it "holds only the (empty) footer slot when content is unset" do
-        w = Component::Window.new
-        assert_equal 1, w.children.size
-        assert_instance_of Component::Slot, w.children.first
-        assert_nil w.children.first.content
+      it "is empty when content is unset" do
+        assert_equal [], Component::Window.new.children
       end
 
-      it "contains the content component, ahead of the footer slot" do
+      it "holds just the content component" do
         w = Component::Window.new
         list = Component::List.new
         w.content = list
-        assert_equal 2, w.children.size
-        assert_equal list, w.children.first
-        assert_instance_of Component::Slot, w.children.last
+        assert_equal [list], w.children
       end
     end
 
@@ -190,129 +185,6 @@ module Tuile
       end
     end
 
-    context "footer" do
-      it "is nil by default" do
-        assert_nil Component::Window.new.footer
-      end
-
-      it "attaches a component as footer, parented to the footer slot" do
-        w = Component::Window.new
-        f = Component::List.new
-        w.footer = f
-        assert_equal f, w.footer
-        assert_instance_of Component::Slot, f.parent
-        assert_equal w, f.parent.parent
-      end
-
-      it "occupies the footer slot, which follows the content in children" do
-        w = Component::Window.new
-        list = Component::List.new
-        w.content = list
-        f = Component::List.new
-        w.footer = f
-        assert_equal [list, f.parent], w.children
-      end
-
-      it "is removed by setting nil" do
-        w = Component::Window.new
-        f = Component::List.new
-        w.footer = f
-        w.footer = nil
-        assert_nil w.footer
-        assert_nil f.parent
-      end
-
-      it "positions footer over the bottom border row" do
-        w = Component::Window.new
-        Testing.place(w, Rect.new(5, 3, 20, 10))
-        w.footer = Component::List.new
-        # bottom row is height - 1 = 9 rows down, spanning (1, that_row, width-2, 1)
-        w.footer.flush_layout
-        assert_equal Rect.new(1, 9, 18, 1), w.footer.parent.rect
-        assert_equal Rect.new(6, 12, 18, 1), w.footer.absolute_rect
-      end
-
-      it "relayouts footer when window rect changes" do
-        w = Component::Window.new
-        w.footer = Component::List.new
-        Testing.place(w, Rect.new(0, 0, 30, 8))
-        w.footer.flush_layout
-        assert_equal Rect.new(1, 7, 28, 1), w.footer.absolute_rect
-      end
-
-      it "rejects non-Component values" do
-        w = Component::Window.new
-        assert_raises(TypeError) { w.footer = "not a component" }
-      end
-
-      it "rejects components that already have a parent" do
-        w = Component::Window.new
-        other = Component::List.new
-        Component::Layout::Absolute.new.add(other)
-        assert_raises(ArgumentError) { w.footer = other }
-      end
-
-      it "is a no-op when set to the same component" do
-        w = Component::Window.new
-        f = Component::List.new
-        w.footer = f
-        Screen.instance.invalidated_clear
-        w.footer = f
-        assert !Screen.instance.invalidated?(w)
-      end
-
-      it "invalidates the window so the bottom border repaints" do
-        w = Component::Window.new
-        mount_at(w, Rect.new(0, 0, 20, 10))
-        Screen.instance.invalidated_clear
-        w.footer = Component::List.new
-        assert Screen.instance.invalidated?(w)
-      end
-
-      it "repairs focus when a focused footer is removed" do
-        screen = Screen.instance
-        layout = Component::Layout::Absolute.new
-        screen.content = layout
-        w = Component::Window.new
-        list = Component::List.new
-        w.content = list
-        layout.add(w)
-        f = Component::List.new
-        f.define_singleton_method(:focusable?) { true }
-        w.footer = f
-        screen.focused = f
-
-        w.footer = nil
-        # Falls through Component::Window.handle_focus → content cascade.
-        assert_equal list, screen.focused
-      end
-    end
-
-    context "footer (always FILL)" do
-      # @return [Component::Label]
-      def label(text)
-        Component::Label.new.tap { _1.text = text }
-      end
-
-      it "spans the full inner width regardless of the component's natural size" do
-        w = Component::Window.new
-        Testing.place(w, Rect.new(5, 3, 20, 10))
-        w.footer = label("hi")
-        w.footer.flush_layout
-        assert_equal Rect.new(6, 12, 18, 1), w.footer.absolute_rect
-      end
-
-      it "stays at full inner width when the component's content grows" do
-        w = Component::Window.new
-        Testing.place(w, Rect.new(5, 3, 20, 10))
-        f = label("ab")
-        w.footer = f
-        f.text = "abcdef"
-        f.flush_layout
-        assert_equal Rect.new(6, 12, 18, 1), f.absolute_rect
-      end
-    end
-
     context "footer_text" do
       it "is empty by default" do
         assert Component::Window.new.footer_text.empty?
@@ -371,45 +243,6 @@ module Tuile
         # inner width 4
         assert_equal "└far-┘", painted.text.last
       end
-
-      it "is hidden while a footer component occupies the bottom row" do
-        w = Component::Window.new
-        Testing.place(w, Rect.new(0, 0, 20, 10))
-        w.footer_text = "hi"
-        w.footer = Component::List.new
-        # the empty footer list covers the row's interior; no "hi" anywhere
-        assert_equal "└#{" " * 18}┘", Testing.paint(w).text.last
-      end
-    end
-
-    context "footer key/mouse routing" do
-      # Attached: a click on window chrome now lands focus on the window, which
-      # a detached tree can't accept.
-      let(:w) do
-        w = Component::Window.new
-        w.content = Component::List.new
-        mount_at(w, Rect.new(0, 0, 20, 10))
-        w
-      end
-
-      it "routes mouse clicks inside footer rect to footer" do
-        f = Component::List.new
-        w.footer = f
-        called = false
-        f.define_singleton_method(:handle_mouse_down?) { |_| called = true }
-        # footer.rect = (1, 9, 18, 1)
-        Screen.instance.click(5, 9)
-        assert called
-      end
-
-      it "does not route mouse clicks outside footer rect to footer" do
-        f = Component::List.new
-        w.footer = f
-        called = false
-        f.define_singleton_method(:handle_mouse_down?) { |_| called = true }
-        Screen.instance.click(5, 5) # inside content rect, not footer
-        assert !called
-      end
     end
 
     context "scrollbar=" do
@@ -464,7 +297,7 @@ module Tuile
       end
     end
 
-    # Window no longer overrides #handle_key? — key delivery to content/footer
+    # Window no longer overrides #handle_key? — key delivery to content
     # is the dispatcher's job (Screen/ScreenPane capture + bubble), covered in
     # screen_pane_spec.
 

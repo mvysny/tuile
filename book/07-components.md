@@ -1233,16 +1233,12 @@ layout. A window paints its whole rect and does not clip against
 neighbors, so windows are meant to tile, not overlap — overlapping is what
 popups are for.
 
-The bottom border has two mutually exclusive uses, and the distinction is
-the top-down-layout principle from chapter 3 made concrete. `footer_text=`
-embeds decoration into the border row — chrome, mirroring the caption on
-top, not focusable. `footer=` mounts a *real focusable component* spanning
-the full inner width — the search-field-in-the-border case. A footer
-component present takes the row and hides the text; neither drives the
-window's size (the window was sized by its parent), so a footer that
-doesn't fit is clipped rather than growing the frame. And if the content
-supports scrolling, `scrollbar=` turns on a scrollbar by reclaiming the
-right border column.
+`footer_text=` embeds decoration into the bottom border row — chrome,
+mirroring the caption on top, not focusable, and it doesn't drive the
+window's size (the window was sized by its parent), so text that doesn't
+fit is clipped rather than growing the frame. And if the content supports
+scrolling, `scrollbar=` turns on a scrollbar by reclaiming the right
+border column.
 
 ```ruby
 window = Component::Window.new("Files")

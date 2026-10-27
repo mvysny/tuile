@@ -193,7 +193,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 
 | component | what it is |
 |---|---|
-| `Window` | A frame with a `caption`, one content slot, and a border that lights up while the window is on the focus chain. `footer_text=` decorates the bottom border; `footer=` mounts a real component in it; `scrollbar=` reclaims the right border column. |
+| `Window` | A frame with a `caption`, one content slot, and a border that lights up while the window is on the focus chain. `footer_text=` decorates the bottom border; `scrollbar=` reclaims the right border column. |
 | `Slot` | A one-child region for content that may be absent, arrive late, or be swapped. Give a multi-region container one per region and the tree stays honest — the occupant fills the slot's rect, and an empty slot holds its place rather than collapsing. |
 | `Scroller` | A viewport onto a taller pile of components: one content child, a scrollbar column, and `content_rows` — you say how tall the content is, since nothing measures. The wheel scrolls it, the bar drags, and so does focus: Tab into a field below the fold and it comes into view. |
 | `VerticalScrollBar` | A one-column bar the user can drag, and press the track of to page. It moves nothing itself: it asks through `on_scroll_request` and the container that owns the column assigns `scroll_top_row`. Dragging is dead under `run_event_loop(capture_mouse: :clicks)`. |
