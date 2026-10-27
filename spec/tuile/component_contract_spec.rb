@@ -96,12 +96,12 @@ module Tuile
       Component::TabSheet => -> { populated_tab_sheet },
       Component::MenuBar => -> { Component::MenuBar.new.tap { |b| %w[File Edit].each { b.add_item(_1) } } },
       Component::Window => -> { Component::Window.new("Caption").tap { _1.content = Component::Label.new("body") } },
-      Component::LogWindow => -> { Component::LogWindow.new("Log") },
-      Component::InfoWindow => -> { Component::InfoWindow.new("Info", "the body prose") },
-      Component::PickerWindow => -> { Component::PickerWindow.new("Pick", [%w[a Apple], %w[b Banana]]) { nil } },
+      Component::LogDialog => -> { Component::LogDialog.new("Log") },
+      Component::InfoDialog => -> { Component::InfoDialog.new("Info", "the body prose") },
+      Component::PickerDialog => -> { Component::PickerDialog.new("Pick", [%w[a Apple], %w[b Banana]]) { nil } },
       Component::Overlay => -> { Component::Overlay.new(content: Component::Label.new("floating")) },
-      Component::Popup => -> { Component::Popup.new(content: Component::Label.new("modal")) },
-      Component::ConfirmWindow => -> { Component::ConfirmWindow.new("Sure?").tap { _1.message = "Really?" } },
+      Component::Dialog => -> { Component::Dialog.new("Modal", content: Component::Label.new("body")) },
+      Component::ConfirmDialog => -> { Component::ConfirmDialog.new("Sure?").tap { _1.message = "Really?" } },
       Component::Notification => -> { Component::Notification.show("Saved") },
       Component::Notification::View => -> { Component::Notification::View.new.tap { _1.text = "Saved" } }
     }
@@ -116,7 +116,6 @@ module Tuile
       Component::IntegerField::Field => "private machinery: covered through IntegerField",
       Component::FloatField::Field => "private machinery: covered through FloatField",
       Component::BigDecimalField::Field => "private machinery: covered through BigDecimalField",
-      Component::ConfirmWindow.const_get(:MeasuredPopup) => "private machinery: via ConfirmWindow",
       ScreenPane => "the structural root: Screen owns the only instance; see screen_pane_spec"
     }
 

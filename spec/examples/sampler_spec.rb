@@ -30,7 +30,7 @@ module Tuile
   # on selection. These do, and name the culprit in the failure.
   RSpec.describe "examples/sampler.rb panes" do
     # The sampler paints its own `:hint` custom token (its status row, and one
-    # PickerWindow caption), which the built-in ThemeDef doesn't carry — so
+    # PickerDialog caption), which the built-in ThemeDef doesn't carry — so
     # point ThemeDef.default at the app's pair the way a real app spec would,
     # and restore it, or every later example in the run inherits it.
     #
@@ -67,7 +67,7 @@ module Tuile
 
     # Regression: the slash menu is a bare Overlay, which has no declared box —
     # it paints only the rect the pane computes for it. It used to be a
-    # non-modal Popup and inherited a Fraction::HALF default, so an overlay
+    # non-modal Dialog and inherited a Fraction::HALF default, so an overlay
     # nobody sized still showed up, and nothing here opened it to notice.
     it "opens and paints the slash menu when a command is typed" do
       sampler = build_sampler
@@ -197,7 +197,7 @@ module Tuile
       assert_equal "TextView", Testing.get(Component::TextField, in: sampler.jump_box).text
     end
 
-    # Popup/InfoWindow/PickerWindow only build a launcher button; the overlay
+    # The dialog demos only build a launcher button; the overlay
     # opens on click. Cover that path too.
     entries.select { |e| e.builder.to_s.include?("launcher") }.each do |entry|
       caption = entry.caption
@@ -217,11 +217,11 @@ module Tuile
       end
     end
 
-    # The ConfirmWindow pane's outcome row: a mnemonic press lands in exactly
+    # The ConfirmDialog pane's outcome row: a mnemonic press lands in exactly
     # one callback, and the status label names which.
-    it "reports the ConfirmWindow demo's outcome through the status row" do
+    it "reports the ConfirmDialog demo's outcome through the status row" do
       sampler = build_sampler
-      sampler.select_entry(entries.find { _1.caption == "ConfirmWindow" })
+      sampler.select_entry(entries.find { _1.caption == "ConfirmDialog" })
       Screen.instance.repaint
 
       # Named, not "the first Button in tree order": the pane has five.
@@ -481,7 +481,7 @@ module Tuile
         end
       end
       let(:canvas) { Testing.get(SamplerExample::Canvas, in: sampler.demo_window) }
-      let(:log) { Testing.get(Component::LogWindow, in: sampler.demo_window) }
+      let(:log) { Testing.get(Component::LogTextView, in: sampler.demo_window) }
       let(:screen) { Screen.instance }
 
       # Rect-local cell -> the screen point a mouse report would carry. The

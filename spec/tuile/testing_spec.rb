@@ -54,7 +54,7 @@ module Tuile
 
       it "searches the whole screen by default, popups included" do
         window
-        popup = Component::Popup.new(content: Component::Button.new("OK"))
+        popup = Component::Dialog.new(content: Component::Button.new("OK"))
         Screen.instance.add_popup(popup)
         captions = Testing.find(Component::Button).map { _1.caption.to_s }
         assert_equal %w[Save Cancel OK], captions
@@ -260,7 +260,7 @@ module Tuile
       # close_on_outside_click: false keeps the tree still while a spec clicks
       # elsewhere; the dismissal behaviour itself is screen_pane_spec's.
       def modal_popup(content: nil)
-        Component::Popup.new(content: content, close_on_outside_click: false).open
+        Component::Dialog.new(content: content, close_on_outside_click: false).open
       end
 
       describe ".click" do
@@ -305,7 +305,7 @@ module Tuile
           Testing.place(over, save.absolute_rect)
           e = assert_raises(Testing::AssertionError) { Testing.click(save) }
           assert_includes e.message, "is not clickable"
-          assert_includes e.message, "a press there reaches #<Popup"
+          assert_includes e.message, "a press there reaches #<Dialog"
         end
 
         it "refuses everything under an open modal popup" do
@@ -373,7 +373,7 @@ module Tuile
         it "refuses a field outside the key scope, which is what keeps a modal modal" do
           modal_popup
           e = assert_raises(Testing::AssertionError) { Testing.set_value(field, "Ford") }
-          assert_includes e.message, "the key scope is #<Popup"
+          assert_includes e.message, "the key scope is #<Dialog"
           assert_equal "Zaphod", field.value
         end
 
@@ -502,7 +502,8 @@ module Tuile
       it "leaves out a popup open over the component" do
         w = Component::Window.new("Caption").tap { _1.content = list("alpha") }
         mount_at(w, Rect.new(0, 0, 14, 3))
-        Component::Popup.new(content: Component::Label.new("POPUP")).open(Component::Overlay::At[Rect.new(0, 0, 14, 3)])
+        Component::Dialog.new(content: Component::Label.new("POPUP")).open(Component::Overlay::At[Rect.new(0, 0, 14,
+                                                                                                           3)])
 
         assert_equal ["┌Caption─────┐", "│ alpha      │", "└────────────┘"], Testing.paint(w).text
       end

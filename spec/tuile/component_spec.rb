@@ -59,11 +59,11 @@ module Tuile
         refute_respond_to c, :height=
       end
 
-      # Popup declares a Size | Fraction it asks the screen for; that is a
+      # Dialog declares a Size | Fraction it asks the screen for; that is a
       # different concept from the Size it currently occupies, which is why the
       # two carry different names.
-      it "coexist with Popup#declared_size, which is not rect.size" do
-        p = Component::Popup.new(declared_size: Fraction::HALF)
+      it "coexist with Dialog#declared_size, which is not rect.size" do
+        p = Component::Dialog.new(declared_size: Fraction::HALF)
         p.open
         assert_equal Fraction::HALF, p.declared_size
         assert_equal Size.new(80, 25), p.size # HALF of the 160x50 fake screen
@@ -988,7 +988,7 @@ module Tuile
       it "fires detach then attach for a cross-container move" do
         a = Component::Layout::Absolute.new
         b = Component::Layout::Absolute.new
-        pane.add_popup(Component::Popup.new(content: b))
+        pane.add_popup(Component::Dialog.new(content: b))
         Screen.instance.content = a
         a.add(spy)
         spy.events.clear
@@ -1082,7 +1082,7 @@ module Tuile
           spy.add(child)
           Screen.instance.content = spy
           popup_body = spy_class.new
-          pane.add_popup(Component::Popup.new(content: popup_body))
+          pane.add_popup(Component::Dialog.new(content: popup_body))
           [spy, child, popup_body].each { _1.events.clear }
 
           Screen.close
@@ -1094,7 +1094,7 @@ module Tuile
 
         it "leaves nothing claiming to be attached" do
           Screen.instance.content = spy
-          popup = Component::Popup.new
+          popup = Component::Dialog.new
           pane.add_popup(popup)
 
           Screen.close
@@ -1195,7 +1195,7 @@ module Tuile
         layout.add(window)
         layout.add(Component::Label.new)
         Screen.instance.content = layout
-        popup = Component::Popup.new(content: Component::Button.new("ok"))
+        popup = Component::Dialog.new(content: Component::Button.new("ok"))
         Screen.instance.add_popup(popup)
 
         Screen.instance.pane.walk_tree do |c|
@@ -1220,7 +1220,7 @@ module Tuile
 
       it "is true when root is a popup" do
         list = Component::List.new
-        popup = Component::Popup.new(content: list)
+        popup = Component::Dialog.new(content: list)
         Screen.instance.add_popup(popup)
         assert popup.attached?
         assert list.attached?

@@ -38,7 +38,7 @@ module Tuile
     # @return [Component, nil] the tiled content component.
     def content = @_content
     # @return [Array<Component::Overlay>] the open overlays in stacking order;
-    #   last is topmost. Holds both {Component::Popup} modals and bare
+    #   last is topmost. Holds both {Component::Dialog} modals and bare
     #   {Component::Overlay}s ({Component::Overlay#modal?}). The array must not
     #   be mutated by callers.
     def popups = @_popups
@@ -62,7 +62,7 @@ module Tuile
     end
 
     # Adds an overlay at `placement` and invalidates it for repaint; the next
-    # settle gives it its rect. A {Component::Popup} grabs focus; a bare
+    # settle gives it its rect. A {Component::Dialog} grabs focus; a bare
     # {Component::Overlay} does *not*, so the component that was focused keeps
     # the cursor and keeps receiving keys — the overlay floats above the
     # content, driven from app code.
@@ -141,7 +141,7 @@ module Tuile
     # down its subtree — and every slot is emptied. Terminal; the pane isn't
     # reusable afterwards, and {Screen#close} is its only caller.
     #
-    # Deliberately not named `close` ({Component::Popup#close} already means
+    # Deliberately not named `close` ({Component::Dialog#close} already means
     # "remove *me* from the pane"), and deliberately not a generic
     # `Component#remove_all_children`: a slot container calling that would empty
     # `@_children` while `#content` / `#popups` still pointed at detached
@@ -161,7 +161,7 @@ module Tuile
     # @return [Boolean] true if this pane currently hosts the popup.
     def has_popup?(window) = @_popups.include?(window) # rubocop:disable Naming/PredicatePrefix
 
-    # @return [Component::Popup, nil] the topmost modal overlay, or nil when
+    # @return [Component::Dialog, nil] the topmost modal overlay, or nil when
     #   only bare {Component::Overlay}s (or none) are open. This is the "modal
     #   owner": the popup that scopes key dispatch, blocks mouse clicks, and
     #   confines Tab cycling. Bare overlays are excluded — they float above the
@@ -275,7 +275,7 @@ module Tuile
     #   not be in the set (it would immediately dismiss itself — every
     #   {Component::Select} would be unopenable by mouse).
     # - **Close after the block.** A widget toggling its own overlay from a press
-    #   on its face closes it during delivery, and {Component::Popup#close} is
+    #   on its face closes it during delivery, and {Component::Dialog#close} is
     #   idempotent, so the dismissal no-ops. Close *first* and the widget sees
     #   a shut overlay and reopens it — a Select's dropdown could then never be
     #   dismissed by clicking the Select.

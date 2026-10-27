@@ -2,26 +2,24 @@
 
 module Tuile
   class Component
-    # A {Window} that lists options identified by single keyboard keys, asks
-    # the user to pick one, and fires a callback with the picked key. Each row
-    # is `"<key> <caption>"`:
+    # A {Dialog} that lists options identified by single keyboard keys, asks
+    # the user to pick one, fires a callback with the picked key and closes.
+    # Each row is `"<key> <caption>"`:
     #
-    #   PickerWindow.new("Sort by", [%w[n name], %w[s size]]) { sort_by(_1) }.open_in_popup
+    #   PickerDialog.new("Sort by", [%w[n name], %w[s size]]) { sort_by(_1) }.open
     #
     #   ┌Sort by───────┐
     #   │n name        │
     #   │s size        │
     #   └──────────────┘
     #
-    # Usable tiled (just add to a {Layout} and read picks via the block) or
-    # as a popup via {#open_in_popup}, which wraps it in a {Popup} that closes
-    # itself after a pick. ESC / `q` close without firing the callback.
+    # ESC / `q` close it without firing the callback.
     #
     # Captions paint in the terminal's own foreground. To color them, hand in
     # {StyledString} captions — the picker styles nothing itself, so an app's
     # own token applies per option:
     #
-    #   PickerWindow.new("File", [["o", StyledString.plain("Open")],
+    #   PickerDialog.new("File", [["o", StyledString.plain("Open")],
     #                             ["d", theme.fg(:danger, "Delete")]]) { … }
     #
     # An option that doesn't apply right now is *disabled* by a third element
@@ -30,7 +28,7 @@ module Tuile
     # or click — fires nothing and closes nothing; its key moves the cursor
     # onto it instead, so the reason is where the user is looking:
     #
-    #   PickerWindow.new("Maintenance", [
+    #   PickerDialog.new("Maintenance", [
     #     ["r", "Resize disk image…", { disabled: "shut the VM down first" }],
     #     ["g", "Grow root filesystem…"]
     #   ]) { … }
@@ -44,7 +42,7 @@ module Tuile
     # enabled state is taken when it opens: what changes while the picker is
     # up doesn't reach it. So disabling is a hint, never the guard — the block
     # still checks that its operation can run.
-    class PickerWindow < Window
+    class PickerDialog < Dialog
       # Scrolls the window when more items.
       # @return [Integer]
       MAX_ITEMS = 10
@@ -77,7 +75,7 @@ module Tuile
         def disabled? = !disabled_reason.nil?
       end
 
-      # @param caption [String] the window caption.
+      # @param caption [String] the dialog caption.
       # @param options [Array<Array(String, StyledString), Array(String, StyledString, Hash)>]
       #   pairs of keyboard key and option caption, optionally followed by
       #   `{ disabled: reason }`. A caption goes through {StyledString.parse},
@@ -102,45 +100,34 @@ module Tuile
         list.cursor = Component::List::Cursor.new
         list.on_item_chosen { |e| select_option(e.item) }
         self.content = list
+        on_pick { close }
       end
 
       # What {#on_pick} fires.
       #
       # @!attribute [r] source
-      #   @return [PickerWindow] the picker whose option was chosen.
+      #   @return [PickerDialog] the picker whose option was chosen.
       PickEvent = Data.define(:source) { include Tuile::Event }
 
       # @!method on_pick
       #   Fired with a {PickEvent} after the user picks an option, after the
-      #   block fires. {#open_in_popup} registers its popup's `close` here.
+      #   block fires. The picker's own `close` is the first listener.
       #   @return [Listeners]
       listener :on_pick
 
       # Handles an option-key press. Reached by bubbling: the inner {List}
       # (the focused component) sees the key first and handles cursor/Enter
       # picks; anything it declines bubbles up here, where a key matching an
-      # option's `key` picks that option.
+      # option's `key` picks that option, and the rest goes to
+      # {Dialog#handle_key?}.
       # @param key [String]
       # @return [Boolean]
       def handle_key?(key)
         option = @_options.find { _1.key == key }
-        return false if option.nil?
+        return super if option.nil?
 
         select_option(option)
         true
-      end
-
-      # Opens this picker in a centered {Popup} that closes after a pick; ESC /
-      # `q` close it without firing the block. One-shot: the closed popup keeps
-      # the picker as its content, so a second call raises.
-      # @raise [Tuile::Error] if this picker already has a parent.
-      # @return [Popup] the opened popup.
-      def open_in_popup
-        raise Tuile::Error, "#{inspect} already has a parent #{parent.inspect}" unless parent.nil?
-
-        popup = Popup.new(content: self)
-        on_pick { popup.close }
-        popup.open
       end
 
       protected

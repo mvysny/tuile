@@ -69,7 +69,7 @@ module Tuile
 
       it "holds for every subclass" do
         layout = Component::Layout::Absolute.new
-        assert_raises(Tuile::Error) { layout.add(Component::Popup.new) }
+        assert_raises(Tuile::Error) { layout.add(Component::Dialog.new) }
         assert_raises(Tuile::Error) { layout.add(Component::ListDropdown.new) }
       end
 
@@ -83,7 +83,7 @@ module Tuile
 
     it "has no class-level open factory — it could only ever build a bare Overlay" do
       assert !Component::Overlay.respond_to?(:open)
-      assert !Component::Popup.respond_to?(:open)
+      assert !Component::Dialog.respond_to?(:open)
       assert !Component::ListDropdown.respond_to?(:open)
     end
 
@@ -127,7 +127,7 @@ module Tuile
       # All three are load-bearing rather than incidental: an overlay that took
       # focus would land it outside the key-dispatch scope, where ScreenPane
       # delivers to nobody and every keystroke goes dead until Tab recovers.
-      # Inherited by every subclass that isn't a Popup, which is what stops each
+      # Inherited by every subclass that isn't a Dialog, which is what stops each
       # one having to remember to opt out.
       it "is not modal" do
         assert !Component::Overlay.new.modal?
@@ -289,9 +289,9 @@ module Tuile
         assert_includes e.message, "close it instead"
       end
 
-      it "raises on a Popup too, and on a shown assignment" do
-        assert_raises(Tuile::Error) { Component::Popup.new.visible = false }
-        assert_raises(Tuile::Error) { Component::Popup.new.visible = true }
+      it "raises on a Dialog too, and on a shown assignment" do
+        assert_raises(Tuile::Error) { Component::Dialog.new.visible = false }
+        assert_raises(Tuile::Error) { Component::Dialog.new.visible = true }
       end
 
       it "leaves the overlay showing" do
@@ -304,7 +304,7 @@ module Tuile
       # that is the supported way to make part of a dialog come and go.
       it "does not stop its content being hidden" do
         label = Component::Label.new("in a popup")
-        popup = Component::Popup.new(content: label)
+        popup = Component::Dialog.new(content: label)
         popup.open
         label.visible = false
         refute_predicate label, :visible?

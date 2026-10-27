@@ -103,7 +103,7 @@ module Tuile
       # at idle, and returns. It is the rest of the loop turn a spec skips by
       # calling components directly:
       #
-      #   log_window.log("saved")   # queued, as LogWindow#log always is
+      #   log_window.log("saved")   # queued, as LogDialog#log always is
       #   Testing.loop
       #   assert_equal "saved", log_window.content.text.to_s
       #
@@ -129,7 +129,7 @@ module Tuile
       #   find(Component::Button)                     # every button on screen
       #   find(Component::HasBadInput, in: form)      # a mixin works too
       #   find(Component::Label) { _1.text.to_s.start_with?("Total") }
-      #   find(Component::Popup, count: 1..)          # assert at least one
+      #   find(Component::Dialog, count: 1..)          # assert at least one
       #
       # @param klass [Module] matched with `is_a?`, so a mixin
       #   ({Component::HasValue}) finds every field that includes it.

@@ -110,7 +110,7 @@ module Tuile
     # declare nothing — in which case the whole {#rect} is treated as fair game
     # and the default {#repaint} blanks all of it. Override it when you paint
     # less: a one-row {Component::Checkbox} handed a tall column, or a
-    # {Component::Select} used as a {Component::Popup}'s content and assigned the
+    # {Component::Select} used as a {Component::Dialog}'s content and assigned the
     # whole inner box.
     #
     # It always sits at {#rect}'s top-left — which is why this is a {Size} and
@@ -443,7 +443,7 @@ module Tuile
     def bg_color = @_bg.color
 
     # Tints this component and every descendant that doesn't set its own
-    # background — set it once on a container / {Component::Popup} to tint a
+    # background — set it once on a container / {Component::Dialog} to tint a
     # whole subtree. Invalidates the subtree so it repaints.
     #
     # A {Theme::Ref} is re-resolved against the theme each paint, so it tracks
@@ -1123,7 +1123,7 @@ module Tuile
     # no place on the screen to paint to, so {Screen} must never end up
     # repainting it. Callers don't need to guard their own `invalidate` calls;
     # mutating a detached component (e.g. setting `lines=` on a {List} sitting
-    # inside a closed {Component::Popup}) is silent.
+    # inside a closed {Component::Dialog}) is silent.
     # @return [void]
     def invalidate
       return unless attached?

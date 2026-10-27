@@ -14,8 +14,8 @@ module Tuile
     # for example `TTY::Logger` configured with the `:console` handler and
     # `output: LogTextView::IO.new(view)`.
     #
-    # Add it to a layout as-is for a frameless log pane, or use {LogWindow}
-    # for the framed assembly. A {TextView} rather than a {List}: long lines
+    # Add it to a layout as-is for a frameless log pane, or use {LogDialog}
+    # for a log shown in a dialog. A {TextView} rather than a {List}: long lines
     # (stacktraces, wide log records) word-wrap rather than ellipsize — a
     # truncated log line hides the very detail you opened the log to read.
     class LogTextView < TextView
@@ -43,7 +43,7 @@ module Tuile
       # Implements both {#write} (stdlib `Logger`) and {#puts} (loggers that
       # call `output.puts`, e.g. `TTY::Logger`).
       class IO
-        # @param sink [LogTextView, LogWindow] anything responding to `#log`.
+        # @param sink [LogTextView, LogDialog] anything responding to `#log`.
         def initialize(sink)
           @_sink = sink
         end

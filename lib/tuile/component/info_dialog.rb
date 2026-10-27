@@ -2,25 +2,27 @@
 
 module Tuile
   class Component
-    # A {Window} with a read-only body, in one of two presentations:
+    # A {Dialog} with a read-only body, in one of two presentations:
     # **prose** ({#message=}) wraps in a scrollable {TextView}, **rows**
     # ({#lines=}) stay one per row in a {List}, truncating instead of
     # wrapping — the presentation for columnar output, where a wrap would
-    # destroy the alignment. Usable tiled (add it to a {Layout}) or as a
-    # popup via {#open_in_popup}; the constructor picks the presentation from
-    # the body's type:
+    # destroy the alignment. The constructor picks the presentation from the
+    # body's type:
     #
-    #   Component::InfoWindow.new("Help", "A long explanation, wrapped to fit.").open_in_popup
-    #   Component::InfoWindow.new("Files", ["drwx  src/", "-rw-  README.md"]).open_in_popup
+    #   Component::InfoDialog.new("Help", "A long explanation, wrapped to fit.").open
+    #   Component::InfoDialog.new("Files", ["drwx  src/", "-rw-  README.md"]).open
     #
-    # Both write the same body slot — the last writer wins.
-    class InfoWindow < Window
+    # Both write the same body slot — the last writer wins. For the same body
+    # tiled, put a {TextView} or {List} in a {Window}.
+    class InfoDialog < Dialog
       # @param caption [String, StyledString, nil] the border title.
       # @param body [String, StyledString, Component, Array, nil] an `Array`
       #   is assigned through {#lines=}, anything else through {#message=}.
-      def initialize(caption = "", body = nil)
+      # @param declared_size [Size, Fraction] see {Dialog#declared_size=}; the
+      #   body wraps or scrolls within it.
+      def initialize(caption = "", body = nil, declared_size: Fraction::HALF)
         @_message = nil
-        super(caption)
+        super(caption, declared_size:)
         if body.is_a?(Array)
           self.lines = body
         else
@@ -34,7 +36,7 @@ module Tuile
       def message = @_message
 
       # Sets the prose body. Text (`String` / {StyledString}) is rendered by
-      # a word-wrapping, scrollable {TextView} the window owns; a {Component}
+      # a word-wrapping, scrollable {TextView} the dialog owns; a {Component}
       # is mounted as-is. `nil` clears.
       # @param value [String, StyledString, Component, nil]
       # @raise [TypeError] on any other type.
@@ -62,19 +64,6 @@ module Tuile
         list = List.new
         list.lines = lines
         self.message = list
-      end
-
-      # Opens this window in a centered {Popup}, which ESC / `q` close.
-      # One-shot: the closed popup keeps the window as its content, so a second
-      # call raises.
-      # @param declared_size [Size, Fraction] the popup's box, applied
-      #   top-down; the body wraps or scrolls within it.
-      # @raise [Tuile::Error] if this window already has a parent.
-      # @return [Popup] the opened popup.
-      def open_in_popup(declared_size: Fraction::HALF)
-        raise Tuile::Error, "#{inspect} already has a parent #{parent.inspect}" unless parent.nil?
-
-        Popup.new(content: self, declared_size:).open
       end
     end
   end

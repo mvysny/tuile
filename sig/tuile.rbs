@@ -1078,7 +1078,7 @@ module Tuile
   #   @return [Color]
   # @!attribute [r] disabled_color
   #   Foreground of an option that can't be picked right now
-  #   ({Component::PickerWindow}): clearly dimmer than the terminal's own
+  #   ({Component::PickerDialog}): clearly dimmer than the terminal's own
   #   foreground, yet readable on {#active_bg_color}, since the cursor may
   #   rest on it while the user reads why.
   #   @return [Color]
@@ -1286,7 +1286,7 @@ module Tuile
     attr_reader placeholder_color: Color
 
     # Foreground of an option that can't be picked right now
-    # ({Component::PickerWindow}): clearly dimmer than the terminal's own
+    # ({Component::PickerDialog}): clearly dimmer than the terminal's own
     # foreground, yet readable on {#active_bg_color}, since the cursor may
     # rest on it while the user reads why.
     attr_reader disabled_color: Color
@@ -2686,9 +2686,9 @@ module Tuile
   # Everything on screen hangs off {#pane} (a {ScreenPane}): the tiled
   # {#content} (set via {#content=}, filling the whole terminal and laying
   # out its own children), the modal/overlay {#popups} stack (opened via
-  # {Component::Popup#open}, drawn on top of the content). Popups are *not*
+  # {Component::Dialog#open}, drawn on top of the content). Overlays are *not*
   # sized from their content — each carries its own top-down
-  # {Component::Popup#declared_size} — and they deliberately overdraw the content
+  # {Component::Dialog#declared_size} — and they deliberately overdraw the content
   # without clipping.
   # 
   # Tuile draws no chrome of its own: there is no status bar and no reserved
@@ -2924,7 +2924,7 @@ module Tuile
     def locale=: (Locale new_locale) -> void
 
     # _@return_ — the open overlay stack — both
-    # {Component::Popup} modals and bare {Component::Overlay}s — in stacking
+    # {Component::Dialog} modals and bare {Component::Overlay}s — in stacking
     # order (forwarded to {ScreenPane}). The array must not be modified!
     def popups: () -> ::Array[Component::Overlay]
 
@@ -3024,7 +3024,7 @@ module Tuile
     def on_focus_changed: () -> Listeners
 
     # Internal — use {Component::Overlay#open} instead. Adds the overlay to
-    # {#pane} at `placement`; a {Component::Popup} is additionally focused.
+    # {#pane} at `placement`; a {Component::Dialog} is additionally focused.
     # 
     # _@param_ `window` — any overlay, modal or not.
     # 
@@ -3102,7 +3102,7 @@ module Tuile
     # on the next cycle. Needed whenever something overdraws the scene without
     # clipping and then exposes what was underneath — a closing popup
     # ({#remove_popup}), or a popup that shrinks or moves so its new {#rect} no
-    # longer covers the cells it previously painted ({Component::Popup#rect=}).
+    # longer covers the cells it previously painted ({Component::Overlay#handle_rect_changed}).
     # The popup-only fast path in {#repaint} can't clear those vacated cells on
     # its own, so we accept the cost of a full repaint.
     def needs_full_repaint: () -> void
@@ -3524,7 +3524,7 @@ module Tuile
     # at idle, and returns. It is the rest of the loop turn a spec skips by
     # calling components directly:
     # 
-    #   log_window.log("saved")   # queued, as LogWindow#log always is
+    #   log_window.log("saved")   # queued, as LogDialog#log always is
     #   Testing.loop
     #   assert_equal "saved", log_window.content.text.to_s
     # 
@@ -3541,7 +3541,7 @@ module Tuile
     #   find(Component::Button)                     # every button on screen
     #   find(Component::HasBadInput, in: form)      # a mixin works too
     #   find(Component::Label) { _1.text.to_s.start_with?("Total") }
-    #   find(Component::Popup, count: 1..)          # assert at least one
+    #   find(Component::Dialog, count: 1..)          # assert at least one
     # 
     # _@param_ `klass` — matched with `is_a?`, so a mixin ({Component::HasValue}) finds every field that includes it.
     # 
@@ -3802,7 +3802,7 @@ module Tuile
   end
 
   # A width/height ratio, each a float in `0.0..1.0` — the single relational
-  # sizing primitive in Tuile, scoped to one job: sizing a {Component::Popup}
+  # sizing primitive in Tuile, scoped to one job: sizing a {Component::Dialog}
   # against the screen (a popup has no siblings competing for space, so "half
   # the screen, centered" beats a hard-coded cell count that breaks on the next
   # terminal size). It is deliberately *not* a general layout primitive — tiled
@@ -3914,7 +3914,7 @@ module Tuile
     # declare nothing — in which case the whole {#rect} is treated as fair game
     # and the default {#repaint} blanks all of it. Override it when you paint
     # less: a one-row {Component::Checkbox} handed a tall column, or a
-    # {Component::Select} used as a {Component::Popup}'s content and assigned the
+    # {Component::Select} used as a {Component::Dialog}'s content and assigned the
     # whole inner box.
     # 
     # It always sits at {#rect}'s top-left — which is why this is a {Size} and
@@ -4166,7 +4166,7 @@ module Tuile
     def bg_color: () -> (Color | Theme::Ref | ::Hash[Symbol, (Color | Theme::Ref)] | Symbol)?
 
     # Tints this component and every descendant that doesn't set its own
-    # background — set it once on a container / {Component::Popup} to tint a
+    # background — set it once on a container / {Component::Dialog} to tint a
     # whole subtree. Invalidates the subtree so it repaints.
     # 
     # A {Theme::Ref} is re-resolved against the theme each paint, so it tracks
@@ -4714,7 +4714,7 @@ module Tuile
     # no place on the screen to paint to, so {Screen} must never end up
     # repainting it. Callers don't need to guard their own `invalidate` calls;
     # mutating a detached component (e.g. setting `lines=` on a {List} sitting
-    # inside a closed {Component::Popup}) is silent.
+    # inside a closed {Component::Dialog}) is silent.
     def invalidate: () -> void
 
     # Marks this container as owing a {#relayout}: its children's rects are out
@@ -5635,7 +5635,7 @@ module Tuile
     # absent, arrive late, or be swapped. The occupant fills the slot's {#rect}.
     # 
     # Wire one per region at construction, then swap occupants through
-    # {HasContent#content=} — which is how {ConfirmWindow} holds its body:
+    # {HasContent#content=} — which is how {ConfirmDialog} holds its body:
     # 
     #   @body_slot = Slot.new
     #   box.add(@body_slot, Layout::Expand[1])   # the region, wired once
@@ -6092,119 +6092,6 @@ module Tuile
       def update_rows: () -> void
     end
 
-    # A modal dialog: an {Component::Overlay} centered on the screen, which
-    # grabs focus, scopes keys to its own subtree, blocks clicks beneath it, and
-    # closes on ESC or `q` (unless {#close_on_key?} is false).
-    # 
-    #   window = Component::Window.new("Help")
-    #   window.content = Component::List.new.tap { _1.lines = lines }
-    #   Component::Popup.new(content: window).open
-    # 
-    # Bare content also works (a {Component::Label}, a {Component::List}…), in
-    # which case the popup is borderless. For a floating layer that does *not*
-    # take focus or capture input — an autocomplete list anchored to a field, a
-    # toast — use {Component::Overlay} directly.
-    # 
-    # The popup does *not* size itself to its content. Its box is set by
-    # {#declared_size} — a {Fraction} (resolved against the screen every layout
-    # pass, so it tracks resize) or an absolute {Size} (clamped to the screen).
-    # The default is {Fraction::HALF}: half the screen, centered. The wrapped content
-    # then fills that box and handles its own overflow by wrapping and scrolling,
-    # so use content that can — a {Component::TextView} or
-    # {Component::TextArea} — for anything longer than fits. A
-    # {Component::Label} only truncates.
-    # 
-    # == Implementation details
-    # 
-    # `q` and ESC close the popup — handled here, at the top of the popup's own
-    # subtree, so the key only arrives after every component on the focus chain
-    # declined it (see {ScreenPane#handle_key?}). That's why typing `q` into a
-    # nested {Component::TextField} doesn't dismiss the popup: the field consumes
-    # it first. A popup in front of work that cannot be stopped turns this off
-    # with {#close_on_key?}.
-    # 
-    # A left click *outside* the popup closes it too — see
-    # {Overlay#close_on_outside_click?} for the exact contract and
-    # {Overlay#on_close} for the notice a driver hears when it happens.
-    # 
-    # UI-thread-confined, like every component (see {Screen}).
-    class Popup < Tuile::Component::Overlay
-      # _@param_ `content` — initial content; can be set later via {#content=}. The content fills the popup's {#rect}; it does not determine the popup's size.
-      # 
-      # _@param_ `declared_size` — the popup's box, applied top-down. A {Fraction} is resolved against the screen each layout pass; a {Size} is clamped to the screen. Defaults to {Fraction::HALF}.
-      # 
-      # _@param_ `close_on_outside_click` — true (default) to dismiss on a left click that misses this popup. See {Overlay#close_on_outside_click?}.
-      # 
-      # _@param_ `close_on_key` — true (default) to dismiss on ESC and `q`. See {#close_on_key?}.
-      def initialize: (
-                        ?content: Component?,
-                        ?declared_size: (Size | Fraction),
-                        ?close_on_outside_click: bool,
-                        ?close_on_key: bool
-                      ) -> void
-
-      # Whether ESC and `q` close this popup (default true). False makes the
-      # popup refuse both — for one in front of work that cannot be stopped
-      # once it starts, where a dismissal would read as a cancel while the work
-      # goes on. Pair it with `close_on_outside_click: false`, which refuses the
-      # other light dismissal; {#close} from code still works, and is how the
-      # work's owner takes the popup down when it is done.
-      # 
-      # A refused key is *swallowed*, not passed on: the popup is modal, so the
-      # loop's unhandled-ESC/`q` quit (`D_quit_key`) does not fire beneath it
-      # either. A popup that cannot be dismissed also keeps the app from
-      # quitting by those keys.
-      def close_on_key?: () -> bool
-
-      # _@param_ `value` — see {#close_on_key?}.
-      def close_on_key=: (bool value) -> void
-
-      # The box this popup asks for, *as set* — a {Fraction} comes back
-      # unresolved. {#rect} is the resolved answer. Named apart from `size`
-      # because a component's `size` is its `rect.size`, which this is not: it
-      # is an input re-read on every layout pass, not a report of the current
-      # geometry.
-      # 
-      # _@return_ — see {#declared_size=}.
-      def declared_size: () -> (Size | Fraction)
-
-      # _@return_ — true — a Popup scopes key dispatch, grabs focus on
-      # open, and blocks clicks on the content beneath it.
-      def modal?: () -> bool
-
-      # _@return_ — true — {ScreenPane#add_popup} focuses a popup on open,
-      # and focus repair falls back to it when its subtree has no tab stop.
-      def focusable?: () -> bool
-
-      # Sets the popup's box; an open popup takes it on the next settle.
-      # Accepts a {Fraction} (resolved against the screen every layout pass, so
-      # it tracks resize) or an absolute {Size} (clamped to the screen). This is **authoritative**, not
-      # a preference: the screen applies exactly what you ask for (clamped),
-      # with no negotiation — a popup has no siblings to compete with.
-      # 
-      # _@param_ `new_size`
-      def declared_size=: ((Size | Fraction) new_size) -> void
-
-      # {#declared_size} resolved against `screen_size`: a {Fraction} scaled, a
-      # {Size} clamped.
-      # 
-      # _@param_ `screen_size`
-      def declared_size_in: (Size screen_size) -> Size
-
-      # _@return_ — a popup opens centered.
-      def default_placement: () -> Overlay::Centered
-
-      # `q` and ESC close the popup, or are swallowed when {#close_on_key?} is
-      # false. The popup sits on the focus chain of whatever it wraps, so the
-      # key reaches here by bubbling up from the focused content after that
-      # content declined to handle it.
-      # 
-      # _@param_ `key`
-      # 
-      # _@return_ — true if the key was handled.
-      def handle_key?: (String key) -> bool
-    end
-
     # A clickable button. Activated by Enter, Space, or a left mouse click;
     # fires the {#on_click} callback. Renders as `[ caption ]` on a single
     # row; the background is highlighted when the button is focused so the
@@ -6281,6 +6168,196 @@ module Tuile
       end
     end
 
+    # A modal dialog: a bordered, captioned {Component::Overlay} centered on the
+    # screen, which grabs focus, scopes keys to its own subtree, blocks clicks
+    # beneath it, and closes on ESC or `q` (unless {#close_on_key?} is false).
+    # 
+    #   list = Component::List.new.tap { _1.lines = lines }
+    #   Component::Dialog.new("Help", content: list).open
+    # 
+    #   ┌Help──────────────┐
+    #   │first line        │
+    #   └q to close────────┘   ← footer_text, optional
+    # 
+    # A dialog that is a kind of its own — its keys, its buttons, its result —
+    # subclasses it and passes its size up:
+    # 
+    #   class CpuFlagsDialog < Component::Dialog
+    #     def initialize(flags)
+    #       body = Component::TextView.new.tap { _1.text = flags.join(" ") }
+    #       super("CPU flags", content: body, declared_size: Fraction.new(0.7, 0.7))
+    #     end
+    #   end
+    # 
+    # For a floating layer that does *not* take focus or capture input — an
+    # autocomplete list anchored to a field, a toast — use {Component::Overlay}
+    # directly.
+    # 
+    # The dialog does *not* size itself to its content. Its box is set by
+    # {#declared_size} — a {Fraction} (resolved against the screen every layout
+    # pass, so it tracks resize) or an absolute {Size} (clamped to the screen).
+    # The default is {Fraction::HALF}: half the screen, centered. The content
+    # fills the inside of the border and handles its own overflow by wrapping and
+    # scrolling, so use content that can — a {Component::TextView} or
+    # {Component::TextArea} — for anything longer than fits. A
+    # {Component::Label} only truncates.
+    # 
+    # The border is lit in {Theme#active_border_color} while focus is inside the
+    # dialog, so it dims while another dialog is stacked on top.
+    # 
+    # == Implementation details
+    # 
+    # `q` and ESC close the dialog — handled here, at the top of the dialog's own
+    # subtree, so the key only arrives after every component on the focus chain
+    # declined it (see {ScreenPane#handle_key?}). That's why typing `q` into a
+    # nested {Component::TextField} doesn't dismiss the dialog: the field consumes
+    # it first. A subclass handling keys of its own calls `super` for the ones it
+    # declines. A dialog in front of work that cannot be stopped turns this off
+    # with {#close_on_key?}.
+    # 
+    # A left click *outside* the dialog closes it too — see
+    # {Overlay#close_on_outside_click?} for the exact contract and
+    # {Overlay#on_close} for the notice a driver hears when it happens.
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class Dialog < Tuile::Component::Overlay
+      include Tuile::Component::HasCaption
+
+      # _@param_ `caption` — the border title, coerced the same way {HasCaption#caption=} coerces it.
+      # 
+      # _@param_ `content` — initial content; can be set later via {#content=}. It fills the inside of the border; it does not determine the dialog's size.
+      # 
+      # _@param_ `declared_size` — the dialog's box, border included, applied top-down. A {Fraction} is resolved against the screen each layout pass; a {Size} is clamped to the screen. Defaults to {Fraction::HALF}.
+      # 
+      # _@param_ `close_on_outside_click` — true (default) to dismiss on a left click that misses this dialog. See {Overlay#close_on_outside_click?}.
+      # 
+      # _@param_ `close_on_key` — true (default) to dismiss on ESC and `q`. See {#close_on_key?}.
+      def initialize: (
+                        ?(String | StyledString)? caption,
+                        ?content: Component?,
+                        ?declared_size: (Size | Fraction),
+                        ?close_on_outside_click: bool,
+                        ?close_on_key: bool
+                      ) -> void
+
+      # Whether ESC and `q` close this dialog (default true). False makes the
+      # dialog refuse both — for one in front of work that cannot be stopped
+      # once it starts, where a dismissal would read as a cancel while the work
+      # goes on. Pair it with `close_on_outside_click: false`, which refuses the
+      # other light dismissal; {#close} from code still works, and is how the
+      # work's owner takes the dialog down when it is done.
+      # 
+      # A refused key is *swallowed*, not passed on: the dialog is modal, so the
+      # loop's unhandled-ESC/`q` quit (`D_quit_key`) does not fire beneath it
+      # either. A dialog that cannot be dismissed also keeps the app from
+      # quitting by those keys.
+      def close_on_key?: () -> bool
+
+      # _@param_ `value` — see {#close_on_key?}.
+      def close_on_key=: (bool value) -> void
+
+      # _@return_ — optional chrome embedded into the bottom border
+      # line, mirroring {#caption} on the top line. Empty by default.
+      def footer_text: () -> StyledString
+
+      # Sets the bottom-border chrome — key hints, typically. Accepts a `String`
+      # (parsed via {StyledString.parse}), a {StyledString}, or `nil` (clears
+      # it). The text embeds into the bottom border at its own width with the
+      # border's dashes filling the remainder, clipped to the inner width —
+      # border decoration, not a component (not focusable).
+      # 
+      # _@param_ `text`
+      def footer_text=: ((String | StyledString)? text) -> void
+
+      # Hands the right border column to the content's scrollbar, or takes it
+      # back.
+      # 
+      # _@param_ `value`
+      def scrollbar=: (bool value) -> void
+
+      # The box this dialog asks for, *as set* — a {Fraction} comes back
+      # unresolved. {#rect} is the resolved answer. Named apart from `size`
+      # because a component's `size` is its `rect.size`, which this is not: it
+      # is an input re-read on every layout pass, not a report of the current
+      # geometry.
+      # 
+      # _@return_ — see {#declared_size=}.
+      def declared_size: () -> (Size | Fraction)
+
+      # _@return_ — true — a Dialog scopes key dispatch, grabs focus on
+      # open, and blocks clicks on the content beneath it.
+      def modal?: () -> bool
+
+      # _@return_ — true — {ScreenPane#add_popup} focuses a dialog on open,
+      # and focus repair falls back to it when its subtree has no tab stop.
+      def focusable?: () -> bool
+
+      # Sets the dialog's box, border included; an open dialog takes it on the
+      # next settle. Accepts a {Fraction} (resolved against the screen every
+      # layout pass, so it tracks resize) or an absolute {Size} (clamped to the
+      # screen). This is **authoritative**, not a preference: the screen applies
+      # exactly what you ask for (clamped), with no negotiation — a dialog has
+      # no siblings to compete with.
+      # 
+      # _@param_ `new_size`
+      def declared_size=: ((Size | Fraction) new_size) -> void
+
+      # {#declared_size} resolved against `screen_size`: a {Fraction} scaled, a
+      # {Size} clamped.
+      # 
+      # _@param_ `screen_size`
+      def declared_size_in: (Size screen_size) -> Size
+
+      # _@return_ — a dialog opens centered.
+      def default_placement: () -> Overlay::Centered
+
+      # `q` and ESC close the dialog, or are swallowed when {#close_on_key?} is
+      # false. The dialog sits on the focus chain of its content, so the key
+      # reaches here by bubbling up from the focused content after that content
+      # declined to handle it.
+      # 
+      # _@param_ `key`
+      # 
+      # _@return_ — true if the key was handled.
+      def handle_key?: (String key) -> bool
+
+      # Fully repaints the dialog: the border ring here, the interior through
+      # the content it re-invalidates.
+      # 
+      # Deliberately *not* `super`: the default would blank the whole rect
+      # first, because the content is inset by the border and so never tiles —
+      # and every one of those blanked border cells is one this method is about
+      # to repaint identically, which marks it dirty and makes {Buffer#flush}
+      # re-emit it (`D_component_contract`). The only cell nobody covers is an
+      # interior with no content in it — cleared here, exactly.
+      # 
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (Canvas canvas) -> void
+
+      def relayout: () -> void
+
+      # The interior the content fills, inside the border. One rect for both
+      # passes: what {#relayout} assigns the content, and what {#repaint} blanks
+      # when there is no content to cover it.
+      def content_rect: () -> Rect
+
+      # Read through *this* method, never `@_caption` — the ivar stays nil until
+      # the first non-empty set ({#caption=} short-circuits when unchanged).
+      # 
+      # _@return_ — the caption; empty when never set.
+      def caption: () -> StyledString
+
+      # Sets the caption and invalidates the component. No-op when unchanged. A
+      # `String` is parsed via {StyledString.parse} (embedded ANSI is honored);
+      # a {StyledString} is used as-is; `nil` clears it.
+      # 
+      # _@param_ `new_caption`
+      def caption=: ((String | StyledString)? new_caption) -> void
+
+      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
+      def inspect_details: () -> ::Array[String]
+    end
+
     # A layout doesn't paint anything by itself: its job is to position child
     # components. Three ways to use one, all top-down (see book ch3):
     # 
@@ -6318,9 +6395,9 @@ module Tuile
     # the background is cleared and children are re-invalidated so they
     # paint over a clean surface.
     class Layout < Component
-      # Layouts are focusable containers — like {Window} and {Popup}, they
+      # Layouts are focusable containers — like {Window} and {Dialog}, they
       # don't accept input themselves but they need to participate in the
-      # {HasContent} focus cascade so a Popup wrapping a Layout wrapping a
+      # {HasContent} focus cascade so a Dialog wrapping a Layout wrapping a
       # {TextField} ends up focusing the field rather than parking focus on
       # the popup. Layouts don't paint any visible chrome of their own
       # (the auto-cleared background is just blank space), so this has no
@@ -7057,7 +7134,7 @@ module Tuile
       def handle_key?: (String key) -> bool
 
       # The one row this Select paints — the full width, at the top of {#rect}.
-      # A single-slot container ({Component::Window}, {Component::Popup}) hands
+      # A single-slot container ({Component::Window}, {Component::Dialog}) hands
       # its content the whole inner rect, so a Select is routinely assigned more
       # height than it uses; {#repaint} clears that tail, a press in it never reaches
       # {#handle_mouse_down?}, and the dropdown hangs under this rather than under the
@@ -7321,21 +7398,21 @@ module Tuile
     #   overlay.close
     # 
     # That is the whole of it — floating, plus the lifecycle, {#on_close},
-    # outside-click dismissal and {#owner}. {Component::Popup} is the subclass
+    # outside-click dismissal and {#owner}. {Component::Dialog} is the subclass
     # that adds a declared size, centering, focus and key handling.
     # 
     # Where it goes is a {Placement}: {At} a fixed rect, {Centered} and
     # {TopRight} an overlay that declares its size ({#declared_size_in}),
     # {ListDropdown::Anchored} a dropdown hanging off a field.
     # 
-    # The wrapped content fills the overlay's whole {#rect}; for a frame and a
-    # caption, wrap a {Component::Window} and let it draw its own border.
+    # The wrapped content fills the overlay's whole {#rect}; {Component::Dialog}
+    # is the overlay with a border and a caption.
     # 
     # == Implementation details
     # 
     # **{#focusable?} and {#modal?} move together — flip both or neither.** The
     # defaults here are inert (`false`, `false`): a bare overlay floats without
-    # disturbing focus or key dispatch. {Component::Popup} flips both. What must
+    # disturbing focus or key dispatch. {Component::Dialog} flips both. What must
     # not appear is a *focusable non-modal* overlay: {ScreenPane#handle_key?}
     # scopes delivery to the topmost modal popup or else the tiled content, so
     # such an overlay would hold focus outside the key scope, where delivery
@@ -7345,7 +7422,7 @@ module Tuile
     # 
     # **An overlay whose size changes calls {#reposition}**, which asks the pane
     # to place it again; the placement itself stays put. That is how a growing
-    # {Component::Notification} or a re-measured {Component::ConfirmWindow}
+    # {Component::Notification} or a re-measured {Component::ConfirmDialog}
     # gets its new rect.
     # 
     # UI-thread-confined, like every component (see {Screen}).
@@ -7358,7 +7435,7 @@ module Tuile
       def initialize: (?content: Component?, ?close_on_outside_click: bool) -> void
 
       # _@return_ — false — a bare overlay scopes no keys and blocks no
-      # clicks. {Component::Popup} overrides it, together with {#focusable?}.
+      # clicks. {Component::Dialog} overrides it, together with {#focusable?}.
       def modal?: () -> bool
 
       # _@return_ — false — a bare overlay leaves focus where it was. See
@@ -7464,7 +7541,7 @@ module Tuile
       # Mounts this overlay on the {Screen} at `placement`; the pane assigns the
       # rect on the next settle.
       # 
-      #   Component::Popup.new(content: window).open   # its default: centered
+      #   Component::Dialog.new("Help", content: list).open   # its default: centered
       #   overlay.open(Overlay::At[Rect.new(10, 4, 20, 1)])
       # 
       # There is deliberately no class-level `Overlay.open` factory — see
@@ -7606,7 +7683,7 @@ module Tuile
       end
 
       # Centers the overlay on the screen at the size it declares
-      # ({Overlay#declared_size_in}) — {Popup}'s default.
+      # ({Overlay#declared_size_in}) — {Dialog}'s default.
       class Centered < Data
         include Tuile::Component::Overlay::Placement
 
@@ -7900,7 +7977,7 @@ module Tuile
     # {#add_item}. A letter matching nothing on the live level is swallowed and
     # rings {Screen#beep}; it never falls out to a shallower level and switches
     # menus. A mnemonic shadows what the app (or an ancestor, including a
-    # {Popup}'s `q`-to-close) would do with that key while the bar has focus.
+    # {Dialog}'s `q`-to-close) would do with that key while the bar has focus.
     # A paste can never fire one — pasted text rides its own path off the key
     # ladder.
     # 
@@ -10699,17 +10776,21 @@ module Tuile
       def inspect_details: () -> ::Array[String]
     end
 
-    # A {Window} framing a {LogTextView} — the framed log pane. All the log
-    # behavior lives on the view (see {LogTextView} for the adapter and the
-    # wrap rationale); the window adds the border, caption and delegation:
+    # A {Dialog} showing a {LogTextView} — the log for an app with no room to
+    # tile one. All the log behavior lives on the view (see {LogTextView} for
+    # the adapter and the wrap rationale); the dialog adds the border, caption
+    # and delegation. Build it once and reopen it, so it logs while closed:
     # 
-    #   log_window = Tuile::Component::LogWindow.new
-    #   logger = Logger.new(Tuile::Component::LogWindow::IO.new(log_window))
-    class LogWindow < Tuile::Component::Window
+    #   log_dialog = Tuile::Component::LogDialog.new
+    #   logger = Logger.new(Tuile::Component::LogDialog::IO.new(log_dialog))
+    #   log_dialog.open   # on a key; ESC / q close it, the log keeps filling
+    class LogDialog < Tuile::Component::Dialog
       IO: Class
 
       # _@param_ `caption`
-      def initialize: (?String caption) -> void
+      # 
+      # _@param_ `declared_size` — see {Dialog#declared_size=}.
+      def initialize: (?String caption, ?declared_size: (Size | Fraction)) -> void
 
       # Appends the given line to the log, from any thread — delegates to
       # {LogTextView#log}.
@@ -11832,23 +11913,25 @@ module Tuile
       def handle_focus: () -> void
     end
 
-    # A {Window} with a read-only body, in one of two presentations:
+    # A {Dialog} with a read-only body, in one of two presentations:
     # **prose** ({#message=}) wraps in a scrollable {TextView}, **rows**
     # ({#lines=}) stay one per row in a {List}, truncating instead of
     # wrapping — the presentation for columnar output, where a wrap would
-    # destroy the alignment. Usable tiled (add it to a {Layout}) or as a
-    # popup via {#open_in_popup}; the constructor picks the presentation from
-    # the body's type:
+    # destroy the alignment. The constructor picks the presentation from the
+    # body's type:
     # 
-    #   Component::InfoWindow.new("Help", "A long explanation, wrapped to fit.").open_in_popup
-    #   Component::InfoWindow.new("Files", ["drwx  src/", "-rw-  README.md"]).open_in_popup
+    #   Component::InfoDialog.new("Help", "A long explanation, wrapped to fit.").open
+    #   Component::InfoDialog.new("Files", ["drwx  src/", "-rw-  README.md"]).open
     # 
-    # Both write the same body slot — the last writer wins.
-    class InfoWindow < Tuile::Component::Window
+    # Both write the same body slot — the last writer wins. For the same body
+    # tiled, put a {TextView} or {List} in a {Window}.
+    class InfoDialog < Tuile::Component::Dialog
       # _@param_ `caption` — the border title.
       # 
       # _@param_ `body` — an `Array` is assigned through {#lines=}, anything else through {#message=}.
-      def initialize: (?(String | StyledString)? caption, ?(String | StyledString | Component | ::Array[untyped])? body) -> void
+      # 
+      # _@param_ `declared_size` — see {Dialog#declared_size=}; the body wraps or scrolls within it.
+      def initialize: (?(String | StyledString)? caption, ?(String | StyledString | Component | ::Array[untyped])? body, ?declared_size: (Size | Fraction)) -> void
 
       # _@return_ — whatever {#message=}
       # was given — set a `String`, read that `String` back. After
@@ -11856,7 +11939,7 @@ module Tuile
       def message: () -> (String | StyledString | Component)?
 
       # Sets the prose body. Text (`String` / {StyledString}) is rendered by
-      # a word-wrapping, scrollable {TextView} the window owns; a {Component}
+      # a word-wrapping, scrollable {TextView} the dialog owns; a {Component}
       # is mounted as-is. `nil` clears.
       # 
       # _@param_ `value`
@@ -11868,15 +11951,6 @@ module Tuile
       # 
       # _@param_ `lines` — entries are `String`, `StyledString`, or anything that responds to `#to_s`.
       def lines=: (::Array[untyped] lines) -> void
-
-      # Opens this window in a centered {Popup}, which ESC / `q` close.
-      # One-shot: the closed popup keeps the window as its content, so a second
-      # call raises.
-      # 
-      # _@param_ `declared_size` — the popup's box, applied top-down; the body wraps or scrolls within it.
-      # 
-      # _@return_ — the opened popup.
-      def open_in_popup: (?declared_size: (Size | Fraction)) -> Popup
     end
 
     # Single-select from a set of typed items, one row each. Arrows move a
@@ -12130,7 +12204,7 @@ module Tuile
     # waits its turn and does *not* restart the clock, so the bottom entry of a
     # full box is visible for about `N × DISPLAY_SECONDS`. Past {MAX_MESSAGES} a
     # message is dropped and reported to {Tuile.logger}; an app notifying faster
-    # than that wants a {Component::LogWindow}.
+    # than that wants a {Component::LogDialog}.
     # 
     # The box is flush to the corner, at most {WIDTH_FRACTION} of the screen wide
     # (floor {MIN_CAP_WIDTH}) and {HEIGHT_FRACTION} tall, and **grows but never
@@ -12462,7 +12536,7 @@ module Tuile
     # So a form asks this *before* `empty?`, on every field that can answer:
     # 
     #   bad = fields.select { _1.respond_to?(:bad_input?) && _1.bad_input? }
-    #   Component::ConfirmWindow.alert("Cannot save", bad.map(&:bad_input_message).join("\n")) if bad.any?
+    #   Component::ConfirmDialog.alert("Cannot save", bad.map(&:bad_input_message).join("\n")) if bad.any?
     # 
     # Include it in a field whose parse is *partial* — whose input can be
     # something its value cannot represent, as a date field's can. Not in a
@@ -13114,8 +13188,8 @@ module Tuile
     # for example `TTY::Logger` configured with the `:console` handler and
     # `output: LogTextView::IO.new(view)`.
     # 
-    # Add it to a layout as-is for a frameless log pane, or use {LogWindow}
-    # for the framed assembly. A {TextView} rather than a {List}: long lines
+    # Add it to a layout as-is for a frameless log pane, or use {LogDialog}
+    # for a log shown in a dialog. A {TextView} rather than a {List}: long lines
     # (stacktraces, wide log records) word-wrap rather than ellipsize — a
     # truncated log line hides the very detail you opened the log to read.
     class LogTextView < Tuile::Component::TextView
@@ -13135,7 +13209,7 @@ module Tuile
       # call `output.puts`, e.g. `TTY::Logger`).
       class IO
         # _@param_ `sink` — anything responding to `#log`.
-        def initialize: ((LogTextView | LogWindow) sink) -> void
+        def initialize: ((LogTextView | LogDialog) sink) -> void
 
         # _@param_ `string`
         def write: (String string) -> void
@@ -13150,26 +13224,24 @@ module Tuile
       end
     end
 
-    # A {Window} that lists options identified by single keyboard keys, asks
-    # the user to pick one, and fires a callback with the picked key. Each row
-    # is `"<key> <caption>"`:
+    # A {Dialog} that lists options identified by single keyboard keys, asks
+    # the user to pick one, fires a callback with the picked key and closes.
+    # Each row is `"<key> <caption>"`:
     # 
-    #   PickerWindow.new("Sort by", [%w[n name], %w[s size]]) { sort_by(_1) }.open_in_popup
+    #   PickerDialog.new("Sort by", [%w[n name], %w[s size]]) { sort_by(_1) }.open
     # 
     #   ┌Sort by───────┐
     #   │n name        │
     #   │s size        │
     #   └──────────────┘
     # 
-    # Usable tiled (just add to a {Layout} and read picks via the block) or
-    # as a popup via {#open_in_popup}, which wraps it in a {Popup} that closes
-    # itself after a pick. ESC / `q` close without firing the callback.
+    # ESC / `q` close it without firing the callback.
     # 
     # Captions paint in the terminal's own foreground. To color them, hand in
     # {StyledString} captions — the picker styles nothing itself, so an app's
     # own token applies per option:
     # 
-    #   PickerWindow.new("File", [["o", StyledString.plain("Open")],
+    #   PickerDialog.new("File", [["o", StyledString.plain("Open")],
     #                             ["d", theme.fg(:danger, "Delete")]]) { … }
     # 
     # An option that doesn't apply right now is *disabled* by a third element
@@ -13178,7 +13250,7 @@ module Tuile
     # or click — fires nothing and closes nothing; its key moves the cursor
     # onto it instead, so the reason is where the user is looking:
     # 
-    #   PickerWindow.new("Maintenance", [
+    #   PickerDialog.new("Maintenance", [
     #     ["r", "Resize disk image…", { disabled: "shut the VM down first" }],
     #     ["g", "Grow root filesystem…"]
     #   ]) { … }
@@ -13192,32 +13264,26 @@ module Tuile
     # enabled state is taken when it opens: what changes while the picker is
     # up doesn't reach it. So disabling is a hint, never the guard — the block
     # still checks that its operation can run.
-    class PickerWindow < Tuile::Component::Window
+    class PickerDialog < Tuile::Component::Dialog
       MAX_ITEMS: Integer
 
-      # _@param_ `caption` — the window caption.
+      # _@param_ `caption` — the dialog caption.
       # 
       # _@param_ `options` — pairs of keyboard key and option caption, optionally followed by `{ disabled: reason }`. A caption goes through {StyledString.parse}, so a plain String, an ANSI-coded one (what {Theme#fg} returns) and a {StyledString} are all accepted.
       def initialize: (String caption, ::Array[([String, StyledString] | [String, StyledString, ::Hash[untyped, untyped]])] options) ?{ (String key) -> void } -> void
 
       # Fired with a {PickEvent} after the user picks an option, after the
-      # block fires. {#open_in_popup} registers its popup's `close` here.
+      # block fires. The picker's own `close` is the first listener.
       def on_pick: () -> Listeners
 
       # Handles an option-key press. Reached by bubbling: the inner {List}
       # (the focused component) sees the key first and handles cursor/Enter
       # picks; anything it declines bubbles up here, where a key matching an
-      # option's `key` picks that option.
+      # option's `key` picks that option, and the rest goes to
+      # {Dialog#handle_key?}.
       # 
       # _@param_ `key`
       def handle_key?: (String key) -> bool
-
-      # Opens this picker in a centered {Popup} that closes after a pick; ESC /
-      # `q` close it without firing the block. One-shot: the closed popup keeps
-      # the picker as its content, so a second call raises.
-      # 
-      # _@return_ — the opened popup.
-      def open_in_popup: () -> Popup
 
       # Re-renders the rows, which {List} caches with the disabled ink baked in.
       def handle_theme_changed: () -> void
@@ -13270,12 +13336,12 @@ module Tuile
       # What {#on_pick} fires.
       # 
       # @!attribute [r] source
-      #   @return [PickerWindow] the picker whose option was chosen.
+      #   @return [PickerDialog] the picker whose option was chosen.
       class PickEvent < Data
         include Tuile::Event
 
         # _@return_ — the picker whose option was chosen.
-        attr_reader source: PickerWindow
+        attr_reader source: PickerDialog
       end
     end
 
@@ -13507,20 +13573,20 @@ module Tuile
       def error_ink?: () -> bool
     end
 
-    # The confirm dialog: a {Window} asking a question — a caption, a prose
+    # The confirm dialog: a {Dialog} asking a question — a caption, a prose
     # {#message}, a centered row of buttons — plus the one-button degenerate
-    # case, the alert. Three factories cover the common shapes and open the
-    # dialog as a centered, content-sized {Popup}:
+    # case, the alert. Three factories cover the common shapes and open it
+    # centered and sized to its content:
     # 
-    #   Component::ConfirmWindow.alert("Export failed", "Contact support@example.com.")
-    #   Component::ConfirmWindow.confirm("Delete Report Q4?", "This cannot be undone.",
+    #   Component::ConfirmDialog.alert("Export failed", "Contact support@example.com.")
+    #   Component::ConfirmDialog.confirm("Delete Report Q4?", "This cannot be undone.",
     #                                    confirm: "Delete") { delete! }
-    #   Component::ConfirmWindow.yes_no("Overwrite file?", "target.txt already exists.") { overwrite! }
+    #   Component::ConfirmDialog.yes_no("Overwrite file?", "target.txt already exists.") { overwrite! }
     # 
     # The component itself is the builder — declare any button set through
     # {#button}, then {#open}:
     # 
-    #   dialog = Component::ConfirmWindow.new("Unsaved changes")
+    #   dialog = Component::ConfirmDialog.new("Unsaved changes")
     #   dialog.message = "Save your changes before leaving?"
     #   dialog.button("Save")    { save! }
     #   dialog.button("Discard") { discard! }
@@ -13532,7 +13598,7 @@ module Tuile
     # button without one is a Cancel. ESC, `q`, an outside click and a Cancel
     # button are all one outcome — {#on_dismiss}, fired exactly once, and only
     # when no action button was chosen. There is deliberately no keep-open knob:
-    # a dialog that leads somewhere opens the next window from its callback.
+    # a dialog that leads somewhere opens the next dialog from its callback.
     # 
     # Keys: Left/Right (and Tab) move between the buttons, Enter/Space press the
     # focused one, and each button answers to its underlined mnemonic letter
@@ -13541,17 +13607,16 @@ module Tuile
     # opens on the first button; Shift+Tab reaches the message, a tab stop of
     # its own.
     # 
-    # The popup sizes itself from what the dialog owns — caption, message,
-    # buttons — capped at half the screen ({#measured_size}), re-measured when
-    # any of them changes. Usable tiled too (add it to a {Layout}): buttons then
-    # fire their callbacks with nothing to close.
+    # The dialog sizes itself from what it owns — caption, message, buttons —
+    # capped at half the screen ({#measured_size}), re-measured when any of them
+    # changes.
     # 
     # There is deliberately no content slot: the body is prose ({#message=}
     # takes a component for the rare rich body, but the dialog then cannot
     # measure it). A dialog collecting *input* is not a confirm dialog — build a
-    # `Popup.new(content: your_layout)`. See `design/decisions.md` `D_confirm_window`
-    # for the API rationale.
-    class ConfirmWindow < Tuile::Component::Window
+    # `Dialog.new(caption, content: your_layout)`. See `design/decisions.md`
+    # `D_confirm_window` for the API rationale.
+    class ConfirmDialog < Tuile::Component::Dialog
       BODY_SCROLL_KEYS: ::Array[String]
       RESERVED_MNEMONICS: ::Array[String]
       HEIGHT_CHROME: Integer
@@ -13570,7 +13635,7 @@ module Tuile
       # rendering it is derived, never returned.
       def message: () -> (String | StyledString | Component)?
 
-      # Also re-measures the popup: the caption participates in the width.
+      # Also re-measures the dialog: the caption participates in the width.
       # 
       # _@param_ `new_caption`
       def caption=: ((String | StyledString)? new_caption) -> void
@@ -13602,7 +13667,7 @@ module Tuile
       # explicit letter is a promise and raises when it cannot be kept.
       # 
       # Declare buttons before {#open}: adding one to an open dialog re-measures
-      # the popup, but momentarily bounces focus off the button row.
+      # it, but momentarily bounces focus off the button row.
       # 
       # _@param_ `caption` — the button label.
       # 
@@ -13611,19 +13676,14 @@ module Tuile
       # _@return_ — the appended button.
       def button: ((String | StyledString) caption, ?mnemonic: (Symbol | String)?) -> Button
 
-      # Opens the dialog as a centered modal {Popup} sized by {#measured_size}
-      # and returns that popup. ESC, `q` and an outside click dismiss it
-      # (firing {#on_dismiss}); every button closes it too.
+      # Opens the dialog, sized by {#measured_size}. ESC, `q` and an outside
+      # click dismiss it (firing {#on_dismiss}), as does {#close}; every button
+      # closes it too.
       # 
-      # _@return_ — the mounted popup; `popup.close` closes programmatically,
-      # as {#close} also does.
-      def open: () -> Popup
+      # _@param_ `placement` — see {Overlay#open}.
+      def open: (?Overlay::Placement placement) -> self
 
-      # Closes the popup {#open} mounted, which counts as a dismissal
-      # ({#on_dismiss} fires). No-op when not open, or when used tiled.
-      def close: () -> void
-
-      # The popup box this dialog wants: wide enough for the caption, the widest
+      # The box this dialog wants: wide enough for the caption, the widest
       # message line and the button row, tall enough for the wrapped message
       # plus the button row — each capped at half of `reference`. The re-grow
       # rule's caller-side measure query: the dialog measures only content it
@@ -13633,6 +13693,12 @@ module Tuile
       # _@param_ `reference` — the screen size to cap against.
       def measured_size: (?Size reference) -> Size
 
+      # {#measured_size}, re-measured on every layout pass so a message change
+      # and a SIGWINCH both re-fit the dialog. {#declared_size} is ignored.
+      # 
+      # _@param_ `screen_size`
+      def declared_size_in: (Size screen_size) -> Size
+
       # Focus lands on the first button rather than cascading into the message
       # body, which sits before the button row in the tree. `super` is reached
       # only when there is no button to take it: {HasContent#handle_focus} *is*
@@ -13641,9 +13707,9 @@ module Tuile
 
       # Handles the dialog-wide keys: Left/Right move between the buttons,
       # {BODY_SCROLL_KEYS} are hand-fed to the message body, and a mnemonic
-      # letter presses its button. Reached by bubbling — the focused button or
-      # body sees the key first, so a focused body consumes its own scroll keys
-      # before this runs.
+      # letter presses its button; the rest goes to {Dialog#handle_key?}. Reached
+      # by bubbling — the focused button or body sees the key first, so a
+      # focused body consumes its own scroll keys before this runs.
       # 
       # _@param_ `key`
       # 
@@ -13661,13 +13727,13 @@ module Tuile
       # 
       # _@param_ `button` — the button label.
       # 
-      # _@return_ — the mounted popup.
-      def self.alert: ((String | StyledString)? caption, (String | StyledString | Component)? message, ?button: (String | StyledString)) -> Popup
+      # _@return_ — the opened dialog.
+      def self.alert: ((String | StyledString)? caption, (String | StyledString | Component)? message, ?button: (String | StyledString)) -> ConfirmDialog
 
       # Opens a two-button question: the block is the action, the cancel button
       # (with ESC, `q` and an outside click) is the dismissal.
       # 
-      #   Component::ConfirmWindow.confirm("Delete Report Q4?", "This cannot be undone.",
+      #   Component::ConfirmDialog.confirm("Delete Report Q4?", "This cannot be undone.",
       #                                    confirm: "Delete") { delete! }
       # 
       # _@param_ `caption` — the border title.
@@ -13680,14 +13746,14 @@ module Tuile
       # 
       # _@param_ `on_dismiss` — see {#on_dismiss}.
       # 
-      # _@return_ — the mounted popup.
+      # _@return_ — the opened dialog.
       def self.confirm: (
                           (String | StyledString)? caption,
                           (String | StyledString | Component)? message,
                           ?confirm: (String | StyledString),
                           ?cancel: (String | StyledString),
                           ?on_dismiss: Proc?
-                        ) -> Popup
+                        ) -> ConfirmDialog
 
       # {.confirm} with Yes/No labels — the other canonical phrasing.
       # 
@@ -13697,23 +13763,28 @@ module Tuile
       # 
       # _@param_ `on_dismiss` — see {#on_dismiss}.
       # 
-      # _@return_ — the mounted popup.
-      def self.yes_no: ((String | StyledString)? caption, (String | StyledString | Component)? message, ?on_dismiss: Proc?) -> Popup
+      # _@return_ — the opened dialog.
+      def self.yes_no: ((String | StyledString)? caption, (String | StyledString | Component)? message, ?on_dismiss: Proc?) -> ConfirmDialog
 
-      # The chosen-button path, in the settled order: mark chosen, close the
-      # popup (whose on_close then skips the dismissal), fire the callback last
-      # so it sees the dialog already gone — a callback opening a follow-up
-      # popup gets clean focus-repair state.
+      # The chosen-button path, in the settled order: mark chosen, close (whose
+      # on_close then skips the dismissal), fire the callback last so it sees
+      # the dialog already gone — a callback opening a follow-up dialog gets
+      # clean focus-repair state.
       # 
       # _@param_ `btn`
       def activate: (Button btn) -> void
 
-      # The popup's on_close: fires {#on_dismiss} unless a button was chosen —
+      # The {#on_close} listener: fires {#on_dismiss} unless a button was chosen —
       # which makes ESC, `q`, an outside click, {#close}, a direct
       # {Screen#remove_popup} and teardown all one event, fired exactly once.
       def notice_dismissed: () -> void
 
       def fire_dismissed: () -> void
+
+      # _@param_ `key`
+      # 
+      # _@return_ — whether `key` is a mnemonic, whose button it pressed.
+      def press_mnemonic: (String key) -> bool
 
       # _@param_ `delta` — -1 or 1.
       # 
@@ -13753,31 +13824,15 @@ module Tuile
       # _@return_ — columns of the button row at its natural width.
       def button_row_width: () -> Integer
 
-      # Re-measures the popup while open; a no-op tiled or before {#open}.
-      def resize_popup: () -> void
-
       # What {#on_dismiss} fires.
       # 
       # @!attribute [r] source
-      #   @return [ConfirmWindow] the dialog that was dismissed.
+      #   @return [ConfirmDialog] the dialog that was dismissed.
       class DismissEvent < Data
         include Tuile::Event
 
         # _@return_ — the dialog that was dismissed.
-        attr_reader source: ConfirmWindow
-      end
-
-      # The {Popup} that {#open} wraps the dialog in: its size is measured from
-      # the dialog on every layout pass, so a message change and a SIGWINCH both
-      # re-measure against the current screen.
-      class MeasuredPopup < Tuile::Component::Popup
-        # _@param_ `window`
-        def initialize: (ConfirmWindow window) -> void
-
-        # _@param_ `screen_size`
-        # 
-        # _@return_ — {ConfirmWindow#measured_size}.
-        def declared_size_in: (Size screen_size) -> Size
+        attr_reader source: ConfirmDialog
       end
     end
 
@@ -16599,7 +16654,7 @@ module Tuile
     #       popup.close
     #     else
     #       messages = syncer.last_validation.values.flatten.map(&:message)
-    #       Component::ConfirmWindow.alert("Cannot save", messages.join("\n"))
+    #       Component::ConfirmDialog.alert("Cannot save", messages.join("\n"))
     #     end
     #   end
     # 
@@ -17104,7 +17159,7 @@ module Tuile
     def content: () -> Component?
 
     # _@return_ — the open overlays in stacking order;
-    # last is topmost. Holds both {Component::Popup} modals and bare
+    # last is topmost. Holds both {Component::Dialog} modals and bare
     # {Component::Overlay}s ({Component::Overlay#modal?}). The array must not
     # be mutated by callers.
     def popups: () -> ::Array[Component::Overlay]
@@ -17119,7 +17174,7 @@ module Tuile
     def content=: (Component content) -> void
 
     # Adds an overlay at `placement` and invalidates it for repaint; the next
-    # settle gives it its rect. A {Component::Popup} grabs focus; a bare
+    # settle gives it its rect. A {Component::Dialog} grabs focus; a bare
     # {Component::Overlay} does *not*, so the component that was focused keeps
     # the cursor and keeps receiving keys — the overlay floats above the
     # content, driven from app code.
@@ -17160,7 +17215,7 @@ module Tuile
     # down its subtree — and every slot is emptied. Terminal; the pane isn't
     # reusable afterwards, and {Screen#close} is its only caller.
     # 
-    # Deliberately not named `close` ({Component::Popup#close} already means
+    # Deliberately not named `close` ({Component::Dialog#close} already means
     # "remove *me* from the pane"), and deliberately not a generic
     # `Component#remove_all_children`: a slot container calling that would empty
     # `@_children` while `#content` / `#popups` still pointed at detached
@@ -17177,7 +17232,7 @@ module Tuile
     # owner": the popup that scopes key dispatch, blocks mouse clicks, and
     # confines Tab cycling. Bare overlays are excluded — they float above the
     # content without capturing input.
-    def modal_popup: () -> Component::Popup?
+    def modal_popup: () -> Component::Dialog?
 
     # The root of the current **key scope**: the topmost modal popup when one
     # is open, else the tiled {#content}. Keys bubble up to it and no further,
@@ -17267,7 +17322,7 @@ module Tuile
     #   not be in the set (it would immediately dismiss itself — every
     #   {Component::Select} would be unopenable by mouse).
     # - **Close after the block.** A widget toggling its own overlay from a press
-    #   on its face closes it during delivery, and {Component::Popup#close} is
+    #   on its face closes it during delivery, and {Component::Dialog#close} is
     #   idempotent, so the dismissal no-ops. Close *first* and the widget sees
     #   a shut overlay and reopens it — a Select's dropdown could then never be
     #   dismissed by clicking the Select.

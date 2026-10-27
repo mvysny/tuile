@@ -98,7 +98,7 @@ are `Box`'s rdoc and `D_box_layouts`.
 
 ### Overlays
 
-- **{Tuile::Component::Overlay} is the bare layer; {Tuile::Component::Popup} the modal subclass** —
+- **{Tuile::Component::Overlay} is the bare layer; {Tuile::Component::Dialog} the modal subclass** —
   no `modal:` knob, `modal?` is a constant per class. See `D_overlay`.
 - **`focusable?` and `modal?` move together** — a focusable non-modal overlay holds focus outside
   the key scope and every keystroke goes dead until Tab recovers.

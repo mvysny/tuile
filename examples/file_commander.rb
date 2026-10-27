@@ -7,7 +7,7 @@
 # ascends to the parent. The header label shows the active pane's cwd, and a
 # static status line spells out the keys — Tuile draws no status bar and
 # reserves no row, so both are ordinary children of the layout.
-# Unreadable directories surface an InfoWindow. Layout follows the
+# Unreadable directories surface an InfoDialog. Layout follows the
 # terminal on resize (WINCH) — the framework dispatches a TTYSizeEvent and
 # the layout's `rect=` rebuilds the geometry.
 #
@@ -100,7 +100,7 @@ module FileCommanderExample
       fire_cwd_changed
     rescue SystemCallError => e
       @cwd = previous
-      Tuile::Component::InfoWindow.new("Cannot open", "#{path}\n#{e.message}").open_in_popup
+      Tuile::Component::InfoDialog.new("Cannot open", "#{path}\n#{e.message}").open
     end
 
     def load_entries

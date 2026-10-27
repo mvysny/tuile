@@ -94,7 +94,7 @@ module Tuile
   #   @return [Color]
   # @!attribute [r] disabled_color
   #   Foreground of an option that can't be picked right now
-  #   ({Component::PickerWindow}): clearly dimmer than the terminal's own
+  #   ({Component::PickerDialog}): clearly dimmer than the terminal's own
   #   foreground, yet readable on {#active_bg_color}, since the cursor may
   #   rest on it while the user reads why.
   #   @return [Color]

@@ -83,7 +83,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **An override calls `super`, empty base body or not** — that is what keeps both upgrade
   directions additive, so neither the hook nor the slot has to ship first. The carve-out is a hook
   whose base body does real work and whose override *replaces* it (`handle_child_removed`,
-  `ConfirmWindow#handle_focus`), and it is stated at the site.
+  `ConfirmDialog#handle_focus`), and it is stated at the site.
 
 ### The tree
 

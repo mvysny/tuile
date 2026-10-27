@@ -14,9 +14,9 @@ module Tuile
   # Everything on screen hangs off {#pane} (a {ScreenPane}): the tiled
   # {#content} (set via {#content=}, filling the whole terminal and laying
   # out its own children), the modal/overlay {#popups} stack (opened via
-  # {Component::Popup#open}, drawn on top of the content). Popups are *not*
+  # {Component::Dialog#open}, drawn on top of the content). Overlays are *not*
   # sized from their content — each carries its own top-down
-  # {Component::Popup#declared_size} — and they deliberately overdraw the content
+  # {Component::Dialog#declared_size} — and they deliberately overdraw the content
   # without clipping.
   #
   # Tuile draws no chrome of its own: there is no status bar and no reserved
@@ -410,7 +410,7 @@ module Tuile
     end
 
     # @return [Array<Component::Overlay>] the open overlay stack — both
-    #   {Component::Popup} modals and bare {Component::Overlay}s — in stacking
+    #   {Component::Dialog} modals and bare {Component::Overlay}s — in stacking
     #   order (forwarded to {ScreenPane}). The array must not be modified!
     def popups = @_pane.popups
 
@@ -631,7 +631,7 @@ module Tuile
     listener :on_focus_changed
 
     # Internal — use {Component::Overlay#open} instead. Adds the overlay to
-    # {#pane} at `placement`; a {Component::Popup} is additionally focused.
+    # {#pane} at `placement`; a {Component::Dialog} is additionally focused.
     # @api private
     # @param window [Component::Overlay] any overlay, modal or not.
     # @param placement [Component::Overlay::Placement, nil] where it wants to
@@ -803,7 +803,7 @@ module Tuile
     # on the next cycle. Needed whenever something overdraws the scene without
     # clipping and then exposes what was underneath — a closing popup
     # ({#remove_popup}), or a popup that shrinks or moves so its new {#rect} no
-    # longer covers the cells it previously painted ({Component::Popup#rect=}).
+    # longer covers the cells it previously painted ({Component::Overlay#handle_rect_changed}).
     # The popup-only fast path in {#repaint} can't clear those vacated cells on
     # its own, so we accept the cost of a full repaint.
     # @api private

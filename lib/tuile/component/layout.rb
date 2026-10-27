@@ -285,9 +285,9 @@ module Tuile
         ZERO = new
       end
 
-      # Layouts are focusable containers — like {Window} and {Popup}, they
+      # Layouts are focusable containers — like {Window} and {Dialog}, they
       # don't accept input themselves but they need to participate in the
-      # {HasContent} focus cascade so a Popup wrapping a Layout wrapping a
+      # {HasContent} focus cascade so a Dialog wrapping a Layout wrapping a
       # {TextField} ends up focusing the field rather than parking focus on
       # the popup. Layouts don't paint any visible chrome of their own
       # (the auto-cleared background is just blank space), so this has no

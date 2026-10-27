@@ -31,8 +31,8 @@ module Tuile
       # every read — so it needs a guard.
       it "is content, then popups in stacking order" do
         content = Component::Layout::Absolute.new
-        first = Component::Popup.new
-        second = Component::Popup.new
+        first = Component::Dialog.new
+        second = Component::Dialog.new
 
         Screen.instance.content = content
         pane.add_popup(first)
@@ -42,7 +42,7 @@ module Tuile
       end
 
       it "keeps content first when it is swapped under open popups" do
-        popup = Component::Popup.new
+        popup = Component::Dialog.new
         pane.add_popup(popup)
         replacement = Component::Layout::Absolute.new
 
@@ -54,8 +54,8 @@ module Tuile
 
       it "closes a popup out of order without disturbing the rest" do
         content = Component::Layout::Absolute.new
-        first = Component::Popup.new
-        second = Component::Popup.new
+        first = Component::Dialog.new
+        second = Component::Dialog.new
         Screen.instance.content = content
         pane.add_popup(first)
         pane.add_popup(second)
@@ -112,7 +112,7 @@ module Tuile
       it "parents popups when added" do
         list = Component::List.new
         list.lines = ["a"]
-        popup = Component::Popup.new(content: list)
+        popup = Component::Dialog.new(content: list)
         Screen.instance.add_popup(popup)
         assert_equal pane, popup.parent
       end
@@ -120,7 +120,7 @@ module Tuile
       it "detaches popup parent when removed" do
         list = Component::List.new
         list.lines = ["a"]
-        popup = Component::Popup.new(content: list)
+        popup = Component::Dialog.new(content: list)
         Screen.instance.add_popup(popup)
         Screen.instance.remove_popup(popup)
         assert_nil popup.parent
@@ -155,22 +155,22 @@ module Tuile
 
       it "rejects content that already has a parent" do
         layout = Component::Layout::Absolute.new
-        Component::Popup.new(content: layout)
+        Component::Dialog.new(content: layout)
         assert_raises(ArgumentError) { Screen.instance.content = layout }
       end
 
-      it "rejects a non-Popup as a popup" do
+      it "rejects a non-Dialog as a popup" do
         assert_raises(TypeError) { Screen.instance.add_popup(Component::Label.new) }
       end
 
       it "rejects a popup that already has a parent" do
-        popup = Component::Popup.new(content: Component::Label.new)
+        popup = Component::Dialog.new(content: Component::Label.new)
         Screen.instance.add_popup(popup)
         assert_raises(ArgumentError) { Screen.instance.add_popup(popup) }
       end
 
       it "rejects removing a popup that is not open" do
-        popup = Component::Popup.new(content: Component::Label.new)
+        popup = Component::Dialog.new(content: Component::Label.new)
         # Screen#remove_popup silently no-ops on a non-open popup, so reach the
         # pane's guard directly.
         assert_raises(Tuile::Error) { pane.remove_popup(popup) }
@@ -243,7 +243,7 @@ module Tuile
         list = Component::List.new
         list.lines = ["a"]
         list.cursor = Component::List::Cursor.new
-        popup = Component::Popup.new(content: list)
+        popup = Component::Dialog.new(content: list)
         popup.open
         assert_equal list, Screen.instance.focused # open cascades focus onto the list
 
@@ -260,7 +260,7 @@ module Tuile
         inner = Class.new(Component) { def focusable? = true }.new
         Testing.place(inner, Rect.new(0, 0, 5, 1))
         inner.define_singleton_method(:handle_key?) { |k| popup_got << k }
-        Component::Popup.new(content: inner).open   # cascades focus onto `inner`
+        Component::Dialog.new(content: inner).open # cascades focus onto `inner`
 
         pane.handle_key?("z")
         assert_equal ["z"], popup_got               # the open popup's content receives it
@@ -320,7 +320,7 @@ module Tuile
         Screen.instance.focused = beneath
 
         inner = field
-        Component::Popup.new(content: inner).open # cascades focus onto `inner`
+        Component::Dialog.new(content: inner).open # cascades focus onto `inner`
 
         assert pane.handle_paste("scoped")
         assert_equal "scoped", inner.text
@@ -351,7 +351,7 @@ module Tuile
         Screen.instance.add_popup(Component::Overlay.new(content: Component::Label.new), at(Rect.new(0, 0, 5, 1)))
         assert_nil pane.modal_popup
 
-        modal = Component::Popup.new(content: Component::Label.new)
+        modal = Component::Dialog.new(content: Component::Label.new)
         Screen.instance.add_popup(modal)
         assert_equal modal, pane.modal_popup
       end
@@ -440,7 +440,7 @@ module Tuile
         Screen.instance.content = layout
         layout.add(beneath)
 
-        modal = Component::Popup.new(content: list_of("a"))
+        modal = Component::Dialog.new(content: list_of("a"))
         modal.open(at(Rect.new(50, 1, 5, 3)))
 
         Screen.instance.click(2, 2)
@@ -521,7 +521,7 @@ module Tuile
         # component opened — the ComboBox-in-a-dialog shape.
         def host_and_owned
           driver = Class.new(Component) { def focusable? = true }.new
-          host = Component::Popup.new(content: driver)
+          host = Component::Dialog.new(content: driver)
           host.open(at(Rect.new(10, 10, 20, 5)))
 
           owned = overlay_at(Rect.new(12, 15, 10, 3)) # hangs below the host

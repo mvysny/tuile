@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Tuile
-  describe Component::Popup do
+  describe Component::Dialog do
     before { Screen.fake } # 160x50
     after { Screen.close }
 
@@ -10,7 +10,7 @@ module Tuile
     end
 
     it "smokes" do
-      p = Component::Popup.new
+      p = Component::Dialog.new
       p.open
       assert p.open?
       p.close
@@ -18,7 +18,7 @@ module Tuile
     end
 
     it "close is a no-op when the popup is not open" do
-      p = Component::Popup.new
+      p = Component::Dialog.new
       p.close # never opened
       assert !p.open?
 
@@ -30,19 +30,19 @@ module Tuile
 
     it "accepts content via the constructor" do
       list = list_of(%w[a b c])
-      p = Component::Popup.new(content: list)
+      p = Component::Dialog.new(content: list)
       assert_equal list, p.content
     end
 
     it "closes on q" do
-      p = Component::Popup.new
+      p = Component::Dialog.new
       p.open
       p.handle_key? "q"
       assert !p.open?
     end
 
     it "closes on ESC" do
-      p = Component::Popup.new
+      p = Component::Dialog.new
       p.open
       p.handle_key? Keys::ESC
       assert !p.open?
@@ -50,8 +50,8 @@ module Tuile
 
     context "with close_on_key: false" do
       it "is close_on_key? by default, and the flag is writable" do
-        assert Component::Popup.new.close_on_key?
-        p = Component::Popup.new(close_on_key: false)
+        assert Component::Dialog.new.close_on_key?
+        p = Component::Dialog.new(close_on_key: false)
         assert !p.close_on_key?
         p.close_on_key = true
         assert p.close_on_key?
@@ -61,7 +61,7 @@ module Tuile
       # (D_quit_key), so FakeScreen#key reporting it handled is what keeps the
       # app running beneath the popup.
       it "swallows q and ESC without closing" do
-        p = Component::Popup.new(content: list_of(%w[a b]), close_on_key: false)
+        p = Component::Dialog.new(content: list_of(%w[a b]), close_on_key: false)
         p.open
         assert Screen.instance.key("q")
         assert Screen.instance.key(Keys::ESC)
@@ -69,14 +69,14 @@ module Tuile
       end
 
       it "still closes from code" do
-        p = Component::Popup.new(close_on_key: false)
+        p = Component::Dialog.new(close_on_key: false)
         p.open
         p.close
         assert !p.open?
       end
 
       it "closes on q again once re-enabled" do
-        p = Component::Popup.new(close_on_key: false)
+        p = Component::Dialog.new(close_on_key: false)
         p.open
         p.close_on_key = true
         assert Screen.instance.key("q")
@@ -85,30 +85,29 @@ module Tuile
     end
 
     it "returns false for unhandled keys" do
-      p = Component::Popup.new
+      p = Component::Dialog.new
       p.open
       assert !p.handle_key?("x")
     end
 
     it "draws nothing on repaint" do
-      p = Component::Popup.new(content: list_of(["hello"]))
+      p = Component::Dialog.new(content: list_of(["hello"]))
       p.open
       Screen.instance.prints.clear
       repaint(p)
       assert_equal [], Screen.instance.prints
     end
 
-    it "lays out content to fill the entire popup rect" do
+    it "lays out content inside the border" do
       list = list_of(["hello"])
-      p = Component::Popup.new(content: list)
+      p = Component::Dialog.new(content: list)
       p.open
-      assert_equal p.local_rect, list.rect
-      assert_equal p.rect, list.absolute_rect
+      assert_equal Rect.new(1, 1, p.width - 2, p.height - 2), list.rect
     end
 
     it "content inside a closed popup does not invalidate or paint" do
       list = Component::List.new
-      p = Component::Popup.new(content: list)
+      p = Component::Dialog.new(content: list)
       p.open
       p.close
       assert !list.attached?
@@ -122,12 +121,61 @@ module Tuile
     end
   end
 
-  describe Component::Popup, "size" do
+  describe Component::Dialog, "border" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    # @return [Component::Dialog] an open 12x4 dialog around a two-row list.
+    def open_dialog(caption = "Hi")
+      list = Component::List.new.tap { _1.lines = %w[one two] }
+      Component::Dialog.new(caption, content: list, declared_size: Size.new(12, 4)).open
+    end
+
+    def rows(dialog)
+      Screen.instance.repaint
+      Screen.instance.buffer.region_text(dialog.absolute_rect)
+    end
+
+    it "frames the content, the caption set into the top edge" do
+      assert_equal ["┌Hi────────┐", "│ one      │", "│ two      │", "└──────────┘"], rows(open_dialog)
+    end
+
+    it "embeds footer_text into the bottom edge" do
+      dialog = open_dialog
+      dialog.footer_text = "q close"
+      assert_equal "└q close───┘", rows(dialog).last
+    end
+
+    it "lights the border while focus is inside, and dims it under a stacked dialog" do
+      lower = open_dialog
+      Screen.instance.repaint
+      lit = Screen.instance.theme.active_border_color
+      assert_equal lit, Screen.instance.buffer.cell(lower.absolute_rect.left, lower.absolute_rect.top + 1).style.fg
+
+      Component::Dialog.new("Top", declared_size: Size.new(4, 3)).open
+      Screen.instance.repaint
+      refute_equal lit, Screen.instance.buffer.cell(lower.absolute_rect.left, lower.absolute_rect.top + 1).style.fg
+    end
+
+    it "hands the right border column to the content's scrollbar" do
+      dialog = open_dialog
+      dialog.scrollbar = true
+      dialog.flush_layout
+      assert_equal Rect.new(1, 1, 11, 2), dialog.content.rect
+    end
+
+    it "refuses scrollbar= on content that has no scrollbar" do
+      dialog = Component::Dialog.new(content: Component::Label.new("x"))
+      assert_raises(Tuile::Error) { dialog.scrollbar = true }
+    end
+  end
+
+  describe Component::Dialog, "size" do
     before { Screen.fake } # 160x50
     after { Screen.close }
 
     it "defaults to Fraction::HALF (half the screen, centered)" do
-      p = Component::Popup.new
+      p = Component::Dialog.new
       p.open
       # HALF of 160x50 = 80x25; centered at ((160-80)/2, (50-25)/2) = (40, 12).
       assert_equal Rect.new(40, 12, 80, 25), p.rect
@@ -136,39 +184,39 @@ module Tuile
 
     it "does not size itself to its content (content fills the box)" do
       # A bare TextField reports Size::ZERO; the popup stays HALF regardless.
-      p = Component::Popup.new(content: Component::TextField.new)
+      p = Component::Dialog.new(content: Component::TextField.new)
       p.open
       assert_equal 80, p.rect.width
       assert_equal 25, p.rect.height
     end
 
     it "resolves Fraction::FULL to the whole screen" do
-      p = Component::Popup.new(declared_size: Fraction::FULL)
+      p = Component::Dialog.new(declared_size: Fraction::FULL)
       p.open
       assert_equal Rect.new(0, 0, 160, 50), p.rect
     end
 
     it "resolves an arbitrary Fraction proportionally" do
-      p = Component::Popup.new(declared_size: Fraction.new(0.8, 0.5))
+      p = Component::Dialog.new(declared_size: Fraction.new(0.8, 0.5))
       p.open
       # 0.8*160 = 128 wide, 0.5*50 = 25 tall; centered at ((160-128)/2, 12).
       assert_equal Rect.new(16, 12, 128, 25), p.rect
     end
 
     it "applies an absolute Size, centered" do
-      p = Component::Popup.new(declared_size: Size.new(50, 12))
+      p = Component::Dialog.new(declared_size: Size.new(50, 12))
       p.open
       assert_equal Rect.new(55, 19, 50, 12), p.rect
     end
 
     it "clamps an oversized absolute Size to the screen" do
-      p = Component::Popup.new(declared_size: Size.new(300, 100))
+      p = Component::Dialog.new(declared_size: Size.new(300, 100))
       p.open
       assert_equal Rect.new(0, 0, 160, 50), p.rect
     end
 
     it "size= re-sizes and re-centers an open popup" do
-      p = Component::Popup.new
+      p = Component::Dialog.new
       p.open
       p.declared_size = Size.new(20, 6)
       # centered: ((160-20)/2, (50-6)/2) = (70, 22).
@@ -177,7 +225,7 @@ module Tuile
     end
 
     it "size= accepts a Fraction" do
-      p = Component::Popup.new
+      p = Component::Dialog.new
       p.open
       p.declared_size = Fraction::FULL
       p.flush_layout
@@ -185,18 +233,18 @@ module Tuile
     end
 
     it "returns self from open, so construct-and-mount is one expression" do
-      p = Component::Popup.new(declared_size: Fraction::FULL).open
+      p = Component::Dialog.new(declared_size: Fraction::FULL).open
       assert_equal Rect.new(0, 0, 160, 50), p.rect
       assert p.open?
     end
 
-    it "has no class-level open factory — it could only ever build a bare Popup" do
-      assert !Component::Popup.respond_to?(:open)
+    it "has no class-level open factory — it could only ever build a bare Dialog" do
+      assert !Component::Dialog.respond_to?(:open)
       assert !Component::ListDropdown.respond_to?(:open)
     end
 
     it "re-resolves a Fraction size against the screen on layout (resize tracking)" do
-      p = Component::Popup.new # Fraction::HALF
+      p = Component::Dialog.new # Fraction::HALF
       p.open
       assert_equal Rect.new(40, 12, 80, 25), p.rect
 
@@ -209,12 +257,12 @@ module Tuile
     end
   end
 
-  describe Component::Popup, "placement" do
+  describe Component::Dialog, "placement" do
     before { Screen.fake }
     after { Screen.close }
 
     it "opens centered by default" do
-      p = Component::Popup.new(declared_size: Size.new(40, 10)).open
+      p = Component::Dialog.new(declared_size: Size.new(40, 10)).open
       assert_equal Component::Overlay::Centered[], p.placement
       # ((160-40)/2, (50-10)/2) = (60, 20).
       assert_equal Rect.new(60, 20, 40, 10), p.rect
@@ -223,14 +271,14 @@ module Tuile
     # A hand-placed popup's placement *is* its rect, so re-running the pane's
     # pass — a second popup opening — leaves it where it was put.
     it "stays hand-placed when a second popup opens" do
-      first = Component::Popup.new.open(Component::Overlay::At[Rect.new(3, 4, 20, 5)])
-      Component::Popup.new.open
+      first = Component::Dialog.new.open(Component::Overlay::At[Rect.new(3, 4, 20, 5)])
+      Component::Dialog.new.open
       first.flush_layout
       assert_equal Rect.new(3, 4, 20, 5), first.rect
     end
   end
 
-  describe Component::Popup, "full-repaint escalation" do
+  describe Component::Dialog, "full-repaint escalation" do
     # A shrinking/moving popup vacates cells that the popup-only fast path in
     # Screen#repaint can't clear (nothing paints underneath a popup), so the
     # whole scene must repaint. `tiled` is a component in the tiled layer, so
@@ -246,7 +294,7 @@ module Tuile
     after { Screen.close }
 
     it "fully repaints the scene when an open popup shrinks" do
-      p = Component::Popup.new # HALF, (40,12,80,25)
+      p = Component::Dialog.new # HALF, (40,12,80,25)
       p.open
       Screen.instance.invalidated_clear
 
@@ -256,7 +304,7 @@ module Tuile
     end
 
     it "uses the popup-only fast path when an open popup only grows" do
-      p = Component::Popup.new(declared_size: Size.new(10, 5))
+      p = Component::Dialog.new(declared_size: Size.new(10, 5))
       p.open
       Screen.instance.invalidated_clear
 
@@ -267,7 +315,7 @@ module Tuile
     end
 
     it "does not request a full repaint when a closed popup is resized" do
-      p = Component::Popup.new
+      p = Component::Dialog.new
       p.open
       p.close
       Screen.instance.invalidated_clear
@@ -277,46 +325,38 @@ module Tuile
     end
   end
 
-  describe Component::Popup, "the modal contract" do
+  describe Component::Dialog, "the modal contract" do
     before { Screen.fake }
     after { Screen.close }
 
     it "is modal" do
-      assert Component::Popup.new.modal?
+      assert Component::Dialog.new.modal?
     end
 
     # Unlike a bare Overlay: ScreenPane#add_popup focuses a popup on open, and
     # focus repair falls back to it when its subtree holds no tab stop.
     it "is focusable" do
-      assert Component::Popup.new.focusable?
+      assert Component::Dialog.new.focusable?
     end
 
     # ScreenPane#add_popup focuses the popup, and the handle_focus cascade then
     # forwards into its content — so what is pinned here is that focus lands
     # *inside* the popup, not that it rests on the wrapper.
     it "grabs focus when opened" do
-      p = Component::Popup.new(content: Component::List.new)
+      p = Component::Dialog.new(content: Component::List.new)
       p.open
       assert p.active?
       assert_equal p, Screen.instance.focused.root.popups.first
     end
   end
 
-  describe Component::Popup, "wrapping a Window" do
+  describe Component::Dialog, "close_on_outside_click" do
     before { Screen.fake }
     after { Screen.close }
 
-    it "lets the window draw its border over the popup rect" do
-      window = Component::Window.new("Hi")
-      window.content = Component::List.new.tap { _1.lines = %w[one two] }
-      p = Component::Popup.new(content: window)
-      p.open
-      # window fills the popup — popup is borderless
-      assert_equal p.local_rect, window.rect
-    end
     it "passes close_on_outside_click through to Overlay" do
-      assert Component::Popup.new.close_on_outside_click?
-      assert !Component::Popup.new(close_on_outside_click: false).close_on_outside_click?
+      assert Component::Dialog.new.close_on_outside_click?
+      assert !Component::Dialog.new(close_on_outside_click: false).close_on_outside_click?
     end
   end
 end

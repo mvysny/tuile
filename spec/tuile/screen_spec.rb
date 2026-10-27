@@ -373,7 +373,7 @@ module Tuile
       end
 
       it "fires for the focus repair that runs when a popup closes" do
-        popup = Component::Popup.new
+        popup = Component::Dialog.new
         screen.add_popup(popup)
         seen = []
         screen.on_focus_changed { seen << screen.focused }
@@ -445,7 +445,7 @@ module Tuile
       end
 
       it "fires for the popup-close focus repair, on a component already detached" do
-        popup = Component::Popup.new
+        popup = Component::Dialog.new
         content = Component::Window.new
         popup.content = content
         attached_at_blur = true
@@ -578,7 +578,7 @@ module Tuile
         label = Component::Label.new
         layout.add(label)
         screen.content = layout
-        popup = Component::Popup.new(content: Component::Window.new("foo"))
+        popup = Component::Dialog.new("foo")
         screen.add_popup(popup)
         [layout, label, popup].each { _1.on_theme_changed << listener.call(_1) }
 
@@ -1148,7 +1148,7 @@ module Tuile
       it "does not reach a popup opened from inside a small subtree" do
         pane = Component::Layout::Absolute.new
         mount_at(pane, Rect.new(0, 0, 4, 1))
-        popup = Component::Popup.new(content: Component::Label.new("hi"))
+        popup = Component::Dialog.new(content: Component::Label.new("hi"))
         popup.open
         content = popup.content
 
@@ -1280,7 +1280,7 @@ module Tuile
 
       it "also repaints open popups when tiled content is invalidated" do
         w = add_window
-        popup = Component::Popup.new
+        popup = Component::Dialog.new
         screen.add_popup(popup)
         screen.invalidated_clear
 
@@ -1293,7 +1293,7 @@ module Tuile
 
       it "does not repaint tiled content when only a popup is invalidated" do
         w = add_window
-        popup = Component::Popup.new
+        popup = Component::Dialog.new
         screen.add_popup(popup)
         screen.invalidated_clear
 
@@ -1305,8 +1305,8 @@ module Tuile
       end
 
       it "repaints a popup when one beneath it is invalidated, and not the reverse" do
-        lower = Component::Popup.new
-        upper = Component::Popup.new
+        lower = Component::Dialog.new
+        upper = Component::Dialog.new
         screen.add_popup(lower)
         screen.add_popup(upper)
         screen.invalidated_clear
@@ -1333,13 +1333,13 @@ module Tuile
         box.add(Component::TextView.new.tap { _1.text = "LOWER" }, Component::Layout::Fixed[1])
         box.add(Component::Button.new("LOWERBUTTON"), Component::Layout::Fixed[1],
                 cross: Component::Layout::Fixed[15])
-        Component::Popup.new(content: box, declared_size: Size.new(60, 4)).open
+        Component::Dialog.new(content: box, declared_size: Size.new(60, 4)).open
         screen.repaint
 
         # Opening the upper popup deactivates the lower's focus chain, which
         # invalidates part of its subtree — the cascade trigger.
-        upper = Component::Popup.new(content: Component::Label.new("upper"),
-                                     declared_size: Size.new(58, 4)).open
+        upper = Component::Dialog.new(content: Component::Label.new("upper"),
+                                      declared_size: Size.new(58, 4)).open
         screen.repaint
         rows = screen.buffer.region_text(upper.absolute_rect)
         assert(rows.none? { _1.include?("LOWERBUTTON") }, rows.inspect)
@@ -1351,7 +1351,7 @@ module Tuile
         # popup.content and overdraw it, leaving the popup empty until the user
         # nudged the popup's cursor and triggered a fresh paint.
         w = add_window
-        popup = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["option"] })
+        popup = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["option"] })
         screen.add_popup(popup)
         screen.invalidated_clear
 
@@ -1426,7 +1426,7 @@ module Tuile
         w.content.define_singleton_method(:focusable?) { true }
         w.content.define_singleton_method(:cursor_position) { Point.new(1, 1) }
         screen.focused = w.content
-        popup = Component::Popup.new(content: Component::List.new)
+        popup = Component::Dialog.new(content: Component::List.new)
         popup.content.define_singleton_method(:focusable?) { true }
         popup.content.define_singleton_method(:cursor_position) { Point.new(3, 2) }
         screen.add_popup(popup)
@@ -1542,7 +1542,7 @@ module Tuile
         screen.content = Component::Layout::Absolute.new
         received = false
         screen.content.define_singleton_method(:handle_mouse_down?) { |_| received = true }
-        screen.add_popup(Component::Popup.new)
+        screen.add_popup(Component::Dialog.new)
         screen.click(0, 0)
         assert !received
       end
@@ -1550,13 +1550,13 @@ module Tuile
 
     context "popups" do
       it "adds popup" do
-        w = Component::Popup.new
+        w = Component::Dialog.new
         screen.add_popup w
         assert screen.has_popup? w
       end
 
       it "close removes popup" do
-        w = Component::Popup.new
+        w = Component::Dialog.new
         screen.add_popup w
         screen.remove_popup w
         assert !screen.has_popup?(w)
@@ -1566,9 +1566,9 @@ module Tuile
         it "falls back to the now-topmost popup when the closed popup held focus" do
           screen.content = Component::Layout::Absolute.new
           screen.content.add(Component::Window.new)
-          bottom = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["a"] })
+          bottom = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["a"] })
           screen.add_popup(bottom)
-          top = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["b"] })
+          top = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["b"] })
           screen.add_popup(top)
           # focus is currently inside top (add_popup focused it)
           assert_equal top.content, screen.focused
@@ -1583,7 +1583,7 @@ module Tuile
           w = Component::Window.new
           w.content = Component::List.new
           layout.add(w)
-          popup = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["a"] })
+          popup = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["a"] })
           screen.add_popup(popup)
           assert_equal popup.content, screen.focused
 
@@ -1593,7 +1593,7 @@ module Tuile
         end
 
         it "falls back to nil when the only popup closes with no content" do
-          popup = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["a"] })
+          popup = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["a"] })
           screen.add_popup(popup)
           assert_equal popup.content, screen.focused
 
@@ -1606,7 +1606,7 @@ module Tuile
           screen.content = layout
           w = Component::Window.new
           layout.add(w)
-          popup = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["a"] })
+          popup = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["a"] })
           screen.add_popup(popup)
           screen.focused = w
           prior = screen.focused
@@ -1619,9 +1619,9 @@ module Tuile
         it "leaves focus untouched when a non-topmost popup closes (focus is in the topmost)" do
           screen.content = Component::Layout::Absolute.new
           screen.content.add(Component::Window.new)
-          bottom = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["a"] })
+          bottom = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["a"] })
           screen.add_popup(bottom)
-          top = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["b"] })
+          top = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["b"] })
           screen.add_popup(top)
           prior = screen.focused
           assert_equal top.content, prior
@@ -1646,7 +1646,7 @@ module Tuile
           prior = screen.focused
           assert_equal second.content, prior
 
-          popup = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["a"] })
+          popup = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["a"] })
           screen.add_popup(popup)
           assert_equal popup.content, screen.focused
 
@@ -1670,9 +1670,9 @@ module Tuile
           screen.focused = second
           original = screen.focused
 
-          bottom = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["a"] })
+          bottom = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["a"] })
           screen.add_popup(bottom)
-          top = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["b"] })
+          top = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["b"] })
           screen.add_popup(top)
 
           # Close the non-topmost popup first; focus stays in top.
@@ -1700,7 +1700,7 @@ module Tuile
           layout.add([flippable, tab_stop])
           screen.focused = flippable
 
-          popup = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["x"] })
+          popup = Component::Dialog.new(content: Component::List.new.tap { _1.lines = ["x"] })
           screen.add_popup(popup)
           # Now make the prior un-focusable while the popup is open.
           flippable.focusable = false
@@ -1714,11 +1714,10 @@ module Tuile
 
       context "event routing" do
         let(:popup) do
-          window = Component::Window.new("test")
-          window.content = Component::List.new.tap { _1.lines = ["hello"] }
-          w = Component::Popup.new(content: window)
-          screen.add_popup(w)
-          w
+          list = Component::List.new.tap { _1.lines = ["hello"] }
+          dialog = Component::Dialog.new("test", content: list)
+          screen.add_popup(dialog)
+          dialog
         end
 
         before do
@@ -1853,7 +1852,7 @@ module Tuile
         inner2 = Component::TextField.new
         popup_layout = Component::Layout::Absolute.new
         popup_layout.add([inner1, inner2])
-        popup = Component::Popup.new(content: popup_layout)
+        popup = Component::Dialog.new(content: popup_layout)
         screen.add_popup(popup)
         # Cascade lands focus on inner1 (first tab_stop in popup).
         assert_equal inner1, screen.focused
@@ -1901,14 +1900,14 @@ module Tuile
       it "with over_popups: false is suppressed while a popup is open" do
         fired = false
         screen.register_global_shortcut(Keys::CTRL_L) { fired = true }
-        screen.add_popup(Component::Popup.new)
+        screen.add_popup(Component::Dialog.new)
         screen.send(:handle_key?, Keys::CTRL_L)
         assert !fired
       end
 
       it "with over_popups: false forwards the key to the popup when one is open" do
         screen.register_global_shortcut(Keys::CTRL_L) { flunk "should not fire" }
-        popup = Component::Popup.new
+        popup = Component::Dialog.new
         screen.add_popup(popup)
         seen = nil
         popup.define_singleton_method(:handle_key?) do |key|
@@ -1922,7 +1921,7 @@ module Tuile
       it "with over_popups: true fires even while a popup is open" do
         fired = false
         screen.register_global_shortcut(Keys::CTRL_L, over_popups: true) { fired = true }
-        popup = Component::Popup.new
+        popup = Component::Dialog.new
         screen.add_popup(popup)
         popup.define_singleton_method(:handle_key?) { |_| flunk "popup should not see the key" }
         screen.send(:handle_key?, Keys::CTRL_L)
@@ -2022,7 +2021,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         screen.register_global_shortcut(Keys::CTRL_L) do
-          screen.add_popup(Component::Popup.new)
+          screen.add_popup(Component::Dialog.new)
         end
         assert screen.popups.empty?
         screen.send(:handle_key?, Keys::CTRL_L)

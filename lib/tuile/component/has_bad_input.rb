@@ -15,7 +15,7 @@ module Tuile
     # So a form asks this *before* `empty?`, on every field that can answer:
     #
     #   bad = fields.select { _1.respond_to?(:bad_input?) && _1.bad_input? }
-    #   Component::ConfirmWindow.alert("Cannot save", bad.map(&:bad_input_message).join("\n")) if bad.any?
+    #   Component::ConfirmDialog.alert("Cannot save", bad.map(&:bad_input_message).join("\n")) if bad.any?
     #
     # Include it in a field whose parse is *partial* — whose input can be
     # something its value cannot represent, as a date field's can. Not in a

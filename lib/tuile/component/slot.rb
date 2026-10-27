@@ -6,7 +6,7 @@ module Tuile
     # absent, arrive late, or be swapped. The occupant fills the slot's {#rect}.
     #
     # Wire one per region at construction, then swap occupants through
-    # {HasContent#content=} — which is how {ConfirmWindow} holds its body:
+    # {HasContent#content=} — which is how {ConfirmDialog} holds its body:
     #
     #   @body_slot = Slot.new
     #   box.add(@body_slot, Layout::Expand[1])   # the region, wired once

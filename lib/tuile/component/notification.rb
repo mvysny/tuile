@@ -22,7 +22,7 @@ module Tuile
     # waits its turn and does *not* restart the clock, so the bottom entry of a
     # full box is visible for about `N × DISPLAY_SECONDS`. Past {MAX_MESSAGES} a
     # message is dropped and reported to {Tuile.logger}; an app notifying faster
-    # than that wants a {Component::LogWindow}.
+    # than that wants a {Component::LogDialog}.
     #
     # The box is flush to the corner, at most {WIDTH_FRACTION} of the screen wide
     # (floor {MIN_CAP_WIDTH}) and {HEIGHT_FRACTION} tall, and **grows but never

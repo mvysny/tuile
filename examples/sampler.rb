@@ -543,7 +543,7 @@ module SamplerExample
     # Mnemonics are *hand-picked*: {Tuile::Component::MenuBar#add_item} raises on
     # a duplicate among siblings, and eight leaves therefore answer to a letter
     # other than their initial (Past`e`, Checkbox`G`roup, C`o`mboBox,
-    # Pic`k`erWindow, S`l`ash menu, DateTi`m`eField, Bi`n`der, F`o`rmLayout) — the
+    # Pic`k`erDialog, S`l`ash menu, DateTi`m`eField, Bi`n`der, F`o`rmLayout) — the
     # underline shows which.
     # No item may use
     # `q`: quit is the unhandled-key fallback, so a `q` on the live level would
@@ -586,12 +586,12 @@ module SamplerExample
       # strip is a button rather than a drop-down.
       Entry.new("Button", :build_buttons, "b"),
       Menu.new("Overlay", "o", [
-                 Entry.new("Popup", :build_popup_launcher, "p"),
+                 Entry.new("Dialog", :build_popup_launcher, "p"),
                  Entry.new("Notification", :build_notification_launcher, "n"),
-                 Entry.new("ConfirmWindow", :build_confirm_launcher, "c"),
-                 Entry.new("InfoWindow", :build_info_launcher, "i"),
-                 Entry.new("PickerWindow", :build_picker_launcher, "k"),
-                 Entry.new("LogWindow", :build_log_window, "l")
+                 Entry.new("ConfirmDialog", :build_confirm_launcher, "c"),
+                 Entry.new("InfoDialog", :build_info_launcher, "i"),
+                 Entry.new("PickerDialog", :build_picker_launcher, "k"),
+                 Entry.new("LogDialog", :build_log_launcher, "l")
                ]),
       Menu.new("Shell", "h", [
                  Entry.new("FormLayout", :build_form_layout, "o"),
@@ -1028,7 +1028,7 @@ module SamplerExample
       fields.each { |caption, field| field.error_message = login_problem(caption, field) }
       return if fields.each_value.any?(&:error_message)
 
-      Tuile::Component::ConfirmWindow.alert("Logged in", "Welcome, #{fields["Username"].value}.")
+      Tuile::Component::ConfirmDialog.alert("Logged in", "Welcome, #{fields["Username"].value}.")
     end
 
     # @param caption [String]
@@ -1052,9 +1052,9 @@ module SamplerExample
       end
       if bad.empty?
         values = fields.map { |caption, field| "#{caption}: #{field.value.inspect}" }
-        Tuile::Component::ConfirmWindow.alert("Saved", values.join("\n"))
+        Tuile::Component::ConfirmDialog.alert("Saved", values.join("\n"))
       else
-        Tuile::Component::ConfirmWindow.alert("Cannot save", "#{bad.size} problem(s):\n#{bad.join("\n")}")
+        Tuile::Component::ConfirmDialog.alert("Cannot save", "#{bad.size} problem(s):\n#{bad.join("\n")}")
       end
     end
 
@@ -1166,7 +1166,7 @@ module SamplerExample
       lines = syncer.last_validation.flat_map do |attr, failures|
         failures.map { "#{attr || "form"}: #{_1.message}" }
       end
-      Tuile::Component::ConfirmWindow.alert("Cannot save", lines.join("\n"))
+      Tuile::Component::ConfirmDialog.alert("Cannot save", lines.join("\n"))
     end
 
     # @param value [BigDecimal, nil]
@@ -1966,7 +1966,7 @@ module SamplerExample
     # visible: every route out of a dialog lands in exactly one callback.
     def build_confirm_launcher
       label = Tuile::Component::Label.new
-      label.text = "ConfirmWindow asks a question with a row of buttons, in a popup sized to\n" \
+      label.text = "ConfirmDialog asks a question with a row of buttons, in a popup sized to\n" \
                    "its content (capped at half the screen). Every button closes the dialog;\n" \
                    "ESC, q or an outside click dismiss it instead. An underlined letter presses\n" \
                    "its button from anywhere; Up/Down scroll a long message meanwhile."
@@ -1974,22 +1974,22 @@ module SamplerExample
       report = ->(outcome) { status.text = "Outcome: #{outcome}" }
       buttons = [
         Tuile::Component::Button.new("Confirm") do
-          Tuile::Component::ConfirmWindow.confirm(
+          Tuile::Component::ConfirmDialog.confirm(
             "Delete Report Q4?", "This cannot be undone.",
             confirm: "Delete", on_dismiss: -> { report.call("kept the report") }
           ) { report.call("deleted the report") }
         end,
         Tuile::Component::Button.new("Yes/No") do
-          Tuile::Component::ConfirmWindow.yes_no(
+          Tuile::Component::ConfirmDialog.yes_no(
             "Overwrite draft.txt?", "The file already exists.",
             on_dismiss: -> { report.call("kept draft.txt") }
           ) { report.call("overwrote draft.txt") }
         end,
         Tuile::Component::Button.new("Alert") do
-          Tuile::Component::ConfirmWindow.alert("Export failed", "Contact support@example.com.")
+          Tuile::Component::ConfirmDialog.alert("Export failed", "Contact support@example.com.")
         end,
         Tuile::Component::Button.new("3-way") do
-          dialog = Tuile::Component::ConfirmWindow.new("Unsaved changes")
+          dialog = Tuile::Component::ConfirmDialog.new("Unsaved changes")
           dialog.message = "Save your changes before leaving?"
           dialog.button("Save")    { report.call("saved") }
           dialog.button("Discard") { report.call("discarded") }
@@ -1998,7 +1998,7 @@ module SamplerExample
           dialog.open
         end,
         Tuile::Component::Button.new("Long") do
-          dialog = Tuile::Component::ConfirmWindow.new("Terms of Service")
+          dialog = Tuile::Component::ConfirmDialog.new("Terms of Service")
           dialog.message = (1..40).map { "#{_1}. Clause #{_1} of the agreement, spelled out in full." }.join("\n")
           dialog.button("Accept")  { report.call("accepted the terms") }
           dialog.button("Decline") { report.call("declined the terms") }
@@ -2018,32 +2018,34 @@ module SamplerExample
 
     def build_popup_launcher
       launcher(
-        "Popup is a modal overlay wrapping any Component.\n" \
+        "Dialog is a bordered, captioned modal overlay around any Component.\n" \
         "ESC or q closes it.",
-        "Open Popup"
+        "Open Dialog"
       ) do
         list = Tuile::Component::List.new
-        list.lines = ["Hello", "from", "a Popup!", "", "Press ESC to close."]
-        Tuile::Component::Popup.new(content: list).open
+        list.lines = ["Hello", "from", "a Dialog!"]
+        dialog = Tuile::Component::Dialog.new("Dialog", content: list)
+        dialog.footer_text = "ESC to close"
+        dialog.open
       end
     end
 
     def build_info_launcher
       label = Tuile::Component::Label.new
-      label.text = "InfoWindow is a Window with a read-only body: prose (message=) wraps in\n" \
+      label.text = "InfoDialog is a Dialog with a read-only body: prose (message=) wraps in\n" \
                    "a TextView, rows (lines=) stay one per row in a List, truncating. The\n" \
                    "constructor picks the presentation by the body's type."
       buttons = [
         Tuile::Component::Button.new("Prose") do
-          Tuile::Component::InfoWindow.new(
+          Tuile::Component::InfoDialog.new(
             "About",
-            "InfoWindow renders a String as wrapping prose: this sentence is long " \
+            "InfoDialog renders a String as wrapping prose: this sentence is long " \
             "enough to wrap to the popup's width, and it scrolls when it outgrows " \
             "the box. Press ESC or q to close."
-          ).open_in_popup
+          ).open
         end,
         Tuile::Component::Button.new("Rows") do
-          Tuile::Component::InfoWindow.new(
+          Tuile::Component::InfoDialog.new(
             "Files",
             ["drwxr-xr-x  src/",
              "drwxr-xr-x  spec/",
@@ -2053,7 +2055,7 @@ module SamplerExample
              "Rows never wrap: a long row like this one is truncated at the popup's edge, keeping columns aligned.",
              "",
              "Press ESC or q to close."]
-          ).open_in_popup
+          ).open
         end
       ]
       strip = row do |r|
@@ -2067,29 +2069,33 @@ module SamplerExample
 
     def build_picker_launcher
       launcher(
-        "PickerWindow asks the user to pick one option by a single keystroke.",
-        "Open PickerWindow"
+        "PickerDialog asks the user to pick one option by a single keystroke.",
+        "Open PickerDialog"
       ) do
         # Captions paint in the terminal's own foreground — the picker
         # recommends no color of its own. Styling one is the app's call, and
         # per option: a caption may be a String, an ANSI-coded String (what
         # `theme.fg` hands back) or a StyledString. A disabled option paints
         # in disabled_color with its reason, and picking it fires nothing.
-        Tuile::Component::PickerWindow.new(
+        Tuile::Component::PickerDialog.new(
           "Pick a fruit",
           [%w[a Apple], %w[b Banana],
            ["c", "Cherry #{screen.theme.fg(:hint, "(in season)")}"],
            ["d", "Durian", { disabled: "out of stock" }]]
-        ) { |key| Tuile.logger.info("Picked: #{key}") }.open_in_popup
+        ) { |key| Tuile.logger.info("Picked: #{key}") }.open
       end
     end
 
-    def build_log_window
-      log = Tuile::Component::LogWindow.new("Log")
-      ["LogWindow is a Window framing an auto-scrolling LogTextView.",
-       "Lines are appended via #log (safe from any thread).",
+    def build_log_launcher
+      log = Tuile::Component::LogDialog.new("Log")
+      ["LogDialog is a Dialog showing an auto-scrolling LogTextView.",
+       "Lines are appended via #log (safe from any thread), even while it is closed.",
        "Used with Logger::IO it captures arbitrary log output."].each { |line| log.log(line) }
-      log
+      launcher(
+        "LogDialog is a log for an app with no room to tile one: build it once,\n" \
+        "log to it, and open it on demand. ESC or q closes it; it keeps logging.",
+        "Open LogDialog"
+      ) { log.open }
     end
 
     # --- Cross-cutting -----------------------------------------------------
@@ -2120,7 +2126,7 @@ module SamplerExample
       canvas = Canvas.new
       pointer = Tuile::Component::Label.new
       pointer.text = "pointer: (move over the canvas)"
-      log = Tuile::Component::LogWindow.new("Events")
+      log = Tuile::Component::LogTextView.new
       canvas.on_report { |e| log.log(e.line) }
       canvas.on_move do |e|
         kind = e.mouse.is_a?(Tuile::Mouse::DragEvent) ? "drag" : "move"
@@ -2128,7 +2134,7 @@ module SamplerExample
       end
       surface = row do |r|
         r.add(Tuile::Component::Window.new("Canvas").tap { _1.content = canvas }, Percent[55])
-        r.add(log, Expand[1])
+        r.add(Tuile::Component::Window.new("Events").tap { _1.content = log }, Expand[1])
       end
       form do |f|
         f.add(intro, Fixed[3])
