@@ -7,13 +7,16 @@ module Tuile
     #
     #   form = Component::FormLayout.new
     #   # …nine fields, 27 rows of them…
-    #   panel.content = Component::Scroller.new(form, content_rows: 27)
+    #   panel.content = Component::Scroller.new(form)
     #
-    # **You say how tall the content is.** Nothing in Tuile measures
-    # (`D_declared_size`), so {#content_rows} is the number of rows the content
-    # wants, and the child is handed that many or the viewport's height,
-    # whichever is more — a rect taller than this component's, whose `top` goes
-    # negative as you scroll. Keep it current as the content grows.
+    # **It asks the content how tall it is**, through {Component#measure_rows},
+    # and follows the answer as the content grows. The child is handed that
+    # many rows or the viewport's height, whichever is more — a rect taller
+    # than this component's, whose `top` goes negative as you scroll. Content
+    # with no answer of its own (a {Layout::Absolute}) is told a count instead,
+    # which is then yours to keep current:
+    #
+    #   Component::Scroller.new(canvas, content_rows: 40)
     #
     # Four things scroll it: the wheel, the bar's handle (dragging it is
     # dead under `run_event_loop(capture_mouse: :clicks)`; pressing the track
@@ -34,14 +37,15 @@ module Tuile
 
       # @param content [Component, nil] the content child, also settable later
       #   through {HasContent#content=}.
-      # @param content_rows [Integer] see {#content_rows=}.
-      def initialize(content = nil, content_rows: 0)
+      # @param content_rows [Integer, Symbol] `:content` (the default) or a
+      #   count; see {#content_rows=}.
+      def initialize(content = nil, content_rows: :content)
         super()
         @_content = nil
         @_scroll_top_row = 0
-        @_content_rows = validate_rows(content_rows, :content_rows)
+        @_content_rows = validate_content_rows(content_rows)
         @_scrollbar_visibility = :visible
-        @_scrollbar = VerticalScrollBar.new(row_count: @_content_rows)
+        @_scrollbar = VerticalScrollBar.new
         @_scrollbar.on_scroll_request { self.scroll_top_row = _1.scroll_top_row }
         add_child(@_scrollbar) # chrome, appended: the content goes in at 0
         self.content = content unless content.nil?
@@ -50,40 +54,48 @@ module Tuile
       # @return [Integer] the content row painted at the top of the viewport.
       def scroll_top_row = @_scroll_top_row
 
-      # @return [Integer] how tall the content says it is, in rows.
+      # @return [Integer, Symbol] `:content` (the default), or the count you
+      #   assigned.
       def content_rows = @_content_rows
 
       # @return [Symbol] `:visible` (the default), `:gone`, or `:auto` — shown
-      #   only while {#content_rows} exceeds {#viewport_rows}.
+      #   only while the content's rows exceed {#viewport_rows}.
       def scrollbar_visibility = @_scrollbar_visibility
 
       # @return [Integer] rows of content on screen at once — {#rect}'s height,
       #   the bar taking a column rather than a row.
       def viewport_rows = rect.height
 
-      # How many rows the content occupies, which only the content can know:
-      # a {FormLayout} sums the rows its items were handed, a
-      # {Layout::Vertical} of `Fixed` children sums its constraints.
+      # How many rows the content occupies: `:content` (the default) asks the
+      # content on every pass, a count is yours to keep current.
       #
-      # Nothing recomputes it for you, so re-assign it whenever the content's
-      # own size changes. Content taller than the count is clipped; focusing a
-      # field left out of reach logs a warning ({Screen#focused=}), the only
-      # sign of a stale count. A value below
-      # {#viewport_rows} scrolls nothing.
-      # @param rows [Integer] `>= 0`.
-      # @raise [ArgumentError] unless `rows` is a non-negative Integer.
+      #   scroller.content_rows = :content   # asked: form.measure_rows(inner width)
+      #   scroller.content_rows = 27         # told: re-assign as the form grows
+      #
+      # Under `:content` the scroller asks at the width it hands the content,
+      # re-asks when the content's answer changes ({Component#invalidate_rows}),
+      # and pulls the scroll back when the content shrinks under it. A content
+      # answering `nil` (it fills) gets the viewport and scrolls nothing.
+      #
+      # A told count goes stale silently: content taller than it is clipped,
+      # and focusing a field left out of reach logs a warning
+      # ({Screen#focused=}), the only sign. A value below {#viewport_rows}
+      # scrolls nothing.
+      # @param rows [Integer, Symbol] `>= 0`, or `:content`.
+      # @raise [ArgumentError] unless a non-negative Integer or `:content`.
       # @return [void]
       def content_rows=(rows)
-        rows = validate_rows(rows, :content_rows)
+        rows = validate_content_rows(rows)
         return if @_content_rows == rows
 
         @_content_rows = rows
-        @_scroll_top_row = scroll_top_row_max if @_scroll_top_row > scroll_top_row_max
+        @_scroll_top_row = scroll_top_row_max if rows.is_a?(Integer) && @_scroll_top_row > scroll_top_row_max
         invalidate_layout
       end
 
-      # @param new_row [Integer] `>= 0`. Not clamped against {#content_rows}
-      #   (matches {TextView#scroll_top_row=}); the scroll verbs clamp.
+      # @param new_row [Integer] `>= 0`. Not clamped against a told
+      #   {#content_rows} (matches {TextView#scroll_top_row=}); the scroll verbs
+      #   clamp, and so does every pass under `:content`.
       # @raise [ArgumentError] unless a non-negative Integer.
       # @return [void]
       def scroll_top_row=(new_row)
@@ -96,11 +108,13 @@ module Tuile
 
       # `:gone` hides the bar and gives its columns back to the content;
       # `:visible` keeps them reserved, drawing bare track while nothing
-      # scrolls (`D_scrollbar_ink`). `:auto` shows the bar only while
-      # {#content_rows} outgrows the viewport — never mid-scroll, since
-      # scrolling moves neither — and the content is re-laid-out two columns
-      # narrower as it appears. A {#content_rows} computed from the content's
-      # own width is the app's to keep from chasing that flip.
+      # scrolls (`D_scrollbar_ink`). `:auto` shows the bar only while the
+      # content outgrows the viewport — never mid-scroll, since scrolling moves
+      # neither — and the content is re-laid-out two columns narrower as it
+      # appears. Under `:content` that is decided from the answer at the *full*
+      # width, so the narrowing can't flip it back; a told {#content_rows}
+      # computed from the content's own width is the app's to keep from
+      # chasing the flip.
       # @param value [Symbol] `:gone`, `:visible` or `:auto`.
       # @raise [ArgumentError] on any other value.
       # @return [void]
@@ -164,7 +178,10 @@ module Tuile
       def focusable? = true
 
       # @return [Array<String>]
-      def inspect_details = super + ["#{scroll_top_row}/#{content_rows} rows"]
+      def inspect_details
+        told = @_content_rows == :content ? "" : " (told)"
+        super + ["#{scroll_top_row}/#{total_rows} rows#{told}"]
+      end
 
       protected
 
@@ -174,8 +191,22 @@ module Tuile
       # the content's rect, the bar's handle, or both.
       # @return [void]
       def relayout
-        content&.rect = Rect.new(0, -@_scroll_top_row, inner_width, content_height)
-        place_scrollbar
+        rows = total_rows
+        # Asked, the count follows the content down, so the scroll must too;
+        # a told count clamps in content_rows= instead.
+        top_max = scroll_top_row_max(rows)
+        @_scroll_top_row = top_max if @_content_rows == :content && @_scroll_top_row > top_max
+        content&.rect = Rect.new(0, -@_scroll_top_row, inner_width, [rows, viewport_rows].max)
+        place_scrollbar(rows)
+      end
+
+      # Under `:content`, re-asks the content on its next pass. A told count
+      # ignores it, and the notice stops here either way: this answers `nil`.
+      # @param child [Component]
+      # @return [void]
+      def handle_child_rows_changed(child)
+        super
+        invalidate_layout if @_content_rows == :content && child.equal?(content)
       end
 
       private
@@ -183,11 +214,23 @@ module Tuile
       # The bar's whole state, pushed in one place: its column, and the two
       # numbers it paints a handle from. It holds no authority over either —
       # it asks through `on_scroll_request` and is told here.
+      # @param rows [Integer] the content's rows, from {#total_rows}.
       # @return [void]
-      def place_scrollbar
+      def place_scrollbar(rows)
         @_scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
-        @_scrollbar.row_count = @_content_rows
+        @_scrollbar.row_count = rows
         @_scrollbar.scroll_top_row = @_scroll_top_row
+      end
+
+      # The content's rows: the told count, or under `:content` its answer at
+      # the width it is handed — `0` for content that is absent, hidden, or
+      # answers `nil`, which then just fills the viewport.
+      # @param width [Integer] the columns to ask at.
+      # @return [Integer]
+      def total_rows(width = inner_width)
+        return @_content_rows unless @_content_rows == :content
+
+        ComponentUtil.measure_rows_of(content, width) || 0
       end
 
       # Rows to scroll — positive down — to bring `rect` (in this component's
@@ -205,11 +248,6 @@ module Tuile
         [bottom - viewport_rows, top].min
       end
 
-      # @return [Integer] the rows the content child is given: what it declared,
-      #   or the viewport, whichever is taller. An unset {#content_rows} makes a
-      #   scroller that behaves like a plain one-child container.
-      def content_height = [@_content_rows, viewport_rows].max
-
       # @return [Integer] columns left for the content once the bar has its own.
       def inner_width = [rect.width - scrollbar_columns, 0].max
 
@@ -224,21 +262,24 @@ module Tuile
       end
 
       # Derived on every read, so {#relayout} places the bar and sizes the
-      # content from one answer.
+      # content from one answer. An `:auto` bar asks at the full width, which
+      # it doesn't narrow, so showing it can't change the answer that showed
+      # it: fewer columns never wrap to fewer rows.
       # @return [Boolean]
       def scrollbar_visible?
         return false if rect.empty?
 
         case @_scrollbar_visibility
         when :visible then true
-        when :auto then @_content_rows > viewport_rows
+        when :auto then total_rows(rect.width) > viewport_rows
         else false
         end
       end
 
+      # @param rows [Integer] the content's rows.
       # @return [Integer] the largest {#scroll_top_row} that still shows content
       #   in every viewport row; `0` when the content fits.
-      def scroll_top_row_max = [@_content_rows - viewport_rows, 0].max
+      def scroll_top_row_max(rows = total_rows) = [rows - viewport_rows, 0].max
 
       # @return [Integer] half a viewport, at least one row.
       def half_page_rows = [viewport_rows / 2, 1].max
@@ -248,6 +289,15 @@ module Tuile
       def move_scroll_top_row_by(delta)
         clamped = (@_scroll_top_row + delta).clamp(0, scroll_top_row_max)
         self.scroll_top_row = clamped unless @_scroll_top_row == clamped
+      end
+
+      # @param rows [Integer, Symbol]
+      # @return [Integer, Symbol] `rows`.
+      # @raise [ArgumentError] unless a non-negative Integer or `:content`.
+      def validate_content_rows(rows)
+        return rows if rows == :content || (rows.is_a?(Integer) && !rows.negative?)
+
+        raise ArgumentError, "content_rows expects a non-negative Integer or :content, got #{rows.inspect}"
       end
 
       # @param rows [Integer]

@@ -92,7 +92,7 @@ are `Box`'s rdoc and `D_box_layouts`.
 - **`List`'s and `Scroller`'s `:auto` are derived on every read; `TextView`'s is state with one writer,
   `sync_auto_scrollbar`**, since its rows are wrapped at the width the bar leaves. A bar drawing no
   handle under `:visible` is *ink*, a different rule. See `D_scrollbar_ink`.
-- **`List` measures nothing for its own content, and a dropdown driver supplies its own `width:`** —
+- **`List` measures no width for its own content, and a dropdown driver supplies its own `width:`** —
   `anchor_to` owns placement, never the measurement. See `D_select`.
 - **{Tuile::Component::Select} claims Enter, Space, ESC, `MOVE_KEYS` and the press — nothing else**,
   so a form's `s`-to-save keeps working while it has focus. See `D_select`.

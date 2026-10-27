@@ -99,6 +99,10 @@ module Tuile
       # @return [Size]
       def extent = Size.new([caption.display_width + 4, rect.width].min, 1)
 
+      # @param _width [Integer]
+      # @return [Integer] `1`, the row its {#extent} declares, at any width.
+      def measure_rows(_width) = 1
+
       # Toggles on Space or Enter. Every other key is left unhandled so it bubbles
       # to an ancestor.
       # @param key [String]

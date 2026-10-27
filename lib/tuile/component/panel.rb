@@ -69,11 +69,25 @@ module Tuile
         @_border_drawer.paint(canvas, rect.size, caption:, fg:)
       end
 
+      # The content's {Component#measure_rows} inside the border, plus the
+      # border's rows. No content or hidden content answers just the border.
+      # @param width [Integer] the panel's width, border included.
+      # @return [Integer, nil] `nil` when the content answers `nil`.
+      def measure_rows(width) = @_border_drawer.measure_rows(content, width)
+
       protected
 
       # @return [void]
       def relayout
         content&.rect = content_rect
+      end
+
+      # Passes the content's notice on, since {#measure_rows} reads its answer.
+      # @param child [Component]
+      # @return [void]
+      def handle_child_rows_changed(child)
+        super
+        invalidate_rows if child.equal?(content)
       end
 
       # The interior the content fills, inside the border. One rect for both

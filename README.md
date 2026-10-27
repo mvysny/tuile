@@ -187,7 +187,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 |---|---|
 | `Layout` | Positions children by assigning their `rect` in a `relayout` override, and paints nothing itself. The base to subclass when the arithmetic is yours. |
 | `Layout::Absolute` | Places each child at the fixed `Rect` it was added with; `constrain` moves one. |
-| `Layout::Vertical`, `Layout::Horizontal` | Stack children along one axis from declared extents — `Fixed[n]`, `Percent[n]`, `Expand[weight]`, a `Percent` bounded with `.clamp(range)` — with box-global `spacing` and `padding`. Sugar over a hand-written `relayout`, not a new sizing model. |
+| `Layout::Vertical`, `Layout::Horizontal` | Stack children along one axis from declared extents — `Fixed[n]`, `Percent[n]`, `Expand[weight]`, a `Percent` bounded with `.clamp(range)`, or `Auto[]` for a height of the rows the child answers — with box-global `spacing` and `padding`. Sugar over a hand-written `relayout`, not a new sizing model. |
 
 ### Panels and switching — [book ch7](book/07-components.md#panels)
 
@@ -195,7 +195,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 |---|---|
 | `Panel` | A tiled pane with a `caption`, one content slot, and a border that lights up while the panel is on the focus chain. `scrollbar=` reclaims the right border column. |
 | `Slot` | A one-child region for content that may be absent, arrive late, or be swapped. Give a multi-region container one per region and the tree stays honest — the occupant fills the slot's rect, and an empty slot holds its place rather than collapsing. |
-| `Scroller` | A viewport onto a taller pile of components: one content child, a scrollbar column, and `content_rows` — you say how tall the content is, since nothing measures. The wheel scrolls it, the bar drags, and so does focus: Tab into a field below the fold and it comes into view. |
+| `Scroller` | A viewport onto a taller pile of components: one content child, a scrollbar column, that asks its content how tall it is and follows it as it grows — or is told a `content_rows` count. The wheel scrolls it, the bar drags, and so does focus: Tab into a field below the fold and it comes into view. |
 | `VerticalScrollBar` | A one-column bar the user can drag, and press the track of to page. It moves nothing itself: it asks through `on_scroll_request` and the container that owns the column assigns `scroll_top_row`. Dragging is dead under `run_event_loop(capture_mouse: :clicks)`. |
 | `FormItem` | One row of a form: a `caption` above a field (or beside it, `caption_position: :left`), an optional required marker beside it, and the message the field reports against itself — a validator's verdict, or input it cannot parse — mirrored into the row below. Rows that never reflow — the message row doubles as the gap. Hide the item, not the field. |
 | `FormLayout` | A column of `FormItem`s: `add(field, caption:, required:, rows:)` wraps the field, returns the item and stacks it below the last. `caption_position: :left` lines the captions up in one column sized to the widest. The message row is the gap and `spacing:` adds rows on top of it; no field is measured, and items past the bottom edge are clipped rather than scrolled. |
@@ -207,7 +207,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 
 | component | what it is |
 |---|---|
-| `Label` | Static text, one row per line, no wrapping — long lines are ellipsized. Content is a `StyledString`, so ANSI passes through. |
+| `Label` | Static text, one row per line — long lines are ellipsized, or word-wrapped with `wrap: true`. Never takes focus. Content is a `StyledString`, so ANSI passes through. |
 | `TextView` | A read-only viewer for prose: word-wrapped, scrollable, appendable, and addressable in named `Region`s when you want to rewrite one part of the text in place. |
 | `ProgressBar` | A one-row bar — `█` over a `░` track — driven by `value` within a `Range`, or `indeterminate` for a bouncing sweep that owns its own ticker while on screen. |
 | `Fill` | One glyph in every cell of its rect, in a `color` that may be a live `Theme.ref`. A one-column `Fill` of `│` is a vertical rule between borderless panes, a one-row `─` a horizontal one. |
@@ -254,7 +254,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | component | what it is |
 |---|---|
 | `Overlay` | The bare floating layer: it wraps any component, paints nothing itself, and sits where its placement says — `open(Overlay::At[rect])`; the pane assigns the rect, again on every resize. Takes no focus and no keys — the building block for anchored panels and toasts. |
-| `Dialog` | The modal dialog: a bordered, captioned `Overlay` placed centered by default, which grabs focus, scopes keys to its own subtree and blocks clicks beneath it. Sized by `declared_size=` (a `Size` or a `Fraction` of the screen) rather than by its content; ESC or `q` dismisses. `footer_text=` puts key hints in the bottom border. Subclass it for a dialog of your own. |
+| `Dialog` | The modal dialog: a bordered, captioned `Overlay` placed centered by default, which grabs focus, scopes keys to its own subtree and blocks clicks beneath it. Sized by `declared_size=`: a `Size`, a `Fraction` of the screen, or either wrapped in `Dialog::ShrinkToContent`, which shrinks the box to the rows the content needs at its width; ESC or `q` dismisses. `footer_text=` puts key hints in the bottom border. Subclass it for a dialog of your own. |
 | `Notification` | A transient corner toast — `Notification.show("Saved")` — stacking messages in one box that a single ticker drains. Non-modal, it never takes focus, and its inner `View` refuses the wheel so queued messages wait for the ticker. |
 | `ConfirmDialog` | The confirm dialog: a message and a row of buttons in a dialog sized to fit. `alert` / `confirm` / `yes_no` cover the common shapes; `#button` builds any other. Every button closes; ESC, `q` or an outside click fire `on_dismiss`. See [The confirm dialog](book/07-components.md#the-confirm-dialog). |
 | `InfoDialog` | A `Dialog` with a read-only body: prose that wraps (`message=`), or rows that don't (`lines=`). |

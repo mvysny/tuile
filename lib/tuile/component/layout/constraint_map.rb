@@ -46,8 +46,10 @@ module Tuile
           @_entries.fetch(child) { raise KeyError, "#{child} has no constraints in #{@_owner}" }
         end
 
-        # Constrains a child and marks the owner as owing a
-        # {Component#relayout}; writing the entry it already has marks nothing.
+        # Constrains a child, marks the owner as owing a {Component#relayout},
+        # and fires its {Component#invalidate_rows}, since a constraint is an
+        # input to its {Component#measure_rows} too. Writing the entry it already
+        # has does neither.
         # @param child [Component] a child of the owner.
         # @param value [Object] the layout's own shape — a `Hash`, a {Rect}.
         # @raise [ArgumentError] if `child` is not a child of the owner.
@@ -59,6 +61,7 @@ module Tuile
           @_entries[child] = value
           # Protected; the map is the layout's own bookkeeping, not a caller's.
           @_owner.__send__(:invalidate_layout)
+          @_owner.__send__(:invalidate_rows)
         end
 
         # Forgets a child's entry. Marks nothing: the removal that calls this

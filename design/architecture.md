@@ -93,6 +93,12 @@ exit (`D_mouse_dispatch`).
 `Screen#size =` and `layout`, which resizes the pane and invalidates the whole tree; each parent
 recomputes its children's rects in its own `rect=`, and the tick above repaints.
 
+**A rows notice** (`Component#invalidate_rows`) climbs only where an answer is read: a mutation
+that may change a component's `measure_rows` hands its parent `handle_child_rows_changed(child)`,
+which marks its own pass if its `relayout` reads that child's rows, passes the notice on if its
+`measure_rows` does, and otherwise stops. Only marks travel, so the settle above re-asks in the
+asker's `relayout` — `ScreenPane` for a `Dialog::ShrinkToContent` (`D_declared_size`).
+
 **A background job** submits its UI half back: `screen.event_queue.submit { … }` runs the block on
 the loop's thread at the next drain. Calling a mutator from any other thread raises
 {Tuile::Error} instead of corrupting the frame.

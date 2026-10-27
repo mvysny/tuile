@@ -270,6 +270,10 @@ module Tuile
         Size.new([painted_width - @_left_column, rect.width].min, 1)
       end
 
+      # @param _width [Integer]
+      # @return [Integer] `1`, the row its {#extent} declares, at any width.
+      def measure_rows(_width) = 1
+
       # Closes the cascade — only on a *changed* rect, which is all this hook
       # hears: a layout re-assigning the same rect (which {Layout::Box} does on
       # any child mutation) must not.

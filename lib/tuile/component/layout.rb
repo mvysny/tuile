@@ -31,7 +31,8 @@ module Tuile
     #   exactly that.
     # - {Box} / {Vertical} / {Horizontal} — you declare each child's extent as
     #   a {Fixed}, {Percent} or {Expand} constraint — a {Percent} optionally
-    #   bounded with {Percent#clamp} — and the layout does the arithmetic.
+    #   bounded with {Percent#clamp} — or a height as {Auto}, and the layout
+    #   does the arithmetic.
     #
     # Children that fully tile the layout's rect repaint themselves and
     # cover everything; children that leave gaps (e.g. a form with widgets
@@ -39,9 +40,9 @@ module Tuile
     # the background is cleared and children are re-invalidated so they
     # paint over a clean surface.
     class Layout < Component
-      # What {Fixed}, {Percent}, {Expand} and {Clamp} have in common: each is a
-      # value a {Box} resolves against the space it has. The set is closed —
-      # {Box#add} accepts these four and nothing else, so an app never
+      # What {Fixed}, {Percent}, {Expand}, {Clamp} and {Auto} have in common:
+      # each is a value a {Box} resolves against the space it has. The set is
+      # closed — {Box#add} accepts these five and nothing else, so an app never
       # implements the protocol.
       module Constraint
         # @api private
@@ -159,6 +160,28 @@ module Tuile
         # @param _available [Integer]
         # @return [nil] an Expand has no size of its own — see {Constraint#resolve}.
         def resolve(_available) = nil
+      end
+
+      # A height of exactly the rows the child says it needs at the width it is
+      # given — its {Component#measure_rows}, asked on every pass:
+      #
+      #   stack.add(Label.new(paragraph, wrap: true), Auto[])        # rows of the wrap
+      #   row.add(button, Fixed[10], cross: Auto[])                  # a Horizontal's height
+      #
+      # **Height only**: {Vertical}'s main axis and {Horizontal}'s `cross:`.
+      # Anywhere else it would need a width from the child, and rows come up but
+      # widths never do, so {Box#add} raises there. The answer is clamped to
+      # what is still unassigned, like a {Fixed}, and re-asked when the child
+      # says it changed ({Component#invalidate_rows}). A child answering `nil`
+      # (it fills) gets `0` rows and a logged warning: it was asked, and has no
+      # answer to give. See `D_box_layouts`.
+      class Auto < Data.define
+        include Constraint
+
+        # @api private
+        # @param _available [Integer]
+        # @raise [NotImplementedError] always: the {Box} asks the child instead.
+        def resolve(_available) = raise(NotImplementedError, "a Box resolves Auto by asking the child")
       end
 
       # A {Percent} whose cells are bounded by {#range} — what {Percent#clamp}
@@ -318,6 +341,7 @@ module Tuile
         remove_child(child)
         @_constraints&.delete(child)
         invalidate if @_children.empty? # nothing left to paint over the gap
+        invalidate_rows
       end
 
       # @return [void]

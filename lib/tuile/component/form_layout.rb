@@ -97,6 +97,7 @@ module Tuile
 
         @_caption_position = position
         invalidate_layout
+        invalidate_rows
       end
 
       # Fixes the left caption column, or with nil fits it to the widest caption.
@@ -121,6 +122,7 @@ module Tuile
 
         @_spacing = rows
         invalidate_layout
+        invalidate_rows
       end
 
       # Wraps `field` in a {FormItem}, adds it, and re-runs the layout.
@@ -194,6 +196,18 @@ module Tuile
       def field_for(caption:)
         wanted = caption.to_s
         children.find { _1.caption.to_s == wanted }&.content
+      end
+
+      # The rows {#relayout} stacks the shown items into: each item's height and
+      # the {#spacing} between them. Read from each item's `rows:`, never asked of
+      # the item, and the same at any width.
+      # @param _width [Integer]
+      # @return [Integer] `0` for a form with nothing shown.
+      def measure_rows(_width)
+        shown = children.select(&:visible?)
+        return 0 if shown.empty?
+
+        shown.sum { item_height(_1) } + (spacing * (shown.size - 1))
       end
 
       private

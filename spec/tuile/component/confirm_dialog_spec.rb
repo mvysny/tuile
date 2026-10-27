@@ -280,21 +280,31 @@ module Tuile
       end
     end
 
-    describe "#measured_size" do
-      it "caps at half the screen" do
+    describe "#measured_width" do
+      it "caps at half the screen, and the dialog's height at half too" do
         dialog = Component::ConfirmDialog.new("x")
         dialog.message = "word " * 2000
         dialog.button("OK")
-        assert_equal Size.new(80, 25), dialog.measured_size(Size.new(160, 50))
+        assert_equal 80, dialog.measured_width(Size.new(160, 50))
+        assert_equal Size.new(80, 25), dialog.open.rect.size
       end
 
       it "takes the full half-screen box for a Component message it cannot measure" do
         dialog = Component::ConfirmDialog.new("x")
         dialog.message = Component::Label.new("injected")
-        assert_equal Size.new(80, 25), dialog.measured_size(Size.new(160, 50))
+        assert_equal 80, dialog.measured_width(Size.new(160, 50))
+        assert_equal Size.new(80, 25), dialog.open.rect.size
       end
 
-      it "re-measures an open overlay when the message changes" do
+      it "opens as tall as measure_rows at that width" do
+        dialog = Component::ConfirmDialog.new("x")
+        dialog.message = "one\ntwo"
+        dialog.button("OK")
+        width = dialog.measured_width(Size.new(160, 50))
+        assert_equal Size.new(width, dialog.measure_rows(width)), dialog.open.rect.size
+      end
+
+      it "re-measures an open dialog when the message changes" do
         dialog = Component::ConfirmDialog.new("x")
         dialog.message = "short"
         dialog.button("OK")
@@ -303,6 +313,26 @@ module Tuile
         dialog.message = "a considerably longer single message line"
         overlay.flush_layout
         assert overlay.rect.width > narrow
+      end
+    end
+
+    describe "#measure_rows" do
+      it "adds the border, the spacing and the button row to the wrapped message" do
+        dialog = Component::ConfirmDialog.new("x")
+        dialog.message = "aaaa bbbb cccc"
+        # 14 columns of text in a 4-column chrome: one row at 18 wide, three at 8.
+        assert_equal 5, dialog.measure_rows(18)
+        assert_equal 7, dialog.measure_rows(8)
+      end
+
+      it "answers the chrome alone with no message" do
+        assert_equal 4, Component::ConfirmDialog.new("x").measure_rows(40)
+      end
+
+      it "answers nil for a Component message it does not own" do
+        dialog = Component::ConfirmDialog.new("x")
+        dialog.message = Component::Label.new("injected")
+        assert_nil dialog.measure_rows(40)
       end
     end
 

@@ -89,8 +89,20 @@ module Tuile
       # @return [List]
       def list = @_list
 
+      # @param width [Integer]
+      # @return [Integer] one row per option: the {#list}'s answer.
+      def measure_rows(width) = @_list.measure_rows(width)
+
       # @return [void]
       def relayout = list.rect = local_rect
+
+      # Passes the {#list}'s notice on, since {#measure_rows} is its answer.
+      # @param child [Component]
+      # @return [void]
+      def handle_child_rows_changed(child)
+        super
+        invalidate_rows if child.equal?(@_list)
+      end
 
       # @return [void]
       def handle_focus

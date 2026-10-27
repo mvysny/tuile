@@ -326,4 +326,32 @@ module Tuile
       end
     end
   end
+
+  describe Component::Panel, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "is the content's answer inside the border, plus the border's rows" do
+      asked = []
+      content = Component::Label.new("one\ntwo")
+      content.define_singleton_method(:measure_rows) do |w|
+        asked << w
+        super(w)
+      end
+      panel = Component::Panel.new("Caption").tap { _1.content = content }
+      assert_equal 4, panel.measure_rows(40)
+      assert_equal [38], asked
+    end
+
+    it "answers just the border with no content, or a hidden one" do
+      panel = Component::Panel.new("Caption")
+      assert_equal 2, panel.measure_rows(40)
+      panel.content = Component::Label.new("body").tap { _1.visible = false }
+      assert_equal 2, panel.measure_rows(40)
+    end
+
+    it "passes a filling content's nil on" do
+      assert_nil Component::Panel.new("Caption").tap { _1.content = Component.new }.measure_rows(40)
+    end
+  end
 end

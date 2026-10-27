@@ -107,4 +107,21 @@ module Tuile
       end
     end
   end
+
+  describe Component::Slot, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "is the occupant's answer" do
+      assert_equal 2, Component::Slot.new(Component::Label.new("one\ntwo")).measure_rows(40)
+      assert_nil Component::Slot.new(Component.new).measure_rows(40)
+    end
+
+    it "answers 0 when empty, or when the occupant is hidden" do
+      assert_equal 0, Component::Slot.new.measure_rows(40)
+      label = Component::Label.new("one\ntwo")
+      label.visible = false
+      assert_equal 0, Component::Slot.new(label).measure_rows(40)
+    end
+  end
 end

@@ -71,6 +71,146 @@ module Tuile
       end
     end
 
+    context "content_rows = :content" do
+      def lines(count) = (1..count).map { "line #{_1}" }.join("\n")
+
+      def asking(child, rect: Rect.new(0, 0, 10, 5))
+        mount_at(Component::Scroller.new(child, content_rows: :content), rect)
+      end
+
+      def bar(scroller) = Testing.get(Component::VerticalScrollBar, in: scroller)
+
+      it "is the default" do
+        assert_equal :content, Component::Scroller.new.content_rows
+        label = Component::Label.new(lines(12))
+        mount_at(Component::Scroller.new(label), Rect.new(0, 0, 10, 5))
+        assert_equal 12, label.rect.height
+      end
+
+      it "is accepted by the constructor and the setter, and read back" do
+        assert_equal :content, asking(Component::Label.new("a")).content_rows
+        s = scroller
+        s.content_rows = :content
+        assert_equal :content, s.content_rows
+      end
+
+      it "refuses any other symbol" do
+        assert_raises(ArgumentError) { scroller.content_rows = :auto }
+        assert_raises(ArgumentError) { Component::Scroller.new(content_rows: :fill) }
+      end
+
+      it "hands the content its answer at the width inside the bar" do
+        widths = []
+        label = Component::Label.new(lines(12))
+        label.define_singleton_method(:measure_rows) { |w| (widths << w) && super(w) }
+        s = asking(label)
+        assert_equal Rect.new(0, 0, 8, 12), label.rect
+        assert_equal [8], widths.uniq
+        assert_equal 12, bar(s).row_count
+      end
+
+      it "follows the content as it grows, with no call from the app" do
+        label = Component::Label.new(lines(12))
+        asking(label)
+        label.text = lines(20)
+        Testing.loop
+        assert_equal 20, label.rect.height
+      end
+
+      it "follows a field added to a form deep inside" do
+        form = Component::FormLayout.new
+        3.times { form.add(Component::TextField.new, caption: "Field #{_1}") }
+        s = asking(Component::Panel.new.tap { _1.content = form }, rect: Rect.new(0, 0, 20, 5))
+        assert_equal 11, bar(s).row_count # 3 items of 3 rows, plus the panel's border
+        form.add(Component::TextField.new, caption: "Late")
+        Testing.loop
+        assert_equal 14, bar(s).row_count
+      end
+
+      it "fills the viewport for content answering nil, and scrolls nothing" do
+        body = Component.new
+        s = asking(body)
+        assert_equal Rect.new(0, 0, 8, 5), body.rect
+        assert_equal 0, bar(s).row_count
+      end
+
+      it "counts hidden content as absent" do
+        label = Component::Label.new(lines(12))
+        s = asking(label)
+        label.visible = false
+        Testing.loop
+        assert_equal 0, bar(s).row_count
+      end
+
+      it "pulls the scroll back when the content shrinks under it" do
+        label = Component::Label.new(lines(12))
+        s = asking(label)
+        s.scroll_top_row = 7
+        label.text = lines(6)
+        Testing.loop
+        assert_equal 1, s.scroll_top_row
+        assert_equal Rect.new(0, -1, 8, 6), label.rect
+      end
+
+      it "ignores the content's notice while told" do
+        label = Component::Label.new(lines(12))
+        s = scroller(label, rows: 40)
+        label.text = lines(20)
+        refute s.layout_dirty?
+        assert_equal 40, label.rect.height
+      end
+
+      it "switches between asked and told" do
+        label = Component::Label.new(lines(12))
+        s = scroller(label, rows: 40)
+        s.content_rows = :content
+        s.flush_layout
+        assert_equal 12, label.rect.height
+        s.content_rows = 30
+        s.flush_layout
+        assert_equal 30, label.rect.height
+      end
+
+      context "under an :auto bar" do
+        def auto_asking(label)
+          s = asking(label)
+          s.scrollbar_visibility = :auto
+          s.flush_layout
+          s
+        end
+
+        # "aaaa bbbb …" wraps one word a row at width 8, two at 10.
+        def words(count) = (1..count).map { ("a".ord + _1 - 1).chr * 4 }.join(" ")
+
+        it "decides at the full width, and hides the bar while that fits" do
+          label = Component::Label.new(words(10), wrap: true) # 5 rows at 10 wide
+          s = auto_asking(label)
+          assert bar(s).rect.empty?
+          assert_equal Rect.new(0, 0, 10, 5), label.rect
+        end
+
+        it "shows the bar once the full width overflows, then measures at the width it leaves" do
+          label = Component::Label.new(words(11), wrap: true) # 6 rows at 10, 11 at 8
+          s = auto_asking(label)
+          refute bar(s).rect.empty?
+          assert_equal Rect.new(0, 0, 8, 11), label.rect
+          assert_equal 11, bar(s).row_count
+        end
+
+        it "settles in one pass as the text crosses the threshold, both ways" do
+          label = Component::Label.new(words(10), wrap: true)
+          s = auto_asking(label)
+          label.text = words(11)
+          Testing.loop
+          assert_equal 8, label.rect.width
+          label.text = words(10)
+          Testing.loop
+          assert bar(s).rect.empty?
+          assert_equal 10, label.rect.width
+        end
+      end
+    end
+
     context "scroll_top_row" do
       it "starts at the top" do
         assert_equal 0, scroller.scroll_top_row

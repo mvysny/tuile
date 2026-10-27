@@ -44,10 +44,25 @@ module Tuile
         parent&.handle_child_removed(child)
       end
 
+      # The occupant's {Component#measure_rows}. An empty slot, or one whose
+      # occupant is hidden, answers `0`: a parent told to ask closes the gap that
+      # a top-down parent keeps.
+      # @param width [Integer]
+      # @return [Integer, nil] `nil` when the occupant answers `nil`.
+      def measure_rows(width) = ComponentUtil.measure_rows_of(content, width)
+
       protected
 
       # @return [void]
       def relayout = content&.rect = local_rect
+
+      # Passes the occupant's notice on, since {#measure_rows} is its answer.
+      # @param child [Component]
+      # @return [void]
+      def handle_child_rows_changed(child)
+        super
+        invalidate_rows if child.equal?(content)
+      end
     end
   end
 end

@@ -67,4 +67,24 @@ module Tuile
       end
     end
   end
+
+  describe BorderDrawerInt, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "asks the content inside the border and adds the border's rows" do
+      asked = []
+      content = Component::Label.new("one\ntwo")
+      content.define_singleton_method(:measure_rows) do |w|
+        asked << w
+        super(w)
+      end
+      drawer = BorderDrawerInt.new
+      assert_equal 4, drawer.measure_rows(content, 40)
+      drawer.right_border = false
+      assert_equal 4, drawer.measure_rows(content, 40)
+      assert_equal [38, 39], asked
+      assert_equal 2, drawer.measure_rows(nil, 40)
+    end
+  end
 end

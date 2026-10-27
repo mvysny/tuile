@@ -395,4 +395,30 @@ module Tuile
       end
     end
   end
+
+  describe Component::FormLayout, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "sums the shown items' heights and the spacing between them" do
+      form = Component::FormLayout.new(spacing: 1)
+      form.add(Component::TextField.new, caption: "A")
+      tall = Component::TextField.new
+      form.add(tall, caption: "B", rows: 3)
+      assert_equal 9, form.measure_rows(40)
+      tall.parent.visible = false
+      assert_equal 3, form.measure_rows(40)
+    end
+
+    it "loses the caption rows to a left caption column" do
+      form = Component::FormLayout.new(caption_position: :left)
+      form.add(Component::TextField.new, caption: "A")
+      form.add(Component::TextField.new, caption: "B")
+      assert_equal 4, form.measure_rows(40)
+    end
+
+    it "answers 0 with nothing shown" do
+      assert_equal 0, Component::FormLayout.new.measure_rows(40)
+    end
+  end
 end

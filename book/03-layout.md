@@ -294,7 +294,7 @@ class LoginForm < Tuile::Component::Layout::Vertical
 end
 ```
 
-### The three constraints
+### The constraints
 
 - **`Fixed[n]`** — exactly `n` cells, clamped to what's still unassigned.
 - **`Percent[n]`** — `n`% of the space *available*, measured after padding
@@ -302,10 +302,24 @@ end
   exactly instead of overflowing by the gap between them.
 - **`Expand[weight]`** — a share of whatever is left once the `Fixed` and
   `Percent` children have taken theirs, split in proportion to the weights.
+- **`Auto[]`** — a height of exactly the rows the child says it needs, at
+  the width the box gives it:
 
-That's the entire vocabulary, and the omission is the point: **there is no
-`Auto`.** Nothing asks a child how big it would like to be. This is the same
-rule as the rest of the chapter, wearing a friendlier face.
+  ```ruby
+  stack.add(Tuile::Component::Label.new(paragraph, wrap: true), Tuile::Component::Layout::Auto[])
+  ```
+
+  It is the one constraint that asks the child anything, and it asks only
+  for rows: the width is still the box's to hand down, so `Auto` works on a
+  `Vertical`'s main axis and a `Horizontal`'s `cross:`, and raises anywhere
+  it would need a width from the child. When the paragraph's text changes,
+  the label tells the box, which lays out again. A child with no answer
+  (one that fills, like a bare `Layout::Absolute`) gets no rows and a
+  warning in the log.
+
+That's the entire vocabulary. Nothing else asks a child how big it would
+like to be — the same rule as the rest of the chapter, wearing a friendlier
+face, with one question let back in.
 
 Two more knobs, both on the box rather than on each child: `spacing:` (blank
 cells between adjacent children) and `padding:` (an inset from the box's own
@@ -459,6 +473,7 @@ dialog.declared_size = Tuile::Fraction::HALF     # the default — half the scre
 dialog.declared_size = Tuile::Fraction::FULL     # fullscreen
 dialog.declared_size = Tuile::Fraction.new(0.8, 0.5)          # 80% wide, half tall
 dialog.declared_size = Tuile::Size.new(50, 12)                # exact, clamped to screen
+dialog.declared_size = Tuile::Component::Dialog::ShrinkToContent[Tuile::Fraction::HALF]  # as tall as the content, at most half
 ```
 
 The default is `Fraction::HALF`, resolved on every layout pass, so a
@@ -481,15 +496,30 @@ a dialog shows just what fits on its lines — fine for a short message,
 wrong for a paragraph.
 
 > **Why not size the dialog to its content?** It's tempting to want a
-> dialog that shrinks to wrap exactly around its text. Tuile deliberately
-> doesn't, and not only for consistency: content-sizing is circular on
-> wrapped text (the height depends on the width, which depends on the
-> height) and it isn't even reliably pretty — a single long line
-> collapses the dialog to one row. Half-screen-and-wrap sidesteps all of
-> it. When you genuinely know the right size — a short picker whose
-> items you own — you set it yourself: `dialog.declared_size =
-> Tuile::Size.new(longest_item + 2, [items.size, 8].min + 2)`, the 2s
-> being the border. That's still caller-decides, top-down.
+> dialog that shrinks to wrap exactly around its text. Sizing *both* axes
+> from the content is circular on wrapped text (the height depends on the
+> width, which depends on the height) and it isn't even reliably pretty —
+> a single long line collapses the dialog to one row.
+>
+> The circle has only one way to break, and `ShrinkToContent` takes it:
+> **width comes down, rows come up.** You declare a box, a `Size` or a
+> `Fraction` as above; the dialog then asks its content one question at the
+> width inside its border, `measure_rows(width)` — "how many rows do you
+> need at this many columns?" — and shrinks the box to the answer plus the
+> border, never taller than the box itself. Nothing about the width is
+> negotiated, so nothing can loop, and the dialog asks only because you told
+> it to. A component that has no answer returns `nil` (the default, and a
+> `Scroller`'s: it fills whatever it gets), and the dialog keeps the whole box.
+>
+> The answer is re-asked on every layout pass, and content whose rows
+> change while the dialog is open says so itself: a `Label#text=` or a
+> `TextView#append` notifies its parent, a `Panel` in between passes the
+> notice on, and the dialog is placed again. A component of your own that
+> answers `measure_rows` calls `invalidate_rows` wherever its answer may
+> have changed. When you know the right size yourself — a short
+> picker whose items you own — set it:
+> `dialog.declared_size = Tuile::Size.new(longest_item + 2, [items.size, 8].min + 2)`,
+> the 2s being the border.
 
 ## The dialog footer
 
@@ -542,12 +572,17 @@ them:
 
 - **No `min`/`preferred`/`max` size, and no `content_size` a parent
   consults.** Sizing decisions live on the parent, expressed as
-  arithmetic, not on the child as advertised constraints.
-- **No shrink-to-fit / intrinsic sizing.** A slot is sized top-down;
-  content fills or scrolls within it.
-- **`Label` doesn't wrap.** It truncates long lines with an ellipsis by
-  design — it's the component for one-liners. For wrapping or scrolling
-  prose, reach for `TextView`.
+  arithmetic, not on the child as advertised constraints. The one
+  question a child may be asked is `measure_rows(width)`, and only a
+  parent whose job needs it (`Dialog::ShrinkToContent`, a `Scroller`, a box
+  told `Auto`) asks it.
+- **No shrink-to-fit on width.** Rows may come up from a child; columns
+  never do. A slot is sized top-down, and content fills or scrolls within
+  it.
+- **`Label` doesn't scroll.** It truncates long lines with an ellipsis by
+  default — it's the component for one-liners — and `wrap: true` wraps
+  them onto the rows it is given, cutting off whatever doesn't fit. For
+  prose that scrolls, reach for `TextView`.
 
 If you ever *do* need to measure content in order to choose a size —
 say, to size that autocomplete dropdown — measure it yourself in your

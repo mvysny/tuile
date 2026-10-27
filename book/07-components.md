@@ -23,9 +23,9 @@ The simplest job is putting text on the screen, and the choice comes down
 to one question: **does it need to wrap?**
 
 If not — a title, a status line, a single field of data — reach for
-{Tuile::Component::Label}. A label shows one or more lines of text and
-does *not* word-wrap; a line too wide for its rect is truncated with an
-ellipsis. That's a feature, not a limitation: a label is chrome, and
+{Tuile::Component::Label}. A label shows one or more lines of text and,
+by default, does *not* word-wrap; a line too wide for its rect is
+truncated with an ellipsis. That's a feature, not a limitation: a label is chrome, and
 chrome that reflows unpredictably when the terminal narrows is worse than
 chrome that clips. Its text is a {Tuile::StyledString}, so embedded color
 survives, and you can hand it either a plain `String` (parsed for ANSI) or
@@ -50,8 +50,12 @@ keep the latest content in view. A TextView is meant to live inside a
 {Tuile::Component::Panel} or a {Tuile::Component::Dialog} — it leans on the surrounding chrome for focus
 indication and keyboard hints.
 
-So: **Label truncates, TextView wraps.** That single line is the whole
-decision.
+So: **Label truncates, TextView wraps.** That single line is nearly the
+whole decision. The exception is a static paragraph that must not take
+focus — an explanation beside a button, one of many in a list. A TextView
+is a tab stop, so a column of them would stop Tab on every paragraph;
+`Label.new(text, wrap: true)` wraps instead, scrolls never, and its
+`measure_rows` says how many rows it needs at a width.
 
 ## Editing text
 
@@ -1288,12 +1292,15 @@ them.
 ```ruby
 form = Component::FormLayout.new
 # …nine fields, 27 rows of them…
-window.content = Component::Scroller.new(form, content_rows: 27)
+window.content = Component::Scroller.new(form)
 ```
 
-`content_rows` is the part that looks odd at first, and it is the same rule as
-everywhere else in this book: **nothing measures**, so the number is yours to
-supply, exactly as `rows:` and `Fixed[n]` are. The form is then handed a rect 27
+The scroller asks the form how tall it is — its `measure_rows` at the width the
+scroller hands it, 27 rows for nine fields — and asks again whenever that answer
+changes, so a field added later is reachable without touching the scroller. Content
+with no answer of its own, such as a `Layout::Absolute`, is told instead:
+`content_rows: 27` is then yours to keep current, exactly as `rows:` and `Fixed[n]`
+are. Either way the form is then handed a rect 27
 rows tall inside a viewport that may be 12 — the first rect in Tuile *meant* not
 to fit its parent, and, once you scroll, the first with a negative `top`.
 Nothing goes wrong, because every component is bounded by the rect it was given
@@ -1706,8 +1713,10 @@ Component::Dialog.new("Help", content: body, footer_text: "q/ESC to close").open
 
 Crucially, and per chapter 3, **it does not size itself to its content**:
 its box is set by `declared_size` — a `Fraction` (default `Fraction::HALF`,
-half the screen, re-resolved on every resize) or an absolute `Size`. The
-content then fills the inside of the border, so use content that can cope
+half the screen, re-resolved on every resize), an absolute `Size`, or either
+one wrapped in `Dialog::ShrinkToContent`, which shrinks the box to the rows
+the content's `measure_rows` answers. The content then fills the inside of
+the border, so use content that can cope
 with overflow — a TextView or TextArea that scrolls, not a bare Label that
 only truncates. A dialog of your own — its own keys, its own result —
 subclasses `Dialog`, passes its chrome up first —
@@ -1936,9 +1945,11 @@ plain Dialog takes half the screen whatever it wraps — absurd around a
 one-line "Delete?". The confirm dialog is the sanctioned exception *shape*:
 it measures **content it owns** — its caption, its message, its buttons —
 and asks the screen for exactly that box, still capped at half the screen
-(a message longer than the cap wraps and scrolls). Assign a `Component` as
-the message and the measuring honestly gives up: injected content is not
-the dialog's to measure, so it takes the full half-screen box.
+(a message longer than the cap wraps and scrolls). Its height half is the
+dialog's `measure_rows`, the same question `Dialog::ShrinkToContent` asks any
+content; the widest-line width is the dialog's own rule. Assign a
+`Component` as the message and the measuring honestly gives up: injected
+content is not the dialog's to measure, so it takes the full half-screen box.
 
 ### What it deliberately isn't
 

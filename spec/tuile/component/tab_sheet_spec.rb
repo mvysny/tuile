@@ -342,4 +342,19 @@ module Tuile
       end
     end
   end
+
+  describe Component::TabSheet, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "is the strip's row plus the selected pane's answer" do
+      sheet = Component::TabSheet.new
+      assert_equal 1, sheet.measure_rows(40)
+      sheet.add_tab("One", Component::Label.new("one\ntwo"))
+      sheet.add_tab("Two", Component::Label.new("three"))
+      assert_equal 3, sheet.measure_rows(40)
+      sheet.selected_index = 1
+      assert_equal 2, sheet.measure_rows(40)
+    end
+  end
 end

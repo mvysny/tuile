@@ -62,6 +62,21 @@ module Tuile
       Rect.new(1, 1, size.width - border_size.width, size.height - border_size.height)
     end
 
+    # The rows the box needs around `content` at `width`: the content's at the
+    # width inside the border, plus the border's own. The {Component#measure_rows}
+    # of a bordered component:
+    #
+    #   def measure_rows(width) = @_border_drawer.measure_rows(content, width)
+    #
+    # Absent or hidden content answers just the border.
+    # @param content [Component, nil]
+    # @param width [Integer] the box's width, border included.
+    # @return [Integer, nil] `nil` when the content answers `nil`.
+    def measure_rows(content, width)
+      rows = ComponentUtil.measure_rows_of(content, width - border_size.width)
+      rows && (rows + border_size.height)
+    end
+
     # Paints the box at `(0, 0)`, through {Canvas#set_text} / {Canvas#set_char} so
     # the border cells inherit {ComponentBackground#effective}: a
     # {Component#bg_color} tints border and content alike. Both border rows are

@@ -268,7 +268,16 @@ module Tuile
         notify_cursor_changed
         invalidate
         invalidate_layout # the bar's row_count follows @items.size
+        invalidate_rows
       end
+
+      # One row per item, at any width. A list scrolls itself, so this matters
+      # only to a parent told to ask: a short list in a
+      # {Dialog::ShrinkToContent} makes a short dialog, a long one hits the box
+      # and scrolls.
+      # @param _width [Integer]
+      # @return [Integer]
+      def measure_rows(_width) = @_items.size
 
       # @param proc [Proc, Method] `(item, text_width) -> row`; see {#renderer}.
       # @return [void]

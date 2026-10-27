@@ -258,6 +258,24 @@ module Tuile
         super
       end
 
+      # The content's {Component#measure_rows} plus the chrome rows: a caption
+      # row above (none for an empty caption, or beside a `:left` one) and the
+      # message row. A `:left` caption narrows the width the content is asked at.
+      #
+      #   FormItem.new(TextField.new, caption: "Name").measure_rows(40)   # => 3
+      #
+      # No content or hidden content answers the chrome alone.
+      # @param width [Integer]
+      # @return [Integer, nil] `nil` when the content answers `nil`.
+      def measure_rows(width)
+        left = caption_position == :left
+        rows = ComponentUtil.measure_rows_of(content, left ? width - field_left_at(width) : width)
+        return nil if rows.nil?
+
+        caption_rows = left || caption.empty? ? 0 : 1
+        caption_rows + rows + 1
+      end
+
       protected
 
       # Divides the rect into caption, content and message — stacked, or with
@@ -271,6 +289,15 @@ module Tuile
         # The cut depends on the cells the caption was just handed.
         @_caption_columns = caption_rect.width
         refresh_chrome
+      end
+
+      # Passes the content's notice on; the caption and message labels are
+      # chrome whose rows this item owns.
+      # @param child [Component]
+      # @return [void]
+      def handle_child_rows_changed(child)
+        super
+        invalidate_rows if child.equal?(content)
       end
 
       # @return [void]
@@ -327,10 +354,16 @@ module Tuile
       # the parent's — a {FormLayout} sizes the item and its caption column from
       # it, and re-imposes its own position and width. Inside the form's own
       # pass the second mark is dropped, as it is written before any placement.
+      #
+      # The rows notice goes to both too: the shape is in this item's answer,
+      # and a {FormLayout}'s answer reads the caption itself, never the item's
+      # rows — so, as with {Component#visible=}, the parent is told directly.
       # @return [void]
       def invalidate_geometry
         invalidate_layout
+        invalidate_rows
         parent&.invalidate_layout
+        parent&.invalidate_rows
       end
 
       # Divides {Component#rect} top-down. A part with no row left gets a rect
@@ -359,14 +392,29 @@ module Tuile
       def left_rects
         width = rect.width
         height = rect.height
-        requested = caption_width || marked_caption.display_width
-        columns = requested.clamp(0, [width - 1 - MIN_FIELD_COLUMNS, 0].max)
-        field_left = columns.positive? ? columns + 1 : 0
+        columns = left_caption_columns(width)
+        field_left = field_left_at(width)
         message_rows = height < 2 ? 0 : 1
         content_rows = height - message_rows
         [Rect.new(0, 0, columns, [height, 1].min),
          Rect.new(field_left, 0, width - field_left, content_rows),
          Rect.new(field_left, content_rows, width - field_left, message_rows)]
+      end
+
+      # @param width [Integer] the item's width.
+      # @return [Integer] the left caption's columns, leaving the field
+      #   {MIN_FIELD_COLUMNS} and the gap column.
+      def left_caption_columns(width)
+        requested = caption_width || marked_caption.display_width
+        requested.clamp(0, [width - 1 - MIN_FIELD_COLUMNS, 0].max)
+      end
+
+      # @param width [Integer] the item's width.
+      # @return [Integer] where the field starts beside a left caption: past the
+      #   caption and its gap column, or `0` for a captionless item.
+      def field_left_at(width)
+        columns = left_caption_columns(width)
+        columns.positive? ? columns + 1 : 0
       end
     end
   end

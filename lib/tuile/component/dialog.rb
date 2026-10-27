@@ -32,14 +32,19 @@ module Tuile
     # autocomplete list anchored to a field, a toast — use {Component::Overlay}
     # directly.
     #
-    # The dialog does *not* size itself to its content. Its box is set by
-    # {#declared_size} — a {Fraction} (resolved against the screen every layout
-    # pass, so it tracks resize) or an absolute {Size} (clamped to the screen).
-    # The default is {Fraction::HALF}: half the screen, centered. The content
-    # fills the inside of the border and handles its own overflow by wrapping and
-    # scrolling, so use content that can — a {Component::TextView} or
-    # {Component::TextArea} — for anything longer than fits. A
-    # {Component::Label} only truncates.
+    # Its box, border included, is set by {#declared_size}, resolved against
+    # the screen every layout pass, so it tracks resize:
+    #
+    #   Dialog.new("x", content: w)                                  # Fraction::HALF, the default
+    #   Dialog.new("x", content: w, declared_size: Size.new(50, 12)) # clamped to the screen
+    #   Dialog.new("x", content: w, declared_size: Dialog::ShrinkToContent[Fraction::HALF])
+    #   # half the screen wide, as tall as w.measure_rows(that width less the border), at most half
+    #
+    # Only {ShrinkToContent} consults the content, and only for rows: the width
+    # is always declared. Otherwise the content fills the inside of the border
+    # and handles its own overflow by wrapping and scrolling, so use content
+    # that can — a {Component::TextView} or {Component::TextArea} — for anything
+    # longer than fits. A {Component::Label} only truncates.
     #
     # The border is lit in {Theme#active_border_color} while focus is inside the
     # dialog, so it dims while another dialog is stacked on top.
@@ -62,15 +67,39 @@ module Tuile
     class Dialog < Overlay
       include Component::HasCaption
 
+      # A {Dialog#declared_size} that shrinks its {#box} to the content's height:
+      # the width is the box's, the height the dialog's {Dialog#measure_rows} at
+      # that width, never more than the box's:
+      #
+      #   Dialog::ShrinkToContent[Fraction::HALF]     # half the screen at most
+      #   Dialog::ShrinkToContent[Size.new(60, 20)]   # 60 wide, 20 rows at most
+      #
+      # Content answering `nil` (no content height) takes the whole box. The
+      # question is re-asked on every layout pass, and content whose rows change
+      # while open says so itself ({Component#invalidate_rows}), so a growing
+      # label grows the dialog with no call from the app.
+      #
+      # @!attribute [r] box
+      #   @return [Size, Fraction] the ceiling, border included, resolved as
+      #     {Dialog#declared_size} resolves it.
+      class ShrinkToContent < Data.define(:box)
+        # @param box [Size, Fraction] see {#box}.
+        # @raise [ArgumentError] unless `box` is a {Size} or a {Fraction}.
+        def initialize(box:)
+          unless box.is_a?(Size) || box.is_a?(Fraction)
+            raise ArgumentError, "ShrinkToContent expects a Size or a Fraction, got #{box.inspect}"
+          end
+
+          super
+        end
+      end
+
       # @param caption [String, StyledString, nil] the border title, coerced the
       #   same way {HasCaption#caption=} coerces it.
       # @param content [Component, nil] initial content; can be set later via
-      #   {#content=}. It fills the inside of the border; it does not determine
-      #   the dialog's size.
-      # @param declared_size [Size, Fraction] the dialog's box, border included,
-      #   applied top-down. A {Fraction} is resolved against the screen each
-      #   layout pass; a {Size} is clamped to the screen. Defaults to
-      #   {Fraction::HALF}.
+      #   {#content=}. It fills the inside of the border.
+      # @param declared_size [Size, Fraction, ShrinkToContent] the dialog's box,
+      #   border included; see {#declared_size=}. Defaults to {Fraction::HALF}.
       # @param footer_text [String, StyledString, nil] see {#footer_text=}.
       # @param close_on_outside_click [Boolean] true (default) to dismiss on a
       #   left click that misses this dialog. See
@@ -148,7 +177,7 @@ module Tuile
       # because a component's `size` is its `rect.size`, which this is not: it
       # is an input re-read on every layout pass, not a report of the current
       # geometry.
-      # @return [Size, Fraction] see {#declared_size=}.
+      # @return [Size, Fraction, ShrinkToContent] see {#declared_size=}.
       def declared_size = @_declared_size
 
       # @return [Boolean] true — a Dialog scopes key dispatch, grabs focus on
@@ -161,11 +190,12 @@ module Tuile
 
       # Sets the dialog's box, border included; an open dialog takes it on the
       # next settle. Accepts a {Fraction} (resolved against the screen every
-      # layout pass, so it tracks resize) or an absolute {Size} (clamped to the
-      # screen). This is **authoritative**, not a preference: the screen applies
-      # exactly what you ask for (clamped), with no negotiation — a dialog has
-      # no siblings to compete with.
-      # @param new_size [Size, Fraction]
+      # layout pass, so it tracks resize), an absolute {Size} (clamped to the
+      # screen), or either one wrapped in {ShrinkToContent}. This is
+      # **authoritative**, not a preference: the screen applies exactly what you
+      # ask for (clamped), with no negotiation — a dialog has no siblings to
+      # compete with.
+      # @param new_size [Size, Fraction, ShrinkToContent]
       # @return [void]
       def declared_size=(new_size)
         @_declared_size = new_size
@@ -173,12 +203,16 @@ module Tuile
       end
 
       # {#declared_size} resolved against `screen_size`: a {Fraction} scaled, a
-      # {Size} clamped.
+      # {Size} clamped, a {ShrinkToContent} box shrunk to {#measure_rows}.
       # @param screen_size [Size]
       # @return [Size]
-      def declared_size_in(screen_size)
-        @_declared_size.is_a?(Fraction) ? @_declared_size.resolve(screen_size) : @_declared_size.clamp(screen_size)
-      end
+      def declared_size_in(screen_size) = resolve_declaration(@_declared_size, screen_size)
+
+      # The content's {Component#measure_rows} at `width` less the border, plus
+      # the border's rows. No content or hidden content answers just the border.
+      # @param width [Integer] the dialog's width, border included.
+      # @return [Integer, nil] `nil` when the content answers `nil`.
+      def measure_rows(width) = @_border_drawer.measure_rows(content, width)
 
       # @return [Overlay::Centered] a dialog opens centered.
       def default_placement = Centered[]
@@ -226,11 +260,42 @@ module Tuile
         content&.rect = content_rect
       end
 
+      # Passes the content's notice on to the pane, which resolves a
+      # {ShrinkToContent} box from {#measure_rows} in its own pass.
+      # @param child [Component]
+      # @return [void]
+      def handle_child_rows_changed(child)
+        super
+        invalidate_rows if child.equal?(content)
+      end
+
       # The interior the content fills, inside the border. One rect for both
       # passes: what {#relayout} assigns the content, and what {#repaint} blanks
       # when there is no content to cover it.
       # @return [Rect]
       def content_rect = @_border_drawer.content_rect(rect.size)
+
+      private
+
+      # The resolution {#declared_size_in} runs, for a subclass that builds its
+      # declaration per pass.
+      # @param declaration [Size, Fraction, ShrinkToContent]
+      # @param screen_size [Size]
+      # @return [Size]
+      def resolve_declaration(declaration, screen_size)
+        return box_in(declaration, screen_size) unless declaration.is_a?(ShrinkToContent)
+
+        box = box_in(declaration.box, screen_size)
+        rows = measure_rows(box.width)
+        # Floored at one interior row, so a zero answer can't leave a modal with no inside.
+        floor = @_border_drawer.border_size.height + 1
+        rows.nil? ? box : Size.new(box.width, [[rows, floor].max, box.height].min)
+      end
+
+      # @param box [Size, Fraction]
+      # @param screen_size [Size]
+      # @return [Size]
+      def box_in(box, screen_size) = box.is_a?(Fraction) ? box.resolve(screen_size) : box.clamp(screen_size)
     end
   end
 end

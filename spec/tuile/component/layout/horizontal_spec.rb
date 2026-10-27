@@ -55,4 +55,69 @@ module Tuile
       assert_equal [Rect.new(0, 0, 30, 24), Rect.new(30, 0, 70, 24)], rects(layout)
     end
   end
+
+  describe Component::Layout::Horizontal, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "is the tallest shown Fixed cross height, plus the padding" do
+      row = Component::Layout::Horizontal.new(padding: 1)
+      row.add(Component::Label.new("a"), Component::Layout::Fixed[5], cross: Component::Layout::Fixed[1])
+      tall = Component::Label.new("b")
+      row.add(tall, Component::Layout::Fixed[5], cross: Component::Layout::Fixed[3])
+      row.add(Component::Label.new("c"), Component::Layout::Expand[1])
+      assert_equal 5, row.measure_rows(40)
+      tall.visible = false
+      assert_equal 3, row.measure_rows(40)
+    end
+
+    it "fills when every shown child is Percent across" do
+      row = Component::Layout::Horizontal.new
+      row.add(Component::Label.new("a"), Component::Layout::Expand[1])
+      assert_nil row.measure_rows(40)
+    end
+
+    it "answers its padding with nothing shown" do
+      assert_equal 2, Component::Layout::Horizontal.new(padding: 1).measure_rows(40)
+    end
+
+    it "asks an Auto child across at the share the row's division hands it" do
+      row = Component::Layout::Horizontal.new(spacing: 1)
+      row.add(Component::Label.new("a long sentence", wrap: true), Component::Layout::Expand[1],
+              cross: Component::Layout::Auto[])
+      row.add(Component::Button.new("Fix"), Component::Layout::Fixed[7], cross: Component::Layout::Fixed[1])
+      assert_equal 3, row.measure_rows(14) # 6 columns for the sentence
+      assert_equal 1, row.measure_rows(40)
+    end
+  end
+
+  describe Component::Layout::Horizontal, "with Auto across" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    def auto = Component::Layout::Auto[]
+
+    it "gives the child the rows it answers at its main share, aligned" do
+      label = Component::Label.new("a long sentence", wrap: true)
+      row = Component::Layout::Horizontal.new
+      row.add(label, Component::Layout::Fixed[6], cross: auto, align: :end)
+      mount_at(row, Rect.new(0, 0, 20, 5))
+      assert_equal Rect.new(0, 2, 6, 3), label.rect
+    end
+
+    it "re-runs the pass when the child's rows change" do
+      label = Component::Label.new("one")
+      row = Component::Layout::Horizontal.new
+      row.add(label, Component::Layout::Fixed[6], cross: auto)
+      mount_at(row, Rect.new(0, 0, 20, 5))
+      label.text = "one\ntwo"
+      Testing.loop
+      assert_equal 2, label.rect.height
+    end
+
+    it "raises on the main axis, where it would need a width from the child" do
+      error = assert_raises(ArgumentError) { Component::Layout::Horizontal.new.add(Component.new, auto) }
+      assert_match(/widths never do/, error.message)
+    end
+  end
 end

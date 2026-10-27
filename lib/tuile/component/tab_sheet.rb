@@ -85,6 +85,15 @@ module Tuile
       #   tab's, `nil` while the sheet has no tabs.
       def pane = @_pane
 
+      # The strip's one row plus the selected {#pane}'s {Component#measure_rows};
+      # a sheet with no tabs, or a hidden pane, answers just the strip.
+      # @param width [Integer]
+      # @return [Integer, nil] `nil` when the pane answers `nil`.
+      def measure_rows(width)
+        rows = ComponentUtil.measure_rows_of(@_pane, width)
+        rows && (rows + 1)
+      end
+
       # Adds a tab and the pane to show while it is selected. The first tab
       # added becomes the selection, so its pane is shown immediately.
       # @param caption [String, StyledString, nil] parsed as {Tabs::Tab#caption=}
@@ -178,6 +187,16 @@ module Tuile
         screen.focused = @_strip if attached? && screen.focused.equal?(self)
       end
 
+      protected
+
+      # Passes the selected {#pane}'s notice on; the strip is always one row.
+      # @param child [Component]
+      # @return [void]
+      def handle_child_rows_changed(child)
+        super
+        invalidate_rows if child.equal?(@_pane)
+      end
+
       private
 
       # Makes the visible pane match `strip.selected`, swapping if it doesn't.
@@ -198,6 +217,7 @@ module Tuile
           wanted.invalidate
         end
         invalidate
+        invalidate_rows
         handle_child_removed(old) unless old.nil?
       end
 

@@ -45,4 +45,18 @@ module Tuile
       end
     end
   end
+
+  describe ComponentUtil, ".measure_rows_of" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "is the child's answer, absent or hidden counting 0" do
+      label = Component::Label.new("one\ntwo")
+      assert_equal 2, ComponentUtil.measure_rows_of(label, 40)
+      assert_nil ComponentUtil.measure_rows_of(Component.new, 40)
+      assert_equal 0, ComponentUtil.measure_rows_of(nil, 40)
+      label.visible = false
+      assert_equal 0, ComponentUtil.measure_rows_of(label, 40)
+    end
+  end
 end

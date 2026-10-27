@@ -37,8 +37,8 @@ module Tuile
     # its own.
     #
     # The dialog sizes itself from what it owns — caption, message, buttons —
-    # capped at half the screen ({#measured_size}), re-measured when any of them
-    # changes.
+    # capped at half the screen ({#measured_width}, {#measure_rows}), re-measured
+    # when any of them changes.
     #
     # There is deliberately no content slot: the body is prose ({#message=}
     # takes a component for the rare rich body, but the dialog then cannot
@@ -64,10 +64,10 @@ module Tuile
       RESERVED_MNEMONICS = %w[q g].freeze
 
       # Border rows plus the body-to-buttons spacing plus the button row — what
-      # {#measured_size} adds to the wrapped message rows.
+      # {#measure_rows} adds to the wrapped message rows.
       # @return [Integer]
       HEIGHT_CHROME = 4
-      # Border columns plus the body padding — what {#measured_size} adds to the
+      # Border columns plus the body padding — what {#measured_width} adds to the
       # widest message line, and subtracts to find the wrap width.
       # @return [Integer]
       WIDTH_CHROME = 4
@@ -135,7 +135,9 @@ module Tuile
           end
         @_message = value
         @_body_slot.content = occupant
-        reposition
+        # The body sits in an Expand row its box never measures, so the notice
+        # stops inside; this dialog's own answer reads the message.
+        invalidate_rows
       end
 
       # Appends a button and returns it. A button with a block is an action
@@ -184,9 +186,9 @@ module Tuile
         btn
       end
 
-      # Opens the dialog, sized by {#measured_size}. ESC, `q` and an outside
-      # click dismiss it (firing {#on_dismiss}), as does {#close}; every button
-      # closes it too.
+      # Opens the dialog, {#measured_width} wide and {#measure_rows} tall. ESC,
+      # `q` and an outside click dismiss it (firing {#on_dismiss}), as does
+      # {#close}; every button closes it too.
       # @param placement [Overlay::Placement] see {Overlay#open}.
       # @raise [Tuile::Error] if this dialog is already open.
       # @return [self]
@@ -197,31 +199,43 @@ module Tuile
         super
       end
 
-      # The box this dialog wants: wide enough for the caption, the widest
-      # message line and the button row, tall enough for the wrapped message
-      # plus the button row — each capped at half of `reference`. The re-grow
-      # rule's caller-side measure query: the dialog measures only content it
-      # *owns*, so a {Component} assigned to {#message=} yields the full
-      # half-screen box.
+      # The width this dialog wants: wide enough for the caption, the widest
+      # message line and the button row, capped at half of `reference`. Read
+      # only from what the dialog owns, so a {Component} assigned to
+      # {#message=} yields the full half width. The height is {#measure_rows} at
+      # this width, under the same half-screen cap.
       # @param reference [Size] the screen size to cap against.
-      # @return [Size]
-      def measured_size(reference = screen.size)
-        cap = Fraction::HALF.resolve(reference)
+      # @return [Integer]
+      def measured_width(reference = screen.size)
+        cap = Fraction::HALF.resolve(reference).width
         return cap if @_message.is_a?(Component)
 
-        styled = @_message.nil? ? StyledString::EMPTY : StyledString.parse(@_message)
-        widest = styled.lines.map(&:display_width).max || 0
-        width = [[caption.display_width + 2, button_row_width + WIDTH_CHROME, widest + WIDTH_CHROME].max,
-                 cap.width].min
-        rows = styled.empty? ? 0 : styled.wrap([width - WIDTH_CHROME, 1].max).size
-        Size.new(width, [rows + HEIGHT_CHROME, cap.height].min)
+        widest = message_text.lines.map(&:display_width).max || 0
+        [[caption.display_width + 2, button_row_width + WIDTH_CHROME, widest + WIDTH_CHROME].max, cap].min
       end
 
-      # {#measured_size}, re-measured on every layout pass so a message change
-      # and a SIGWINCH both re-fit the dialog. {#declared_size} is ignored.
+      # The border, the message wrapped at `width` less the border and padding,
+      # and the button row. `nil` for a {Component} message, which the dialog
+      # does not own and so does not measure.
+      # @param width [Integer]
+      # @return [Integer, nil]
+      def measure_rows(width)
+        return nil if @_message.is_a?(Component)
+
+        styled = message_text
+        rows = styled.empty? ? 0 : styled.wrap([width - WIDTH_CHROME, 1].max).size
+        rows + HEIGHT_CHROME
+      end
+
+      # A {Dialog::ShrinkToContent} half-screen-tall box at {#measured_width},
+      # rebuilt on every layout pass so a message change and a SIGWINCH both
+      # re-fit the dialog. {#declared_size} is ignored.
       # @param screen_size [Size]
       # @return [Size]
-      def declared_size_in(screen_size) = measured_size(screen_size)
+      def declared_size_in(screen_size)
+        box = Size.new(measured_width(screen_size), Fraction::HALF.resolve(screen_size).height)
+        resolve_declaration(ShrinkToContent[box], screen_size)
+      end
 
       # Focus lands on the first button rather than cascading into the message
       # body, which sits before the button row in the tree. `super` is reached
@@ -423,6 +437,9 @@ module Tuile
         @_box.remove(@_button_row)
         @_box.add(@_button_row, Layout::Fixed[1], cross: Layout::Fixed[button_row_width], align: :center)
       end
+
+      # @return [StyledString] a text {#message}, empty when there is none.
+      def message_text = @_message.nil? ? StyledString::EMPTY : StyledString.parse(@_message)
 
       # @return [Integer] columns of the button row at its natural width.
       def button_row_width

@@ -324,6 +324,112 @@ module Tuile
     end
   end
 
+  describe Component::Dialog::ShrinkToContent do
+    before { Screen.fake } # 160x50
+    after { Screen.close }
+
+    # Answers `rows` and records every width it was asked at.
+    let(:content) do
+      klass = Class.new(Component::Label) do
+        attr_accessor :rows
+        attr_reader :asked
+
+        def measure_rows(width)
+          (@asked ||= []) << width
+          rows
+        end
+      end
+      klass.new.tap { _1.rows = 7 }
+    end
+
+    def shrink(box) = Component::Dialog::ShrinkToContent[box]
+
+    def open_shrunk(box) = Component::Dialog.new(content:, declared_size: shrink(box)).open
+
+    it "shrinks a Fraction box to the content's rows at its inner width plus the border, centered" do
+      p = open_shrunk(Fraction::HALF)
+      assert_equal 78, content.asked.last
+      # 7 rows + 2 border rows; ((160-80)/2, (50-9)/2) = (40, 20).
+      assert_equal Rect.new(40, 20, 80, 9), p.rect
+    end
+
+    it "shrinks a Size box" do
+      assert_equal Size.new(60, 9), open_shrunk(Size.new(60, 20)).rect.size
+    end
+
+    it "caps the rows at the box's height" do
+      content.rows = 40
+      p = open_shrunk(Fraction::HALF)
+      assert_equal 25, p.rect.height
+      p.declared_size = shrink(Size.new(60, 12))
+      p.flush_layout
+      assert_equal Size.new(60, 12), p.rect.size
+      p.declared_size = shrink(Size.new(300, 100))
+      p.flush_layout
+      assert_equal Size.new(160, 42), p.rect.size
+    end
+
+    it "floors a zero answer at one interior row" do
+      content.rows = 0
+      assert_equal 3, open_shrunk(Fraction::HALF).rect.height
+    end
+
+    it "takes the whole box when the content answers nil" do
+      content.rows = nil
+      assert_equal Size.new(60, 20), open_shrunk(Size.new(60, 20)).rect.size
+    end
+
+    it "shrinks to the border and one interior row when there is no content, or it is hidden" do
+      assert_equal Size.new(80, 3), Component::Dialog.new(declared_size: shrink(Fraction::HALF)).open.rect.size
+      content.visible = false
+      assert_equal Size.new(80, 3), open_shrunk(Fraction::HALF).rect.size
+    end
+
+    it "re-asks when the content fires invalidate_rows, and not before" do
+      p = open_shrunk(Fraction::HALF)
+      content.rows = 12
+      p.flush_layout
+      assert_equal 9, p.rect.height
+      content.__send__(:invalidate_rows)
+      p.flush_layout
+      assert_equal 14, p.rect.height
+    end
+
+    it "grows with a Label's text, through a Panel in between, with no call from the app" do
+      label = Component::Label.new("one")
+      panel = Component::Panel.new.tap { _1.content = label }
+      p = Component::Dialog.new(content: panel, declared_size: shrink(Fraction::HALF)).open
+      assert_equal 5, p.rect.height # 1 row + the panel's border + the dialog's
+      label.text = "one\ntwo\nthree"
+      Testing.loop
+      assert_equal 7, p.rect.height
+      label.visible = false
+      Testing.loop
+      assert_equal 4, p.rect.height, "hidden content counts 0; both borders stay"
+    end
+
+    it "re-asks at the new width on resize" do
+      p = open_shrunk(Fraction::HALF)
+      Screen.instance.resize_terminal(100, 30)
+      p.flush_layout
+      assert_equal 48, content.asked.last
+      assert_equal Size.new(50, 9), p.rect.size
+    end
+
+    it "measures the content at the width the border leaves, plus the border's rows" do
+      assert_equal 9, Component::Dialog.new(content:).measure_rows(40)
+      assert_equal 38, content.asked.last
+      assert_equal 2, Component::Dialog.new.measure_rows(40), "no content: just the border"
+    end
+
+    it "raises on a box that is neither a Size nor a Fraction" do
+      [nil, 0.5, [60, 20], shrink(Fraction::HALF)].each do |bad|
+        assert_raises(ArgumentError) { shrink(bad) }
+      end
+      assert_equal Fraction::HALF, shrink(Fraction::HALF).box
+    end
+  end
+
   describe Component::Dialog, "placement" do
     before { Screen.fake }
     after { Screen.close }

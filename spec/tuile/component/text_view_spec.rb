@@ -2520,4 +2520,37 @@ module Tuile
       end
     end
   end
+
+  describe Component::TextView, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    def view(text) = Component::TextView.new.tap { _1.text = text }
+
+    it "counts the wrapped rows, an empty line as one" do
+      v = view("the quick brown fox jumps over\n\nthe lazy dog")
+      assert_equal 6, v.measure_rows(10)
+      assert_equal 3, v.measure_rows(40)
+    end
+
+    it "answers the same at the width it last wrapped at as at any other" do
+      text = "the quick brown fox jumps over\n\nthe lazy dog"
+      placed = view(text)
+      Testing.place(placed, Rect.new(0, 0, 10, 20))
+      assert_equal view(text).measure_rows(10), placed.measure_rows(10)
+    end
+
+    it "leaves out the columns a :visible bar reserves, and only that bar" do
+      v = view("abcdefghij")
+      assert_equal 1, v.measure_rows(10)
+      v.scrollbar_visibility = :visible
+      assert_equal 2, v.measure_rows(10)
+      v.scrollbar_visibility = :auto
+      assert_equal 1, v.measure_rows(10)
+    end
+
+    it "answers 0 for empty text" do
+      assert_equal 0, Component::TextView.new.measure_rows(10)
+    end
+  end
 end

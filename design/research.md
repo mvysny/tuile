@@ -970,6 +970,35 @@ Surveyed 2026-09-21 for `D_deferred_layout`: the mark, when the pass runs, and t
 - Not checked: Qt (`QEvent::LayoutRequest`) and GTK4 (`gtk_widget_queue_allocate`); both are
   believed deferred and neither would change the tally. **[unverified]**
 
+## R_content_size — How toolkits learn how tall a scrolled or content-sized child is
+
+Surveyed 2026-10-27 for `D_declared_size` and `D_scroller`.
+
+- Measurement splits by whether the toolkit has a layout pass: the ones with one ask the content,
+  the ones without are told. **[unverified]**
+- **Told:** Terminal.Gui v2 puts `SetContentSize()` on `View`, so every view scrolls a size it is
+  given ([newinv2](https://gui-cs.github.io/Terminal.Gui/docs/newinv2)). **[docs]**
+- **Told:** ratatui's `tui-scrollview` and ncurses' `newpad` scroll an oversized buffer the app
+  allocates ([tui-scrollview](https://github.com/ratatui/tui-widgets/tree/main/tui-scrollview),
+  [RFC](https://github.com/ratatui/ratatui/discussions/1924)). **[docs]**
+- **Asked:** Textual measures bottom-up into a widget's `virtual_size`
+  ([widgets](https://textual.textualize.io/guide/widgets/)). **[docs]**
+- **Rendered, then cropped:** brick and prompt_toolkit size a scrolled region from the rendered
+  image ([brick guide](https://github.com/jtdaugherty/brick/blob/master/docs/guide.rst)), as
+  notcurses does with planes ([notcurses_plane(3)](https://notcurses.com/notcurses_plane.3.html)) —
+  per-component buffers under another name. **[docs]**
+- **Asked:** Swing's `JScrollPane` asks its view (`Scrollable`, `getPreferredSize`). **[unverified]**
+- **Two-pass:** Android's `onMeasure` takes a `MeasureSpec` (`EXACTLY` / `AT_MOST` /
+  `UNSPECIFIED`) and may measure a child twice. **[unverified]**
+- **One axis for the other:** GTK 4's `measure` answers per orientation for a given size on the
+  other axis (height-for-width and width-for-height); Qt offers `heightForWidth()` beside its size
+  hints. **[unverified]**
+- **Constraints down, sizes up:** Flutter, in one pass; `parentUsesSize` decides the relayout
+  boundary. Its `markNeedsLayout` and Android's climbing `requestLayout` are `R_layout_pass`'s.
+  **[unverified]**
+- **CSS normal flow:** a block's width comes from its containing block, its height from its
+  content — one axis down, the other up. **[docs]**
+
 ## R_web_binder — What the Java web toolkit's `Binder` does in each mode, and where its docs stop
 
 Checked 2026-09-29 against its 25.2 docs, the 25.2 javadoc and `flow-data` 25.2.6 sources,

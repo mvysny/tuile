@@ -1625,7 +1625,7 @@ Why not:
 
 ---
 
-## D_box_layouts — Why do `Vertical` / `Horizontal` offer `Fixed` / `Percent` / `Expand` but no `Auto`?
+## D_box_layouts — Why do `Vertical` / `Horizontal` offer `Fixed` / `Percent` / `Expand`, and `Auto` only for a height?
 
 `Layout::Absolute` was the only container: override `rect=`, compute every child's rectangle. Right
 for two-dimensional geometry, tedious for a stack — `examples/sampler.rb` carried **59 `Rect.new`
@@ -1633,13 +1633,32 @@ sites**, mostly vertical stacks whose offsets were renumbered by hand whenever a
 line, and it is what newcomers read to *learn* Tuile. The port took it to five.
 
 Three main-axis constraints, a caller-supplied `cross:` extent, an `align:`, box-global `spacing` /
-`padding`. **There is no `Auto`**: shrink-to-fit is the bottom-up `content_size` channel deleted in
-v0.9.0, which the re-grow rule readmits only as an optional, caller-side query — so urwid's `PACK`,
-CSS `auto`, FTXUI's non-`flex` default and Swing's `GroupLayout.PREFERRED_SIZE` are all out by
-construction. **That omission is what keeps the feature sugar:** a box is an `Absolute` subclass with
-a `rect=` override — no dispatch phase, no framework hook, no child consultation — so it deletes
-cleanly. `align:` is legal only because it needs *a* width rather than *the child's*, and `cross:`
+`padding`. `align:` is legal only because it needs *a* width rather than *the child's*, and `cross:`
 supplies one; that reframing unblocked a cross axis parked as undesignable.
+
+**`Auto` is a height, and nothing else** (owner, 2026-10-27). Shrink-to-fit on both axes is the
+bottom-up `content_size` channel deleted in v0.9.0, and for a while the box offered no `Auto` at all.
+It came back in the one form the re-grow rule admits (`D_declared_size`): the box *asks* the child's
+`measure_rows` at a width the box already assigned, inside its own pass — on `Vertical`'s main axis
+at the width its `cross:` resolved, on `Horizontal`'s `cross:` at its `main_sizes` share. It means
+what urwid's `PACK` and CSS `auto` mean, for rows only. Issue #73 forced it: a scrolled stack of
+wrapped findings had to give each row its counted height, which a hand-synced `Fixed[n]` re-counted
+at every width. What keeps it sugar:
+
+- **One channel per child.** `Auto` is the constraint that says "ask it", and a `Fixed` child is
+  never asked, so the two can never disagree — no "`setExpandRatio` does nothing" (the cost below).
+- **Auditability lost only where opted in.** Reading a `Vertical` with an `Auto` child means reading
+  that child's `measure_rows`; every other box is still verifiable on its own.
+- **It resolves like a `Fixed`**, in declaration order, clamped to what is unassigned, so
+  over-subscription still starves rather than negotiates.
+- **A child answering `nil` gets `0` rows and a logged warning**, not a `nil` for the whole box.
+  `Percent` and `Expand` need the height being computed, so a box holding one honestly fills; under
+  `Auto` the box asked and a child with no answer is a mistake in the tree. `0` keeps the layout
+  going and the log says why the row vanished.
+
+It raises on `Horizontal`'s main axis and `Vertical`'s `cross:`, where it would need a width from the
+child, as `Expand` raises as `cross:`: rows come up, widths never do. The child's rows notice re-runs
+the box's pass and climbs on (`D_declared_size`).
 
 Why not:
 
@@ -1696,14 +1715,19 @@ Why not:
   it, and `ScreenPane` already *is* one. **Swing glue and struts** are filler components needed only
   because `BoxLayout` lacks per-child weight (`R_box_layouts`); **baseline alignment** is meaningless
   on a character grid.
+- **`Auto` on `Horizontal`'s main axis** — a width from the child, which needs the both-axes query
+  `D_declared_size` rejects; a non-wrapping row of fixed-width widgets takes `Fixed[n]`.
+- **A dedicated stack container whose every child is counted**, instead of `Auto` — `Auto` under
+  another name, plus a second vertical container copying `Box`'s spacing, padding and visibility rules.
 - **A full layout engine** (Textual's CSS, Ink's Yoga, ratatui's Cassowary) — they must ship one
   because their author never obtains a rect any other way; Tuile hands out coordinates, so **once
   `rect=` exists a layout is optional sugar**, declinable per component (`R_box_layouts`).
 
 The cost we carry: the Java web toolkit's perennial "`setExpandRatio` does nothing" exists because a
 component there has both its own size and an expand ratio, two channels that must agree
-(`R_box_layouts`) — Tuile has no component-side size to disagree, so the commonest confusion in the
-toolkit we took `Expand` from is a consequence of the channel v0.9.0 deleted. A future
+(`R_box_layouts`) — Tuile has no component-side size to disagree, and an `Auto` child has no
+constraint beside its answer, so the commonest confusion in the toolkit we took `Expand` from is a
+consequence of the channel v0.9.0 deleted. A future
 `Layout::Grid` should reuse `Fixed` / `Percent` / `Expand` verbatim per row and column rather than
 invent a second vocabulary.
 
@@ -3176,7 +3200,7 @@ The cost we carry:
   `Dialog` — is the right parent for a generically anchored layer; the trigger is
   unchanged, the first non-`List` content wanting anchoring.
 
-## D_declared_size — Why is a dialog's box spelled `declared_size`, and why does no component report the size it wants?
+## D_declared_size — Why is a dialog's box spelled `declared_size`, and why may a component answer only how many rows it needs?
 
 The box a {Tuile::Component::Dialog} asks for is `declared_size` / `#declared_size=` — the
 `Dialog.new` and `InfoDialog.new` keyword too — renamed from `size` back when the class was `Popup`. Nothing else changes: it is still
@@ -3197,9 +3221,9 @@ screen applies exactly what you ask for, with no negotiation.
 Why not:
 - *`auto_size`* (the first proposal). Two problems. "Auto-size" conventionally
   means shrink-to-fit-content — Swing's `pack()`, WPF's `SizeToContent` — which
-  is precisely the eager bottom-up `content_size` channel deleted in 0.9.0, and
-  which AGENTS.md already spends a rule keeping out of the vocabulary
-  (`D_box_layouts`: "there is no `Auto`"). And it read as a contradiction on the
+  is precisely the eager bottom-up `content_size` channel deleted in 0.9.0; the
+  word came back only as a box's `Auto`, a height the parent asks for
+  (`D_box_layouts`), which a dialog's box is not. And it read as a contradiction on the
   one subclass that genuinely does size itself: `Notification#auto_size=` raising
   "sizes itself from its messages". (That override is gone under `D_overlay`, but
   the naming argument stands for the next such subclass.)
@@ -3226,6 +3250,117 @@ claim `size` for a content-derived measurement. They are reports, never requests
 no writer, and no container consults them when dividing space. The top-down
 re-grow rule still governs, and a second component wanting a *declared* box
 copies `Dialog`'s naming rather than overloading `size`.
+
+**The re-grow rule's one query: `Component#measure_rows(width)`.** A dialog around
+a short message wants to be short, and without a query every app copied
+`ConfirmWindow`'s private `MeasuredPopup` or hard-coded a box that ignored SIGWINCH
+([#67](https://github.com/mvysny/tuile/issues/67)). The query takes the one
+asymmetry a terminal has: **width comes down, rows come up.** Wrapping is the only
+coupling between the axes and it runs one way, so with the width handed down the
+0.9.0 circularity cannot form. It is asked only by a parent that was *told* to ask
+(`Dialog::ShrinkToContent`, a `Scroller` not told a count), inside that parent's own pass.
+`Screen` and `LayoutPass` never learn the word, which keeps it a pulled query rather
+than a channel. It is pure
+and uncached, and `nil` means "I fill what I'm handed", distinct from `0`. The asker
+re-asks on every pass, and what tells it a pass is owed is the notice below.
+
+The name is a verb on purpose: `viewport_rows` and `scroll_top_row` are cheap
+readers, and this recomputes on every call, so `measure_` says so; `content_size`
+is the deleted name and would read as reverting 0.9.0. Its model is CSS normal
+flow and Qt's `heightForWidth` — one axis down, the other up, never the reverse
+(`R_content_size`).
+
+A dialog asks its content at the width inside its border and adds the border's
+rows back, which is `Dialog#measure_rows`. `ConfirmDialog` overrides that answer
+rather than its box: its body is a layout nobody measures, so it answers from the
+message it owns, and its `declared_size_in` is a `ShrinkToContent` at its own
+widest-line width.
+
+**Every component answers, and only filling ones keep `nil`.** A one-row widget
+answers `1`, the row its `extent` declares, and the contract suite holds the two
+equal when placed at the answer. Otherwise they stay separate: an extent is rows
+painted inside the rect given and read by no container (`D_extent`), an answer is
+rows needed before any rect, so they differ wherever a parent clamps. Content-sized
+leaves count what they paint. A component passing one child's
+answer on (`Slot`, `Panel`, `Dialog`, `FormItem`, `TabSheet`) counts absent or hidden
+content `0` (`ComponentUtil.measure_rows_of`): hidden is gone (`D_visibility`), and
+`nil` means content that fills, which absent content does not. A `nil` there
+would also hand a dialog with an empty body its whole box. Self-scrolling widgets
+(`List`, `TextView`, `TextArea`) answer their content too. The answer matters only to
+a parent told to ask, so answering changes nothing under a top-down constraint, and
+a short list gets a short dialog. `component_contract_spec`'s `fills` names the rest,
+each with its reason, so a new component cannot keep the base by forgetting.
+
+**`Label` grew `wrap:` rather than leaving wrapping to `TextView`**, because a
+`TextView` is a tab stop: a column of explanatory paragraphs built from them stops
+Tab on every one. A wrapping label still never scrolls, so "Label truncates,
+TextView wraps" stays the default advice.
+
+**The notice, `invalidate_rows`, is the one exception to top-down layout**
+(owner, 2026-10-27). A mutation that may change a component's answer calls
+`invalidate_rows` on itself, which hands the parent
+`handle_child_rows_changed(child)`. The parent decides per child, from the
+constraint it already holds: mark its own pass if its `relayout` reads that child's
+rows, pass the notice on if its `measure_rows` does, else stop, which the empty
+base does. A label in a `Fixed[1]` row costs one empty call, and `Dialog → Panel →
+Label` climbs to the pane, which places the dialog again. It is a push, which the
+re-grow rule otherwise bans, admitted because it is bounded to settle:
+
+1. It fires from a mutation of the answer's inputs, never from a rect change and
+   never from being asked. A new width is answered by the pull in the pass that
+   assigned it; firing from `handle_rect_changed` would re-mark ancestors that pass
+   has already visited.
+2. It carries no value, so nothing is compared and nothing can oscillate. Marks
+   coalesce, and the pre-order drain settles a leaf-to-root chain in one round.
+3. Nothing turns rows into a width, except `Scroller`'s `:auto` bar, which settles
+   inside its own pass.
+
+Breaking any of the three is the falsifier. `visible=` fires on the *parent*,
+whose answer just lost or regained the child while the child's own did not; so
+does a `FormItem` whose caption changed, because a `FormLayout` reads the
+caption, never the item's rows. `component_contract_spec` holds both halves: a
+mutation that changes an answer fires, and a container whose answer moves with a
+child's passes that child's notice on. A container that forgets costs a stale
+layout, never a loop.
+
+Why not:
+- *`measure(available) → Size`, both axes.* It buys a width from below, which only
+  a dialog wants, and a one-hop declaration covers that (`ConfirmDialog`'s
+  widest-line rule stays the dialog's own). It costs a `Size` answer in every
+  answerer, a spelling for an unbounded axis, and a promise that more width never
+  costs height.
+- *Lay the child out at the width, then read its height.* That is two passes per
+  child, with provisional rects that `D_strict_layout` rightly refuses to have read.
+- *A declaration with a width and a row cap of its own* (`FitRows[0.7, 0.5]`, the
+  first cut). It re-spells the two units `Size` and `Fraction` already carry, with
+  the type picking the unit, so `1` is a column and `1.0` the whole screen.
+  Wrapping an existing box instead reuses their resolution, makes the box the
+  ceiling, and gives `nil` an answer that needs no fallback: the whole box.
+- *Making the confirm dialog's sizing public.* It fits `ConfirmDialog`-shaped content
+  only, and each app would still write a `measured_width` per dialog. Fitting a width
+  stays each overlay's own arithmetic (owner, 2026-10-27; open to revisiting): four
+  overlays fit one already (`ConfirmDialog`, `Notification`, `Select`'s dropdown, the
+  sampler's slash menu), each with its own twist, sharing only the widest line's
+  display width. A public declaration fed the text (`FitLines[text, cap:]`) would hold
+  a second copy of it; a `Size.fit_lines` helper saves one line, and is the cheap step
+  if a fifth fitter turns up with `ConfirmDialog`'s exact rule. A width query on the
+  content (`measure_columns`) is ruled out, not deferred: it is the width from below.
+- *Android's two-pass `MeasureSpec`* (`EXACTLY` / `AT_MOST` / `UNSPECIFIED`, measured
+  twice). Negotiation; `measure_rows` is one exact width and an unspecified height,
+  asked once.
+- *A one-hop notice, `parent.invalidate_layout`.* It breaks wherever a forwarding
+  answerer sits between asker and answerer: `Dialog → Panel → Label`, and every
+  dialog, since its asker is the pane.
+- *Climbing along asked-by-parent flags* (Flutter's `parentUsesSize`,
+  `R_layout_pass`). The same edges, recorded per pass instead of read from the
+  constraint: a flag to set and clear each pass, and a missed flag is as stale.
+- *Always climbing to the root, stopping at absorber types* (Android's
+  `requestLayout`, `R_layout_pass`). Every `Label#text=` would relayout every
+  ancestor and reach parents that never asked, and `Dialog` turned out not to absorb.
+- *No notice, re-asking every pass.* It covers SIGWINCH only, so every app with
+  changing content hand-rolled `reposition`.
+- *A listener slot on the content* (`on_size_changed`). Its only edge over the notice
+  is an observer that is not the parent, and the asker always is.
 
 ## D_extent — Why does a widget declare an `extent` rather than own its whole `rect`?
 
@@ -3636,7 +3771,7 @@ an empty `List`.
 confirm dialog's body is prose by nature; the asymmetry is a decision, not an
 oversight. If a caller ever appears: a `List` of lines is measurable —
 widest-line × row-count, no wrap pass — so it would not fall into
-`#measured_size`'s "Component body ⇒ full half-screen box" hole.
+`ConfirmWindow`'s "Component body ⇒ full half-screen box" hole.
 
 **The coercion is a duplicate, on purpose.** This is copy two of
 `ConfirmDialog`'s `message=` case (per `D_float_field`'s shallow-shell rule —
@@ -7192,7 +7327,7 @@ draws itself, so no clip reaches it: `Screen#cursor_position` answers `nil` when
 the caret falls outside what `clip_for` allows — including a caret outside the box
 the component was given at all.
 
-## D_scroller — Why is scrolling a container you compose, told how tall its content is?
+## D_scroller — Why is scrolling a container you compose, which asks how tall its content is unless told?
 
 {Tuile::Component::Scroller} is a one-child viewport: it gives its content a rect
 `content_rows` tall — taller than its own, with a negative `top` once scrolled —
@@ -7207,23 +7342,44 @@ out — a container computes rectangles in plain Ruby in its `rect=`
 invisible term into every one of those computations. Composed, `FormLayout` needs
 to know nothing, which is what retired the seed's "make the form scroll itself".
 
-**Why the app says how tall the content is.** Nothing in Tuile measures
-bottom-up, and `D_declared_size`'s re-grow rule admits measurement back only as an
-optional, read-only, *caller-side* query — so `content_rows=` is assigned, never
-pulled. The supplier is the content's own arithmetic over its own state: a
-`FormLayout` sums the rows its items were handed, a `Layout::Vertical` of `Fixed`
-children sums its constraints. The two TUI toolkits with no measurement pass are
-told the same way (Terminal.Gui's `SetContentSize`, ratatui's `tui-scrollview`);
-the ones that ask their content have a layout pass to ask through (Swing's
-`Scrollable`, Textual's `virtual_size`).
+**Why it asks unless told** (owner, 2026-10-27). `content_rows = :content`, the
+default, asks the content's `measure_rows` at the width the scroller hands it, on
+every pass, and again on the content's rows notice (`D_declared_size`), so a field
+added to a form deep inside is reachable with no call from the app. Constructing a
+scroller *is* the telling the re-grow rule asks for: you reach for one because you
+expect its content to scroll, and either you know the height and set it, or you
+don't and the question is the right default. A told count stays for content with
+no answer of its own (an `Absolute`, a component that fills) and for a count
+cheaper to know than to measure; its supplier is the content's own arithmetic. The
+first cut made asking opt-in and kept a told `0`, which made the stale count below
+every fresh scroller's starting state. The TUI
+toolkits with no measurement pass are told the same way (Terminal.Gui's
+`SetContentSize`, ratatui's `tui-scrollview`); the ones that ask have a layout pass
+to ask through (Swing's `Scrollable`, Textual's `virtual_size`), which since
+`D_deferred_layout` Tuile has too.
 
-The cost is real and unpaid: **nothing detects that `content_rows` went stale.**
-Add a field and the last row is unreachable until someone re-assigns it. A push
-from the content is the banned channel; re-reading it in the scroller's own
-`relayout` would cover a resize and nothing else. What takes the edge off is the
-fallback — the child is given `[content_rows, viewport_rows].max` rows — so a
-scroller whose count is unset or too small degrades to a plain one-child
-container that fills its viewport, rather than to a strip of blank rows.
+It is spelled `:content`, not `:auto`, which `scrollbar_visibility = :auto` already
+means differently on the same class.
+
+**A told count's cost is unpaid: nothing detects that it went stale.** Add a field
+and the last row is unreachable until someone re-assigns it. What takes the edge off
+is the fallback — the child is given `[content_rows, viewport_rows].max` rows — so a
+scroller whose count is unset or too small degrades to a plain one-child container
+that fills its viewport, rather than to a strip of blank rows. A `nil` answer under
+`:content` lands on the same fallback.
+
+**Under an `:auto` bar the rows decide a width, the one place they do, and it
+settles in one pass** because the bar is decided from the answer at the *full*
+width, which showing the bar doesn't change; the count is then asked at the width
+the bar leaves. Fewer columns never wrap to fewer rows, so content that overflowed
+at the full width still overflows. An answerer breaking that would get a bar it
+didn't need, never a loop. A told count derived from the content's own width can
+still chase the flip, and `LayoutPass::MAX_ROUNDS` catches it.
+
+**Under `:content` every pass clamps the scroll to the measured rows**, so content
+shrinking under a scrolled viewport pulls it back, as a told `content_rows=` does at
+the assignment. A told count leaves the pass alone, since `scroll_top_row=` may park
+past the end on purpose (`TextView`'s rule).
 
 **Why scrolling by rows, not by whole children.** The seed proposed that a child
 be wholly in or wholly out, so nothing would need clipping. Three counts killed

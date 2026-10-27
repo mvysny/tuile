@@ -369,4 +369,14 @@ module Tuile
       end
     end
   end
+
+  describe Component::IntegerField, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "is one row at any width" do
+      assert_equal 1, Component::IntegerField.new.measure_rows(40)
+      assert_equal 1, Component::IntegerField.new.measure_rows(1)
+    end
+  end
 end
