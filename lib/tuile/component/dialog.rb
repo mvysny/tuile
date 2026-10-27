@@ -208,14 +208,10 @@ module Tuile
       def declared_size_in(screen_size) = resolve_declaration(@_declared_size, screen_size)
 
       # The content's {Component#measure_rows} at `width` less the border, plus
-      # the border's rows; `nil` when the content answers `nil` or there is none.
+      # the border's rows. No content or hidden content answers just the border.
       # @param width [Integer] the dialog's width, border included.
-      # @return [Integer, nil]
-      def measure_rows(width)
-        border = @_border_drawer.border_size
-        rows = content&.measure_rows(width - border.width)
-        rows && (rows + border.height)
-      end
+      # @return [Integer, nil] `nil` when the content answers `nil`.
+      def measure_rows(width) = @_border_drawer.measure_rows(content, width)
 
       # @return [Overlay::Centered] a dialog opens centered.
       def default_placement = Centered[]

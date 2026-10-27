@@ -87,6 +87,19 @@ module Tuile
       #   text overflows the viewport at the full width. `:gone` by default.
       def scrollbar_visibility = @_scrollbar_visibility
 
+      # The rows the text wraps to at `width`, less the columns a `:visible` bar
+      # reserves. An `:auto` bar is measured as absent: the text either fits and
+      # no bar shows, or the asker capped it and the view scrolls, so the answer
+      # never feeds back into the width.
+      # @param width [Integer]
+      # @return [Integer] `0` for empty text.
+      def measure_rows(width)
+        width -= bar_columns_at(width) if @_scrollbar_visibility == :visible && width.positive?
+        return @_rows.size if width == @_wrapped_at
+
+        @_lines.sum { |line| line.empty? || width <= 0 ? 1 : line.wrap(width).size }
+      end
+
       # @return [Boolean] if true, mutating the text scrolls the viewport so
       #   the last line stays in view — but only while the viewport is already
       #   pinned to the last line (see {#following?}). Scroll up to read older
@@ -831,8 +844,13 @@ module Tuile
       def scrollbar_columns
         return 0 unless scrollbar_visible?
 
-        rect.width >= 3 ? 2 : 1
+        bar_columns_at(rect.width)
       end
+
+      # @param width [Integer] the view's width.
+      # @return [Integer] what a shown bar reserves at `width`: `2`, or `1` below
+      #   width 3 (see {#scrollbar_columns}).
+      def bar_columns_at(width) = width >= 3 ? 2 : 1
 
       # @param delta [Integer] negative scrolls up, positive scrolls down.
       # @return [void]

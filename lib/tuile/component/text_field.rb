@@ -110,6 +110,10 @@ module Tuile
       #   @return [Listeners]
       listener :on_enter
 
+      # @param _width [Integer]
+      # @return [Integer] `1`: a single line at any width.
+      def measure_rows(_width) = 1
+
       # @return [Point, nil]
       def cursor_position
         return nil unless rect.width.positive?

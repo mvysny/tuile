@@ -3246,6 +3246,26 @@ rather than its box: its body is a layout nobody measures, so it answers from th
 message it owns, and its `declared_size_in` is a `ShrinkToContent` at its own
 widest-line width.
 
+**Every component answers, and only filling ones keep `nil`.** A one-row widget
+answers `1`, the row its `extent` declares, and the contract suite holds the two
+equal when placed at the answer. Otherwise they stay separate: an extent is rows
+painted inside the rect given and read by no container (`D_extent`), an answer is
+rows needed before any rect, so they differ wherever a parent clamps. Content-sized
+leaves count what they paint. A component passing one child's
+answer on (`Slot`, `Panel`, `Dialog`, `FormItem`, `TabSheet`) counts absent or hidden
+content `0` (`ComponentUtil.measure_rows_of`): hidden is gone (`D_visibility`), and
+`nil` means content that fills, which absent content does not. A `nil` there
+would also hand a dialog with an empty body its whole box. Self-scrolling widgets
+(`List`, `TextView`, `TextArea`) answer their content too. The answer matters only to
+a parent told to ask, so answering changes nothing under a top-down constraint, and
+a short list gets a short dialog. `component_contract_spec`'s `fills` names the rest,
+each with its reason, so a new component cannot keep the base by forgetting.
+
+**`Label` grew `wrap:` rather than leaving wrapping to `TextView`**, because a
+`TextView` is a tab stop: a column of explanatory paragraphs built from them stops
+Tab on every one. A wrapping label still never scrolls, so "Label truncates,
+TextView wraps" stays the default advice.
+
 Why not:
 - *`measure(available) → Size`, both axes.* It buys a width from below, which only
   a dialog wants, and a one-hop declaration covers that (`ConfirmDialog`'s

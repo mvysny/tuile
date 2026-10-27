@@ -92,6 +92,10 @@ module Tuile
       # @return [List]
       def list = @_list
 
+      # @param width [Integer]
+      # @return [Integer] one row per option: the {#list}'s answer.
+      def measure_rows(width) = @_list.measure_rows(width)
+
       # @return [void]
       def relayout = list.rect = local_rect
 

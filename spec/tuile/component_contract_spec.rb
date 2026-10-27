@@ -119,6 +119,22 @@ module Tuile
       ScreenPane => "the structural root: Screen owns the only instance; see screen_pane_spec"
     }
 
+    # Catalogued components answering {Component#measure_rows} with the base
+    # `nil` — "no content height, I fill what I'm handed" — each with the reason.
+    # Every other one must answer a row count.
+    fills = {
+      Component => "the base",
+      Component::Fill => "a rule fills what it is handed, and its parent sizes it",
+      Component::VerticalScrollBar => "fills its column",
+      Component::Scroller => "a viewport: its content scrolls inside it",
+      Component::Layout::Absolute => "its geometry is the app's own arithmetic",
+      Component::Layout::Vertical => "the catalogued box holds an Expand child",
+      Component::Layout::Horizontal => "the catalogued box's children are Percent across",
+      Component::Overlay => "never asked: the pane places it by its own declared size",
+      Component::ListDropdown => "never asked: the pane places it by its own declared size",
+      Component::Notification => "never asked: the pane places it by its own declared size"
+    }
+
     # @return [Component::Layout::Absolute] two children filling {#contract_rect}.
     def populated_absolute
       layout = Component::Layout::Absolute.new
@@ -432,6 +448,47 @@ module Tuile
           assert_equal before, buffer.region_text(component.absolute_rect),
                        "#{klass} did not come back as it was"
           assert_equal stops_before, tab_stops(component), "#{klass} did not get its tab stops back"
+        end
+      end
+    end
+
+    # `D_declared_size`: a parent told to ask (`Dialog::ShrinkToContent`) takes
+    # `nil` as "fill", so a component that forgot to answer silently gets the
+    # whole box instead of its rows. Nothing raises, and the widget's own spec
+    # never asks. `fills` is checked both ways, so it cannot rot either.
+    context "answers measure_rows unless it fills" do
+      it "lists only catalogued components as filling" do
+        assert_empty fills.keys - catalog.keys
+      end
+
+      catalog.each_key do |klass|
+        it klass.name do
+          rows = instance_exec(&catalog[klass]).measure_rows(contract_rect.width)
+          if fills.key?(klass)
+            assert_nil rows, "#{klass} answers #{rows.inspect}; drop it from `fills`"
+          else
+            assert_kind_of Integer, rows,
+                           "#{klass} answers nil; answer its rows, or add it to `fills` with a reason"
+          end
+        end
+      end
+    end
+
+    # `D_extent`: an extent is the rows a component paints. A parent that gives
+    # it exactly its `measure_rows` relies on the two agreeing — a field
+    # answering 1 but painting 2 rows loses the second, clipped, and no spec
+    # that sizes the field by hand would notice.
+    context "declares an extent as tall as its measured rows" do
+      catalog.each_key.reject { _1.instance_method(:extent).owner == Component }.each do |klass|
+        it klass.name do
+          component = instance_exec(&catalog[klass])
+          rows = component.measure_rows(contract_rect.width)
+          skip "measures no rows" if rows.nil?
+
+          r = contract_rect
+          place(component, Rect.new(r.left, r.top, r.width, rows))
+          assert_equal rows, component.extent.height,
+                       "#{klass} answers #{rows} rows but paints an extent #{component.extent.height} tall"
         end
       end
     end

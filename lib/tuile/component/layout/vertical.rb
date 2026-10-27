@@ -16,6 +16,26 @@ module Tuile
       #
       # See {Box} for the constraint vocabulary and how the space is divided.
       class Vertical < Box
+        # The rows the shown children stack into: their {Fixed} heights, the
+        # {#spacing} between them and the {#padding}. A {Percent} or {Expand}
+        # child is a share of the height being asked for, so a box holding one
+        # fills instead.
+        #
+        #   stack = Component::Layout::Vertical.new(spacing: 1)
+        #   stack.add(title, Component::Layout::Fixed[1])
+        #   stack.add(field, Component::Layout::Fixed[1])
+        #   stack.measure_rows(40)   # => 3: two rows and the gap between them
+        #
+        # @param _width [Integer]
+        # @return [Integer, nil] `nil` when a shown child's height is not {Fixed}.
+        def measure_rows(_width)
+          kids = shown_children
+          heights = kids.map { placement(_1)[:main] }
+          return nil unless heights.all?(Fixed)
+
+          heights.sum(&:cells) + (spacing * [kids.size - 1, 0].max) + padding.vertical
+        end
+
         private
 
         # @param rect [Rect]

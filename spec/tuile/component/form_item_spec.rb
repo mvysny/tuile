@@ -395,4 +395,32 @@ module Tuile
       end
     end
   end
+
+  describe Component::FormItem, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "adds the caption row above and the message row below" do
+      assert_equal 3, Component::FormItem.new(Component::TextField.new, caption: "Name").measure_rows(40)
+      assert_equal 2, Component::FormItem.new(Component::TextField.new).measure_rows(40)
+    end
+
+    it "asks the content beside a left caption, at the width that caption leaves" do
+      asked = []
+      content = Component::Label.new("one\ntwo")
+      content.define_singleton_method(:measure_rows) do |w|
+        asked << w
+        super(w)
+      end
+      item = Component::FormItem.new(content, caption: "Name")
+      item.caption_position = :left
+      assert_equal 3, item.measure_rows(40)
+      assert_equal [35], asked
+    end
+
+    it "answers the chrome alone without content, and passes a filling content's nil on" do
+      assert_equal 2, Component::FormItem.new(nil, caption: "Name").measure_rows(40)
+      assert_nil Component::FormItem.new(Component.new, caption: "Name").measure_rows(40)
+    end
+  end
 end

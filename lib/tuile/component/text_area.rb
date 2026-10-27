@@ -72,6 +72,19 @@ module Tuile
       #   (empty) row.
       def row_count = wrap.row_count
 
+      # {#row_count} at `width` rather than the current one; `>= 1`, since the
+      # caret always has a row.
+      #
+      # == Implementation details
+      #
+      # At another width it wraps a fresh {WrappedText} and leaves the cache
+      # alone: replacing it would throw away the paint's wrap on every ask.
+      # @param width [Integer]
+      # @return [Integer]
+      def measure_rows(width)
+        width == rect.width ? row_count : WrappedText.new(@_text, width).row_count
+      end
+
       # @return [Point, nil]
       def cursor_position
         return nil if rect.empty?

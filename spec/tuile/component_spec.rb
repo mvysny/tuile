@@ -163,7 +163,6 @@ module Tuile
     context "#measure_rows" do
       it "is nil by default — no content height, the component fills its rect" do
         assert_nil Component.new.measure_rows(40)
-        assert_nil Component::List.new.measure_rows(40)
       end
     end
 

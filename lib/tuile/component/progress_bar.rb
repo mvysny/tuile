@@ -171,6 +171,10 @@ module Tuile
       # @return [Boolean] whether the sliding-block animation is showing.
       def indeterminate? = @_indeterminate
 
+      # @param _width [Integer]
+      # @return [Integer] `1`: the bar is one row, and rows below it are blanked.
+      def measure_rows(_width) = 1
+
       # Switches between the fill and the sliding block. {#value} keeps working
       # while indeterminate — it is simply not painted — so switching back shows
       # the progress that accumulated meanwhile.

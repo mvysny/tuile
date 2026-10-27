@@ -495,7 +495,7 @@ wrong for a paragraph.
 > border, never taller than the box itself. Nothing about the width is
 > negotiated, so nothing can loop, and the dialog asks only because you told
 > it to. A component that has no answer returns `nil` (the default, and a
-> `List`'s: it fills whatever it gets), and the dialog keeps the whole box.
+> `Scroller`'s: it fills whatever it gets), and the dialog keeps the whole box.
 >
 > The answer is re-asked on every layout pass and at no other time, so
 > content whose rows change while the dialog is open calls
@@ -560,9 +560,10 @@ them:
   parent you told to ask (`Dialog::ShrinkToContent`) asks it.
 - **No shrink-to-fit / intrinsic sizing.** A slot is sized top-down;
   content fills or scrolls within it.
-- **`Label` doesn't wrap.** It truncates long lines with an ellipsis by
-  design — it's the component for one-liners. For wrapping or scrolling
-  prose, reach for `TextView`.
+- **`Label` doesn't scroll.** It truncates long lines with an ellipsis by
+  default — it's the component for one-liners — and `wrap: true` wraps
+  them onto the rows it is given, cutting off whatever doesn't fit. For
+  prose that scrolls, reach for `TextView`.
 
 If you ever *do* need to measure content in order to choose a size —
 say, to size that autocomplete dropdown — measure it yourself in your

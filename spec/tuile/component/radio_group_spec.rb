@@ -311,4 +311,13 @@ module Tuile
       end
     end
   end
+
+  describe Component::RadioGroup, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "is one row per option" do
+      assert_equal 3, Component::RadioGroup.new(items: %w[one two three]).measure_rows(40)
+    end
+  end
 end

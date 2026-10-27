@@ -55,4 +55,30 @@ module Tuile
       assert_equal [Rect.new(0, 0, 30, 24), Rect.new(30, 0, 70, 24)], rects(layout)
     end
   end
+
+  describe Component::Layout::Horizontal, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "is the tallest shown Fixed cross height, plus the padding" do
+      row = Component::Layout::Horizontal.new(padding: 1)
+      row.add(Component::Label.new("a"), Component::Layout::Fixed[5], cross: Component::Layout::Fixed[1])
+      tall = Component::Label.new("b")
+      row.add(tall, Component::Layout::Fixed[5], cross: Component::Layout::Fixed[3])
+      row.add(Component::Label.new("c"), Component::Layout::Expand[1])
+      assert_equal 5, row.measure_rows(40)
+      tall.visible = false
+      assert_equal 3, row.measure_rows(40)
+    end
+
+    it "fills when every shown child is Percent across" do
+      row = Component::Layout::Horizontal.new
+      row.add(Component::Label.new("a"), Component::Layout::Expand[1])
+      assert_nil row.measure_rows(40)
+    end
+
+    it "answers its padding with nothing shown" do
+      assert_equal 2, Component::Layout::Horizontal.new(padding: 1).measure_rows(40)
+    end
+  end
 end

@@ -69,6 +69,12 @@ module Tuile
         @_border_drawer.paint(canvas, rect.size, caption:, fg:)
       end
 
+      # The content's {Component#measure_rows} inside the border, plus the
+      # border's rows. No content or hidden content answers just the border.
+      # @param width [Integer] the panel's width, border included.
+      # @return [Integer, nil] `nil` when the content answers `nil`.
+      def measure_rows(width) = @_border_drawer.measure_rows(content, width)
+
       protected
 
       # @return [void]

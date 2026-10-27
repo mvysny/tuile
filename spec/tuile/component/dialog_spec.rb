@@ -374,10 +374,15 @@ module Tuile
       assert_equal 3, open_shrunk(Fraction::HALF).rect.height
     end
 
-    it "takes the whole box when the content answers nil, or there is none" do
+    it "takes the whole box when the content answers nil" do
       content.rows = nil
       assert_equal Size.new(60, 20), open_shrunk(Size.new(60, 20)).rect.size
-      assert_equal Size.new(80, 25), Component::Dialog.new(declared_size: shrink(Fraction::HALF)).open.rect.size
+    end
+
+    it "shrinks to the border and one interior row when there is no content, or it is hidden" do
+      assert_equal Size.new(80, 3), Component::Dialog.new(declared_size: shrink(Fraction::HALF)).open.rect.size
+      content.visible = false
+      assert_equal Size.new(80, 3), open_shrunk(Fraction::HALF).rect.size
     end
 
     it "re-asks on reposition, which is the content's notice" do
@@ -401,7 +406,7 @@ module Tuile
     it "measures the content at the width the border leaves, plus the border's rows" do
       assert_equal 9, Component::Dialog.new(content:).measure_rows(40)
       assert_equal 38, content.asked.last
-      assert_nil Component::Dialog.new.measure_rows(40)
+      assert_equal 2, Component::Dialog.new.measure_rows(40), "no content: just the border"
     end
 
     it "raises on a box that is neither a Size nor a Fraction" do

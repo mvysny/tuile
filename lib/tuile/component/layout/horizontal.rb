@@ -15,6 +15,26 @@ module Tuile
       #
       # See {Box} for the constraint vocabulary and how the space is divided.
       class Horizontal < Box
+        # The tallest shown child's {Fixed} `cross:` height, plus the {#padding}.
+        # A {Percent} `cross:` fills the row's height rather than setting it, so
+        # it adds nothing, and a row of only those fills too.
+        #
+        #   row = Component::Layout::Horizontal.new
+        #   row.add(field, Component::Layout::Fixed[20], cross: Component::Layout::Fixed[1])
+        #   row.add(list, Component::Layout::Expand[1])   # Percent[100] across: fills
+        #   row.measure_rows(80)                          # => 1
+        #
+        # A row with nothing shown answers just its padding.
+        # @param _width [Integer]
+        # @return [Integer, nil] `nil` when no shown child is {Fixed} across.
+        def measure_rows(_width)
+          kids = shown_children
+          return padding.vertical if kids.empty?
+
+          heights = kids.map { placement(_1)[:cross] }.grep(Fixed).map(&:cells)
+          heights.empty? ? nil : heights.max + padding.vertical
+        end
+
         private
 
         # @param rect [Rect]

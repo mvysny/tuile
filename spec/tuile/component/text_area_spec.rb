@@ -1068,4 +1068,27 @@ module Tuile
     # scan measured zero and the position never advanced), failed /[ \t]/ and
     # was not "\n". A CRLF document assigned via text= hung the UI thread.
   end
+
+  describe Component::TextArea, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    let(:area) { Component::TextArea.new.tap { _1.value = "the quick brown fox" } }
+
+    it "is its row_count at its own width" do
+      Testing.place(area, Rect.new(0, 0, 10, 5))
+      assert_equal 2, area.measure_rows(10)
+      assert_equal area.row_count, area.measure_rows(10)
+    end
+
+    it "wraps at another width without replacing the wrap it paints from" do
+      Testing.place(area, Rect.new(0, 0, 10, 5))
+      assert_equal 1, area.measure_rows(40)
+      assert_equal 2, area.row_count
+    end
+
+    it "keeps a row for the caret in empty text" do
+      assert_equal 1, Component::TextArea.new.measure_rows(40)
+    end
+  end
 end

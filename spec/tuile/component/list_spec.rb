@@ -2061,4 +2061,16 @@ module Tuile
       assert_equal [], c.candidate_positions(10)
     end
   end
+
+  describe Component::List, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "is one row per item, at any width" do
+      list = Component::List.new.tap { _1.items = %w[one two three] }
+      assert_equal 3, list.measure_rows(40)
+      assert_equal 3, list.measure_rows(1)
+      assert_equal 0, Component::List.new.measure_rows(40)
+    end
+  end
 end

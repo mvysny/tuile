@@ -23,9 +23,9 @@ The simplest job is putting text on the screen, and the choice comes down
 to one question: **does it need to wrap?**
 
 If not — a title, a status line, a single field of data — reach for
-{Tuile::Component::Label}. A label shows one or more lines of text and
-does *not* word-wrap; a line too wide for its rect is truncated with an
-ellipsis. That's a feature, not a limitation: a label is chrome, and
+{Tuile::Component::Label}. A label shows one or more lines of text and,
+by default, does *not* word-wrap; a line too wide for its rect is
+truncated with an ellipsis. That's a feature, not a limitation: a label is chrome, and
 chrome that reflows unpredictably when the terminal narrows is worse than
 chrome that clips. Its text is a {Tuile::StyledString}, so embedded color
 survives, and you can hand it either a plain `String` (parsed for ANSI) or
@@ -50,8 +50,12 @@ keep the latest content in view. A TextView is meant to live inside a
 {Tuile::Component::Panel} or a {Tuile::Component::Dialog} — it leans on the surrounding chrome for focus
 indication and keyboard hints.
 
-So: **Label truncates, TextView wraps.** That single line is the whole
-decision.
+So: **Label truncates, TextView wraps.** That single line is nearly the
+whole decision. The exception is a static paragraph that must not take
+focus — an explanation beside a button, one of many in a list. A TextView
+is a tab stop, so a column of them would stop Tab on every paragraph;
+`Label.new(text, wrap: true)` wraps instead, scrolls never, and its
+`measure_rows` says how many rows it needs at a width.
 
 ## Editing text
 

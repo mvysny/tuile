@@ -297,6 +297,10 @@ module Tuile
         Size.new([painted_width - @_left_column, rect.width].min, 1)
       end
 
+      # @param _width [Integer]
+      # @return [Integer] `1`, the row its {#extent} declares, at any width.
+      def measure_rows(_width) = 1
+
       # @return [String]
 
       # Switches tabs on LEFT / RIGHT, consuming the key even at the ends of the

@@ -65,6 +65,10 @@ module Tuile
       # @return [Size]
       def extent = Size.new([caption.display_width + 4, rect.width].min, 1)
 
+      # @param _width [Integer]
+      # @return [Integer] `1`, the row its {#extent} declares, at any width.
+      def measure_rows(_width) = 1
+
       # Fires {#on_click} on a left click within {#extent}; `super` runs first, so
       # a click anywhere in {#rect} still focuses.
       # @param event [Mouse::DownEvent]

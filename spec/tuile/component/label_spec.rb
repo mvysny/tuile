@@ -205,4 +205,65 @@ module Tuile
       end
     end
   end
+
+  describe Component::Label, "wrap" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "ellipsizes by default" do
+      label = Component::Label.new("a long sentence")
+      refute label.wrap?
+      Testing.place(label, Rect.new(0, 0, 6, 3))
+      assert_equal ["a lon…", "      ", "      "], Testing.paint(label).text
+    end
+
+    it "word-wraps onto the following rows" do
+      label = Component::Label.new("a long sentence", wrap: true)
+      Testing.place(label, Rect.new(0, 0, 6, 4))
+      assert_equal ["a long", "senten", "ce    ", "      "], Testing.paint(label).text
+    end
+
+    it "rewraps at a new width" do
+      label = Component::Label.new("a long sentence", wrap: true)
+      Testing.place(label, Rect.new(0, 0, 6, 3))
+      Testing.place(label, Rect.new(0, 0, 10, 3))
+      assert_equal ["a long    ", "sentence  ", "          "], Testing.paint(label).text
+    end
+
+    it "repaints when toggled" do
+      label = Component::Label.new("a long sentence")
+      Testing.place(label, Rect.new(0, 0, 6, 2))
+      label.wrap = true
+      assert_equal ["a long", "senten"], Testing.paint(label).text
+    end
+  end
+
+  describe Component::Label, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "counts lines, at any width" do
+      assert_equal 2, Component::Label.new("one\ntwo").measure_rows(40)
+      assert_equal 2, Component::Label.new("one\ntwo").measure_rows(2)
+    end
+
+    it "counts wrapped rows under wrap" do
+      label = Component::Label.new("a long sentence", wrap: true)
+      assert_equal 3, label.measure_rows(6)
+      assert_equal 2, label.measure_rows(10)
+      assert_equal 1, label.measure_rows(40)
+    end
+
+    it "answers 0 for empty text, wrapped or not" do
+      assert_equal 0, Component::Label.new.measure_rows(40)
+      assert_equal 0, Component::Label.new(wrap: true).measure_rows(40)
+    end
+
+    it "agrees with the rows it paints" do
+      label = Component::Label.new("the quick brown fox jumps\nover", wrap: true)
+      Testing.place(label, Rect.new(0, 0, 9, 10))
+      painted = Testing.paint(label).text.reject { _1.strip.empty? }
+      assert_equal painted.size, label.measure_rows(9)
+    end
+  end
 end

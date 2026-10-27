@@ -68,4 +68,33 @@ module Tuile
                    Screen.instance.buffer.region_text(Rect.new(0, 0, 10, 3))
     end
   end
+
+  describe Component::Layout::Vertical, "#measure_rows" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "sums the shown Fixed heights, the spacing and the padding" do
+      box = Component::Layout::Vertical.new(spacing: 1, padding: 2)
+      box.add(Component::Label.new("a"), Component::Layout::Fixed[1])
+      hidden = Component::Label.new("b")
+      box.add(hidden, Component::Layout::Fixed[5])
+      box.add(Component::Label.new("c"), Component::Layout::Fixed[2])
+      assert_equal 14, box.measure_rows(40)
+      hidden.visible = false
+      assert_equal 8, box.measure_rows(40)
+    end
+
+    it "fills when a shown child is a share of the height" do
+      [Component::Layout::Expand[1], Component::Layout::Percent[50]].each do |share|
+        box = Component::Layout::Vertical.new
+        box.add(Component::Label.new("a"), Component::Layout::Fixed[1])
+        box.add(Component::Label.new("b"), share)
+        assert_nil box.measure_rows(40)
+      end
+    end
+
+    it "answers its padding with nothing shown" do
+      assert_equal 2, Component::Layout::Vertical.new(padding: 1).measure_rows(40)
+    end
+  end
 end

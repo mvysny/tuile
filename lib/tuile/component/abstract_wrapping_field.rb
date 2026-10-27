@@ -202,6 +202,10 @@ module Tuile
       #   delegated to it.
       def cursor_position = editor.cursor_position
 
+      # @param _width [Integer]
+      # @return [Integer] `1`: the one-line editor's row, at any width.
+      def measure_rows(_width) = 1
+
       # Runs {#commit} on the falling edge, i.e. when this field leaves the focus
       # chain. Moving focus *within* a widget keeps it active, so a future
       # multi-editor field inherits the same semantics unchanged.

@@ -158,6 +158,10 @@ module Tuile
       # @return [Size]
       def extent = Size.new(rect.width, 1)
 
+      # @param _width [Integer]
+      # @return [Integer] `1`, the row its {#extent} declares, at any width.
+      def measure_rows(_width) = 1
+
       # Toggles the dropdown on a left press anywhere in {#extent} — a field's
       # affordance is its whole row, as the well advertises.
       # @param event [Mouse::DownEvent]

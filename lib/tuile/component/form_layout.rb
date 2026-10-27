@@ -196,6 +196,18 @@ module Tuile
         children.find { _1.caption.to_s == wanted }&.content
       end
 
+      # The rows {#relayout} stacks the shown items into: each item's height and
+      # the {#spacing} between them. Read from each item's `rows:`, never asked of
+      # the item, and the same at any width.
+      # @param _width [Integer]
+      # @return [Integer] `0` for a form with nothing shown.
+      def measure_rows(_width)
+        shown = children.select(&:visible?)
+        return 0 if shown.empty?
+
+        shown.sum { item_height(_1) } + (spacing * (shown.size - 1))
+      end
+
       private
 
       # Stacks the items from the top edge, each {#item_height} tall and

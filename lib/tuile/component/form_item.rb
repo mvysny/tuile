@@ -258,6 +258,24 @@ module Tuile
         super
       end
 
+      # The content's {Component#measure_rows} plus the chrome rows: a caption
+      # row above (none for an empty caption, or beside a `:left` one) and the
+      # message row. A `:left` caption narrows the width the content is asked at.
+      #
+      #   FormItem.new(TextField.new, caption: "Name").measure_rows(40)   # => 3
+      #
+      # No content or hidden content answers the chrome alone.
+      # @param width [Integer]
+      # @return [Integer, nil] `nil` when the content answers `nil`.
+      def measure_rows(width)
+        left = caption_position == :left
+        rows = ComponentUtil.measure_rows_of(content, left ? width - field_left_at(width) : width)
+        return nil if rows.nil?
+
+        caption_rows = left || caption.empty? ? 0 : 1
+        caption_rows + rows + 1
+      end
+
       protected
 
       # Divides the rect into caption, content and message — stacked, or with
@@ -359,14 +377,29 @@ module Tuile
       def left_rects
         width = rect.width
         height = rect.height
-        requested = caption_width || marked_caption.display_width
-        columns = requested.clamp(0, [width - 1 - MIN_FIELD_COLUMNS, 0].max)
-        field_left = columns.positive? ? columns + 1 : 0
+        columns = left_caption_columns(width)
+        field_left = field_left_at(width)
         message_rows = height < 2 ? 0 : 1
         content_rows = height - message_rows
         [Rect.new(0, 0, columns, [height, 1].min),
          Rect.new(field_left, 0, width - field_left, content_rows),
          Rect.new(field_left, content_rows, width - field_left, message_rows)]
+      end
+
+      # @param width [Integer] the item's width.
+      # @return [Integer] the left caption's columns, leaving the field
+      #   {MIN_FIELD_COLUMNS} and the gap column.
+      def left_caption_columns(width)
+        requested = caption_width || marked_caption.display_width
+        requested.clamp(0, [width - 1 - MIN_FIELD_COLUMNS, 0].max)
+      end
+
+      # @param width [Integer] the item's width.
+      # @return [Integer] where the field starts beside a left caption: past the
+      #   caption and its gap column, or `0` for a captionless item.
+      def field_left_at(width)
+        columns = left_caption_columns(width)
+        columns.positive? ? columns + 1 : 0
       end
     end
   end

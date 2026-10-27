@@ -85,6 +85,15 @@ module Tuile
       #   tab's, `nil` while the sheet has no tabs.
       def pane = @_pane
 
+      # The strip's one row plus the selected {#pane}'s {Component#measure_rows};
+      # a sheet with no tabs, or a hidden pane, answers just the strip.
+      # @param width [Integer]
+      # @return [Integer, nil] `nil` when the pane answers `nil`.
+      def measure_rows(width)
+        rows = ComponentUtil.measure_rows_of(@_pane, width)
+        rows && (rows + 1)
+      end
+
       # Adds a tab and the pane to show while it is selected. The first tab
       # added becomes the selection, so its pane is shown immediately.
       # @param caption [String, StyledString, nil] parsed as {Tabs::Tab#caption=}

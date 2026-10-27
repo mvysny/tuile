@@ -1,9 +1,9 @@
 # Bottom-up layout — may a component say how many rows its content needs?
 
-**Status:** stage 1 shipped: `Component#measure_rows` and `Dialog::ShrinkToContent[box]`,
-argued in `D_declared_size`, which also holds the roads it rejected. Stages 2–5 are still a
-brainstorm, though the notice (stage 3) has a chosen design, accepted by the owner as the one
-exception to top-down layout. Takes in what was `content-height.md` (the Scroller half) and #73 (wrapped rows in a
+**Status:** stages 1 and 2 shipped: `Component#measure_rows`, `Dialog::ShrinkToContent[box]` and
+an answer from every component, argued in `D_declared_size`, which also holds the roads it
+rejected. Stages 3–5 are still a brainstorm, though the notice (stage 3) has a chosen design,
+accepted by the owner as the one exception to top-down layout. Takes in what was `content-height.md` (the Scroller half) and #73 (wrapped rows in a
 scrolled stack). Every step past stage 1 amends a `D_` and the owner decides. Until then `Scroller`
 is told (`content_rows=`). Every road here adds a new value next to what already exists, so waiting
 breaks nothing.
@@ -127,7 +127,9 @@ What a lazy rows-only pull would answer, point by point:
   `main_sizes` (`box.rb`), which is already a pure function of the inner extent and each child's
   `placement` and never consults a child. A second copy of that arithmetic would drift.
 
-Every component Tuile ships, so none is left on the base by accident. "Fires from" lists the
+Every component Tuile ships, so none is left on the base by accident. The answers shipped in stage
+2, and each one's rdoc is now the truth; the table stays for stage 3's "fires from" column and the
+`Auto` rows still to come. "Fires from" lists the
 component's own mutations that call `invalidate_rows` on itself. `visible=` is the one universal
 site and is not repeated per row (the notice section says where it fires).
 
@@ -142,7 +144,7 @@ site and is not repeated per row (the notice section says where it fires).
 | `Tabs`, `MenuBar` | `1`; the menu cascade is an overlay | — |
 | `ProgressBar` | `1`: one row of bar, and any rows below are blanked | — |
 | **Content-sized leaves** | | |
-| `Label` | line count, independent of `width` (it truncates, never wraps); `""` is `0`. #73 wants a wrapping one: a `wrap:` knob, answering like `TextView` | `text=` |
+| `Label` | line count, independent of `width`; under `wrap?` (#73) the wrapped rows at `width`. `""` is `0` | `text=`, `wrap=` |
 | `TextArea` | wrapped rows at `width`, `>= 1` (`WrappedText` keeps a row for the caret). Reuses its own wrap when `width == rect.width`, and otherwise builds a fresh `WrappedText` without replacing the cached one, so an ask never throws away the paint's wrap | every edit (`text=`, `insert_text`, deletes) |
 | `TextView`, `LogTextView`, `Notification::View` | wrapped rows at `width` less the bar's columns under `:visible`, at the full `width` under `:auto` / `:gone` (it scrolls itself: the text either fits and no bar shows, or the asker capped it and it scrolls) | `text=`, `append` / `<<`, `add_line`, `remove_last_n_lines`, `replace`, `insert`, `scrollbar_visibility=` |
 | `List` (`ListDropdown::Menu` inherits it) | `items.size`, one row per item. Self-scrolling like `TextView`: under `ShrinkToContent` a short list makes a short dialog, a long one caps and scrolls | `items=` |
@@ -155,14 +157,14 @@ site and is not repeated per row (the notice section says where it fires).
 | **Passing a content child's answer on** (absent or hidden content counts `0`) | | |
 | `Slot` | the content's answer | `content=` |
 | `Panel` | `content.measure_rows(width − border) + border`; a `nil` content answer stays `nil` | `content=` |
-| `Dialog`, `InfoDialog`, `LogDialog`, `PickerDialog` | **shipped**: as `Panel`. No content or hidden content counts `0` (stage 2; the shipped answer is `nil`) | `content=` |
+| `Dialog`, `InfoDialog`, `LogDialog`, `PickerDialog` | as `Panel` | `content=` |
 | `ConfirmDialog` | **shipped**: its own message wrapped at `width − WIDTH_CHROME`, plus `HEIGHT_CHROME`; `nil` for a `Component` message | `message=` |
-| `FormItem` | `:top`: the caption row (none for an empty caption) + `content.measure_rows(width)` + the message row; `:left`: `content.measure_rows(width − field_left)` + the message row. A `nil` content answer stays `nil` | `content=`, `caption=` (the row comes and goes), `caption_position=` |
+| `FormItem` | `:above`: the caption row (none for an empty caption) + `content.measure_rows(width)` + the message row; `:left`: `content.measure_rows(width − field_left)` + the message row. A `nil` content answer stays `nil` | `content=`, `caption=` (the row comes and goes), `caption_position=` |
 | `TabSheet` | `1` for the strip + the selected pane's answer; no pane is `1`, a `nil` pane answer is `nil` | selecting, adding or removing a tab |
 | **Containers** | | |
 | `FormLayout` | `item_height` summed over the visible items, plus `spacing`; rows come from each item's `placement`, never from the item | `add`, `remove`, `constrain`, `caption_position=`, `spacing=` |
 | `Vertical` | each shown child: `Fixed[n]` → `n`, `Auto` → `child.measure_rows(its width)`, plus `spacing` and `padding`; any `Percent` / `Expand` child → `nil`, since it needs the height being computed | `add`, `remove`, `constrain`, `spacing=`, `padding=` |
-| `Horizontal` | `main_sizes` divides `width`, then the tallest shown child + `padding`: `cross:` `Fixed[n]` → `n` and the child is never asked, `Auto` → `child.measure_rows(w_i)`. A `Percent` child fills the height being computed, so it contributes nothing, and neither does an `Auto` child answering `nil`. A `List` placed `Percent` across beside a wrapped label therefore doesn't set the row's height. With no `Fixed` or `Auto` contribution the answer is `nil` | as `Vertical` |
+| `Horizontal` | `main_sizes` divides `width`, then the tallest shown child + `padding`: `cross:` `Fixed[n]` → `n` and the child is never asked, `Auto` → `child.measure_rows(w_i)`. A `Percent` child fills the height being computed, so it contributes nothing, and neither does an `Auto` child answering `nil`. A `List` placed `Percent` across beside a wrapped label therefore doesn't set the row's height. With no `Fixed` or `Auto` contribution the answer is `nil`; with nothing shown, just the `padding` | as `Vertical` |
 | **Never asked** | | |
 | `Overlay`, `ListDropdown`, `Notification` | `nil`, the base. The pane places them by their own `declared_size_in`, which reads their own state; only `Dialog`'s `ShrinkToContent` asks | — |
 | `ScreenPane` | `nil`, the base: the root, with nothing above to ask | — |
@@ -196,17 +198,10 @@ one honestly answers `nil`. `Auto` is bottom-up: the box asked, and a child with
 mistake in the tree, not a box that fills. `0` keeps the layout going and the log says why the row
 vanished; revisit if that turns out to bite.
 
-**Hidden content answers as absent content, and absent content counts `0`** (owner, 2026-10-27).
-Boxes already skip hidden children, so this concerns the components that pass a single content
-child's answer up (`Slot`, `Panel`, `Dialog`, `FormItem`, `TabSheet`) and `Scroller`'s `:content`.
-`D_visibility` makes hidden mean *gone*, exactly as detached, so hidden and absent must answer
-alike. `0` rather than `nil`, because `nil` describes content that actively fills (a
-`VerticalScrollBar`, an `Expand` child), and absent content fills nothing: an empty
-`Panel` needs its border and no more, as an all-hidden `Vertical` already sums to its padding. `nil`
-would also log the `Auto` warning on every pass for a hidden body, which is a normal state, not a
-mistake in the tree. The asker checks (`content&.visible?`, else `0`), as `Box` already does; one
-that forgets reserves the hidden content's rows, which leaves a blank gap rather than a leak,
-the direction `D_visibility` accepts.
+**Hidden content answers as absent content, and absent content counts `0`** (owner, 2026-10-27;
+shipped in stage 2 and argued in `D_declared_size`). Stage 4's `Scroller#content_rows = :content`
+asks the same way, through `ComponentUtil.measure_rows_of`. A `nil` would also log the `Auto`
+warning on every pass for a hidden body, which is a normal state, not a mistake in the tree.
 
 **`Auto` is legal exactly where the axis is height** (owner, 2026-10-27): `Vertical`'s main axis
 and `Horizontal`'s `cross:`. On `Horizontal`'s main axis or `Vertical`'s `cross:` it would need a
@@ -339,17 +334,12 @@ parent already holds, with no bookkeeping of its own.
 1. **Shipped.** `measure_rows` on `Component` (base `nil`), `Dialog` and `ConfirmDialog` answering
    it, and `Dialog::ShrinkToContent`. Re-asked every pass, so the notice stays `ConfirmDialog`'s
    own `reposition`; its `declared_size_in` is a `ShrinkToContent` half-screen box at `measured_width`.
-2. Answerers: every row of the answerers table, `Label`'s `wrap:` knob for #73 included, with
-   `main_sizes` shared between `relayout` and `measure_rows`. The catalog in `component_contract_spec`
-   gains "answers `measure_rows` as the table says", so a component added later can't sit on the
-   base `nil` unnoticed. A second check: a catalog component declaring both an
-   `extent` and a non-`nil` `measure_rows`, placed at exactly `measure_rows(w)` rows, has an `extent`
-   that tall. A field answering `1` but painting two rows would lose its second row under `Auto`.
-   `extent` and `measure_rows` stay separate otherwise. One is rows painted inside the rect given,
-   read by no container (`D_extent`); the other is rows needed before any rect, unbounded. Each
-   can differ from the other wherever the parent clamps. `Dialog` counts
-   no content or hidden content as `0` instead of answering `nil`, so a `ShrinkToContent` dialog with
-   an empty body shrinks to its border and the one-row floor; a `**Breaking:**` CHANGELOG line.
+2. **Shipped.** Every row of the answerers table, `Label`'s `wrap:` knob for #73 included, argued in
+   `D_declared_size`. `component_contract_spec` checks that every catalogued component answers a row
+   count unless its `fills` map says why it fills, and that a component declaring an `extent`, placed
+   at exactly its answer, has an extent that tall. `Dialog`'s empty body now counts `0` (a
+   `**Breaking:**` CHANGELOG line). Without `Auto`, `Horizontal` never needs its children's widths,
+   so sharing `main_sizes` with `measure_rows` moved to stage 5.
 3. The notice: `invalidate_rows` and `handle_child_rows_changed`, each answerer firing from the sites
    its table row lists, `visible=` firing on the parent, and `ConfirmDialog#message=` swapping
    `reposition` for `invalidate_rows` (`caption=` and `button` keep theirs). Each consumer adds its own row to
@@ -362,7 +352,9 @@ parent already holds, with no bookkeeping of its own.
    because less width never costs fewer rows, which greedy wrapping guarantees and every answerer
    under an `:auto` bar must keep. If it bites, `:content` refuses `:auto` until it's solved (owner).
 5. `Auto` (`Vertical` main, `Horizontal` cross), last. It has a consumer: #73 cannot be written without
-   it, because the stack has to give each wrapped row its counted height.
+   it, because the stack has to give each wrapped row its counted height. `Horizontal#measure_rows`
+   then asks each `Auto` child at its `main_sizes` share, so `main_sizes` is shared between
+   `relayout` and `measure_rows` here.
 
 ## Gates
 

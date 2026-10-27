@@ -207,7 +207,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 
 | component | what it is |
 |---|---|
-| `Label` | Static text, one row per line, no wrapping — long lines are ellipsized. Content is a `StyledString`, so ANSI passes through. |
+| `Label` | Static text, one row per line — long lines are ellipsized, or word-wrapped with `wrap: true`. Never takes focus. Content is a `StyledString`, so ANSI passes through. |
 | `TextView` | A read-only viewer for prose: word-wrapped, scrollable, appendable, and addressable in named `Region`s when you want to rewrite one part of the text in place. |
 | `ProgressBar` | A one-row bar — `█` over a `░` track — driven by `value` within a `Range`, or `indeterminate` for a bouncing sweep that owns its own ticker while on screen. |
 | `Fill` | One glyph in every cell of its rect, in a `color` that may be a live `Theme.ref`. A one-column `Fill` of `│` is a vertical rule between borderless panes, a one-row `─` a horizontal one. |

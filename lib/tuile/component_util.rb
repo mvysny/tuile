@@ -39,5 +39,17 @@ module Tuile
       cursor = cursor.parent while cursor&.visible?
       cursor.nil? && component.attached?
     end
+
+    # `child`'s {Component#measure_rows}, with absent or hidden content counting
+    # `0` — the answer a component passing one child's rows on owes:
+    #
+    #   def measure_rows(width) = ComponentUtil.measure_rows_of(content, width)
+    #
+    # Hidden is *gone* (`D_visibility`), so it answers as absent; and absent fills
+    # nothing, so it is `0` rather than the `nil` that means "I fill".
+    # @param child [Component, nil] `nil` is absent content, not an error.
+    # @param width [Integer]
+    # @return [Integer, nil] `nil` only when a shown child answers `nil`.
+    def measure_rows_of(child, width) = child&.visible? ? child.measure_rows(width) : 0
   end
 end

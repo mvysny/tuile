@@ -5198,6 +5198,14 @@ module Tuile
       # _@param_ `new_items` — one row each; rendered by {#renderer}.
       def items=: (::Array[untyped] new_items) -> void
 
+      # One row per item, at any width. A list scrolls itself, so this matters
+      # only to a parent told to ask: a short list in a
+      # {Dialog::ShrinkToContent} makes a short dialog, a long one hits the box
+      # and scrolls.
+      # 
+      # _@param_ `_width`
+      def measure_rows: (Integer _width) -> Integer
+
       # _@param_ `proc` — `(item, text_width) -> row`; see {#renderer}.
       def renderer=: ((Proc | Method) proc) -> void
 
@@ -5691,6 +5699,15 @@ module Tuile
       # _@param_ `child` — the just-detached occupant.
       def handle_child_removed: (Component child) -> void
 
+      # The occupant's {Component#measure_rows}. An empty slot, or one whose
+      # occupant is hidden, answers `0`: a parent told to ask closes the gap that
+      # a top-down parent keeps.
+      # 
+      # _@param_ `width`
+      # 
+      # _@return_ — `nil` when the occupant answers `nil`.
+      def measure_rows: (Integer width) -> Integer?
+
       def relayout: () -> void
 
       # _@return_ — the current content component.
@@ -5854,6 +5871,11 @@ module Tuile
       # selects nothing. It still *focuses*: {Mouse::Router}'s
       # click-to-focus is ungated by geometry.
       def extent: () -> Size
+
+      # _@param_ `_width`
+      # 
+      # _@return_ — `1`, the row its {#extent} declares, at any width.
+      def measure_rows: (Integer _width) -> Integer
 
       # Switches tabs on LEFT / RIGHT, consuming the key even at the ends of the
       # strip (the selection clamps). Every other key is left unhandled so it
@@ -6072,18 +6094,45 @@ module Tuile
       end
     end
 
-    # A label which shows static text. No word-wrapping; long lines are
-    # truncated with an ellipsis. Text is modeled as a {StyledString};
-    # {#text=} accepts a {String} (parsed via {StyledString.parse}, so
-    # embedded ANSI is honored) or a {StyledString} directly. {#text}
-    # always returns the {StyledString}.
+    # A label which shows static text. Long lines are truncated with an
+    # ellipsis, or word-wrapped with `wrap: true`:
+    # 
+    #   status = Label.new("Ready")                      # one line, ellipsized
+    #   finding = Label.new(explanation, wrap: true)     # a paragraph that never takes focus
+    # 
+    # Text is modeled as a {StyledString}; {#text=} accepts a {String} (parsed
+    # via {StyledString.parse}, so embedded ANSI is honored) or a
+    # {StyledString} directly. {#text} always returns the {StyledString}.
+    # 
+    # A wrapping label still never scrolls: rows past its rect are cut off, so
+    # give it the height its {#measure_rows} answers, or use a {TextView}.
     class Label < Component
       # _@param_ `text` — initial text, coerced the same way {#text=} coerces it (a `String` is parsed via {StyledString.parse}; `nil` is an empty label). Equivalent to constructing empty and assigning {#text=}.
-      def initialize: (?(String | StyledString)? text) -> void
+      # 
+      # _@param_ `wrap` — see {#wrap?}.
+      def initialize: (?(String | StyledString)? text, ?wrap: bool) -> void
 
       # _@return_ — the current text. Defaults to an empty
       # {StyledString}.
       def text: () -> StyledString
+
+      # _@return_ — whether a line wider than the rect word-wraps onto the
+      # next rows rather than being ellipsized. `false` by default.
+      def wrap?: () -> bool
+
+      # _@param_ `value` — see {#wrap?}.
+      def wrap=: (bool value) -> void
+
+      # The rows the text paints at `width`: one per line, or under {#wrap?} one
+      # per wrapped row.
+      # 
+      #   Label.new("one\ntwo").measure_rows(40)                       # => 2
+      #   Label.new("a long sentence", wrap: true).measure_rows(6)     # => 3
+      # 
+      # _@param_ `width`
+      # 
+      # _@return_ — `0` for empty text.
+      def measure_rows: (Integer width) -> Integer
 
       # Replaces the text. A `String` is parsed via {StyledString.parse}
       # (embedded ANSI is honored); a `StyledString` is used as-is; `nil` is
@@ -6110,7 +6159,7 @@ module Tuile
       def relayout: () -> void
 
       # Recomputes {@_rows} for the current text and rect width.
-      # Each line is ellipsized to fit and padded with trailing spaces out to
+      # Each row is ellipsized to fit and padded with trailing spaces out to
       # the full width, so {#repaint} is just a lookup + {Buffer#set_text} per
       # row. {@_blank_row} covers rows past the last text line.
       def update_rows: () -> void
@@ -6157,6 +6206,14 @@ module Tuile
       # 
       # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (Canvas canvas) -> void
+
+      # The content's {Component#measure_rows} inside the border, plus the
+      # border's rows. No content or hidden content answers just the border.
+      # 
+      # _@param_ `width` — the panel's width, border included.
+      # 
+      # _@return_ — `nil` when the content answers `nil`.
+      def measure_rows: (Integer width) -> Integer?
 
       def relayout: () -> void
 
@@ -6233,6 +6290,11 @@ module Tuile
       # by geometry. Same rule as {Checkbox#extent}, which documents the two
       # traps behind it.
       def extent: () -> Size
+
+      # _@param_ `_width`
+      # 
+      # _@return_ — `1`, the row its {#extent} declares, at any width.
+      def measure_rows: (Integer _width) -> Integer
 
       # Fires {#on_click} on a left click within {#extent}; `super` runs first, so
       # a click anywhere in {#rect} still focuses.
@@ -6426,9 +6488,11 @@ module Tuile
       def declared_size_in: (Size screen_size) -> Size
 
       # The content's {Component#measure_rows} at `width` less the border, plus
-      # the border's rows; `nil` when the content answers `nil` or there is none.
+      # the border's rows. No content or hidden content answers just the border.
       # 
       # _@param_ `width` — the dialog's width, border included.
+      # 
+      # _@return_ — `nil` when the content answers `nil`.
       def measure_rows: (Integer width) -> Integer?
 
       # _@return_ — a dialog opens centered.
@@ -7075,6 +7139,21 @@ module Tuile
         DEFAULT_PLACEMENT: ::Hash[Symbol, Object]
         ALIGNMENTS: ::Array[Symbol]
 
+        # The rows the shown children stack into: their {Fixed} heights, the
+        # {#spacing} between them and the {#padding}. A {Percent} or {Expand}
+        # child is a share of the height being asked for, so a box holding one
+        # fills instead.
+        # 
+        #   stack = Component::Layout::Vertical.new(spacing: 1)
+        #   stack.add(title, Component::Layout::Fixed[1])
+        #   stack.add(field, Component::Layout::Fixed[1])
+        #   stack.measure_rows(40)   # => 3: two rows and the gap between them
+        # 
+        # _@param_ `_width`
+        # 
+        # _@return_ — `nil` when a shown child's height is not {Fixed}.
+        def measure_rows: (Integer _width) -> Integer?
+
         # _@param_ `rect`
         def main_extent: (Rect rect) -> Integer
 
@@ -7113,6 +7192,22 @@ module Tuile
       class Horizontal < Tuile::Component::Layout::Box
         DEFAULT_PLACEMENT: ::Hash[Symbol, Object]
         ALIGNMENTS: ::Array[Symbol]
+
+        # The tallest shown child's {Fixed} `cross:` height, plus the {#padding}.
+        # A {Percent} `cross:` fills the row's height rather than setting it, so
+        # it adds nothing, and a row of only those fills too.
+        # 
+        #   row = Component::Layout::Horizontal.new
+        #   row.add(field, Component::Layout::Fixed[20], cross: Component::Layout::Fixed[1])
+        #   row.add(list, Component::Layout::Expand[1])   # Percent[100] across: fills
+        #   row.measure_rows(80)                          # => 1
+        # 
+        # A row with nothing shown answers just its padding.
+        # 
+        # _@param_ `_width`
+        # 
+        # _@return_ — `nil` when no shown child is {Fixed} across.
+        def measure_rows: (Integer _width) -> Integer?
 
         # _@param_ `rect`
         def main_extent: (Rect rect) -> Integer
@@ -7299,6 +7394,11 @@ module Tuile
       # {#handle_mouse_down?}, and the dropdown hangs under this rather than under the
       # unused space.
       def extent: () -> Size
+
+      # _@param_ `_width`
+      # 
+      # _@return_ — `1`, the row its {#extent} declares, at any width.
+      def measure_rows: (Integer _width) -> Integer
 
       # Toggles the dropdown on a left press anywhere in {#extent} — a field's
       # affordance is its whole row, as the well advertises.
@@ -7931,6 +8031,11 @@ module Tuile
       # mode switch invisible in the code and untestable by inspection.
       def extent: () -> Size
 
+      # _@param_ `_width`
+      # 
+      # _@return_ — `1`, the row its {#extent} declares, at any width.
+      def measure_rows: (Integer _width) -> Integer
+
       # Toggles on Space or Enter. Every other key is left unhandled so it bubbles
       # to an ancestor.
       # 
@@ -8165,6 +8270,11 @@ module Tuile
       # nothing. It still *focuses*: {Mouse::Router}'s click-to-focus is
       # ungated by geometry.
       def extent: () -> Size
+
+      # _@param_ `_width`
+      # 
+      # _@return_ — `1`, the row its {#extent} declares, at any width.
+      def measure_rows: (Integer _width) -> Integer
 
       # Closes the cascade — only on a *changed* rect, which is all this hook
       # hears: a layout re-assigning the same rect (which {Layout::Box} does on
@@ -8946,6 +9056,11 @@ module Tuile
       # hangs under this rather than under the unused space below it.
       def extent: () -> Size
 
+      # _@param_ `_width`
+      # 
+      # _@return_ — `1`, the row its {#extent} declares, at any width.
+      def measure_rows: (Integer _width) -> Integer
+
       # Declines the default's blank: `field` covers every column of the face but
       # the last, and this combo paints the `▾` into that one, so blanking would
       # only dirty a cell it is about to repaint (`D_progress_bar`).
@@ -9275,6 +9390,19 @@ module Tuile
       # _@param_ `rect` — in this component's coordinates.
       def scroll_to_visible: (?Rect rect) -> void
 
+      # The content's {Component#measure_rows} plus the chrome rows: a caption
+      # row above (none for an empty caption, or beside a `:left` one) and the
+      # message row. A `:left` caption narrows the width the content is asked at.
+      # 
+      #   FormItem.new(TextField.new, caption: "Name").measure_rows(40)   # => 3
+      # 
+      # No content or hidden content answers the chrome alone.
+      # 
+      # _@param_ `width`
+      # 
+      # _@return_ — `nil` when the content answers `nil`.
+      def measure_rows: (Integer width) -> Integer?
+
       # Divides the rect into caption, content and message — stacked, or with
       # the caption in a column beside the other two.
       def relayout: () -> void
@@ -9325,6 +9453,18 @@ module Tuile
       # 
       # _@return_ — the caption, content and message rects.
       def left_rects: () -> [Rect, Rect, Rect]
+
+      # _@param_ `width` — the item's width.
+      # 
+      # _@return_ — the left caption's columns, leaving the field
+      # {MIN_FIELD_COLUMNS} and the gap column.
+      def left_caption_columns: (Integer width) -> Integer
+
+      # _@param_ `width` — the item's width.
+      # 
+      # _@return_ — where the field starts beside a left caption: past the
+      # caption and its gap column, or `0` for a captionless item.
+      def field_left_at: (Integer width) -> Integer
 
       # Read through *this* method, never `@_caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).
@@ -9603,6 +9743,14 @@ module Tuile
       # tab's, `nil` while the sheet has no tabs.
       def pane: () -> Component?
 
+      # The strip's one row plus the selected {#pane}'s {Component#measure_rows};
+      # a sheet with no tabs, or a hidden pane, answers just the strip.
+      # 
+      # _@param_ `width`
+      # 
+      # _@return_ — `nil` when the pane answers `nil`.
+      def measure_rows: (Integer width) -> Integer?
+
       # Adds a tab and the pane to show while it is selected. The first tab
       # added becomes the selection, so its pane is shown immediately.
       # 
@@ -9750,6 +9898,17 @@ module Tuile
       # {Rect#width}; always `>= 1`, since empty text still wraps to one
       # (empty) row.
       def row_count: () -> Integer
+
+      # {#row_count} at `width` rather than the current one; `>= 1`, since the
+      # caret always has a row.
+      # 
+      # == Implementation details
+      # 
+      # At another width it wraps a fresh {WrappedText} and leaves the cache
+      # alone: replacing it would throw away the paint's wrap on every ask.
+      # 
+      # _@param_ `width`
+      def measure_rows: (Integer width) -> Integer
 
       def cursor_position: () -> Point?
 
@@ -10054,6 +10213,16 @@ module Tuile
       # _@return_ — `:gone`, `:visible`, or `:auto` — shown only while the
       # text overflows the viewport at the full width. `:gone` by default.
       def scrollbar_visibility: () -> Symbol
+
+      # The rows the text wraps to at `width`, less the columns a `:visible` bar
+      # reserves. An `:auto` bar is measured as absent: the text either fits and
+      # no bar shows, or the asker capped it and the view scrolls, so the answer
+      # never feeds back into the width.
+      # 
+      # _@param_ `width`
+      # 
+      # _@return_ — `0` for empty text.
+      def measure_rows: (Integer width) -> Integer
 
       # _@return_ — if true, mutating the text scrolls the viewport so
       # the last line stays in view — but only while the viewport is already
@@ -10414,6 +10583,12 @@ module Tuile
       # 
       # _@return_ — `0`, `1` or `2`.
       def scrollbar_columns: () -> Integer
+
+      # _@param_ `width` — the view's width.
+      # 
+      # _@return_ — what a shown bar reserves at `width`: `2`, or `1` below
+      # width 3 (see {#scrollbar_columns}).
+      def bar_columns_at: (Integer width) -> Integer
 
       # _@param_ `delta` — negative scrolls up, positive scrolls down.
       def move_scroll_top_row_by: (Integer delta) -> void
@@ -10985,6 +11160,11 @@ module Tuile
       # declines ENTER**, which then falls through to the parent — which is how
       # a scope's default button keeps working.
       def on_enter: () -> Listeners
+
+      # _@param_ `_width`
+      # 
+      # _@return_ — `1`: a single line at any width.
+      def measure_rows: (Integer _width) -> Integer
 
       def cursor_position: () -> Point?
 
@@ -11870,6 +12050,15 @@ module Tuile
       # or the matching one holds nothing.
       def field_for: (caption: (String | StyledString)) -> Component?
 
+      # The rows {#relayout} stacks the shown items into: each item's height and
+      # the {#spacing} between them. Read from each item's `rows:`, never asked of
+      # the item, and the same at any width.
+      # 
+      # _@param_ `_width`
+      # 
+      # _@return_ — `0` for a form with nothing shown.
+      def measure_rows: (Integer _width) -> Integer
+
       # Stacks the items from the top edge, each {#item_height} tall and
       # {#spacing} apart, and clips at the bottom. A hidden item gives up its
       # content rows, the fused gap row below them *and* its spacing, and
@@ -12139,6 +12328,11 @@ module Tuile
       # concepts, which is why they are reached here instead of forwarded
       # (`D_wrapping_field`).
       def list: () -> List
+
+      # _@param_ `width`
+      # 
+      # _@return_ — one row per option: the {#list}'s answer.
+      def measure_rows: (Integer width) -> Integer
 
       def relayout: () -> void
 
@@ -12587,6 +12781,11 @@ module Tuile
 
       # _@return_ — whether the sliding-block animation is showing.
       def indeterminate?: () -> bool
+
+      # _@param_ `_width`
+      # 
+      # _@return_ — `1`: the bar is one row, and rows below it are blanked.
+      def measure_rows: (Integer _width) -> Integer
 
       # Switches between the fill and the sliding block. {#value} keeps working
       # while indeterminate — it is simply not painted — so switching back shows
@@ -13533,6 +13732,11 @@ module Tuile
       # concepts, which is why they are reached here instead of forwarded
       # (`D_wrapping_field`).
       def list: () -> List
+
+      # _@param_ `width`
+      # 
+      # _@return_ — one row per option: the {#list}'s answer.
+      def measure_rows: (Integer width) -> Integer
 
       def relayout: () -> void
 
@@ -15586,6 +15790,11 @@ module Tuile
       # _@return_ — the editor's caret — the hardware cursor is
       # delegated to it.
       def cursor_position: () -> Point?
+
+      # _@param_ `_width`
+      # 
+      # _@return_ — `1`: the one-line editor's row, at any width.
+      def measure_rows: (Integer _width) -> Integer
 
       # Runs {#commit} on the falling edge, i.e. when this field leaves the focus
       # chain. Moving focus *within* a widget keeps it active, so a future
@@ -18251,6 +18460,36 @@ module Tuile
     # 
     # _@param_ `component`
     def self.effectively_visible?: (Component component) -> bool
+
+    # `child`'s {Component#measure_rows}, with absent or hidden content counting
+    # `0` — the answer a component passing one child's rows on owes:
+    # 
+    #   def measure_rows(width) = ComponentUtil.measure_rows_of(content, width)
+    # 
+    # Hidden is *gone* (`D_visibility`), so it answers as absent; and absent fills
+    # nothing, so it is `0` rather than the `nil` that means "I fill".
+    # 
+    # _@param_ `child` — `nil` is absent content, not an error.
+    # 
+    # _@param_ `width`
+    # 
+    # _@return_ — `nil` only when a shown child answers `nil`.
+    def measure_rows_of: (Component? child, Integer width) -> Integer?
+
+    # `child`'s {Component#measure_rows}, with absent or hidden content counting
+    # `0` — the answer a component passing one child's rows on owes:
+    # 
+    #   def measure_rows(width) = ComponentUtil.measure_rows_of(content, width)
+    # 
+    # Hidden is *gone* (`D_visibility`), so it answers as absent; and absent fills
+    # nothing, so it is `0` rather than the `nil` that means "I fill".
+    # 
+    # _@param_ `child` — `nil` is absent content, not an error.
+    # 
+    # _@param_ `width`
+    # 
+    # _@return_ — `nil` only when a shown child answers `nil`.
+    def self.measure_rows_of: (Component? child, Integer width) -> Integer?
   end
 
   # The event queue under a {FakeScreen}: it queues what {#submit} and {#post}
@@ -18452,6 +18691,21 @@ module Tuile
     # _@return_ — may be {Rect#empty? empty}, for a box too small to have an
     # inside.
     def content_rect: (Size size) -> Rect
+
+    # The rows the box needs around `content` at `width`: the content's at the
+    # width inside the border, plus the border's own. The {Component#measure_rows}
+    # of a bordered component:
+    # 
+    #   def measure_rows(width) = @_border_drawer.measure_rows(content, width)
+    # 
+    # Absent or hidden content answers just the border.
+    # 
+    # _@param_ `content`
+    # 
+    # _@param_ `width` — the box's width, border included.
+    # 
+    # _@return_ — `nil` when the content answers `nil`.
+    def measure_rows: (Component? content, Integer width) -> Integer?
 
     # Paints the box at `(0, 0)`, through {Canvas#set_text} / {Canvas#set_char} so
     # the border cells inherit {ComponentBackground#effective}: a
