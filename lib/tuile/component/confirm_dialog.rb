@@ -135,7 +135,9 @@ module Tuile
           end
         @_message = value
         @_body_slot.content = occupant
-        reposition
+        # The body sits in an Expand row its box never measures, so the notice
+        # stops inside; this dialog's own answer reads the message.
+        invalidate_rows
       end
 
       # Appends a button and returns it. A button with a block is an action

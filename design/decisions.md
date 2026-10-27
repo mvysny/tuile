@@ -3236,9 +3236,8 @@ coupling between the axes and it runs one way, so with the width handed down the
 0.9.0 circularity cannot form. It is asked only by a parent that was *told* to ask
 (`Dialog::ShrinkToContent`), inside that parent's own pass. `Screen` and `LayoutPass` never
 learn the word, which keeps it a pulled query rather than a channel. It is pure
-and uncached, and `nil` means "I fill what I'm handed", distinct from `0`. Nothing
-notifies the asker when the answer changes; the dialog re-asks on every pass, and
-content that changes while open calls `reposition`, as `ConfirmDialog` does.
+and uncached, and `nil` means "I fill what I'm handed", distinct from `0`. The asker
+re-asks on every pass, and what tells it a pass is owed is the notice below.
 
 A dialog asks its content at the width inside its border and adds the border's
 rows back, which is `Dialog#measure_rows`. `ConfirmDialog` overrides that answer
@@ -3266,6 +3265,33 @@ each with its reason, so a new component cannot keep the base by forgetting.
 Tab on every one. A wrapping label still never scrolls, so "Label truncates,
 TextView wraps" stays the default advice.
 
+**The notice, `invalidate_rows`, is the one exception to top-down layout**
+(owner, 2026-10-27). A mutation that may change a component's answer calls
+`invalidate_rows` on itself, which hands the parent
+`handle_child_rows_changed(child)`. The parent decides per child, from the
+constraint it already holds: mark its own pass if its `relayout` reads that child's
+rows, pass the notice on if its `measure_rows` does, else stop, which the empty
+base does. A label in a `Fixed[1]` row costs one empty call, and `Dialog → Panel →
+Label` climbs to the pane, which places the dialog again. It is a push, which the
+re-grow rule otherwise bans, admitted because it is bounded to settle:
+
+1. It fires from a mutation of the answer's inputs, never from a rect change and
+   never from being asked. A new width is answered by the pull in the pass that
+   assigned it; firing from `handle_rect_changed` would re-mark ancestors that pass
+   has already visited.
+2. It carries no value, so nothing is compared and nothing can oscillate. Marks
+   coalesce, and the pre-order drain settles a leaf-to-root chain in one round.
+3. Nothing turns rows into a width, except `Scroller`'s `:auto` bar, which settles
+   inside its own pass.
+
+Breaking any of the three is the falsifier. `visible=` fires on the *parent*,
+whose answer just lost or regained the child while the child's own did not; so
+does a `FormItem` whose caption changed, because a `FormLayout` reads the
+caption, never the item's rows. `component_contract_spec` holds both halves: a
+mutation that changes an answer fires, and a container whose answer moves with a
+child's passes that child's notice on. A container that forgets costs a stale
+layout, never a loop.
+
 Why not:
 - *`measure(available) → Size`, both axes.* It buys a width from below, which only
   a dialog wants, and a one-hop declaration covers that (`ConfirmDialog`'s
@@ -3281,6 +3307,17 @@ Why not:
   ceiling, and gives `nil` an answer that needs no fallback: the whole box.
 - *Making the confirm dialog's sizing public.* It fits `ConfirmDialog`-shaped content
   only, and each app would still write a `measured_width` per dialog.
+- *A one-hop notice, `parent.invalidate_layout`.* It breaks wherever a forwarding
+  answerer sits between asker and answerer: `Dialog → Panel → Label`, and every
+  dialog, since its asker is the pane.
+- *Climbing along asked-by-parent flags* (Flutter's `parentUsesSize`,
+  `R_layout_pass`). The same edges, recorded per pass instead of read from the
+  constraint: a flag to set and clear each pass, and a missed flag is as stale.
+- *Always climbing to the root, stopping at absorber types* (Android's
+  `requestLayout`, `R_layout_pass`). Every `Label#text=` would relayout every
+  ancestor and reach parents that never asked, and `Dialog` turned out not to absorb.
+- *No notice, re-asking every pass.* It covers SIGWINCH only, so every app with
+  changing content hand-rolled `reposition`.
 
 ## D_extent — Why does a widget declare an `extent` rather than own its whole `rect`?
 

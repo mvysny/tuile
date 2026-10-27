@@ -131,6 +131,7 @@ module Tuile
         super
         @_wrap = nil
         adjust_scroll_top_row
+        invalidate_rows
       end
 
       # @return [void]

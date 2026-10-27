@@ -85,6 +85,7 @@ module Tuile
 
           @_spacing = cells
           invalidate_layout
+          invalidate_rows
         end
 
         # @param insets [Insets, Integer] an Integer becomes a uniform inset.
@@ -96,6 +97,7 @@ module Tuile
 
           @_padding = insets
           invalidate_layout
+          invalidate_rows
         end
 
         # Adds a child — or every element of an Enumerable, all with the same

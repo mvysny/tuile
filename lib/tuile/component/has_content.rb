@@ -71,6 +71,7 @@ module Tuile
           add_child(content, at: 0) # content paints beneath any chrome a host appends
           content.invalidate
         end
+        invalidate_rows
         handle_child_removed(old) unless old.nil?
       end
 

@@ -45,6 +45,7 @@ module Tuile
         @_wrap = value
         update_rows
         invalidate
+        invalidate_rows
       end
 
       # The rows the text paints at `width`: one per line, or under {#wrap?} one
@@ -74,6 +75,7 @@ module Tuile
         @_text = new_text
         update_rows
         invalidate
+        invalidate_rows
       end
 
       # Paints the text into {#rect}.

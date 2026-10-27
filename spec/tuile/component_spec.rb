@@ -166,6 +166,58 @@ module Tuile
       end
     end
 
+    context "#invalidate_rows" do
+      # A parent recording every notice, then doing what its superclass does.
+      def spy(parent)
+        notices = []
+        parent.define_singleton_method(:handle_child_rows_changed) do |child|
+          notices << child
+          super(child)
+        end
+        notices
+      end
+
+      it "hands the notice to the parent, and the base parent stops it" do
+        outer = Component::Slot.new
+        inner = Component::Layout::Vertical.new
+        outer.content = inner
+        label = Component::Label.new("a")
+        inner.add(label, Component::Layout::Fixed[1])
+        inner_notices = spy(inner)
+        outer_notices = spy(outer)
+        label.text = "a\nb"
+        assert_equal [label], inner_notices
+        assert_empty outer_notices, "a Fixed row does not read the label's rows"
+      end
+
+      it "is a no-op without a parent" do
+        Component::Label.new("a").__send__(:invalidate_rows)
+      end
+
+      it "fires on the parent when a child is hidden or shown, since the parent's answer moved" do
+        slot = Component::Slot.new
+        stack = Component::Layout::Vertical.new
+        slot.content = stack
+        label = Component::Label.new("a")
+        stack.add(label, Component::Layout::Fixed[1])
+        notices = spy(slot)
+        label.visible = false
+        assert_equal [stack], notices
+        label.visible = true
+        assert_equal [stack, stack], notices
+      end
+
+      it "is never fired by a rect change" do
+        stack = Component::Layout::Vertical.new
+        label = Component::Label.new("a")
+        stack.add(label, Component::Layout::Fixed[1])
+        mount_at(stack, Rect.new(0, 0, 20, 5))
+        notices = spy(stack)
+        Testing.place(stack, Rect.new(0, 0, 10, 5))
+        assert_empty notices
+      end
+    end
+
     context "#extent" do
       # nil means "undeclared", which is not the same as rect.size: it is what
       # tells the default repaint to blank everything before the component

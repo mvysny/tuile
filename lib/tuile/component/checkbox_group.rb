@@ -96,6 +96,14 @@ module Tuile
       # @return [void]
       def relayout = list.rect = local_rect
 
+      # Passes the {#list}'s notice on, since {#measure_rows} is its answer.
+      # @param child [Component]
+      # @return [void]
+      def handle_child_rows_changed(child)
+        super
+        invalidate_rows if child.equal?(@_list)
+      end
+
       # @return [void]
       def handle_focus
         super

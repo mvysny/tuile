@@ -199,6 +199,16 @@ module Tuile
       end
     end
 
+    # Places an overlay whose rows changed again, since a
+    # {Component::Dialog::ShrinkToContent} box is resolved from them in
+    # {#relayout}. The content's notice stops here: it is handed the whole pane.
+    # @param child [Component]
+    # @return [void]
+    def handle_child_rows_changed(child)
+      super
+      invalidate_layout if has_overlay?(child)
+    end
+
     # Pane paints nothing itself; its children paint over the entire rect.
     # @param _canvas [Canvas] see {Component#repaint}.
     # @return [void]

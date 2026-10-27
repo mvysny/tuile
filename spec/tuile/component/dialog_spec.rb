@@ -385,14 +385,27 @@ module Tuile
       assert_equal Size.new(80, 3), open_shrunk(Fraction::HALF).rect.size
     end
 
-    it "re-asks on reposition, which is the content's notice" do
+    it "re-asks when the content fires invalidate_rows, and not before" do
       p = open_shrunk(Fraction::HALF)
       content.rows = 12
       p.flush_layout
       assert_equal 9, p.rect.height
-      p.reposition
+      content.__send__(:invalidate_rows)
       p.flush_layout
       assert_equal 14, p.rect.height
+    end
+
+    it "grows with a Label's text, through a Panel in between, with no call from the app" do
+      label = Component::Label.new("one")
+      panel = Component::Panel.new.tap { _1.content = label }
+      p = Component::Dialog.new(content: panel, declared_size: shrink(Fraction::HALF)).open
+      assert_equal 5, p.rect.height # 1 row + the panel's border + the dialog's
+      label.text = "one\ntwo\nthree"
+      Testing.loop
+      assert_equal 7, p.rect.height
+      label.visible = false
+      Testing.loop
+      assert_equal 4, p.rect.height, "hidden content counts 0; both borders stay"
     end
 
     it "re-asks at the new width on resize" do

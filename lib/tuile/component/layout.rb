@@ -318,6 +318,7 @@ module Tuile
         remove_child(child)
         @_constraints&.delete(child)
         invalidate if @_children.empty? # nothing left to paint over the gap
+        invalidate_rows
       end
 
       # @return [void]

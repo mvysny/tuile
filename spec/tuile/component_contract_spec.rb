@@ -135,6 +135,105 @@ module Tuile
       Component::Notification => "never asked: the pane places it by its own declared size"
     }
 
+    # Catalogued components whose answer is a constant, each with the reason:
+    # no mutation changes it, so none owes {Component#invalidate_rows}.
+    constant_rows = {
+      Component::Button => "one row",
+      Component::Checkbox => "one row",
+      Component::Select => "one row; the dropdown is an overlay",
+      Component::ComboBox => "one row; the dropdown is an overlay",
+      Component::TextField => "one row",
+      Component::PasswordField => "one row",
+      Component::IntegerField => "one row",
+      Component::FloatField => "one row",
+      Component::BigDecimalField => "one row",
+      Component::DateField => "one row",
+      Component::TimeField => "one row",
+      Component::DateTimeField => "both halves are cross: Fixed[1]",
+      Component::ProgressBar => "one row",
+      Component::Tabs => "one row",
+      Component::MenuBar => "one row; the cascade is an overlay"
+    }
+
+    # Every other answering component, with each mutation that changes its
+    # answer, run on a fresh catalog instance after `rows_prepare` (if any).
+    # The answer must actually change, so an entry cannot test nothing.
+    rows_prepare = {
+      Component::Label => -> { _1.text = "word " * 20 },
+      Component::FormLayout => -> { _1.caption_position = :above },
+      Component::Layout::Vertical => -> { _1.constrain(_1.children.last, Component::Layout::Fixed[1]) },
+      Component::Layout::Horizontal => lambda { |row|
+        row.constrain(row.children.first, cross: Component::Layout::Fixed[1])
+        row.constrain(row.children.last, cross: Component::Layout::Fixed[2])
+      },
+      Component::TextView => -> { _1.text = "x" * 39 },
+      Component::TabSheet => lambda { |sheet|
+        sheet.add_tab("Three", Component::Label.new("a\nb\nc"))
+        sheet.selected_index = 2
+      }
+    }
+    content_swap = { "content=" => -> { _1.content = Component::Label.new("a\nb\nc\nd") } }
+    row_mutations = {
+      Component::Label => { "text=" => -> { _1.text = "one\ntwo" }, "wrap=" => -> { _1.wrap = true } },
+      Component::List => { "items=" => -> { _1.items = %w[a] }, "lines=" => -> { _1.lines = %w[a b c d] } },
+      Component::ListDropdown::Menu => { "items=" => -> { _1.items = %w[a b c] } },
+      Component::CheckboxGroup => { "items=" => -> { _1.items = %w[a] } },
+      Component::RadioGroup => { "items=" => -> { _1.items = %w[a] } },
+      Component::Slot => content_swap.merge("content= nil" => -> { _1.content = nil }),
+      Component::Panel => content_swap,
+      Component::FormItem => {
+        "content=" => -> { _1.content = Component::TextArea.new.tap { |a| a.value = "a\nb" } },
+        "caption_position=" => -> { _1.caption_position = :left },
+        "caption=" => -> { _1.required = false; _1.caption = nil } # rubocop:disable Style/Semicolon
+      },
+      Component::FormLayout => {
+        "add" => -> { _1.add(Component::TextField.new, caption: "City") },
+        "constrain" => -> { _1.constrain(_1.children.last, 3) },
+        "remove" => -> { _1.remove(_1.children.last) },
+        "spacing=" => -> { _1.spacing = 1 },
+        "caption_position=" => -> { _1.caption_position = :left },
+        "an item's caption=" => -> { _1.children.last.caption = "Go" }
+      },
+      Component::Layout::Vertical => {
+        "add" => -> { _1.add(Component::Label.new("more"), Component::Layout::Fixed[1]) },
+        "constrain" => -> { _1.constrain(_1.children.first, Component::Layout::Fixed[3]) },
+        "remove" => -> { _1.remove(_1.children.first) },
+        "spacing=" => -> { _1.spacing = 0 },
+        "padding=" => -> { _1.padding = 1 }
+      },
+      Component::Layout::Horizontal => {
+        "add" => lambda {
+          _1.add(Component::Label.new("tall"), Component::Layout::Fixed[4], cross: Component::Layout::Fixed[3])
+        },
+        "constrain" => -> { _1.constrain(_1.children.first, cross: Component::Layout::Fixed[4]) },
+        "remove" => -> { _1.remove(_1.children.last) },
+        "padding=" => -> { _1.padding = 1 }
+      },
+      Component::TextArea => { "value=" => -> { _1.value = "a\nb\nc" } },
+      Component::TextView => {
+        "text=" => -> { _1.text = "a\nb\nc" },
+        "append" => -> { _1.append("\nmore") },
+        "add_line" => -> { _1.add_line("more") },
+        "remove_last_n_lines" => -> { _1.remove_last_n_lines(1) },
+        "replace" => -> { _1.replace(0, "a\nb\nc") },
+        "insert" => -> { _1.insert(0, "a") },
+        "scrollbar_visibility=" => -> { _1.scrollbar_visibility = :gone },
+        "a region's text=" => -> { _1.create_region.text = "a\nb" }
+      },
+      # `log` submits to the queue; the loop turn runs the append.
+      Component::LogTextView => { "log" => -> { _1.log("another").then { Testing.loop } } },
+      Component::Notification::View => { "text=" => -> { _1.text = "a\nb" } },
+      Component::Dialog => content_swap,
+      Component::InfoDialog => { "message=" => -> { _1.message = "a\nb\nc" }, "lines=" => -> { _1.lines = %w[a b c] } },
+      Component::LogDialog => { "log" => -> { _1.log("a line").then { Testing.loop } } },
+      Component::PickerDialog => content_swap,
+      Component::ConfirmDialog => { "message=" => -> { _1.message = "one\ntwo\nthree" } },
+      Component::TabSheet => {
+        "selected_index=" => -> { _1.selected_index = 0 },
+        "remove_tab" => -> { _1.remove_tab(_1.selected) }
+      }
+    }
+
     # @return [Component::Layout::Absolute] two children filling {#contract_rect}.
     def populated_absolute
       layout = Component::Layout::Absolute.new
@@ -200,6 +299,20 @@ module Tuile
       else component.parent.constrain(component, rect)
       end
       Screen.instance.flush_layout
+    end
+
+    # Places `component` at {#contract_rect} and spies on its new parent's
+    # {Component#handle_child_rows_changed}.
+    # @param component [Component]
+    # @return [Array<Component>] each child that notified the parent, in order.
+    def spy_on_rows_notices(component)
+      place(component, contract_rect)
+      notices = []
+      component.parent.define_singleton_method(:handle_child_rows_changed) do |child|
+        notices << child
+        super(child)
+      end
+      notices
     end
 
     # {#paint} with the clip taken off: the same canvas, rebuilt with
@@ -469,6 +582,65 @@ module Tuile
           else
             assert_kind_of Integer, rows,
                            "#{klass} answers nil; answer its rows, or add it to `fills` with a reason"
+          end
+        end
+      end
+    end
+
+    # `D_declared_size`: an asker re-asks only when told, so a mutation that
+    # changes the answer without {Component#invalidate_rows} leaves a dialog
+    # around it at its old height until something unrelated relays it out.
+    # Nothing raises, and the widget's own spec never measures twice.
+    context "a mutation that changes its rows fires invalidate_rows" do
+      it "lists every answering component, as mutated or as constant" do
+        answering = catalog.keys - fills.keys
+        assert_empty answering - row_mutations.keys - constant_rows.keys,
+                     "add the mutations that change its answer, or list it in `constant_rows`"
+        # A catalogued box fills, but answers once prepared with Fixed rows.
+        assert_empty (row_mutations.keys + constant_rows.keys) - catalog.keys
+        assert_empty row_mutations.keys & constant_rows.keys
+        assert_empty rows_prepare.keys - row_mutations.keys
+      end
+
+      row_mutations.each do |klass, mutations|
+        mutations.each do |name, mutate|
+          it "#{klass.name}##{name}" do
+            component = instance_exec(&catalog[klass])
+            rows_prepare[klass]&.call(component)
+            notices = spy_on_rows_notices(component)
+            before = component.measure_rows(contract_rect.width)
+            mutate.call(component)
+            refute_equal before, component.measure_rows(contract_rect.width),
+                         "#{name} leaves the answer at #{before.inspect}; pick a mutation that changes it"
+            assert(notices.any? { _1.equal?(component) }, "#{klass}##{name} changed the answer silently")
+          end
+        end
+      end
+    end
+
+    # The notice stops at the first parent that doesn't pass it on, which is
+    # the default — so a container whose answer reads a child's and forgets
+    # to pass that child's notice on leaves its own asker stale.
+    context "passes a child's notice on when its answer reads the child's" do
+      catalog.each_key do |klass|
+        it klass.name do
+          component = instance_exec(&catalog[klass])
+          notices = spy_on_rows_notices(component)
+          width = contract_rect.width
+          readers = component.children.select do |child|
+            before = component.measure_rows(width)
+            child.define_singleton_method(:measure_rows) { |_width| 97 }
+            changed = component.measure_rows(width) != before
+            child.singleton_class.remove_method(:measure_rows)
+            changed
+          end
+          skip "its answer reads no child's" if readers.empty?
+
+          readers.each do |child|
+            notices.clear
+            child.__send__(:invalidate_rows)
+            assert(notices.any? { _1.equal?(component) },
+                   "#{klass} reads #{child.class}'s rows but drops its notice")
           end
         end
       end

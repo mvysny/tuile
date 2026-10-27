@@ -1,10 +1,10 @@
 # Bottom-up layout — may a component say how many rows its content needs?
 
-**Status:** stages 1 and 2 shipped: `Component#measure_rows`, `Dialog::ShrinkToContent[box]` and
-an answer from every component, argued in `D_declared_size`, which also holds the roads it
-rejected. Stages 3–5 are still a brainstorm, though the notice (stage 3) has a chosen design,
-accepted by the owner as the one exception to top-down layout. Takes in what was `content-height.md` (the Scroller half) and #73 (wrapped rows in a
-scrolled stack). Every step past stage 1 amends a `D_` and the owner decides. Until then `Scroller`
+**Status:** stages 1–3 shipped: `Component#measure_rows`, `Dialog::ShrinkToContent[box]`, an
+answer from every component, and the rows notice (`invalidate_rows` /
+`handle_child_rows_changed`), all argued in `D_declared_size`, which also holds the roads they
+rejected. Stages 4–5 are still a brainstorm. Takes in what was `content-height.md` (the Scroller
+half) and #73 (wrapped rows in a scrolled stack). Every step past stage 1 amends a `D_` and the owner decides. Until then `Scroller`
 is told (`content_rows=`). Every road here adds a new value next to what already exists, so waiting
 breaks nothing.
 
@@ -16,8 +16,8 @@ breaks nothing.
 
 Strict top-down layout has three consumers that need an answer only their child has:
 
-- **Dialog**: shipped as `Dialog::ShrinkToContent` (`D_declared_size`). Its open half is the notice:
-  `ConfirmDialog` still calls `reposition` itself from `message=`, `caption=` and `button`.
+- **Dialog**: shipped as `Dialog::ShrinkToContent` with the notice (`D_declared_size`).
+  `ConfirmDialog` keeps `reposition` only for `caption=` and `button`, which change its width.
 - **Scroller**: `content_rows=` is assigned by the app (`D_scroller`). Add a field to the form inside
   and the last row is unreachable until someone re-assigns it, and nothing detects that.
 - **Box**: no `Auto` (`D_box_layouts`), so a `Label` whose text sets its height takes a `Fixed[n]`
@@ -128,8 +128,8 @@ What a lazy rows-only pull would answer, point by point:
   `placement` and never consults a child. A second copy of that arithmetic would drift.
 
 Every component Tuile ships, so none is left on the base by accident. The answers shipped in stage
-2, and each one's rdoc is now the truth; the table stays for stage 3's "fires from" column and the
-`Auto` rows still to come. "Fires from" lists the
+2 and the notices in stage 3, and each one's rdoc is now the truth; the table stays for the `Auto`
+rows still to come. "Fires from" lists the
 component's own mutations that call `invalidate_rows` on itself. `visible=` is the one universal
 site and is not repeated per row (the notice section says where it fires).
 
@@ -159,7 +159,7 @@ site and is not repeated per row (the notice section says where it fires).
 | `Panel` | `content.measure_rows(width − border) + border`; a `nil` content answer stays `nil` | `content=` |
 | `Dialog`, `InfoDialog`, `LogDialog`, `PickerDialog` | as `Panel` | `content=` |
 | `ConfirmDialog` | **shipped**: its own message wrapped at `width − WIDTH_CHROME`, plus `HEIGHT_CHROME`; `nil` for a `Component` message | `message=` |
-| `FormItem` | `:above`: the caption row (none for an empty caption) + `content.measure_rows(width)` + the message row; `:left`: `content.measure_rows(width − field_left)` + the message row. A `nil` content answer stays `nil` | `content=`, `caption=` (the row comes and goes), `caption_position=` |
+| `FormItem` | `:above`: the caption row (none for an empty caption) + `content.measure_rows(width)` + the message row; `:left`: `content.measure_rows(width − field_left)` + the message row. A `nil` content answer stays `nil` | `content=`, and every `invalidate_geometry` (`caption=`, `caption_position=`, `caption_width=`, `required=`), which tells the parent too |
 | `TabSheet` | `1` for the strip + the selected pane's answer; no pane is `1`, a `nil` pane answer is `nil` | selecting, adding or removing a tab |
 | **Containers** | | |
 | `FormLayout` | `item_height` summed over the visible items, plus `spacing`; rows come from each item's `placement`, never from the item | `add`, `remove`, `constrain`, `caption_position=`, `spacing=` |
@@ -217,37 +217,9 @@ ceiling, a different shape from either.
 
 ### The notice: who re-asks when the answer changes
 
-`ConfirmDialog`'s `reposition` calls are the notice, hand-rolled. Generalized (owner, 2026-10-27):
-**a value-free mark that climbs along the edges where a parent's arithmetic reads the child's rows,
-and stops at the first edge where it doesn't.** The roads it beat are rows 10–13 of the table below.
-
-**Accepted as the one exception to top-down layout** (owner, 2026-10-27): calling
-`parent.handle_child_rows_changed` is not the channel `D_declared_size` bans, because it is bounded
-to settle. Only rows travel up, and rows never flow back into a width. Three conditions keep that
-true, and breaking any of them is the falsifier the `D_declared_size` amendment carries:
-
-- **Content changes fire it, width changes don't.** A mutation fires once, and the climb ends at the
-  root or the first edge that doesn't read the child's rows. A width change is answered by the pull
-  in the `relayout` that set the width; firing from it would leave settling to the drain cap.
-- **It carries no value**, so nothing is compared and nothing can oscillate. Marks coalesce, and a
-  pre-order drain settles them in one round.
-- **Nothing turns rows into a width**, except `Scroller`'s `:auto` scrollbar, which settles inside
-  its own `relayout` (stage 4).
-
-**It fires from a mutation of the answer's own inputs**, never from a change of rect and never
-from being asked. **A component whose own answer may have changed calls `invalidate_rows` on
-itself**, from `text=`, `add`, `content=` and the like (the answerers table lists every site), the
-way it calls `invalidate`. **`visible=` is the exception: it calls `parent&.invalidate_rows`**,
-because hiding a child changes the *parent's* answer, not the child's. Calling the parent's hook
-with the hidden child instead would be wrong: a `Vertical` stops on a `Fixed` child, yet its own sum
-just lost that child's rows. Marking the parent, which `visible=` already does, is not enough when
-the parent passes its answer up (a dialog's asker is the pane). A width changes only inside the `relayout` of the parent that assigned it.
-If that parent's arithmetic depends on rows, it asks `measure_rows` at the new width in that same
-`relayout`, and the query is pure, so it recurses through any intermediates and the answer is already
-right. Firing from `handle_rect_changed` would mark ancestors the round has already visited. That
-costs an extra round per resize, and it opens a feedback path toward `LayoutPass::MAX_ROUNDS`
-(a scrollbar appears, the content narrows, more rows wrap). Firing from being asked re-marks the
-asker on every pass.
+**Shipped in stage 3** and argued in `D_declared_size`: the three conditions that keep it bounded,
+its falsifier, and the roads it beat (one hop, `parentUsesSize` flags, climbing to absorber types,
+none). What stays here is the per-parent table, which stages 4 and 5 each extend by a row.
 
 **The parent decides, per child, from that child's constraint.** A container is not an absorber or a
 forwarder as a whole. A `Vertical` that gives a label `Fixed[3]` never reads its rows, but the same
@@ -277,7 +249,7 @@ Every component with children; a leaf receives no notice.
 | `TabSheet` | the selected pane | — (the pane gets the rows under the strip) | ✓ |
 | `TabSheet` | the strip | — | — (always one row) |
 | `CheckboxGroup`, `RadioGroup` | the composed `List` | — (the list gets the whole rect) | ✓ |
-| `FormLayout` | an item | — | — (rows come from the item's `placement`, never from the item) |
+| `FormLayout` | an item | — | — (rows come from the item's `placement`). Its answer does read the item's caption, so `FormItem#invalidate_geometry` fires on the form directly, as `visible=` does |
 | `Scroller` | content, with `:content` | ✓ | — (its answer is `nil`) |
 | `Scroller` | content, told `content_rows` | — | — |
 | `TextView`, `List`, `Scroller` | the `VerticalScrollBar` | — | — |
@@ -286,48 +258,11 @@ Every component with children; a leaf receives no notice.
 | `ScreenPane` | content | — | — |
 | `Layout`, `Absolute` | any | — | — |
 
-`Dialog` passes the notice on rather than absorbing it: its box is resolved in `ScreenPane`'s
-`relayout` (`Placement#rect_for` → `declared_size_in` → `measure_rows`), which is why `Overlay#reposition`
-is `parent&.invalidate_layout`. `ConfirmDialog#message=` then calls `invalidate_rows` and the pane
-marks itself. `caption=` and `button` keep `reposition`, because what they change is the *width*
-`ConfirmDialog` declares (`measured_width`: the caption and the button row), and fitting a width
-stays its own one-hop arithmetic. Firing a rows notice for a width would misuse it.
-
-```ruby
-# Component — an answerer calls this from a state mutation, never from a rect change
-def invalidate_rows = parent&.__send__(:handle_child_rows_changed, self)
-
-# base: a top-down parent; the child's rows feed nothing here
-protected def handle_child_rows_changed(_child); end
-
-# Vertical
-protected def handle_child_rows_changed(child)
-  super
-  return unless placement(child)[:main].is_a?(Auto)
-
-  invalidate_layout
-  invalidate_rows
-end
-```
-
-- **It carries no value.** The parent pulls the answer in its next pass. A value would be 0.9.0's
-  push again, and could only be counted at a width already assigned, which is the
-  lay-out-then-read road `D_declared_size` rejected.
-- **It fits the deferred pass unchanged.** It only marks. `rect=` returns early on an unchanged rect,
-  so a relayout that changes nothing costs arithmetic and no paint. `LayoutPass.drain_round` walks
-  pre-order, so a chain marked from leaf to root settles in one round.
-- **What a mistake costs: a stale layout.** Stopping is the default, so a container that should pass
-  the notice on and doesn't leaves its asker stale. Two things contain it. The decision sits in the
-  same container, reading the same constraint, as the `measure_rows` that asks the child. And it is
-  checkable (stage 3): a container whose own answer changes when a child's does must have passed
-  the notice on.
-- **The cost stays where the opt-ins are.** A label in `Fixed[1]` stops at its parent, so a status
-  line's `text=` relayouts nothing. Only `Auto`, `ShrinkToContent` and `:content` edges carry the
-  notice.
-
-`invalidate_layout` deliberately doesn't climb (`D_deferred_layout`). `invalidate_rows` is a second
-verb that climbs only along measuring edges, and which edges those are follows from constraints the
-parent already holds, with no bookkeeping of its own.
+`Dialog` passes the notice on rather than absorbing it, because its box is resolved in
+`ScreenPane`'s `relayout` (`Placement#rect_for` → `declared_size_in` → `measure_rows`).
+`ConfirmDialog#message=` calls `invalidate_rows`; `caption=` and `button` keep `reposition`,
+because they change the *width* it declares (`measured_width`), and fitting a width stays its own
+one-hop arithmetic.
 
 ### Staging
 
@@ -340,12 +275,14 @@ parent already holds, with no bookkeeping of its own.
    at exactly its answer, has an extent that tall. `Dialog`'s empty body now counts `0` (a
    `**Breaking:**` CHANGELOG line). Without `Auto`, `Horizontal` never needs its children's widths,
    so sharing `main_sizes` with `measure_rows` moved to stage 5.
-3. The notice: `invalidate_rows` and `handle_child_rows_changed`, each answerer firing from the sites
-   its table row lists, `visible=` firing on the parent, and `ConfirmDialog#message=` swapping
-   `reposition` for `invalidate_rows` (`caption=` and `button` keep theirs). Each consumer adds its own row to
-   the hook when it lands (`Scroller` at 4, `Auto` at 5). Two `component_contract_spec` checks:
-   "non-`nil` `measure_rows` ⇒ a mutation that changes it calls `invalidate_rows`", and "a container
-   whose `measure_rows` changes when a child's answer changes passes that child's notice on".
+3. **Shipped.** `invalidate_rows` and `handle_child_rows_changed`, each answerer firing from the
+   sites its table row lists, `visible=` firing on the parent, and `ConfirmDialog#message=` swapping
+   `reposition` for `invalidate_rows`. `HasContent#content=` and `ConstraintMap#[]=` are the shared
+   sites, so a box's `add` and `constrain` fire without a call of their own. `component_contract_spec`
+   checks both halves: each listed mutation that changes an answer fires (`row_mutations`, or
+   `constant_rows` with a reason), and a container whose answer moves when a stubbed child's does
+   passes that child's notice on. Each consumer adds its own row to the hook when it lands
+   (`Scroller` at 4, `Auto` at 5).
 4. `Scroller#content_rows = :content`, which was `content-height.md`'s goal. Under `:auto` the bar is
    the one place rows decide a width, and the scroller settles it in one `relayout`: measure at full
    width, show the bar if that outgrows the viewport, then measure at `inner_width`. That holds
@@ -355,6 +292,10 @@ parent already holds, with no bookkeeping of its own.
    it, because the stack has to give each wrapped row its counted height. `Horizontal#measure_rows`
    then asks each `Auto` child at its `main_sizes` share, so `main_sizes` is shared between
    `relayout` and `measure_rows` here.
+   If a stack of many `Auto` children profiles slow, cache **on the asker**: the box keeps each
+   child's last answer and re-measures only the child that notified, since it assigns the width.
+   Not on the answerer: it doesn't know the width it will be asked at (`Scroller :auto` asks at
+   two), a suppressed notice is a silent stale layout, and `measure_rows` would stop being pure.
 
 ## Gates
 
@@ -363,13 +304,13 @@ parent already holds, with no bookkeeping of its own.
   `Screen` never calls it. A measurement *phase* the framework runs over the whole tree is the
   falsifier.
 - **`D_declared_size`' re-grow rule** ("optional, read-only, caller-side query, never a channel the
-  framework consults"). The query passes. The notice is a push, which `D_scroller` calls "the
-  banned channel". The owner accepted it as an exception because it is bounded to settle (the
-  notice section above); the `D_declared_size` amendment carries that argument and its falsifier.
-- **AGENTS.md's Layout section** says "a component never advertises how big it wants to be" and
-  "the deleted bottom-up channel must not return under a new name". Stage 1 can be argued to fit:
-  the component answers, it doesn't advertise, and only rows. Stage 3 or 5 rewrites both lines,
-  and book ch3's "What Tuile deliberately doesn't have" with them.
+  framework consults"). The query passes. The notice is a push, accepted as the one exception
+  because it is bounded to settle; `D_declared_size` carries that argument and its falsifier, and
+  AGENTS.md's Layout section the line. `D_scroller` still calls a push "the banned channel"; stage
+  4 amends it.
+- **AGENTS.md's Layout section** says "a component never advertises how big it wants to be". The
+  answer and the notice fit it (the component answers, it doesn't advertise, and only rows); stage
+  5 rewrites it, and book ch3's "What Tuile deliberately doesn't have" with it.
 - **COP:** both sides stay self-sufficient and data flows up. Fine.
 
 ## Roads not in the sketch
@@ -382,10 +323,6 @@ parent already holds, with no bookkeeping of its own.
 | 6 | eager `content_size` again | 0.9.0's channel, rejected for point 1 above |
 | 7 | a dedicated stack container whose every child is implicitly counted, instead of `Auto` | `Auto` under another name, plus a second vertical container that copies `Box`'s spacing, padding and visibility rules |
 | 9 | `Auto` on `Horizontal`'s main axis (a width from the child) | needs the both-axes query `D_declared_size` rejects; a non-wrapping row of fixed-width widgets takes `Fixed[n]` |
-| 10 | notice: one hop, `parent&.invalidate_layout` (`content-height.md`'s road 3) | breaks wherever a forwarding answerer sits between asker and answerer: `Dialog → Panel → Label`, and every dialog, since its asker is the pane |
-| 11 | notice: climb along *asked-by-parent* flags (Flutter's `parentUsesSize`, `R_layout_pass`) | the same edges, recorded per pass instead of read from the constraint: a flag to set and clear each pass, and a missed flag is just as stale |
-| 12 | notice: always climb to the root, stopping at absorber *types* (`Scroller`, `Dialog`; Android's `requestLayout`, `R_layout_pass`) | a forgotten absorber only costs time, but every `Label#text=` relayouts every ancestor, it reaches parents that never asked (weakening the gate), and `Dialog` turned out not to absorb |
-| 13 | notice: none, re-ask every pass | covers SIGWINCH only; stage 1, where `ConfirmDialog` keeps its hand-rolled `reposition` |
 
 ## Open questions
 
@@ -396,16 +333,13 @@ cycles raises after `LayoutPass::MAX_ROUNDS` rounds).
 
 ## Graduation owes
 
-- `D_scroller` (tracking mode) and, if `Auto` lands, `D_box_layouts`; the climbing notice is a
-  further `D_declared_size` amendment. The asymmetry section is the `D_` entry's core.
-- AGENTS.md's two Layout lines, book ch3's omissions list and "**there is no `Auto`.**" in its box
+- `D_scroller` (tracking mode) and, if `Auto` lands, `D_box_layouts`. The asymmetry section is the
+  `D_` entry's core.
+- AGENTS.md's "never advertises" Layout line, book ch3's omissions list and "**there is no `Auto`.**" in its box
   section, and the first reason in `D_declared_size`'s rejected-`auto_size` bullet (it cites
   `D_box_layouts`' ban; the `Notification` reason still holds), rewritten together.
-- rdoc on `Component#measure_rows`, `#invalidate_rows`, `#handle_child_rows_changed`, each answerer,
-  `Dialog#declared_size=` and `Scroller#content_rows=`.
-- An AGENTS.md Layout line: the rows notice fires from a mutation of the answer's inputs, never
-  from a rect change, and the parent decides per child whether it climbs.
-- The four registrations for any changed responsibility, plus the contract-spec check above.
+- rdoc on `Scroller#content_rows=` and the `Auto` constraint.
+- The four registrations for any changed responsibility.
 - The toolkit table below → one `R_` entry with provenance markers.
 - Issue #73 closed with a link.
 

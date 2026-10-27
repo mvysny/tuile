@@ -115,9 +115,9 @@ module Tuile
     #
     # Asked by a parent that was *told* to ask ({Dialog::ShrinkToContent}), inside its
     # own pass, and by nothing else — the re-grow rule's caller-side query
-    # (`D_declared_size`). Nobody is notified when the answer changes: the asker
-    # re-asks on its next pass, so a mutation that changes it owes the asker a
-    # mark ({Overlay#reposition} for a dialog).
+    # (`D_declared_size`). **An override owes {#invalidate_rows} from every
+    # mutation that can change its answer**, the way a paint input owes
+    # {#invalidate}; that notice is what gets the asker to ask again.
     #
     # == Implementation details
     #
@@ -408,6 +408,8 @@ module Tuile
       # it left behind.
       parent&.invalidate
       parent&.invalidate_layout
+      # The parent's answer lost (or regained) this child; ours did not change.
+      parent&.invalidate_rows
       repair_focus_after_hiding unless value
       walk_tree { |c| screen.invalidate(c) } if attached?
     end
@@ -1195,6 +1197,50 @@ module Tuile
       @_layout_dirty = true
       screen.invalidate_layout(self) if attached?
     end
+
+    # Tells the parent that this component's {#measure_rows} answer may have
+    # changed, so whatever asks it can ask again:
+    #
+    #   def text=(value)
+    #     @text = value
+    #     invalidate          # the ink changed
+    #     invalidate_rows     # and maybe the rows it needs
+    #   end
+    #
+    # The parent's {#handle_child_rows_changed} decides whether the notice goes
+    # further, so a label in a `Fixed[1]` row costs one empty call. It carries
+    # no value: the asker pulls the answer in its next pass.
+    #
+    # **Fire it from a mutation of the answer's own inputs, never from a rect
+    # change and never from being asked.** A new width is answered by the
+    # parent that assigned it, which asks at that width in the same pass;
+    # firing from {#handle_rect_changed} would re-mark ancestors that pass has
+    # already visited. {#visible=} fires it on the parent, whose answer just
+    # gained or lost this child. See `D_declared_size`.
+    # @return [void]
+    def invalidate_rows = parent&.__send__(:handle_child_rows_changed, self)
+
+    # Called with the child that fired {#invalidate_rows}. The base body stops
+    # the notice there, which is right for any parent that never reads a
+    # child's rows. An override asks two questions of *that* child, from the
+    # constraint it already holds for it:
+    #
+    #   protected def handle_child_rows_changed(child)
+    #     super
+    #     return unless child.equal?(content)
+    #
+    #     invalidate_rows      # my measure_rows reads its answer: pass it on
+    #   end
+    #
+    # Does my {#relayout} read this child's rows? Then {#invalidate_layout}.
+    # Does my {#measure_rows} read them? Then {#invalidate_rows}. Neither, and
+    # the notice stops.
+    #
+    # Reached through `__send__`, so an override may be any visibility
+    # (`D_hook_visibility`).
+    # @param _child [Component] the child whose answer may have changed.
+    # @return [void]
+    def handle_child_rows_changed(_child); end
 
     # Assigns every child's rect, and is the only place a container may.
     #

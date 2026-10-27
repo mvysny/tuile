@@ -187,6 +187,16 @@ module Tuile
         screen.focused = @_strip if attached? && screen.focused.equal?(self)
       end
 
+      protected
+
+      # Passes the selected {#pane}'s notice on; the strip is always one row.
+      # @param child [Component]
+      # @return [void]
+      def handle_child_rows_changed(child)
+        super
+        invalidate_rows if child.equal?(@_pane)
+      end
+
       private
 
       # Makes the visible pane match `strip.selected`, swapping if it doesn't.
@@ -207,6 +217,7 @@ module Tuile
           wanted.invalidate
         end
         invalidate
+        invalidate_rows
         handle_child_removed(old) unless old.nil?
       end
 

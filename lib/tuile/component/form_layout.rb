@@ -97,6 +97,7 @@ module Tuile
 
         @_caption_position = position
         invalidate_layout
+        invalidate_rows
       end
 
       # Fixes the left caption column, or with nil fits it to the widest caption.
@@ -121,6 +122,7 @@ module Tuile
 
         @_spacing = rows
         invalidate_layout
+        invalidate_rows
       end
 
       # Wraps `field` in a {FormItem}, adds it, and re-runs the layout.

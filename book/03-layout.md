@@ -497,9 +497,12 @@ wrong for a paragraph.
 > it to. A component that has no answer returns `nil` (the default, and a
 > `Scroller`'s: it fills whatever it gets), and the dialog keeps the whole box.
 >
-> The answer is re-asked on every layout pass and at no other time, so
-> content whose rows change while the dialog is open calls
-> `dialog.reposition`. When you know the right size yourself — a short
+> The answer is re-asked on every layout pass, and content whose rows
+> change while the dialog is open says so itself: a `Label#text=` or a
+> `TextView#append` notifies its parent, a `Panel` in between passes the
+> notice on, and the dialog is placed again. A component of your own that
+> answers `measure_rows` calls `invalidate_rows` wherever its answer may
+> have changed. When you know the right size yourself — a short
 > picker whose items you own — set it:
 > `dialog.declared_size = Tuile::Size.new(longest_item + 2, [items.size, 8].min + 2)`,
 > the 2s being the border.

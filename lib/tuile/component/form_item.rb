@@ -291,6 +291,15 @@ module Tuile
         refresh_chrome
       end
 
+      # Passes the content's notice on; the caption and message labels are
+      # chrome whose rows this item owns.
+      # @param child [Component]
+      # @return [void]
+      def handle_child_rows_changed(child)
+        super
+        invalidate_rows if child.equal?(content)
+      end
+
       # @return [void]
       def handle_theme_changed
         super
@@ -345,10 +354,16 @@ module Tuile
       # the parent's — a {FormLayout} sizes the item and its caption column from
       # it, and re-imposes its own position and width. Inside the form's own
       # pass the second mark is dropped, as it is written before any placement.
+      #
+      # The rows notice goes to both too: the shape is in this item's answer,
+      # and a {FormLayout}'s answer reads the caption itself, never the item's
+      # rows — so, as with {Component#visible=}, the parent is told directly.
       # @return [void]
       def invalidate_geometry
         invalidate_layout
+        invalidate_rows
         parent&.invalidate_layout
+        parent&.invalidate_rows
       end
 
       # Divides {Component#rect} top-down. A part with no row left gets a rect

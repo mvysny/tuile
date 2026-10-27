@@ -143,6 +143,7 @@ module Tuile
         update_scroll_top_row_if_auto_scroll
         invalidate
         invalidate_layout
+        invalidate_rows
       end
 
       # Creates a new empty {Region} at the spatial tail of the document
@@ -205,6 +206,7 @@ module Tuile
         update_scroll_top_row_if_auto_scroll
         invalidate
         invalidate_layout # `@rows` grew, and the bar's row_count follows it
+        invalidate_rows
       end
 
       # Verbatim append, returning `self` for chainability (`view << a << b`).
@@ -354,6 +356,7 @@ module Tuile
         rewrap
         invalidate
         invalidate_layout # the bar's rect appears or collapses
+        invalidate_rows   # a `:visible` bar narrows the measured width
       end
 
       # Sets `auto_scroll`. If true, re-engages tailing and immediately
@@ -881,6 +884,7 @@ module Tuile
         update_scroll_top_row_if_auto_scroll
         invalidate
         invalidate_layout
+        invalidate_rows
       end
 
       # Gated on {#following?}: once the user scrolls up off the bottom the

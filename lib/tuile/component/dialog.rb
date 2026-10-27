@@ -75,8 +75,9 @@ module Tuile
       #   Dialog::ShrinkToContent[Size.new(60, 20)]   # 60 wide, 20 rows at most
       #
       # Content answering `nil` (no content height) takes the whole box. The
-      # question is re-asked on every layout pass and nothing else: content
-      # whose rows change while open calls {Dialog#reposition}.
+      # question is re-asked on every layout pass, and content whose rows change
+      # while open says so itself ({Component#invalidate_rows}), so a growing
+      # label grows the dialog with no call from the app.
       #
       # @!attribute [r] box
       #   @return [Size, Fraction] the ceiling, border included, resolved as
@@ -257,6 +258,15 @@ module Tuile
       # @return [void]
       def relayout
         content&.rect = content_rect
+      end
+
+      # Passes the content's notice on to the pane, which resolves a
+      # {ShrinkToContent} box from {#measure_rows} in its own pass.
+      # @param child [Component]
+      # @return [void]
+      def handle_child_rows_changed(child)
+        super
+        invalidate_rows if child.equal?(content)
       end
 
       # The interior the content fills, inside the border. One rect for both

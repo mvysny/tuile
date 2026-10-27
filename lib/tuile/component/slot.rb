@@ -55,6 +55,14 @@ module Tuile
 
       # @return [void]
       def relayout = content&.rect = local_rect
+
+      # Passes the occupant's notice on, since {#measure_rows} is its answer.
+      # @param child [Component]
+      # @return [void]
+      def handle_child_rows_changed(child)
+        super
+        invalidate_rows if child.equal?(content)
+      end
     end
   end
 end

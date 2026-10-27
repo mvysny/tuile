@@ -3919,9 +3919,9 @@ module Tuile
     # 
     # Asked by a parent that was *told* to ask ({Dialog::ShrinkToContent}), inside its
     # own pass, and by nothing else — the re-grow rule's caller-side query
-    # (`D_declared_size`). Nobody is notified when the answer changes: the asker
-    # re-asks on its next pass, so a mutation that changes it owes the asker a
-    # mark ({Overlay#reposition} for a dialog).
+    # (`D_declared_size`). **An override owes {#invalidate_rows} from every
+    # mutation that can change its answer**, the way a paint input owes
+    # {#invalidate}; that notice is what gets the asker to ask again.
     # 
     # == Implementation details
     # 
@@ -4775,6 +4775,49 @@ module Tuile
     # Once a child is placed, the division may already be stale, so a later
     # mark is kept and costs a second pass.
     def invalidate_layout: () -> void
+
+    # Tells the parent that this component's {#measure_rows} answer may have
+    # changed, so whatever asks it can ask again:
+    # 
+    #   def text=(value)
+    #     @text = value
+    #     invalidate          # the ink changed
+    #     invalidate_rows     # and maybe the rows it needs
+    #   end
+    # 
+    # The parent's {#handle_child_rows_changed} decides whether the notice goes
+    # further, so a label in a `Fixed[1]` row costs one empty call. It carries
+    # no value: the asker pulls the answer in its next pass.
+    # 
+    # **Fire it from a mutation of the answer's own inputs, never from a rect
+    # change and never from being asked.** A new width is answered by the
+    # parent that assigned it, which asks at that width in the same pass;
+    # firing from {#handle_rect_changed} would re-mark ancestors that pass has
+    # already visited. {#visible=} fires it on the parent, whose answer just
+    # gained or lost this child. See `D_declared_size`.
+    def invalidate_rows: () -> void
+
+    # Called with the child that fired {#invalidate_rows}. The base body stops
+    # the notice there, which is right for any parent that never reads a
+    # child's rows. An override asks two questions of *that* child, from the
+    # constraint it already holds for it:
+    # 
+    #   protected def handle_child_rows_changed(child)
+    #     super
+    #     return unless child.equal?(content)
+    # 
+    #     invalidate_rows      # my measure_rows reads its answer: pass it on
+    #   end
+    # 
+    # Does my {#relayout} read this child's rows? Then {#invalidate_layout}.
+    # Does my {#measure_rows} read them? Then {#invalidate_rows}. Neither, and
+    # the notice stops.
+    # 
+    # Reached through `__send__`, so an override may be any visibility
+    # (`D_hook_visibility`).
+    # 
+    # _@param_ `_child` — the child whose answer may have changed.
+    def handle_child_rows_changed: (Component _child) -> void
 
     # Assigns every child's rect, and is the only place a container may.
     # 
@@ -5710,6 +5753,11 @@ module Tuile
 
       def relayout: () -> void
 
+      # Passes the occupant's notice on, since {#measure_rows} is its answer.
+      # 
+      # _@param_ `child`
+      def handle_child_rows_changed: (Component child) -> void
+
       # _@return_ — the current content component.
       def content: () -> Component?
 
@@ -6217,6 +6265,11 @@ module Tuile
 
       def relayout: () -> void
 
+      # Passes the content's notice on, since {#measure_rows} reads its answer.
+      # 
+      # _@param_ `child`
+      def handle_child_rows_changed: (Component child) -> void
+
       # The interior the content fills, inside the border. One rect for both
       # passes: what {#relayout} assigns the content, and what {#repaint} blanks
       # when there is no content to cover it.
@@ -6523,6 +6576,12 @@ module Tuile
 
       def relayout: () -> void
 
+      # Passes the content's notice on to the pane, which resolves a
+      # {ShrinkToContent} box from {#measure_rows} in its own pass.
+      # 
+      # _@param_ `child`
+      def handle_child_rows_changed: (Component child) -> void
+
       # The interior the content fills, inside the border. One rect for both
       # passes: what {#relayout} assigns the content, and what {#repaint} blanks
       # when there is no content to cover it.
@@ -6565,8 +6624,9 @@ module Tuile
       #   Dialog::ShrinkToContent[Size.new(60, 20)]   # 60 wide, 20 rows at most
       # 
       # Content answering `nil` (no content height) takes the whole box. The
-      # question is re-asked on every layout pass and nothing else: content
-      # whose rows change while open calls {Dialog#reposition}.
+      # question is re-asked on every layout pass, and content whose rows change
+      # while open says so itself ({Component#invalidate_rows}), so a growing
+      # label grows the dialog with no call from the app.
       # 
       # @!attribute [r] box
       #   @return [Size, Fraction] the ceiling, border included, resolved as
@@ -7272,8 +7332,10 @@ module Tuile
         # _@return_ — the child's entry.
         def fetch: (Component child) -> Object
 
-        # Constrains a child and marks the owner as owing a
-        # {Component#relayout}; writing the entry it already has marks nothing.
+        # Constrains a child, marks the owner as owing a {Component#relayout},
+        # and fires its {Component#invalidate_rows}, since a constraint is an
+        # input to its {Component#measure_rows} too. Writing the entry it already
+        # has does neither.
         # 
         # _@param_ `child` — a child of the owner.
         # 
@@ -9407,6 +9469,12 @@ module Tuile
       # the caption in a column beside the other two.
       def relayout: () -> void
 
+      # Passes the content's notice on; the caption and message labels are
+      # chrome whose rows this item owns.
+      # 
+      # _@param_ `child`
+      def handle_child_rows_changed: (Component child) -> void
+
       def handle_theme_changed: () -> void
 
       def handle_attached: () -> void
@@ -9431,6 +9499,10 @@ module Tuile
       # the parent's — a {FormLayout} sizes the item and its caption column from
       # it, and re-imposes its own position and width. Inside the form's own
       # pass the second mark is dropped, as it is written before any placement.
+      # 
+      # The rows notice goes to both too: the shape is in this item's answer,
+      # and a {FormLayout}'s answer reads the caption itself, never the item's
+      # rows — so, as with {Component#visible=}, the parent is told directly.
       def invalidate_geometry: () -> void
 
       # Divides {Component#rect} top-down. A part with no row left gets a rect
@@ -9811,6 +9883,11 @@ module Tuile
       # 
       # _@param_ `child`
       def handle_child_removed: (Component child) -> void
+
+      # Passes the selected {#pane}'s notice on; the strip is always one row.
+      # 
+      # _@param_ `child`
+      def handle_child_rows_changed: (Component child) -> void
 
       # Makes the visible pane match `strip.selected`, swapping if it doesn't.
       # Idempotent and the sole writer of `@_pane`: it derives everything from
@@ -12336,6 +12413,11 @@ module Tuile
 
       def relayout: () -> void
 
+      # Passes the {#list}'s notice on, since {#measure_rows} is its answer.
+      # 
+      # _@param_ `child`
+      def handle_child_rows_changed: (Component child) -> void
+
       def handle_focus: () -> void
 
       # _@return_ — the presented items.
@@ -13739,6 +13821,11 @@ module Tuile
       def measure_rows: (Integer width) -> Integer
 
       def relayout: () -> void
+
+      # Passes the {#list}'s notice on, since {#measure_rows} is its answer.
+      # 
+      # _@param_ `child`
+      def handle_child_rows_changed: (Component child) -> void
 
       def handle_focus: () -> void
 
@@ -17601,6 +17688,13 @@ module Tuile
     # rect.empty?` guard, which would strand the content at its last rect
     # (`D_empty_ancestor`).
     def relayout: () -> void
+
+    # Places an overlay whose rows changed again, since a
+    # {Component::Dialog::ShrinkToContent} box is resolved from them in
+    # {#relayout}. The content's notice stops here: it is handed the whole pane.
+    # 
+    # _@param_ `child`
+    def handle_child_rows_changed: (Component child) -> void
 
     # Pane paints nothing itself; its children paint over the entire rect.
     # 

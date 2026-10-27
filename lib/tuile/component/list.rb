@@ -268,6 +268,7 @@ module Tuile
         notify_cursor_changed
         invalidate
         invalidate_layout # the bar's row_count follows @items.size
+        invalidate_rows
       end
 
       # One row per item, at any width. A list scrolls itself, so this matters
