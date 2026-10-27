@@ -3234,8 +3234,9 @@ a short message wants to be short, and without a query every app copied
 asymmetry a terminal has: **width comes down, rows come up.** Wrapping is the only
 coupling between the axes and it runs one way, so with the width handed down the
 0.9.0 circularity cannot form. It is asked only by a parent that was *told* to ask
-(`Dialog::ShrinkToContent`), inside that parent's own pass. `Screen` and `LayoutPass` never
-learn the word, which keeps it a pulled query rather than a channel. It is pure
+(`Dialog::ShrinkToContent`, `Scroller`'s `:content`), inside that parent's own pass.
+`Screen` and `LayoutPass` never learn the word, which keeps it a pulled query rather
+than a channel. It is pure
 and uncached, and `nil` means "I fill what I'm handed", distinct from `0`. The asker
 re-asks on every pass, and what tells it a pass is owed is the notice below.
 
@@ -7284,7 +7285,7 @@ draws itself, so no clip reaches it: `Screen#cursor_position` answers `nil` when
 the caret falls outside what `clip_for` allows — including a caret outside the box
 the component was given at all.
 
-## D_scroller — Why is scrolling a container you compose, told how tall its content is?
+## D_scroller — Why is scrolling a container you compose, told how tall its content is unless told to ask?
 
 {Tuile::Component::Scroller} is a one-child viewport: it gives its content a rect
 `content_rows` tall — taller than its own, with a negative `top` once scrolled —
@@ -7299,23 +7300,38 @@ out — a container computes rectangles in plain Ruby in its `rect=`
 invisible term into every one of those computations. Composed, `FormLayout` needs
 to know nothing, which is what retired the seed's "make the form scroll itself".
 
-**Why the app says how tall the content is.** Nothing in Tuile measures
-bottom-up, and `D_declared_size`'s re-grow rule admits measurement back only as an
-optional, read-only, *caller-side* query — so `content_rows=` is assigned, never
-pulled. The supplier is the content's own arithmetic over its own state: a
-`FormLayout` sums the rows its items were handed, a `Layout::Vertical` of `Fixed`
-children sums its constraints. The two TUI toolkits with no measurement pass are
-told the same way (Terminal.Gui's `SetContentSize`, ratatui's `tui-scrollview`);
-the ones that ask their content have a layout pass to ask through (Swing's
-`Scrollable`, Textual's `virtual_size`).
+**Why the count is told unless the app says to ask.** `content_rows = :content`
+asks the content's `measure_rows` at the width the scroller hands it, on every
+pass, and again on the content's rows notice (`D_declared_size`), so a field added
+to a form deep inside is reachable with no call from the app. It is opt-in, not the
+default, because the re-grow rule admits the query only for a parent *told* to ask.
+A told count stays for content with no answer of its own (an `Absolute`, a
+component that fills) and for a count cheaper to know than to measure; its
+supplier is the content's own arithmetic, a `FormLayout`'s summed `rows:`. The TUI
+toolkits with no measurement pass are told the same way (Terminal.Gui's
+`SetContentSize`, ratatui's `tui-scrollview`); the ones that ask have a layout pass
+to ask through (Swing's `Scrollable`, Textual's `virtual_size`), which since
+`D_deferred_layout` Tuile has too.
 
-The cost is real and unpaid: **nothing detects that `content_rows` went stale.**
-Add a field and the last row is unreachable until someone re-assigns it. A push
-from the content is the banned channel; re-reading it in the scroller's own
-`relayout` would cover a resize and nothing else. What takes the edge off is the
-fallback — the child is given `[content_rows, viewport_rows].max` rows — so a
-scroller whose count is unset or too small degrades to a plain one-child
-container that fills its viewport, rather than to a strip of blank rows.
+**A told count's cost is unpaid: nothing detects that it went stale.** Add a field
+and the last row is unreachable until someone re-assigns it. What takes the edge off
+is the fallback — the child is given `[content_rows, viewport_rows].max` rows — so a
+scroller whose count is unset or too small degrades to a plain one-child container
+that fills its viewport, rather than to a strip of blank rows. A `nil` answer under
+`:content` lands on the same fallback.
+
+**Under an `:auto` bar the rows decide a width, the one place they do, and it
+settles in one pass** because the bar is decided from the answer at the *full*
+width, which showing the bar doesn't change; the count is then asked at the width
+the bar leaves. Fewer columns never wrap to fewer rows, so content that overflowed
+at the full width still overflows. An answerer breaking that would get a bar it
+didn't need, never a loop. A told count derived from the content's own width can
+still chase the flip, and `LayoutPass::MAX_ROUNDS` catches it.
+
+**Under `:content` every pass clamps the scroll to the measured rows**, so content
+shrinking under a scrolled viewport pulls it back, as a told `content_rows=` does at
+the assignment. A told count leaves the pass alone, since `scroll_top_row=` may park
+past the end on purpose (`TextView`'s rule).
 
 **Why scrolling by rows, not by whole children.** The seed proposed that a child
 be wholly in or wholly out, so nothing would need clipping. Three counts killed

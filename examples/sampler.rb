@@ -1788,8 +1788,8 @@ module SamplerExample
         fields.add(non_empty(Tuile::Component::TextField.new), caption:, required: true)
       end
       fields.add(non_empty(Tuile::Component::DateField.new), caption: "Date of birth", required: true)
-      # Nothing measures (`D_scroller`): eight items, three rows each.
-      scroller = Tuile::Component::Scroller.new(fields, content_rows: 8 * 3)
+      # The scroller asks the form how tall it is (`D_scroller`).
+      scroller = Tuile::Component::Scroller.new(fields, content_rows: :content)
       form do |f|
         f.add(prompt, Fixed[2])
         f.add(scroller, Fixed[10], cross: Fixed[FORM_WIDTH + 2])

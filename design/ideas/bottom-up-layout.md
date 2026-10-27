@@ -1,12 +1,12 @@
 # Bottom-up layout — may a component say how many rows its content needs?
 
-**Status:** stages 1–3 shipped: `Component#measure_rows`, `Dialog::ShrinkToContent[box]`, an
-answer from every component, and the rows notice (`invalidate_rows` /
-`handle_child_rows_changed`), all argued in `D_declared_size`, which also holds the roads they
-rejected. Stages 4–5 are still a brainstorm. Takes in what was `content-height.md` (the Scroller
-half) and #73 (wrapped rows in a scrolled stack). Every step past stage 1 amends a `D_` and the owner decides. Until then `Scroller`
-is told (`content_rows=`). Every road here adds a new value next to what already exists, so waiting
-breaks nothing.
+**Status:** stages 1–4 shipped: `Component#measure_rows`, `Dialog::ShrinkToContent[box]`, an
+answer from every component and the rows notice (`invalidate_rows` / `handle_child_rows_changed`),
+argued in `D_declared_size`, which also holds the roads they rejected; and
+`Scroller#content_rows = :content`, argued in `D_scroller`. Stage 5 (`Auto`) is still a
+brainstorm. Takes in what was `content-height.md` (the Scroller half) and #73 (wrapped rows in a
+scrolled stack). Every step past stage 1 amends a `D_` and the owner decides. Every road here adds
+a new value next to what already exists, so waiting breaks nothing.
 
 **`panel-and-dialog` landed first** (owner, 2026-10-27; `D_panel_dialog`) and is merged in:
 `Dialog` paints its own border, so `Dialog#measure_rows` asks the body at the inner width and adds
@@ -18,8 +18,8 @@ Strict top-down layout has three consumers that need an answer only their child 
 
 - **Dialog**: shipped as `Dialog::ShrinkToContent` with the notice (`D_declared_size`).
   `ConfirmDialog` keeps `reposition` only for `caption=` and `button`, which change its width.
-- **Scroller**: `content_rows=` is assigned by the app (`D_scroller`). Add a field to the form inside
-  and the last row is unreachable until someone re-assigns it, and nothing detects that.
+- **Scroller**: shipped as `content_rows = :content` (`D_scroller`). A told count still goes stale
+  silently, and stays for content with no answer of its own.
 - **Box**: no `Auto` (`D_box_layouts`), so a `Label` whose text sets its height takes a `Fixed[n]`
   that someone keeps in sync by hand.
 
@@ -186,7 +186,7 @@ stage 2 is open.
 | # | consumer | asks | `nil` → | replaces |
 |---|---|---|---|---|
 | 1 | `Dialog::ShrinkToContent` (**shipped**) | its own `measure_rows(box width)`, capped at the box's height | the whole box | issue #67 |
-| 2 | `Scroller#content_rows = :content` | `content.measure_rows(inner_width)` | the viewport | assigning `content_rows` |
+| 2 | `Scroller#content_rows = :content` (**shipped**) | `content.measure_rows(inner_width)`; an `:auto` bar decided at the full width | the viewport | assigning `content_rows` |
 | 3 | a box's `Auto` constraint (`Vertical` main, `Horizontal` cross) | `child.measure_rows(child_width)`: on `Vertical` the width its `cross:` resolved, on `Horizontal` its `main_sizes` share | `0`, with a logged warning | hand-synced `Fixed[n]` |
 
 Order of cost: #1 changes nothing outside `Dialog`, #2 amends `D_scroller`, #3 reverses
@@ -199,8 +199,8 @@ mistake in the tree, not a box that fills. `0` keeps the layout going and the lo
 vanished; revisit if that turns out to bite.
 
 **Hidden content answers as absent content, and absent content counts `0`** (owner, 2026-10-27;
-shipped in stage 2 and argued in `D_declared_size`). Stage 4's `Scroller#content_rows = :content`
-asks the same way, through `ComponentUtil.measure_rows_of`. A `nil` would also log the `Auto`
+shipped in stage 2 and argued in `D_declared_size`). `Scroller#content_rows = :content` asks the
+same way, through `ComponentUtil.measure_rows_of`. A `nil` would also log the `Auto`
 warning on every pass for a hidden body, which is a normal state, not a mistake in the tree.
 
 **`Auto` is legal exactly where the axis is height** (owner, 2026-10-27): `Vertical`'s main axis
@@ -283,11 +283,11 @@ one-hop arithmetic.
    `constant_rows` with a reason), and a container whose answer moves when a stubbed child's does
    passes that child's notice on. Each consumer adds its own row to the hook when it lands
    (`Scroller` at 4, `Auto` at 5).
-4. `Scroller#content_rows = :content`, which was `content-height.md`'s goal. Under `:auto` the bar is
-   the one place rows decide a width, and the scroller settles it in one `relayout`: measure at full
-   width, show the bar if that outgrows the viewport, then measure at `inner_width`. That holds
-   because less width never costs fewer rows, which greedy wrapping guarantees and every answerer
-   under an `:auto` bar must keep. If it bites, `:content` refuses `:auto` until it's solved (owner).
+4. **Shipped.** `Scroller#content_rows = :content`, opt-in (the default stays a told `0`, since
+   only a parent told to ask asks), argued in `D_scroller`. An `:auto` bar is decided from the
+   answer at the full width, so showing it can't flip it, and `:content` needed no refusal of
+   `:auto`. Every pass under `:content` clamps the scroll to the measured rows. The sampler's
+   scrolled form asks.
 5. `Auto` (`Vertical` main, `Horizontal` cross), last. It has a consumer: #73 cannot be written without
    it, because the stack has to give each wrapped row its counted height. `Horizontal#measure_rows`
    then asks each `Auto` child at its `main_sizes` share, so `main_sizes` is shared between
@@ -333,12 +333,11 @@ cycles raises after `LayoutPass::MAX_ROUNDS` rounds).
 
 ## Graduation owes
 
-- `D_scroller` (tracking mode) and, if `Auto` lands, `D_box_layouts`. The asymmetry section is the
-  `D_` entry's core.
+- `D_box_layouts`, if `Auto` lands. The asymmetry section is the `D_` entry's core.
 - AGENTS.md's "never advertises" Layout line, book ch3's omissions list and "**there is no `Auto`.**" in its box
   section, and the first reason in `D_declared_size`'s rejected-`auto_size` bullet (it cites
   `D_box_layouts`' ban; the `Notification` reason still holds), rewritten together.
-- rdoc on `Scroller#content_rows=` and the `Auto` constraint.
+- rdoc on the `Auto` constraint.
 - The four registrations for any changed responsibility.
 - The toolkit table below → one `R_` entry with provenance markers.
 - Issue #73 closed with a link.

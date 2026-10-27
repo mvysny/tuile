@@ -1292,12 +1292,16 @@ them.
 ```ruby
 form = Component::FormLayout.new
 # …nine fields, 27 rows of them…
-window.content = Component::Scroller.new(form, content_rows: 27)
+window.content = Component::Scroller.new(form, content_rows: :content)
 ```
 
-`content_rows` is the part that looks odd at first, and it is the same rule as
-everywhere else in this book: **nothing measures**, so the number is yours to
-supply, exactly as `rows:` and `Fixed[n]` are. The form is then handed a rect 27
+`content_rows` says how tall the content is, and you choose who answers.
+`:content` tells the scroller to ask — the form's `measure_rows` at the width the
+scroller hands it, 27 rows for nine fields — and to ask again whenever that answer
+changes, so a field added later is reachable without touching the scroller. A
+number instead (`content_rows: 27`) is yours to keep current, exactly as `rows:`
+and `Fixed[n]` are: the choice for content with no answer of its own, such as a
+`Layout::Absolute`. Either way the form is then handed a rect 27
 rows tall inside a viewport that may be 12 — the first rect in Tuile *meant* not
 to fit its parent, and, once you scroll, the first with a negative `top`.
 Nothing goes wrong, because every component is bounded by the rect it was given

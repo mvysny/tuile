@@ -560,7 +560,8 @@ them:
   consults.** Sizing decisions live on the parent, expressed as
   arithmetic, not on the child as advertised constraints. The one
   question a child may be asked is `measure_rows(width)`, and only a
-  parent you told to ask (`Dialog::ShrinkToContent`) asks it.
+  parent you told to ask (`Dialog::ShrinkToContent`, a `Scroller` with
+  `content_rows: :content`) asks it.
 - **No shrink-to-fit / intrinsic sizing.** A slot is sized top-down;
   content fills or scrolls within it.
 - **`Label` doesn't scroll.** It truncates long lines with an ellipsis by
