@@ -1,13 +1,48 @@
 # Panel and Dialog — `Window` becomes `Panel`, `Popup` becomes a bordered `Dialog`
 
-**Status:** owner-decided in outline (2026-10-26); not started. Wait until `bottom-up-layout` merges
-so the rename doesn't get mixed into the `Popup::ShrinkToContent` diff.
+**Status:** owner-decided in outline (2026-10-26), reframed by the owner (2026-10-27): the root
+cause is a hierarchy that encodes appearance, and the renames follow from fixing that. Not started.
+Wait until `bottom-up-layout` merges so the rename doesn't get mixed into the
+`Popup::ShrinkToContent` diff.
 
-**Problem:** the names are the wrong metaphors. `Window` is a bordered, captioned container. It is
-usually tiled (`file_commander`'s two panes, `sampler`, `hello_world`) and floats only when a
-`Popup` wraps it. `Popup` is a centered, modal, ESC-closable *dialog*. A "window" suggests something
-floating, movable and overlapping, under a window manager. Tuile's floating box can't be moved and
-is always modal.
+**Problem:** the component hierarchy answers two questions at once, *what a component is* and *how
+it looks*, and the second keeps winning. `Window` is the bordered, captioned container. Four classes
+that are really dialogs (`ConfirmWindow`, `InfoWindow`, `PickerWindow`, `LogWindow`) extend it to
+get its border. Then each grows an `open_in_popup` or a private `MeasuredPopup` to become the dialog
+it was all along. `Notification` doesn't extend `Window`, but it holds one (`notification.rb:123`)
+for the same reason: a component in its subtree whose only job is to paint a frame. So `Window` is
+a class that is never a window. Tiled, it's a pane. Wrapped, it's a dialog. Inside a notification,
+it's a frame.
+
+The names are the visible symptom. `Window` is usually tiled (`file_commander`'s two panes,
+`sampler`, `hello_world`) and floats only when a `Popup` wraps it. `Popup` is a centered, modal,
+ESC-closable *dialog*. A "window" suggests something floating, movable and overlapping, under a
+window manager. Tuile's floating box can't be moved and is always modal.
+
+## The principle: a class says what a component is
+
+- **The component hierarchy is the identity axis and nothing else.** A class, its superclass and
+  its children say what the component *is* and does. `Dialog` is a modal, captioned overlay with one
+  body. `Notification` is a passive, non-modal overlay. `Panel` is a captioned tile that sets itself
+  apart from its neighbours.
+- **Appearance is a second axis, orthogonal to the first**, the way `Theme` is: applied everywhere,
+  swapped as a whole, never a superclass. Whether a component has a border, and what that border
+  looks like, is appearance.
+- **Appearance can get into the identity axis three ways, and all three are out:**
+  - a superclass inherited for its paint (`ConfirmWindow < Window`),
+  - a child component held for its paint (`Notification`'s `Window`),
+  - a mixin (`include Bordered` puts the look into `ancestors`, just as a superclass does).
+
+  The first breaks `cop`'s "inherit to *be*, never to share". The other two break the same rule,
+  with the inheritance spelled differently.
+- **The test: imagine the border gone.** If the component still does the same job, the border is
+  appearance. It belongs in the component's own `repaint`, not in its type or its subtree. A
+  `Dialog` without a border is still a modal dialog. A `Notification` without one is still a
+  notification.
+- **A caption is identity; where it's drawn is appearance.** The caption is data (what the dialog
+  is called), so `HasCaption` stays. Setting it into the top edge is the border's business.
+- **Today, each of the three paints its own border** through one small shared painter (below).
+  Later, a look-and-feel decides per component kind what that border is.
 
 ## The decision so far
 
@@ -20,9 +55,9 @@ is always modal.
   - `InfoWindow` → `InfoDialog`
   - `PickerWindow` → `PickerDialog`
   - `LogWindow` → `LogDialog`
-- **Three components paint the same border, `Panel`, `Dialog` and `Notification`, and share the
-  code that paints it.** Sharing goes through composition (a painter they call), never a common
-  base class (`cop`: inherit to *be*, never to share code).
+- **`Panel`, `Dialog` and `Notification` each paint their own border.** Today it's the same
+  border, through one shared painter they call. The painter is a utility, not a type: none of the
+  three *is* a bordered thing, and none holds a child to get one.
 - **The border is fixed and can't be removed.** There is no `border: false` and no per-instance
   style. A borderless modal (today's `Popup` with bare content) has no user anywhere, so it goes.
 - **Names not chosen:**
@@ -32,11 +67,15 @@ is always modal.
   - `Popup` → `Window`: recycles a name that was just freed, and over-promises a window manager.
   - `Dialog` was declined in `D_overlay` only for the cut where `Popup` stayed the base and silently
     changed behaviour. A full rename makes `Popup` a `NameError`, which is loud.
+- **Structures not chosen:**
+  - A `Border` decorator component wrapping the content. That's what `Window` is today, and it's
+    the problem: a node in the tree, in the focus chain and in focus repair, whose only job is ink.
+  - A `Bordered` mixin: appearance in `ancestors` (see the principle above).
 
 ## Why: the downstream apps
 
 Neither virtui nor pikuri-tui tiles a `Window` any more. Their redesign moved panes to borderless
-`Layout::Vertical`s (virtui's `D_panes_are_layouts`: "once the border goes, `Window` earns
+`Layout::Vertical`s (virtui's decision on panes as layouts: "once the border goes, `Window` earns
 nothing"). What's left is always half of a pair, a `Window` subclass plus the `Popup` that wraps it:
 
 - virtui: `CpuFlagsWindow`, `HealthWindow`, `VMInfoWindow` and `DiskResizeWindow` each hand-roll
@@ -64,9 +103,22 @@ rect inside it (`local_rect` shrunk by 1 on each side, 0 on the right while a sc
 column). Each of the three components asks it for the content rect in its `relayout`, and nobody
 hard-codes a `1`. That keeps the later look-and-feel change to one site.
 
-**Later, not now: a pluggable look-and-feel.** It would define, per component kind, how a border
-looks (glyphs, which edges, caption placement) and how big its insets are. The helper is the seam
-it would plug into. Today there is exactly one border and nothing configures it.
+**Later, not now: a pluggable look-and-feel**, orthogonal to the component hierarchy the way
+`Theme` is: set once on the screen, applied everywhere, swapped as a whole. Per component kind, it
+would define what border the component has (glyphs, which edges, caption placement, or no border at
+all) and how big the insets are. The LaF can have its own hierarchy, organized around drawing needs
+(a captioned border *is* a border). `cop`'s rule holds there too: a painter subclasses to be a kind
+of border, never `DialogLook < PanelLook` to share code. That would move the same smell one axis
+over. The helper is the seam the LaF would plug into. Today there is exactly one border and nothing
+configures it.
+
+**Where the LaF differs from `Theme`: it owns geometry.** `Theme` is ink only, so `theme=` is one
+invalidate-all *repaint*. Insets move the content rect, so swapping the LaF is also an
+invalidate-all *relayout*, and `measure_rows` answers change with it (a `Dialog` under
+`ShrinkToContent` adds whatever insets the LaF reports). The theme rule, "read it at paint time,
+never cache it", becomes "read the LaF in `relayout` and in `repaint`, never cache an inset". The
+helper's signature must leave room for that: it answers insets at call time and never hands back a
+constant.
 
 ## What moves where
 
@@ -94,9 +146,15 @@ it would plug into. Today there is exactly one border and nothing configures it.
 
 - **`Q_border_helper_shape`**: what is the shared code? A painter object each component holds (a
   `Border` value: `paint(canvas, rect, caption:, active:, scrollbar:)` plus
-  `content_rect(local_rect, scrollbar:)`), a `Canvas` method, or a module? A module is the closest
-  thing to "inherit to share" and is the one to argue against. `HasCaption` is a module, but it is
-  an attribute, not ink.
+  `content_rect(local_rect, scrollbar:)`), or a `Canvas` method? A module is ruled out by the
+  principle above. Leaning towards the painter object: a LaF needs something to hand out per
+  component kind, and a `Canvas` method gives it no seam.
+- **`Q_thin_dialog_subclasses`**: the identity test applies to the subclasses too. `ConfirmDialog`
+  and `PickerDialog` are kinds of dialog: they have their own keys, buttons and result. But
+  `LogDialog` is just a `Dialog` whose body is a `LogTextView`, and `InfoDialog` one whose body is a
+  `TextView` or `List` built from data. Does each earn a class? Leaning: `InfoDialog` stays, since
+  it takes domain data (`cop` rule 4: `InfoDialog.new("Help", text)`). `LogDialog` is open. Its
+  only addition is `::IO`, and `LogTextView` already has one.
 - **`Q_panel_footer`**: `footer=` / `footer_text=` have no user in Tuile's `lib/`, virtui or
   pikuri-tui. Drop them from `Panel`, give them to `Dialog`, or keep them? `Slot` keeps a user
   either way (`ConfirmWindow`'s body slot), but its rdoc example (`Window#footer`) needs replacing,
@@ -105,8 +163,10 @@ it would plug into. Today there is exactly one border and nothing configures it.
   becoming an `Overlay` change what `D_bg_surface`'s "composer owes `bg.default_color` + `INHERIT`"
   pair means for it?
 - **`Q_laf_vs_theme`**: when the look-and-feel arrives, is it part of `Theme` (which today carries
-  accents only: `D_bg_inherit`, `D_no_hint_color`) or a sibling object? Not for this change, just
-  don't let the helper's signature assume either.
+  accents only: `D_bg_inherit`, `D_no_hint_color`) or a sibling object? Leaning: a sibling. Color
+  stays `Theme`'s, since `active_border_color` is already an accent token. Shape and insets go to
+  the LaF, because they move geometry and `Theme` never does. Not for this change, just don't let
+  the helper's signature assume either.
 - **`Q_dialog_subclass_sizing`**: virtui's subclasses each carry a `SIZE` constant. Is that a
   `declared_size:` passed to `super`, or an overridden reader?
 
@@ -119,8 +179,11 @@ it would plug into. Today there is exactly one border and nothing configures it.
 - **`D_` entries naming them**, most heavily: `D_overlay`, `D_popup_open`, `D_declared_size`,
   `D_confirm_window`, `D_info_window_body`, `D_slots`, `D_component_contract`; lighter:
   `D_notification`, `D_has_content`, `D_tree_api`, `D_combobox`, `D_tabs`, `D_key_dispatch`,
-  `D_no_context_menu`, `D_no_hint_color`. A new `D_` records the merge and the names not chosen
-  above.
+  `D_no_context_menu`, `D_no_hint_color`. A new `D_` records the principle (the identity axis and
+  the appearance axis), the merge, and the names and structures not chosen above.
+- **An invariant line**, probably in `lib/tuile/component/AGENTS.md`: a class says what a
+  component is. Its border is its own paint, through the shared painter, and never comes from a
+  superclass, a mixin or a child held for its ink.
 - **The rest of the docs and code:**
   - `design/terminology.md` (caption, slot)
   - `lib/tuile/component/AGENTS.md`
