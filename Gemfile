@@ -21,6 +21,11 @@ group :test do
 end
 
 group :development do
+  # Transitive only (rubocop-ast, rbs, irb). prism 2.x ships RBI with overloaded
+  # sigs, which Parlour 9.1.2 can't parse, and sord loads every bundled gem's
+  # rbi/ — `rake sig` dies with "node after a sig must be a method definition".
+  # Drop once a sord/parlour release handles overloads.
+  gem "prism", "< 2"
   gem "redcarpet", "~> 3.6" # Markdown formatting for YARD
   gem "rubocop", "~> 1.21"
   gem "sord", "~> 7.1"
